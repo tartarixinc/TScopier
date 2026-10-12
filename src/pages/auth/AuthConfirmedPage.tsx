@@ -92,7 +92,7 @@ export function AuthConfirmedPage() {
       <h1 className="mt-6 text-xl font-semibold text-neutral-900 dark:text-neutral-50">
         {verifyT.confirming ?? 'Confirming your email…'}
       </h1>
-      <p className="mt-3 text-sm text-neutral-500 dark:text-neutral-400">
+      <p className="mt-3 text-sm text-neutral-900 dark:text-neutral-50">
         {verifyT.confirmingHint ?? 'You will be redirected in a moment.'}
       </p>
     </div>

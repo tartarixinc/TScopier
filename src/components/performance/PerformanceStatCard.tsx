@@ -48,9 +48,9 @@ export function PerformanceStatCard({
     <div className="rounded-xl border border-neutral-200/55 bg-white p-4 shadow-sm dark:border-neutral-800/55 dark:bg-neutral-950">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{label}</p>
+          <p className="text-xs font-medium text-neutral-900 dark:text-neutral-50">{label}</p>
           <p className={`mt-1 text-xl font-bold tabular-nums ${valueClass}`}>{value}</p>
-          {sub ? <div className="mt-0.5 text-xs text-neutral-400 dark:text-neutral-500">{sub}</div> : null}
+          {sub ? <div className="mt-0.5 text-xs text-neutral-900 dark:text-neutral-50">{sub}</div> : null}
         </div>
         <div className={clsx('rounded-lg p-2', iconWrapClass)}>
           <Icon className="h-5 w-5" />

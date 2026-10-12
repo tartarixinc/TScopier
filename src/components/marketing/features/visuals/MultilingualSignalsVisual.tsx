@@ -29,13 +29,13 @@ function SignalCard({
     >
       <div className="flex items-center gap-2">
         <LocaleFlag flagId={flagId} className="h-3.5 w-[1.3125rem]" title={language} />
-        <span className="text-xs font-medium text-neutral-700 dark:text-neutral-200">{language}</span>
+        <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50">{language}</span>
         <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-teal-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-green-500 dark:bg-teal-950/50 dark:text-teal-300">
           <Check className="h-2.5 w-2.5" aria-hidden />
           {parsedLabel}
         </span>
       </div>
-      <p className="mt-2 line-clamp-2 text-[11px] leading-relaxed text-neutral-500 dark:text-neutral-400">
+      <p className="mt-2 line-clamp-2 text-[11px] leading-relaxed text-neutral-900 dark:text-neutral-50">
         {message}
       </p>
       <p
@@ -72,7 +72,7 @@ export function MultilingualSignalsVisual() {
               <p className="text-xs font-semibold uppercase tracking-wide text-green-500 dark:text-teal-300">
                 {v.languagesBadge}
               </p>
-              <p className="text-[11px] text-neutral-500 dark:text-neutral-400">{v.moreLanguages}</p>
+              <p className="text-[11px] text-neutral-900 dark:text-neutral-50">{v.moreLanguages}</p>
             </div>
           </div>
           <div className="flex flex-wrap justify-end gap-1">

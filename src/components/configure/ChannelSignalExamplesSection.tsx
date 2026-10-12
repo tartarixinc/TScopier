@@ -124,7 +124,7 @@ export function ChannelSignalExamplesSection({
           <ConfigTitle variant="semibold" info={labels.signalExamplesHint}>
             {labels.signalExamplesTitle}
           </ConfigTitle>
-          <p className="text-sm text-neutral-600 dark:text-neutral-400">{labels.signalExamplesIntro}</p>
+          <p className="text-sm text-neutral-900 dark:text-neutral-50">{labels.signalExamplesIntro}</p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           <Button
@@ -179,14 +179,14 @@ export function ChannelSignalExamplesSection({
       ) : null}
 
       {loading && examples.length === 0 ? (
-        <p className="text-sm text-neutral-500 dark:text-neutral-400">{labels.loadingExisting}</p>
+        <p className="text-sm text-neutral-900 dark:text-neutral-50">{labels.loadingExisting}</p>
       ) : null}
 
       {!loading && examples.length === 0 && !loadError ? (
         <div className="rounded-xl border border-dashed border-neutral-200 dark:border-neutral-700 bg-neutral-50/80 dark:bg-neutral-800/30 px-4 py-8 text-center">
-          <Sparkles className="mx-auto mb-3 h-8 w-8 text-neutral-300 dark:text-neutral-600" aria-hidden />
-          <p className="text-sm font-medium text-neutral-700 dark:text-neutral-200">{labels.signalExamplesEmpty}</p>
-          <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">{labels.signalExamplesEmptyHint}</p>
+          <Sparkles className="mx-auto mb-3 h-8 w-8 text-neutral-900 dark:text-neutral-50" aria-hidden />
+          <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{labels.signalExamplesEmpty}</p>
+          <p className="mt-1 text-xs text-neutral-900 dark:text-neutral-50">{labels.signalExamplesEmptyHint}</p>
           <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
             <Button
               type="button"
@@ -218,7 +218,7 @@ export function ChannelSignalExamplesSection({
 
       {examples.length > 0 ? (
         <>
-          <p className="text-xs text-neutral-500 dark:text-neutral-400">
+          <p className="text-xs text-neutral-900 dark:text-neutral-50">
             {interpolate(labels.signalExamplesCount, { count: String(examples.length) })}
           </p>
           <ul className="space-y-3">
@@ -237,14 +237,14 @@ export function ChannelSignalExamplesSection({
                       <Badge variant="primary" size="sm">{labels.manualBadge}</Badge>
                     ) : null}
                     {summary ? (
-                      <span className="text-xs font-medium text-neutral-600 dark:text-neutral-300 truncate max-w-full">
+                      <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50 truncate max-w-full">
                         {summary}
                       </span>
                     ) : null}
                     <div className="ml-auto flex items-center gap-1">
                       <button
                         type="button"
-                        className="rounded-md p-1.5 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 dark:hover:text-neutral-200 dark:hover:bg-neutral-800"
+                        className="rounded-md p-1.5 text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 hover:bg-neutral-100 dark:hover:text-neutral-50 dark:hover:bg-neutral-800"
                         aria-label={labels.editExample}
                         onClick={() => {
                           setEditing(example)
@@ -255,7 +255,7 @@ export function ChannelSignalExamplesSection({
                       </button>
                       <button
                         type="button"
-                        className="rounded-md p-1.5 text-neutral-400 hover:text-error-600 hover:bg-error-50 dark:hover:text-error-400 dark:hover:bg-error-950/40 disabled:opacity-40"
+                        className="rounded-md p-1.5 text-neutral-900 dark:text-neutral-50 hover:text-error-600 hover:bg-error-50 dark:hover:text-error-400 dark:hover:bg-error-950/40 disabled:opacity-40"
                         aria-label={labels.deleteExample}
                         disabled={deletingId === example.id}
                         onClick={() => void handleDelete(example)}
@@ -264,14 +264,14 @@ export function ChannelSignalExamplesSection({
                       </button>
                     </div>
                   </div>
-                  <pre className="px-3 py-3 text-sm text-neutral-700 dark:text-neutral-200 whitespace-pre-wrap font-sans leading-relaxed max-h-48 overflow-y-auto">
+                  <pre className="px-3 py-3 text-sm text-neutral-900 dark:text-neutral-50 whitespace-pre-wrap font-sans leading-relaxed max-h-48 overflow-y-auto">
                     {example.raw_message}
                   </pre>
                 </li>
               )
             })}
           </ul>
-          <p className="text-xs text-neutral-500 dark:text-neutral-400">{labels.multilingualRetrainHint}</p>
+          <p className="text-xs text-neutral-900 dark:text-neutral-50">{labels.multilingualRetrainHint}</p>
         </>
       ) : null}
 

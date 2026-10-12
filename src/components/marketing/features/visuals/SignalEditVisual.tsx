@@ -13,7 +13,7 @@ export function SignalEditVisual() {
               <p className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">
                 {v.channelName}
               </p>
-              <p className="text-[11px] text-neutral-500 dark:text-neutral-400">{v.channelMeta}</p>
+              <p className="text-[11px] text-neutral-900 dark:text-neutral-50">{v.channelMeta}</p>
             </div>
             <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-teal-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-green-500 dark:bg-teal-950/60 dark:text-teal-300">
               <Pencil className="h-3 w-3" aria-hidden />
@@ -25,15 +25,15 @@ export function SignalEditVisual() {
             <p className="text-sm font-semibold text-green-400 dark:text-green-400">{v.messageBuy}</p>
 
             <div className="rounded-lg border border-dashed border-neutral-200 bg-neutral-50/80 px-3 py-2.5 dark:border-neutral-700 dark:bg-neutral-800/40">
-              <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
                 {v.beforeLabel}
               </p>
-              <p className="mt-1 text-xs text-neutral-500 line-through decoration-neutral-400 dark:text-neutral-400">
+              <p className="mt-1 text-xs text-neutral-900 line-through decoration-neutral-400 dark:text-neutral-50">
                 {v.beforeSl} · {v.beforeTp}
               </p>
             </div>
 
-            <div className="flex justify-center text-neutral-300 dark:text-neutral-600">
+            <div className="flex justify-center text-neutral-900 dark:text-neutral-50">
               <ArrowDown className="h-4 w-4" aria-hidden />
             </div>
 
@@ -49,11 +49,11 @@ export function SignalEditVisual() {
         </div>
 
         <div className="rounded-xl border border-neutral-200/65 bg-white px-4 py-3 dark:border-neutral-800/55 dark:bg-neutral-900">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-400">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
             {v.workerTitle}
           </p>
-          <p className="mt-1 text-sm text-neutral-800 dark:text-neutral-100">{v.workerMessage}</p>
-          <p className="mt-1 text-[11px] text-neutral-400">{v.workerTime}</p>
+          <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-100">{v.workerMessage}</p>
+          <p className="mt-1 text-[11px] text-neutral-900 dark:text-neutral-50">{v.workerTime}</p>
         </div>
       </div>
     </div>

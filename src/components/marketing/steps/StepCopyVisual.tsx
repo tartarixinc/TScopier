@@ -19,7 +19,7 @@ export function StepCopyVisual() {
               <span className="text-xs font-semibold text-neutral-900 dark:text-neutral-50">
                 {t.dashboard.tradeActivities}
               </span>
-              <Info className="h-3 w-3 text-neutral-300 dark:text-neutral-400" aria-hidden />
+              <Info className="h-3 w-3 text-neutral-900 dark:text-neutral-50" aria-hidden />
             </div>
             <span className="inline-flex items-center gap-1 rounded-lg border border-green-400 px-2 py-1 text-[10px] font-medium text-green-400 dark:border-green-400 dark:text-green-400">
               {t.nav.items.channels}
@@ -31,8 +31,8 @@ export function StepCopyVisual() {
         <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
           {v.workerLogs.map((log) => (
             <div key={log.message} className="px-3 py-2 sm:px-4">
-              <p className="text-[11px] leading-snug text-neutral-800 dark:text-neutral-100">{log.message}</p>
-              <p className="mt-0.5 text-[10px] text-neutral-400">{log.time}</p>
+              <p className="text-[11px] leading-snug text-neutral-900 dark:text-neutral-100">{log.message}</p>
+              <p className="mt-0.5 text-[10px] text-neutral-900 dark:text-neutral-50">{log.time}</p>
             </div>
           ))}
         </div>
@@ -47,7 +47,7 @@ export function StepCopyVisual() {
           <div
             className={clsx(
               LOG_GRID,
-              'border-b border-neutral-100 px-3 py-2 text-[10px] font-medium uppercase tracking-wide text-neutral-400 dark:border-neutral-800 sm:px-4',
+              'border-b border-neutral-100 px-3 py-2 text-[10px] font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50 dark:border-neutral-800 sm:px-4',
             )}
           >
             <span>{t.copierLogs.colStatus}</span>
@@ -72,7 +72,7 @@ export function StepCopyVisual() {
                 >
                   {row.type}
                 </span>
-                <span className="text-right text-[10px] tabular-nums text-neutral-400">{row.time}</span>
+                <span className="text-right text-[10px] tabular-nums text-neutral-900 dark:text-neutral-50">{row.time}</span>
               </div>
             ))}
           </div>

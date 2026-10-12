@@ -213,7 +213,7 @@ const BrokerServerPickerModal = memo(function BrokerServerPickerModal({
               type="button"
               onClick={handleBackToCompanies}
               aria-label={t.common.previous}
-              className="rounded-xl p-2 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              className="rounded-xl p-2 text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800"
             >
               <DirectionalIcon icon={ArrowLeft} className="h-5 w-5" />
             </button>
@@ -227,7 +227,7 @@ const BrokerServerPickerModal = memo(function BrokerServerPickerModal({
             type="button"
             onClick={onClose}
             aria-label={t.common.cancel}
-            className="rounded-xl p-2 text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            className="rounded-xl p-2 text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800"
           >
             <X className="h-5 w-5" />
           </button>
@@ -237,20 +237,20 @@ const BrokerServerPickerModal = memo(function BrokerServerPickerModal({
           <>
             <div className="border-b border-neutral-100 px-4 py-3 dark:border-neutral-800">
               <div className="relative">
-                <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+                <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-900 dark:text-neutral-50" />
                 <input
                   ref={searchInputRef}
                   type="text"
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   placeholder={cf.brokerCompanySearchPlaceholder}
-                  className="w-full rounded-xl border border-neutral-200/65 bg-neutral-50 py-2.5 ps-9 pe-9 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-green-400 dark:border-neutral-800/55 dark:bg-neutral-800/50 dark:text-neutral-50"
+                  className="w-full rounded-xl border border-neutral-200/65 bg-neutral-50 py-2.5 ps-9 pe-9 text-sm text-neutral-900 placeholder:text-neutral-900 dark:placeholder:text-neutral-50 focus:outline-none focus:ring-2 focus:ring-green-400 dark:border-neutral-800/55 dark:bg-neutral-800/50 dark:text-neutral-50"
                 />
                 {searchQuery ? (
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
-                    className="absolute end-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-neutral-400 hover:text-neutral-600"
+                    className="absolute end-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50"
                     aria-label={t.common.cancel}
                   >
                     <X className="h-4 w-4" />
@@ -261,7 +261,7 @@ const BrokerServerPickerModal = memo(function BrokerServerPickerModal({
 
             <div className="min-h-[280px] flex-1 overflow-y-auto">
               {loading || resultsStale ? (
-                <div className="px-4 py-8 text-center text-sm text-neutral-500 dark:text-neutral-400">
+                <div className="px-4 py-8 text-center text-sm text-neutral-900 dark:text-neutral-50">
                   {cf.brokerCompanySearchLoading}
                 </div>
               ) : searchError ? (
@@ -272,12 +272,12 @@ const BrokerServerPickerModal = memo(function BrokerServerPickerModal({
                   {useQueryButton}
                 </div>
               ) : showMinCharsHint ? (
-                <div className="px-4 py-8 text-center text-sm text-neutral-500 dark:text-neutral-400">
+                <div className="px-4 py-8 text-center text-sm text-neutral-900 dark:text-neutral-50">
                   {cf.brokerCompanySearchMinChars}
                 </div>
               ) : deferredQuery.length >= 4 && !hasResults ? (
                 <div className="space-y-4 px-4 py-8">
-                  <p className="text-center text-sm text-neutral-500 dark:text-neutral-400">
+                  <p className="text-center text-sm text-neutral-900 dark:text-neutral-50">
                     {cf.brokerCompanySearchNoResults}
                   </p>
                   {useQueryButton}
@@ -286,7 +286,7 @@ const BrokerServerPickerModal = memo(function BrokerServerPickerModal({
                 <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
                   {visibleServerHits.length > 0 ? (
                     <div>
-                      <p className="px-4 pb-1 pt-3 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                      <p className="px-4 pb-1 pt-3 text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
                         {cf.brokerCompanySearchServersHeading}
                         {serverHits.length > MAX_SERVER_HITS
                           ? ` (${visibleServerHits.length}/${serverHits.length})`
@@ -305,7 +305,7 @@ const BrokerServerPickerModal = memo(function BrokerServerPickerModal({
                                   {hit.serverName}
                                 </div>
                                 {hit.companyName ? (
-                                  <div className="mt-0.5 truncate text-xs text-neutral-500 dark:text-neutral-400">
+                                  <div className="mt-0.5 truncate text-xs text-neutral-900 dark:text-neutral-50">
                                     {hit.companyName}
                                   </div>
                                 ) : null}
@@ -313,7 +313,7 @@ const BrokerServerPickerModal = memo(function BrokerServerPickerModal({
                               {value === hit.serverName ? (
                                 <Check className="h-4 w-4 shrink-0 text-green-400 dark:text-green-400" />
                               ) : (
-                                <DirectionalIcon icon={ChevronRight} className="h-4 w-4 shrink-0 text-neutral-300 dark:text-neutral-600" />
+                                <DirectionalIcon icon={ChevronRight} className="h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50" />
                               )}
                             </button>
                           </li>
@@ -324,7 +324,7 @@ const BrokerServerPickerModal = memo(function BrokerServerPickerModal({
 
                   {visibleCompanyHits.length > 0 ? (
                     <div>
-                      <p className="px-4 pb-1 pt-3 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                      <p className="px-4 pb-1 pt-3 text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
                         {cf.brokerCompanySearchCompaniesHeading}
                         {companyHits.length > MAX_COMPANY_HITS
                           ? ` (${visibleCompanyHits.length}/${companyHits.length})`
@@ -345,12 +345,12 @@ const BrokerServerPickerModal = memo(function BrokerServerPickerModal({
                                     {company.companyName || shortLabel || '—'}
                                   </div>
                                   {shortLabel && company.companyName ? (
-                                    <div className="mt-0.5 truncate text-xs text-neutral-500 dark:text-neutral-400">
+                                    <div className="mt-0.5 truncate text-xs text-neutral-900 dark:text-neutral-50">
                                       {shortLabel}
                                     </div>
                                   ) : null}
                                 </div>
-                                <DirectionalIcon icon={ChevronRight} className="h-4 w-4 shrink-0 text-neutral-300 dark:text-neutral-600" />
+                                <DirectionalIcon icon={ChevronRight} className="h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50" />
                               </button>
                             </li>
                           )
@@ -362,12 +362,12 @@ const BrokerServerPickerModal = memo(function BrokerServerPickerModal({
               ) : (
                 <div className="px-4 py-10 text-center">
                   <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-neutral-100 dark:bg-neutral-800">
-                    <Search className="h-7 w-7 text-neutral-300 dark:text-neutral-600" />
+                    <Search className="h-7 w-7 text-neutral-900 dark:text-neutral-50" />
                   </div>
-                  <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                  <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                     {cf.brokerCompanySearchEmpty}
                   </p>
-                  <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
+                  <p className="mt-2 text-xs text-neutral-900 dark:text-neutral-50">
                     {cf.brokerCompanySearchMinChars}
                   </p>
                 </div>
@@ -378,7 +378,7 @@ const BrokerServerPickerModal = memo(function BrokerServerPickerModal({
               <button
                 type="button"
                 onClick={onManualEntry}
-                className="w-full text-center text-xs text-neutral-500 hover:text-green-400 dark:text-neutral-400 dark:hover:text-green-400"
+                className="w-full text-center text-xs text-neutral-900 hover:text-green-400 dark:text-neutral-50 dark:hover:text-green-400"
               >
                 {cf.brokerServerManualToggle}
               </button>
@@ -455,7 +455,7 @@ export function MtCompanyServerPicker({
   return (
     <div className="flex flex-col gap-1.5">
       {resolvedLabel ? (
-        <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+        <label className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
           {resolvedLabel}
           {required ? <span className="text-error-500"> *</span> : null}
         </label>
@@ -469,7 +469,7 @@ export function MtCompanyServerPicker({
             required={required}
             onChange={e => setManualServer(e.target.value)}
             placeholder={cf.brokerServerManualLabel}
-            className="w-full rounded-lg border border-neutral-200/65 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 hover:border-neutral-300 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-green-400 dark:border-neutral-800/55 dark:bg-neutral-900 dark:text-neutral-50"
+            className="w-full rounded-lg border border-neutral-200/65 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-900 dark:placeholder:text-neutral-50 hover:border-neutral-300 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-green-400 dark:border-neutral-800/55 dark:bg-neutral-900 dark:text-neutral-50"
           />
           <button
             type="button"
@@ -494,10 +494,10 @@ export function MtCompanyServerPicker({
             'focus:border-transparent focus:outline-none focus:ring-2 focus:ring-green-400',
           )}
         >
-          <span className={clsx(value ? 'text-neutral-900 dark:text-neutral-50' : 'text-neutral-400')}>
+          <span className={clsx(value ? 'text-neutral-900 dark:text-neutral-50' : 'text-neutral-900 dark:text-neutral-50')}>
             {value || cf.brokerServerSelectPrompt}
           </span>
-          <DirectionalIcon icon={ChevronRight} className="h-4 w-4 shrink-0 text-neutral-400" />
+          <DirectionalIcon icon={ChevronRight} className="h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50" />
         </button>
       )}
 
@@ -508,17 +508,17 @@ export function MtCompanyServerPicker({
             setManualMode(true)
             setManualServer(value)
           }}
-          className="self-start text-xs text-neutral-500 hover:text-green-400 hover:underline dark:text-neutral-400 dark:hover:text-green-400"
+          className="self-start text-xs text-neutral-900 hover:text-green-400 hover:underline dark:text-neutral-50 dark:hover:text-green-400"
         >
           {cf.brokerServerManualToggle}
         </button>
       ) : null}
 
       {hint && !manualMode ? (
-        <p className="text-xs text-neutral-500 dark:text-neutral-400">{hint}</p>
+        <p className="text-xs text-neutral-900 dark:text-neutral-50">{hint}</p>
       ) : null}
       {manualMode ? (
-        <p className="text-xs text-neutral-500 dark:text-neutral-400">{cf.brokerServerManualHint}</p>
+        <p className="text-xs text-neutral-900 dark:text-neutral-50">{cf.brokerServerManualHint}</p>
       ) : null}
 
       <BrokerServerPickerModal

@@ -13,7 +13,7 @@ import type { UserWalletRow, WalletLedgerRow } from '../../types/database'
 function StatCard({ title, value }: { title: string; value: string }) {
   return (
     <Card padding="md">
-      <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+      <p className="text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
         {title}
       </p>
       <p className="mt-2 text-2xl font-semibold text-neutral-900 dark:text-neutral-50">{value}</p>
@@ -92,7 +92,7 @@ export function WalletPage() {
       />
 
       <div className="mt-6 space-y-6">
-        <p className="text-sm text-neutral-500 dark:text-neutral-400">{copy.subtitle}</p>
+        <p className="text-sm text-neutral-900 dark:text-neutral-50">{copy.subtitle}</p>
         {error ? <Alert variant="error">{error}</Alert> : null}
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -106,7 +106,7 @@ export function WalletPage() {
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
-              <thead className="bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-500 dark:bg-neutral-900 dark:text-neutral-400">
+              <thead className="bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-900 dark:bg-neutral-900 dark:text-neutral-50">
                 <tr>
                   <th className="px-5 py-3">{copy.colDate}</th>
                   <th className="px-5 py-3">{copy.colDescription}</th>
@@ -129,7 +129,7 @@ export function WalletPage() {
                 ))}
                 {rows.length === 0 ? (
                   <tr>
-                    <td className="px-5 py-5 text-neutral-500 dark:text-neutral-400" colSpan={5}>
+                    <td className="px-5 py-5 text-neutral-900 dark:text-neutral-50" colSpan={5}>
                       {copy.empty}
                     </td>
                   </tr>

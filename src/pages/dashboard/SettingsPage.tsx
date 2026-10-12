@@ -45,7 +45,7 @@ function SettingsCard({
       <div className="px-5 sm:px-6 py-4 border-b border-neutral-100 dark:border-neutral-800">
         <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">{title}</h2>
         {description ? (
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">{description}</p>
+          <p className="text-sm text-neutral-900 dark:text-neutral-50 mt-0.5">{description}</p>
         ) : null}
       </div>
       <div className="p-5 sm:p-6">{children}</div>
@@ -271,10 +271,10 @@ export function SettingsPage() {
                   'shrink-0 flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors whitespace-nowrap',
                   active
                     ? 'bg-teal-50 text-teal-800 border border-teal-200 dark:bg-teal-950/50 dark:text-teal-200 dark:border-teal-900'
-                    : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 border border-transparent',
+                    : 'text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800 border border-transparent',
                 )}
               >
-                <Icon className={clsx('h-4 w-4', active ? 'text-green-400 dark:text-green-400' : 'text-neutral-400')} />
+                <Icon className={clsx('h-4 w-4', active ? 'text-green-400 dark:text-green-400' : 'text-neutral-900 dark:text-neutral-50')} />
                 {label}
               </button>
             )
@@ -312,7 +312,7 @@ export function SettingsPage() {
                     />
                     {photoSaving ? t.common.loading : t.settings.photo.change}
                   </label>
-                  <p className="mt-1.5 text-xs text-neutral-500 dark:text-neutral-400">{t.settings.photo.hint}</p>
+                  <p className="mt-1.5 text-xs text-neutral-900 dark:text-neutral-50">{t.settings.photo.hint}</p>
                 </div>
               </div>
               <div className="grid sm:grid-cols-2 gap-4">
@@ -363,14 +363,14 @@ export function SettingsPage() {
                   autoComplete="tel"
                 />
                 <div className="sm:col-span-2">
-                  <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                  <label className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                     {t.settings.fields.address}
                   </label>
                   <textarea
                     value={profile.address}
                     onChange={e => patchProfile({ address: e.target.value })}
                     rows={3}
-                    className="mt-1.5 w-full px-3 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent resize-y min-h-[88px]"
+                    className="mt-1.5 w-full px-3 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-900 dark:placeholder:text-neutral-50 focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent resize-y min-h-[88px]"
                     placeholder={t.settings.placeholders.address}
                   />
                 </div>
@@ -421,7 +421,7 @@ export function SettingsPage() {
                     <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                       {t.settings.fields.notificationSound}
                     </p>
-                    <p className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">
+                    <p className="mt-0.5 text-sm text-neutral-900 dark:text-neutral-50">
                       {t.settings.fields.notificationSoundDescription}
                     </p>
                   </div>
@@ -437,7 +437,7 @@ export function SettingsPage() {
                     <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                       {t.settings.fields.notificationEmail}
                     </p>
-                    <p className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">
+                    <p className="mt-0.5 text-sm text-neutral-900 dark:text-neutral-50">
                       {t.settings.fields.notificationEmailDescription}
                     </p>
                   </div>

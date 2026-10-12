@@ -666,7 +666,7 @@ function AccountStatCard({
 }) {
   return (
     <div className="rounded-xl border border-neutral-200 bg-white px-4 py-4 dark:border-neutral-800 dark:bg-neutral-950">
-      <p className="text-sm text-neutral-500 dark:text-neutral-400">{label}</p>
+      <p className="text-sm text-neutral-900 dark:text-neutral-50">{label}</p>
       <p className="mt-3 truncate text-2xl font-semibold text-neutral-900 dark:text-neutral-50">{value}</p>
       {hint ? <p className={clsx('mt-2 text-xs', hintClassName)}>{hint}</p> : <p className="mt-2 text-xs text-transparent">.</p>}
     </div>
@@ -676,7 +676,7 @@ function AccountStatCard({
 function AccountsEmptyState({ label }: { label: string }) {
   return (
     <div className="flex flex-col items-center justify-center py-6">
-      <svg width="88" height="72" viewBox="0 0 88 72" fill="none" aria-hidden className="text-neutral-300 dark:text-neutral-600">
+      <svg width="88" height="72" viewBox="0 0 88 72" fill="none" aria-hidden className="text-neutral-900 dark:text-neutral-50">
         <rect x="18" y="14" width="44" height="32" rx="4" fill="currentColor" opacity="0.35" />
         <rect x="22" y="18" width="36" height="22" rx="2" className="fill-white dark:fill-neutral-900" />
         <path d="M14 50h52l6 8H8l6-8z" fill="currentColor" opacity="0.45" />
@@ -685,7 +685,7 @@ function AccountsEmptyState({ label }: { label: string }) {
         <circle cx="65" cy="13" r="1.2" className="fill-white dark:fill-neutral-900" />
         <circle cx="69" cy="13" r="1.2" className="fill-white dark:fill-neutral-900" />
       </svg>
-      <p className="mt-3 text-sm text-neutral-500 dark:text-neutral-400">{label}</p>
+      <p className="mt-3 text-sm text-neutral-900 dark:text-neutral-50">{label}</p>
     </div>
   )
 }
@@ -2760,12 +2760,12 @@ export function AccountConfigPage() {
                     style={{ width: `${usagePercent}%` }}
                   />
                 </div>
-                <span className={clsx('text-xs font-semibold tabular-nums', usagePercent >= 100 ? 'text-red-500' : 'text-neutral-500 dark:text-neutral-400')}>
+                <span className={clsx('text-xs font-semibold tabular-nums', usagePercent >= 100 ? 'text-red-500' : 'text-neutral-900 dark:text-neutral-50')}>
                   {usagePercent}%
                 </span>
               </div>
             ) : (
-              <span className="inline-flex items-center gap-1 text-xs font-medium text-neutral-500 dark:text-neutral-400">
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-neutral-900 dark:text-neutral-50">
                 <InfinityIcon className="h-3.5 w-3.5 text-green-400 dark:text-green-400" aria-hidden />
                 {bl.connectedAccountsUnlimited}
               </span>
@@ -2823,7 +2823,7 @@ export function AccountConfigPage() {
           hint={interpolate(bl.overviewRoi, {
             percent: accountOverview.best ? formatRoiPercent(accountOverview.best.roi) : '0.00%',
           })}
-          hintClassName={accountOverview.best && accountOverview.best.roi < 0 ? 'text-red-600 dark:text-red-400' : 'text-neutral-400'}
+          hintClassName={accountOverview.best && accountOverview.best.roi < 0 ? 'text-red-600 dark:text-red-400' : 'text-neutral-900 dark:text-neutral-50'}
         />
       </div>
 
@@ -2835,37 +2835,37 @@ export function AccountConfigPage() {
         </div>
         <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center">
           <div className="relative min-w-0 flex-1">
-            <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+            <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-900 dark:text-neutral-50" />
             <input
               type="search"
               value={brokerSearchQuery}
               onChange={e => setBrokerSearchQuery(e.target.value)}
               placeholder={bl.accountSearchPlaceholder}
               aria-label={bl.accountSearchLabel}
-              className="w-full rounded-lg border border-neutral-200 bg-white py-2 ps-9 pe-3 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-green-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50"
+              className="w-full rounded-lg border border-neutral-200 bg-white py-2 ps-9 pe-3 text-sm text-neutral-900 placeholder:text-neutral-900 dark:placeholder:text-neutral-50 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-green-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50"
             />
           </div>
           <div className="relative w-full sm:w-56">
-            <SlidersHorizontal className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+            <SlidersHorizontal className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-900 dark:text-neutral-50" />
             <select
               value={brokerFilter}
               aria-label={bl.brokerFilterLabel}
               onChange={event => setBrokerFilter(event.target.value)}
-              className="w-full appearance-none rounded-lg border border-neutral-200 bg-white py-2 ps-9 pe-8 text-sm text-neutral-700 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-green-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+              className="w-full appearance-none rounded-lg border border-neutral-200 bg-white py-2 ps-9 pe-8 text-sm text-neutral-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-green-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50"
             >
               <option value="all">{bl.platformFilterAll}</option>
               {platformFilterOptions.map(platform => (
                 <option key={platform} value={platform}>{platform}</option>
               ))}
             </select>
-            <ChevronRight className="pointer-events-none absolute end-3 top-1/2 h-4 w-4 -translate-y-1/2 rotate-90 text-neutral-400" />
+            <ChevronRight className="pointer-events-none absolute end-3 top-1/2 h-4 w-4 -translate-y-1/2 rotate-90 text-neutral-900 dark:text-neutral-50" />
           </div>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[920px] text-sm">
             <thead>
-              <tr className="border-y border-neutral-100 text-left text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
+              <tr className="border-y border-neutral-100 text-left text-neutral-900 dark:border-neutral-800 dark:text-neutral-50">
                 <th className="px-4 py-3 font-medium">{bl.colName}</th>
                 <th className="px-3 py-3 font-medium">{bl.colAccount}</th>
                 <th className="px-3 py-3 font-medium">{bl.colPlatform}</th>
@@ -2880,7 +2880,7 @@ export function AccountConfigPage() {
                 <tr>
                   <td colSpan={7} className="px-4 py-16 text-center">
                     {brokers.length === 0 ? <AccountsEmptyState label={bl.noData} /> : (
-                      <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                      <p className="text-sm text-neutral-900 dark:text-neutral-50">
                         {brokerSearchQuery.trim() ? bl.accountSearchNoMatch : bl.brokerFilterNoMatch}
                       </p>
                     )}
@@ -2916,10 +2916,10 @@ export function AccountConfigPage() {
                   <td className="px-4 py-3">
                     <p className="font-medium text-neutral-900 dark:text-neutral-50">{broker.label}</p>
                     {brokerLabel ? (
-                      <p className="mt-0.5 truncate text-xs text-neutral-500 dark:text-neutral-400">{brokerLabel}</p>
+                      <p className="mt-0.5 truncate text-xs text-neutral-900 dark:text-neutral-50">{brokerLabel}</p>
                     ) : null}
                     {channelsLabel ? (
-                      <p className="mt-0.5 truncate text-xs text-neutral-400">{channelsLabel}</p>
+                      <p className="mt-0.5 truncate text-xs text-neutral-900 dark:text-neutral-50">{channelsLabel}</p>
                     ) : null}
                     {broker.connection_error ? (
                       <p className="mt-1 text-xs leading-relaxed text-error-600 dark:text-error-400">
@@ -2932,7 +2932,7 @@ export function AccountConfigPage() {
                     ) : null}
                   </td>
                   <td className="px-3 py-3">
-                    <p className="text-neutral-800 dark:text-neutral-100">{broker.account_login || '—'}</p>
+                    <p className="text-neutral-900 dark:text-neutral-100">{broker.account_login || '—'}</p>
                     <p className={clsx('mt-0.5 text-xs', linkedAccountTypeValueClass(accountType))}>
                       {formatLinkedAccountTypeLabel(accountType, accountTypeLabelsFromBrokerList(bl))}
                     </p>
@@ -2942,10 +2942,10 @@ export function AccountConfigPage() {
                       <span className="flex h-7 w-7 items-center justify-center">
                         <PlatformIcon platform={broker.platform} />
                       </span>
-                      <span className="text-neutral-800 dark:text-neutral-100">{broker.platform}</span>
+                      <span className="text-neutral-900 dark:text-neutral-100">{broker.platform}</span>
                     </div>
                   </td>
-                  <td className="px-3 py-3 text-neutral-800 dark:text-neutral-100">
+                  <td className="px-3 py-3 text-neutral-900 dark:text-neutral-100">
                     {formatBrokerMoney(resolveBrokerTotalBalance(broker), broker.last_currency)}
                   </td>
                   <td className="px-3 py-3">
@@ -2970,7 +2970,7 @@ export function AccountConfigPage() {
                     <div className="flex items-center gap-2">
                       <span className={clsx(
                         'text-xs font-medium',
-                        broker.is_active ? 'text-emerald-600 dark:text-emerald-400' : 'text-neutral-500 dark:text-neutral-400',
+                        broker.is_active ? 'text-emerald-600 dark:text-emerald-400' : 'text-neutral-900 dark:text-neutral-50',
                       )}>
                         {broker.is_active ? bl.statusActive : bl.statusInactive}
                       </span>
@@ -3005,7 +3005,7 @@ export function AccountConfigPage() {
                       <button
                         type="button"
                         onClick={() => { setError(''); setBrokerPendingDelete(broker) }}
-                        className="rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-error-50 hover:text-error-600 dark:text-neutral-500 dark:hover:bg-error-950/40 dark:hover:text-error-400"
+                        className="rounded-lg p-1.5 text-neutral-900 transition-colors hover:bg-error-50 hover:text-error-600 dark:text-neutral-50 dark:hover:bg-error-950/40 dark:hover:text-error-400"
                         aria-label={interpolate(bl.removeAria, { label: broker.label })}
                       >
                         <Trash2 className="h-4 w-4" />
@@ -3079,7 +3079,7 @@ export function AccountConfigPage() {
               <h3 id="delete-broker-title" className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
                 {bl.deleteTitle}
               </h3>
-              <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
+              <p className="text-sm text-neutral-900 dark:text-neutral-50 mt-1">
                 {interpolate(bl.deleteBody, { label: brokerPendingDelete.label })}
               </p>
             </div>
@@ -3137,28 +3137,28 @@ export function AccountConfigPage() {
                 <h3 id="configure-trading-title" className="text-base sm:text-lg font-semibold text-neutral-900 dark:text-neutral-50 truncate">
                   {cm.title}
                 </h3>
-                <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 mt-0.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-                  <span className="font-medium text-neutral-700 dark:text-neutral-300">
+                <p className="text-xs sm:text-sm text-neutral-900 dark:text-neutral-50 mt-0.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                  <span className="font-medium text-neutral-900 dark:text-neutral-50">
                     {configAccount.label}
                   </span>
-                  <span className="text-neutral-300 dark:text-neutral-600" aria-hidden>·</span>
+                  <span className="text-neutral-900 dark:text-neutral-50" aria-hidden>·</span>
                   <span>
                     {bl.detailLogin}: {configAccount.account_login || '—'}
                   </span>
-                  <span className="text-neutral-300 dark:text-neutral-600" aria-hidden>·</span>
+                  <span className="text-neutral-900 dark:text-neutral-50" aria-hidden>·</span>
                   <span>
                     {bl.detailAccountType}:{' '}
                     <span className={linkedAccountTypeValueClass(configureAccountType)}>
                       {formatLinkedAccountTypeLabel(configureAccountType, accountTypeLabelsFromBrokerList(bl))}
                     </span>
                   </span>
-                  <span className="text-neutral-300 dark:text-neutral-600" aria-hidden>·</span>
+                  <span className="text-neutral-900 dark:text-neutral-50" aria-hidden>·</span>
                   <span>
                     {bl.detailBalance}: {formatBrokerMoney(resolveBrokerTotalBalance(configAccount), configAccount.last_currency)}
                   </span>
                   {selectedChannelOption ? (
                     <>
-                      <span className="text-neutral-300 dark:text-neutral-600" aria-hidden>·</span>
+                      <span className="text-neutral-900 dark:text-neutral-50" aria-hidden>·</span>
                       <span className="truncate">{selectedChannelOption.display_name}</span>
                     </>
                   ) : null}
@@ -3167,7 +3167,7 @@ export function AccountConfigPage() {
               <button
                 type="button"
                 onClick={() => closeConfigureModal()}
-                className="shrink-0 min-h-[44px] px-3 py-2 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                className="shrink-0 min-h-[44px] px-3 py-2 text-sm font-medium text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800"
               >
                 {cm.close}
               </button>
@@ -3177,7 +3177,7 @@ export function AccountConfigPage() {
               {/* Channel sidebar */}
               <nav className="shrink-0 flex sm:flex-col w-full sm:w-56 border-b sm:border-b-0 sm:border-e border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50 p-2 sm:p-3 gap-2 sm:gap-1 overflow-x-auto sm:overflow-y-auto overscroll-x-contain">
                 <div className="flex items-center justify-between gap-2 px-2 shrink-0 sm:w-full">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
                     {cm.channelsSidebar}
                   </p>
                   <div className="flex items-center gap-0.5 shrink-0">
@@ -3187,7 +3187,7 @@ export function AccountConfigPage() {
                         closeConfigureModal()
                         navigate('/channels')
                       }}
-                      className="shrink-0 rounded-md p-1.5 transition-colors min-h-[32px] min-w-[32px] flex items-center justify-center text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 dark:hover:text-neutral-300 dark:hover:bg-neutral-800"
+                      className="shrink-0 rounded-md p-1.5 transition-colors min-h-[32px] min-w-[32px] flex items-center justify-center text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 hover:bg-neutral-100 dark:hover:text-neutral-50 dark:hover:bg-neutral-800"
                       aria-label={cm.addChannel}
                     >
                       <Plus className="w-3.5 h-3.5" />
@@ -3200,7 +3200,7 @@ export function AccountConfigPage() {
                           'shrink-0 rounded-md p-1.5 transition-colors min-h-[32px] min-w-[32px] flex items-center justify-center',
                           channelLinkEditMode
                             ? 'bg-primary-100 text-green-500 dark:bg-teal-950/60 dark:text-teal-300'
-                            : 'text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 dark:hover:text-neutral-300 dark:hover:bg-neutral-800',
+                            : 'text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 hover:bg-neutral-100 dark:hover:text-neutral-50 dark:hover:bg-neutral-800',
                         )}
                         aria-label={channelLinkEditMode ? cm.doneEditingLinkedChannels : cm.editLinkedChannels}
                         aria-pressed={channelLinkEditMode}
@@ -3211,7 +3211,7 @@ export function AccountConfigPage() {
                   </div>
                 </div>
                 {channelOptions.length === 0 ? (
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400 px-2 py-1">
+                  <p className="text-xs text-neutral-900 dark:text-neutral-50 px-2 py-1">
                     {cm.channels.noneConnected}{' '}
                     <Link to="/channels" className="text-green-400 underline">{cm.channels.connectLink}</Link>
                   </p>
@@ -3239,8 +3239,8 @@ export function AccountConfigPage() {
                               selected
                                 ? 'bg-white dark:bg-neutral-950 text-green-500 shadow-sm border border-primary-100 dark:border-primary-900/50'
                                 : linked
-                                  ? 'text-neutral-700 dark:text-neutral-300 hover:bg-white dark:hover:bg-neutral-900 border border-transparent'
-                                  : 'text-neutral-600 dark:text-neutral-400 hover:bg-white dark:hover:bg-neutral-900 border border-dashed border-neutral-200 dark:border-neutral-700',
+                                  ? 'text-neutral-900 dark:text-neutral-50 hover:bg-white dark:hover:bg-neutral-900 border border-transparent'
+                                  : 'text-neutral-900 dark:text-neutral-50 hover:bg-white dark:hover:bg-neutral-900 border border-dashed border-neutral-200 dark:border-neutral-700',
                             )}
                           >
                             <SourceKindLogo sourceKind={channel.source_kind} />
@@ -3255,7 +3255,7 @@ export function AccountConfigPage() {
                             <button
                               type="button"
                               onClick={() => toggleDraftChannel(channel.id)}
-                              className="shrink-0 rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-neutral-300"
+                              className="shrink-0 rounded-md p-1 text-neutral-900 dark:text-neutral-50 transition-colors hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-neutral-50"
                               aria-label={interpolate(cm.removeLinkedChannel, { channel: channel.display_name })}
                             >
                               <X className="h-3.5 w-3.5" aria-hidden />
@@ -3265,7 +3265,7 @@ export function AccountConfigPage() {
                       )
                     })}
                     {channelLinkEditMode ? (
-                      <p className="hidden sm:block px-2 pt-2 text-xs text-neutral-500 dark:text-neutral-400">
+                      <p className="hidden sm:block px-2 pt-2 text-xs text-neutral-900 dark:text-neutral-50">
                         {interpolate(cm.channels.selected, { count: String(configDraft.channelIds.length) })}
                       </p>
                     ) : null}
@@ -3291,10 +3291,10 @@ export function AccountConfigPage() {
                                 'shrink-0 flex items-center gap-1.5 px-3 py-2.5 sm:py-2 text-sm transition-colors border-b-2 -mb-px min-h-[44px] sm:min-h-0 whitespace-nowrap',
                               active
                                   ? 'border-green-400 text-green-500 dark:text-green-400'
-                                  : 'border-transparent text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-100',
+                                  : 'border-transparent text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-100',
                             )}
                           >
-                              <SubIcon className={clsx('w-3.5 h-3.5 shrink-0', active ? 'text-green-400' : 'text-neutral-400')} />
+                              <SubIcon className={clsx('w-3.5 h-3.5 shrink-0', active ? 'text-green-400' : 'text-neutral-900 dark:text-neutral-50')} />
                             {sub.label}
                           </button>
                         )
@@ -3334,13 +3334,13 @@ export function AccountConfigPage() {
 
                 {!configDraft.selectedChannelId ? (
                   <div className="py-12 text-center">
-                    <Radio className="w-10 h-10 mx-auto mb-3 text-neutral-300 dark:text-neutral-600" />
-                    <p className="text-sm text-neutral-500 dark:text-neutral-400">{cm.selectChannelPrompt}</p>
+                    <Radio className="w-10 h-10 mx-auto mb-3 text-neutral-900 dark:text-neutral-50" />
+                    <p className="text-sm text-neutral-900 dark:text-neutral-50">{cm.selectChannelPrompt}</p>
                   </div>
                 ) : !selectedChannelLinked ? (
                   <div className="py-12 text-center max-w-md mx-auto px-2">
                     <Link2 className="w-10 h-10 mx-auto mb-3 text-green-400 dark:text-green-400" />
-                    <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100 inline-flex items-center justify-center gap-1.5 flex-wrap">
+                    <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 inline-flex items-center justify-center gap-1.5 flex-wrap">
                       {interpolate(cm.connectChannelPrompt, {
                         channel: selectedChannelOption?.display_name ?? cm.channelFilters.unnamedChannel,
                         broker: configAccount ? getBrokerDisplayLabel(configAccount) : '—',
@@ -3362,17 +3362,17 @@ export function AccountConfigPage() {
                 ) : (
                   <div className="space-y-5">
                     {/* <div>
-                      <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100 mb-2">Configure mode</p>
+                      <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 mb-2">Configure mode</p>
                       <div className="inline-flex rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50 dark:bg-neutral-800/50 p-1">
                         <button
                           onClick={() => setConfigDraft(prev => ({ ...prev, mode: 'ai' }))}
-                          className={`px-4 py-2 text-sm rounded-md transition-colors ${channelMode === 'ai' ? 'bg-green-400 text-neutral-950' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:bg-neutral-800'}`}
+                          className={`px-4 py-2 text-sm rounded-md transition-colors ${channelMode === 'ai' ? 'bg-green-400 text-neutral-950' : 'text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 dark:bg-neutral-800'}`}
                         >
                           AI Expert Mode
                         </button>
                         <button
                           onClick={() => setConfigDraft(prev => ({ ...prev, mode: 'manual' }))}
-                          className={`px-4 py-2 text-sm rounded-md transition-colors ${channelMode === 'manual' ? 'bg-green-400 text-neutral-950' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:bg-neutral-800'}`}
+                          className={`px-4 py-2 text-sm rounded-md transition-colors ${channelMode === 'manual' ? 'bg-green-400 text-neutral-950' : 'text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 dark:bg-neutral-800'}`}
                         >
                           Manual
                         </button>
@@ -3412,7 +3412,7 @@ export function AccountConfigPage() {
                               onRetrain={() => startBackgroundAiTraining(configDraft.selectedChannelId!, { force: true })}
                             />
                           ) : (
-                            <p className="text-sm text-neutral-500 dark:text-neutral-400">{cm.channels.selectChannelFirst}</p>
+                            <p className="text-sm text-neutral-900 dark:text-neutral-50">{cm.channels.selectChannelFirst}</p>
                           )
                         }
                         </section>
@@ -3465,7 +3465,7 @@ export function AccountConfigPage() {
                               />
                             </section>
                           ) : (
-                            <p className="text-sm text-neutral-500 dark:text-neutral-400">{cm.channels.selectChannelFirst}</p>
+                            <p className="text-sm text-neutral-900 dark:text-neutral-50">{cm.channels.selectChannelFirst}</p>
                           )
                         }
                         </section>
@@ -3494,7 +3494,7 @@ export function AccountConfigPage() {
                               >
                                 <div className="flex items-center justify-between">
                                   <ConfigTitle variant="semibold" info={`${cm.channels.filtersIntro}\n\n${cm.channelFilters.footer}`}>{cm.channels.keywordFilters}</ConfigTitle>
-                                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                                  <p className="text-xs text-neutral-900 dark:text-neutral-50">
                                     {(() => {
                                       const f = normalizeChannelFilters(
                                         configDraft.channelConfigs[configDraft.selectedChannelId]?.channelFilters
@@ -3531,7 +3531,7 @@ export function AccountConfigPage() {
                               ) : null}
                             </div>
                           ) : (
-                            <p className="text-sm text-neutral-500 dark:text-neutral-400">{cm.channels.selectChannelFirst}</p>
+                            <p className="text-sm text-neutral-900 dark:text-neutral-50">{cm.channels.selectChannelFirst}</p>
                           )
                         }
                         </section>
@@ -3612,7 +3612,7 @@ export function AccountConfigPage() {
                                       {dynamicBalanceLotPreview?.lotLabel ?? '—'}
                                     </div>
                                     {dynamicBalanceLotPreview?.hint ? (
-                                      <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                                      <p className="mt-1 text-xs text-neutral-900 dark:text-neutral-50">
                                         {dynamicBalanceLotPreview.hint}
                                       </p>
                                     ) : null}
@@ -3657,10 +3657,10 @@ export function AccountConfigPage() {
                               />
                               {singleTpLotBreakdownText ? (
                                 <div className="rounded-md border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50 dark:bg-neutral-900/60 px-3 py-2.5 space-y-1">
-                                  <p className="text-xs font-medium text-neutral-700 dark:text-neutral-200">
+                                  <p className="text-xs font-medium text-neutral-900 dark:text-neutral-50">
                                     {cm.risk.singleTpLotBreakdownTitle}
                                   </p>
-                                  <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed">
+                                  <p className="text-xs text-neutral-900 dark:text-neutral-50 leading-relaxed">
                                     {singleTpLotBreakdownText}
                                   </p>
                                 </div>
@@ -3756,7 +3756,7 @@ export function AccountConfigPage() {
                                 {channelManualSettings.range_trading && (
                                   <>
                                     <div className="flex flex-col gap-1.5 max-w-md">
-                                      <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">Layering Mode</label>
+                                      <label className="text-sm font-medium text-neutral-900 dark:text-neutral-50">Layering Mode</label>
                                       <select
                                         className="w-full px-3 py-2 text-base md:text-sm rounded-lg border bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100"
                                         value={selectedLayeringMechanism === 'pending_order' ? 'auto' : selectedLayeringMechanism}
@@ -3902,7 +3902,7 @@ export function AccountConfigPage() {
                                   <UpgradePrompt variant="compact" reason={cm.stops.basicPlanMoreTpsLimit} />
                               ) : null}
                               <div className="flex items-center justify-between text-xs">
-                                <span className="text-neutral-600 dark:text-neutral-400">
+                                <span className="text-neutral-900 dark:text-neutral-50">
                                   {cm.stops.enabledTotal}{' '}
                                   <strong className={clsx('font-semibold', tpLegPercentTotal === 100 ? 'text-emerald-600' : 'text-amber-600')}>
                                     {tpLegPercentTotal}%
@@ -3933,7 +3933,7 @@ export function AccountConfigPage() {
                                         onChange={e => updateTpLotRow(idx, { label: e.target.value })}
                                       />
                                       <input
-                                        className="col-span-3 rounded-md border border-neutral-200/65 dark:border-neutral-800/55 px-2 py-1.5 text-sm disabled:bg-neutral-100 dark:bg-neutral-800 disabled:text-neutral-400"
+                                        className="col-span-3 rounded-md border border-neutral-200/65 dark:border-neutral-800/55 px-2 py-1.5 text-sm disabled:bg-neutral-100 dark:bg-neutral-800 disabled:text-neutral-900 dark:disabled:text-neutral-50"
                                         type="number"
                                         min={0}
                                         max={rowBudget}
@@ -3943,8 +3943,8 @@ export function AccountConfigPage() {
                                         value={String(row.percent ?? 0)}
                                         onChange={e => setTpDistributionPercent(idx, e.target.value)}
                                       />
-                                      <span className="col-span-1 text-xs text-neutral-500 dark:text-neutral-400 text-center">%</span>
-                                      <label className="col-span-2 text-xs text-neutral-700 dark:text-neutral-300 flex items-center gap-2">
+                                      <span className="col-span-1 text-xs text-neutral-900 dark:text-neutral-50 text-center">%</span>
+                                      <label className="col-span-2 text-xs text-neutral-900 dark:text-neutral-50 flex items-center gap-2">
                                         <input
                                           type="checkbox"
                                           checked={row.enabled}
@@ -4134,7 +4134,7 @@ export function AccountConfigPage() {
                                   ) : null}
 
                                   <div className="space-y-3">
-                                    <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{cm.management.triggerTitle}</p>
+                                    <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{cm.management.triggerTitle}</p>
                                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                       {TRIGGER_MODES.map((m) => (
                                         <button
@@ -4145,7 +4145,7 @@ export function AccountConfigPage() {
                                             'rounded-lg border px-2.5 py-2 text-start text-sm transition-colors',
                                             triggerMode === m.id
                                               ? 'border-green-400 bg-primary-50 dark:bg-teal-950/50 text-primary-900 dark:text-teal-300'
-                                              : 'border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 text-neutral-700 dark:text-neutral-300',
+                                              : 'border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-50',
                                           )}
                                         >
                                           <span className="font-medium inline-flex items-center gap-1">
@@ -4235,7 +4235,7 @@ export function AccountConfigPage() {
                                           'rounded-lg border px-3 py-2.5 text-start text-sm transition-colors',
                                           beType === 'sl_only'
                                             ? 'border-green-400 bg-primary-50 dark:bg-teal-950/50 text-primary-900 dark:text-teal-300'
-                                            : 'border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 text-neutral-700 dark:text-neutral-300 hover:border-neutral-300 dark:hover:border-neutral-600',
+                                            : 'border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-50 hover:border-neutral-300 dark:hover:border-neutral-600',
                                         )}
                                       >
                                         <span className="font-medium inline-flex items-center gap-1">
@@ -4250,7 +4250,7 @@ export function AccountConfigPage() {
                                           'rounded-lg border px-3 py-2.5 text-start text-sm transition-colors',
                                           beType === 'sl_and_close_half'
                                             ? 'border-green-400 bg-primary-50 dark:bg-teal-950/50 text-primary-900 dark:text-teal-300'
-                                            : 'border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 text-neutral-700 dark:text-neutral-300 hover:border-neutral-300 dark:hover:border-neutral-600',
+                                            : 'border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-50 hover:border-neutral-300 dark:hover:border-neutral-600',
                                         )}
                                       >
                                         <span className="font-medium inline-flex items-center gap-1">
@@ -4365,7 +4365,7 @@ export function AccountConfigPage() {
                               <div className="space-y-3">
                                 <div className="rounded-md border border-neutral-200/65 dark:border-neutral-800/55 overflow-hidden">
                                   <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-950 px-3 py-2.5">
-                                    <span className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{cm.strategy.enableRrSl}</span>
+                                    <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{cm.strategy.enableRrSl}</span>
                                     <Toggle
                                       checked={ms.rr_for_sl_enabled === true}
                                       onChange={v => setManual({ rr_for_sl_enabled: v })}
@@ -4386,7 +4386,7 @@ export function AccountConfigPage() {
 
                                 <div className="rounded-md border border-neutral-200/65 dark:border-neutral-800/55 overflow-hidden">
                                   <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-950 px-3 py-2.5">
-                                    <span className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{cm.strategy.enableRrTps}</span>
+                                    <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{cm.strategy.enableRrTps}</span>
                                     <Toggle
                                       checked={ms.rr_for_tps_enabled === true}
                                       onChange={v => setManual({ rr_for_tps_enabled: v })}
@@ -4471,10 +4471,10 @@ export function AccountConfigPage() {
                               <ConfigureSelect label={cm.filters.daysFilter} value={channelManualSettings.days_filter_enabled ? 'yes' : 'no'} onChange={e => setManual({ days_filter_enabled: e.target.value === 'yes' })} options={[{ value: 'no', label: cm.filters.daysNo }, { value: 'yes', label: cm.filters.daysYes }]} />
                             {channelManualSettings.days_filter_enabled && (
                               <div>
-                                <p className="text-xs text-neutral-600 dark:text-neutral-400 mb-2">{cm.filters.tradingDays}</p>
+                                <p className="text-xs text-neutral-900 dark:text-neutral-50 mb-2">{cm.filters.tradingDays}</p>
                                 <div className="flex flex-wrap gap-3">
                                   {([0, 1, 2, 3, 4, 5, 6] as const).map((value) => (
-                                    <label key={value} className="text-sm text-neutral-700 dark:text-neutral-300 flex items-center gap-2">
+                                    <label key={value} className="text-sm text-neutral-900 dark:text-neutral-50 flex items-center gap-2">
                                       <input
                                         type="checkbox"
                                         checked={(channelManualSettings.trade_days ?? [1, 2, 3, 4, 5]).includes(value)}
@@ -4517,7 +4517,7 @@ export function AccountConfigPage() {
                               {channelManualSettings.news_trading_enabled === false && (
                                 <>
                                   <div>
-                                    <p className="text-xs text-neutral-600 dark:text-neutral-400 mb-2">{cm.filters.avoidImpact}</p>
+                                    <p className="text-xs text-neutral-900 dark:text-neutral-50 mb-2">{cm.filters.avoidImpact}</p>
                                     <div className="flex flex-wrap gap-4">
                                       {(
                                         [
@@ -4526,7 +4526,7 @@ export function AccountConfigPage() {
                                           { id: 'low' as const, label: cm.filters.impactLow },
                                         ] as const
                                       ).map((impact) => (
-                                        <label key={impact.id} className="text-sm text-neutral-700 dark:text-neutral-300 flex items-center gap-2">
+                                        <label key={impact.id} className="text-sm text-neutral-900 dark:text-neutral-50 flex items-center gap-2">
                                           <input
                                             type="checkbox"
                                             checked={(channelManualSettings.news_avoid_impacts ?? ['high']).includes(impact.id)}
@@ -4644,7 +4644,7 @@ export function AccountConfigPage() {
               ) : null}
             </div>
 
-            <p className="shrink-0 text-center px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
+            <p className="shrink-0 text-center px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-xs leading-relaxed text-neutral-900 dark:text-neutral-50">
               {cm.riskDisclaimer.warning}{' '}
               <a
                 href={marketingUrl('/risk-disclaimer')}
@@ -4674,7 +4674,7 @@ export function AccountConfigPage() {
                         <h4 id="apply-preset-title" className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
                           {cm.applyPresetTitle}
                         </h4>
-                        <p id="apply-preset-description" className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+                        <p id="apply-preset-description" className="mt-2 text-sm text-neutral-900 dark:text-neutral-50">
                           {interpolate(cm.applyPresetConfirm, {
                             channel: selectedChannelOption?.display_name ?? '—',
                             name: pendingApplyPreset.name,
@@ -4684,13 +4684,13 @@ export function AccountConfigPage() {
                       </div>
                     <div className="mt-4 rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50 dark:bg-neutral-800/50 px-3 py-2.5 space-y-2">
                       <div className="flex items-center justify-between gap-3 text-sm">
-                        <span className="text-neutral-500 dark:text-neutral-400">{cm.applyPresetChannelLabel}</span>
+                        <span className="text-neutral-900 dark:text-neutral-50">{cm.applyPresetChannelLabel}</span>
                         <span className="font-medium text-neutral-900 dark:text-neutral-50 truncate">
                           {selectedChannelOption?.display_name ?? '—'}
                         </span>
                   </div>
                       <div className="flex items-center justify-between gap-3 text-sm">
-                        <span className="text-neutral-500 dark:text-neutral-400">{cm.applyPresetPresetLabel}</span>
+                        <span className="text-neutral-900 dark:text-neutral-50">{cm.applyPresetPresetLabel}</span>
                         <span className="font-medium text-green-500 dark:text-green-400 truncate">
                           {pendingApplyPreset.name}
                         </span>
@@ -4733,20 +4733,20 @@ export function AccountConfigPage() {
                     <h4 id="manage-presets-title" className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
                       {cm.applyPreset}
                     </h4>
-                    <p className="mt-1.5 text-sm text-neutral-600 dark:text-neutral-400">
+                    <p className="mt-1.5 text-sm text-neutral-900 dark:text-neutral-50">
                       {tradingPresets.length === 0 ? cm.noPresetsYet : cm.managePresetsHint}
                     </p>
                     {tradingPresets.length > 0 ? (
-                      <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                      <p className="mt-1 text-xs text-neutral-900 dark:text-neutral-50">
                         {cm.managePresetsApplyHint}
                       </p>
                     ) : null}
                   </div>
                   <div className="max-h-[min(50vh,22rem)] overflow-y-auto border-y border-neutral-100 dark:border-neutral-800">
                     {presetsLoading ? (
-                      <p className="px-5 py-8 text-sm text-center text-neutral-500">…</p>
+                      <p className="px-5 py-8 text-sm text-center text-neutral-900 dark:text-neutral-50">…</p>
                     ) : tradingPresets.length === 0 ? (
-                      <p className="px-5 py-8 text-sm text-center text-neutral-500 dark:text-neutral-400">
+                      <p className="px-5 py-8 text-sm text-center text-neutral-900 dark:text-neutral-50">
                         {cm.noPresetsYet}
                       </p>
                     ) : (
@@ -4766,7 +4766,7 @@ export function AccountConfigPage() {
                             </button>
                             <button
                               type="button"
-                              className="shrink-0 inline-flex items-center justify-center rounded-lg p-2.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800 dark:hover:bg-neutral-800 dark:hover:text-neutral-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 disabled:opacity-50"
+                              className="shrink-0 inline-flex items-center justify-center rounded-lg p-2.5 text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-neutral-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 disabled:opacity-50"
                               aria-label={cm.managePresetsEdit}
                               title={cm.managePresetsEdit}
                               disabled={configSaving || presetSaving}
@@ -4776,7 +4776,7 @@ export function AccountConfigPage() {
                             </button>
                             <button
                               type="button"
-                              className="shrink-0 inline-flex items-center justify-center rounded-lg p-2.5 text-neutral-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-50"
+                              className="shrink-0 inline-flex items-center justify-center rounded-lg p-2.5 text-neutral-900 dark:text-neutral-50 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-50"
                               aria-label={cm.managePresetsDelete}
                               title={cm.managePresetsDelete}
                               disabled={configSaving || presetSaving}
@@ -4884,7 +4884,7 @@ export function AccountConfigPage() {
                         <h4 id="delete-preset-title" className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
                           {cm.deletePresetTitle}
                         </h4>
-                        <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+                        <p className="mt-2 text-sm text-neutral-900 dark:text-neutral-50">
                           {interpolate(cm.deletePresetConfirm, { name: pendingDeletePreset.name })}
                         </p>
                       </div>
@@ -4924,7 +4924,7 @@ export function AccountConfigPage() {
                     <h4 id="export-presets-title" className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
                       {cm.exportPresetsTitle}
                     </h4>
-                    <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                    <p className="text-sm text-neutral-900 dark:text-neutral-50">
                       {cm.exportPresetsSelectHint}
                     </p>
                     <div className="flex items-center gap-2 text-xs">
@@ -4935,7 +4935,7 @@ export function AccountConfigPage() {
                       >
                         {cm.exportPresetsSelectAll}
                       </button>
-                      <span className="text-neutral-300 dark:text-neutral-600" aria-hidden>·</span>
+                      <span className="text-neutral-900 dark:text-neutral-50" aria-hidden>·</span>
                       <button
                         type="button"
                         className="text-green-500 hover:underline dark:text-green-400"
@@ -5058,7 +5058,7 @@ export function AccountConfigPage() {
 function FeatureBullet({ icon: Icon, title, body }: { icon: typeof DollarSign; title: string; body: string }) {
   return (
     <div className="rounded-lg bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200/65 dark:border-neutral-800/55 p-3">
-      <p className="text-xs font-medium text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
+      <p className="text-xs font-medium text-neutral-900 dark:text-neutral-50 flex items-center gap-1.5">
         <Icon className="w-3.5 h-3.5 text-green-400" />
         {title}
         <InfoTooltip text={body} />
@@ -5137,7 +5137,7 @@ function CategoryRow({
   return (
     <div className="flex items-center justify-between gap-3 rounded-md border border-neutral-200/65 dark:border-neutral-800/55 px-3 py-2">
       <div className="min-w-0">
-        <p className="text-sm text-neutral-800 dark:text-neutral-100 truncate inline-flex items-center gap-1">
+        <p className="text-sm text-neutral-900 dark:text-neutral-100 truncate inline-flex items-center gap-1">
           {label}
           <InfoTooltip text={example} />
         </p>
@@ -5148,7 +5148,7 @@ function CategoryRow({
           disabled={disabled}
           className={clsx(
             'px-2.5 py-1 text-xs rounded disabled:cursor-not-allowed disabled:opacity-60',
-            value === 'allow' ? 'bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-50 shadow-sm' : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:text-neutral-300',
+            value === 'allow' ? 'bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-50 shadow-sm' : 'text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50 dark:text-neutral-50',
           )}
           onClick={() => onChange('allow')}
           aria-pressed={value === 'allow'}
@@ -5160,7 +5160,7 @@ function CategoryRow({
           disabled={disabled}
           className={clsx(
             'px-2.5 py-1 text-xs rounded disabled:cursor-not-allowed disabled:opacity-60',
-            value === 'ignore' ? 'bg-amber-50 text-amber-700 shadow-sm' : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:text-neutral-300',
+            value === 'ignore' ? 'bg-amber-50 text-amber-700 shadow-sm' : 'text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50 dark:text-neutral-50',
           )}
           onClick={() => onChange('ignore')}
           aria-pressed={value === 'ignore'}
@@ -5203,7 +5203,7 @@ function AccountBrokerPagination({
 
   return (
     <div className="mt-3 flex flex-col gap-3 rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 px-3 sm:px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-      <p className="text-xs text-neutral-500 dark:text-neutral-400 tabular-nums">
+      <p className="text-xs text-neutral-900 dark:text-neutral-50 tabular-nums">
         {showingRange}
       </p>
       {totalPages > 1 && (
@@ -5212,7 +5212,7 @@ function AccountBrokerPagination({
             type="button"
             onClick={() => onPageChange(page - 1)}
             disabled={page <= 1}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200/65 dark:border-neutral-800/55 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 disabled:opacity-40 disabled:pointer-events-none"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200/65 dark:border-neutral-800/55 text-neutral-900 dark:text-neutral-50 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 disabled:opacity-40 disabled:pointer-events-none"
             aria-label={previousLabel}
           >
             <ChevronLeft className="w-4 h-4" />
@@ -5222,7 +5222,7 @@ function AccountBrokerPagination({
             {pageNumbers[0]! > 1 && (
               <>
                 <BrokerPageButton n={1} active={page === 1} onClick={() => onPageChange(1)} />
-                {pageNumbers[0]! > 2 && <span className="px-1 text-neutral-400 text-sm">…</span>}
+                {pageNumbers[0]! > 2 && <span className="px-1 text-neutral-900 dark:text-neutral-50 text-sm">…</span>}
               </>
             )}
             {pageNumbers.map(n => (
@@ -5231,7 +5231,7 @@ function AccountBrokerPagination({
             {pageNumbers[pageNumbers.length - 1]! < totalPages && (
               <>
                 {pageNumbers[pageNumbers.length - 1]! < totalPages - 1 && (
-                  <span className="px-1 text-neutral-400 text-sm">…</span>
+                  <span className="px-1 text-neutral-900 dark:text-neutral-50 text-sm">…</span>
                 )}
                 <BrokerPageButton
                   n={totalPages}
@@ -5245,7 +5245,7 @@ function AccountBrokerPagination({
             type="button"
             onClick={() => onPageChange(page + 1)}
             disabled={page >= totalPages}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200/65 dark:border-neutral-800/55 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 disabled:opacity-40 disabled:pointer-events-none"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200/65 dark:border-neutral-800/55 text-neutral-900 dark:text-neutral-50 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 disabled:opacity-40 disabled:pointer-events-none"
             aria-label={nextLabel}
           >
             <span className="hidden sm:inline">{nextLabel}</span>
@@ -5275,7 +5275,7 @@ function BrokerPageButton({
         'min-w-[2rem] px-2 py-1.5 text-sm rounded-md font-medium tabular-nums transition-colors',
         active
           ? 'bg-green-400 text-neutral-950'
-          : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 border border-transparent hover:border-neutral-200 dark:hover:border-neutral-800',
+          : 'text-neutral-900 dark:text-neutral-50 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 border border-transparent hover:border-neutral-200 dark:hover:border-neutral-800',
       )}
     >
       {n}

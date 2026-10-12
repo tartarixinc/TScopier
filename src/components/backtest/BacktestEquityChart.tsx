@@ -31,7 +31,7 @@ export function BacktestEquityChart({ equity }: BacktestEquityChartProps) {
   if (data.length === 0) {
     return (
       <div
-        className="flex items-center justify-center text-sm text-neutral-400 dark:text-neutral-500"
+        className="flex items-center justify-center text-sm text-neutral-900 dark:text-neutral-50"
         style={{ height: CHART_HEIGHT }}
       >
         No equity curve yet

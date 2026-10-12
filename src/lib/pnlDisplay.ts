@@ -21,7 +21,7 @@ export type PnlSignTone = 'good' | 'bad' | 'neutral'
 export function backtestToneTextClass(tone: PnlSignTone): string {
   if (tone === 'good') return profitTextClass
   if (tone === 'bad') return lossTextClass
-  return 'text-neutral-600 dark:text-neutral-400'
+  return 'text-neutral-900 dark:text-neutral-50'
 }
 
 export function backtestToneBarClass(tone: PnlSignTone): string {

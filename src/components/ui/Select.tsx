@@ -19,7 +19,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
           showHintInTooltip && hint && !error
             ? <FieldLabelWithInfo label={label} hint={hint} />
             : (
-              <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">{label}</label>
+              <label className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{label}</label>
             )
         )}
         <select
@@ -38,7 +38,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
           ))}
         </select>
         {error && <p className="text-xs text-error-600">{error}</p>}
-        {hint && !error && !showHintInTooltip && <p className="text-xs text-neutral-500 dark:text-neutral-400">{hint}</p>}
+        {hint && !error && !showHintInTooltip && <p className="text-xs text-neutral-900 dark:text-neutral-50">{hint}</p>}
       </div>
     )
   }

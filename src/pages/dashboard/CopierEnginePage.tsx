@@ -1057,8 +1057,8 @@ export function CopierEnginePage() {
               />
             ))}
           </div>
-          <p className="text-sm font-medium text-neutral-700 dark:text-neutral-200">{ce.noSignalSourcesTitle}</p>
-          <p className="mx-auto mt-1 max-w-sm text-xs text-neutral-400">{ce.noSignalSourcesBody}</p>
+          <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{ce.noSignalSourcesTitle}</p>
+          <p className="mx-auto mt-1 max-w-sm text-xs text-neutral-900 dark:text-neutral-50">{ce.noSignalSourcesBody}</p>
           <Button className="mt-5" onClick={() => setSourcePickerOpen(true)}>
             <Plus className="w-4 h-4" />
             {ce.newSignalSource}
@@ -1177,7 +1177,7 @@ export function CopierEnginePage() {
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 truncate">{ce.yourTelegramChannels}</p>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400">{ce.telegramConnectedHint}</p>
+                <p className="text-xs text-neutral-900 dark:text-neutral-50">{ce.telegramConnectedHint}</p>
               </div>
               <span className="flex-shrink-0 hidden sm:inline-flex gap-1.5">
                 <Badge variant="primary" size="sm">{ce.connected}</Badge>
@@ -1200,7 +1200,7 @@ export function CopierEnginePage() {
                 variant="ghost"
                 size="sm"
                 onClick={() => setTgChannelsCollapsed(prev => !prev)}
-                className="text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:bg-neutral-800 hover:text-neutral-700 dark:text-neutral-300"
+                className="text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 dark:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-50 dark:text-neutral-50"
               >
                 <ChevronDown className={`w-3.5 h-3.5 transition-transform ${tgChannelsCollapsed ? '-rotate-90' : 'rotate-0'}`} />
                 {tgChannelsCollapsed ? ce.expand : ce.collapse}
@@ -1210,7 +1210,7 @@ export function CopierEnginePage() {
                 {ce.disconnect}
               </Button>
             {tgChannels.length > 0 && (
-              <span className="text-xs text-neutral-400">
+              <span className="text-xs text-neutral-900 dark:text-neutral-50">
                 {interpolate(ce.channelsFound, { count: String(tgChannels.length) })}
               </span>
             )}
@@ -1242,7 +1242,7 @@ export function CopierEnginePage() {
           ) : error ? (
             <div className="px-4 py-8 text-center">
               <AlertCircle className="w-8 h-8 mx-auto mb-2 text-error-300" />
-              <p className="text-sm text-neutral-700 dark:text-neutral-300 font-medium">{error}</p>
+              <p className="text-sm text-neutral-900 dark:text-neutral-50 font-medium">{error}</p>
               <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
                 <Button size="sm" variant="secondary" onClick={() => void fetchTgChannels({ force: true })} loading={loadingTg}>
                   <RefreshCw className="w-3.5 h-3.5" />
@@ -1255,13 +1255,13 @@ export function CopierEnginePage() {
             </div>
           ) : tgChannels.length === 0 ? (
             <div className="px-4 py-8 text-center">
-              <Radio className="w-8 h-8 mx-auto mb-2 text-neutral-200" />
-              <p className="text-sm text-neutral-400">{ce.noTgChannelsTitle}</p>
-              <p className="text-xs text-neutral-300 mt-0.5">{ce.noTgChannelsSubtitle}</p>
+              <Radio className="w-8 h-8 mx-auto mb-2 text-neutral-900 dark:text-neutral-50" />
+              <p className="text-sm text-neutral-900 dark:text-neutral-50">{ce.noTgChannelsTitle}</p>
+              <p className="text-xs text-neutral-900 dark:text-neutral-50 mt-0.5">{ce.noTgChannelsSubtitle}</p>
             </div>
           ) : filteredTgChannels.length === 0 ? (
             <div className="px-4 py-8 text-center">
-              <p className="text-sm text-neutral-400">{ce.noChannelSearchResults}</p>
+              <p className="text-sm text-neutral-900 dark:text-neutral-50">{ce.noChannelSearchResults}</p>
             </div>
           ) : (
             <div className="divide-y divide-neutral-100 dark:divide-neutral-800 max-h-72 overflow-y-auto">
@@ -1272,10 +1272,10 @@ export function CopierEnginePage() {
                     <TgChannelAvatar title={ch.title} username={ch.username} />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50 truncate">{ch.title}</p>
-                      {ch.username && <p className="text-xs text-neutral-400">@{ch.username}</p>}
+                      {ch.username && <p className="text-xs text-neutral-900 dark:text-neutral-50">@{ch.username}</p>}
                     </div>
                     {ch.members_count > 0 && (
-                      <span className="text-xs text-neutral-400 flex-shrink-0">
+                      <span className="text-xs text-neutral-900 dark:text-neutral-50 flex-shrink-0">
                         {interpolate(ce.members, { count: ch.members_count.toLocaleString() })}
                       </span>
                     )}
@@ -1283,7 +1283,7 @@ export function CopierEnginePage() {
                       onClick={() => addFromTg(ch)}
                       className={`px-3 py-1 text-xs font-medium rounded-lg border transition-colors flex-shrink-0 ${
                         alreadyAdded
-                          ? 'border-neutral-200/65 dark:border-neutral-800/55 text-neutral-400 cursor-default'
+                          ? 'border-neutral-200/65 dark:border-neutral-800/55 text-neutral-900 dark:text-neutral-50 cursor-default'
                           : 'border-green-400 text-green-400 hover:bg-primary-50'
                       }`}
                       disabled={alreadyAdded}
@@ -1305,9 +1305,9 @@ export function CopierEnginePage() {
         </div>
       ) : channels.length === 0 ? (
         <div className="bg-white dark:bg-neutral-950 rounded-xl border border-dashed border-neutral-200/65 dark:border-neutral-800/55 py-10 text-center">
-          <Radio className="w-8 h-8 mx-auto mb-2 text-neutral-200" />
-          <p className="text-sm font-medium text-neutral-400">{ce.configuredEmptyTitle}</p>
-          <p className="text-xs text-neutral-300 mt-0.5 max-w-sm mx-auto">
+          <Radio className="w-8 h-8 mx-auto mb-2 text-neutral-900 dark:text-neutral-50" />
+          <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{ce.configuredEmptyTitle}</p>
+          <p className="text-xs text-neutral-900 dark:text-neutral-50 mt-0.5 max-w-sm mx-auto">
             {!hasTgSession ? ce.configuredEmptyConnectHint : ce.configuredEmptySubtitle}
           </p>
         </div>
@@ -1315,7 +1315,7 @@ export function CopierEnginePage() {
         <Card padding="none">
           <div className="px-4 py-2.5 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
             <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{ce.activeChannels}</p>
-            <span className="text-xs text-neutral-400">
+            <span className="text-xs text-neutral-900 dark:text-neutral-50">
               {interpolate(ce.configuredCount, { count: String(channels.length) })}
             </span>
           </div>
@@ -1412,13 +1412,13 @@ function NewSignalSourceModal({
             <h2 id="new-signal-source-title" className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
               {title}
             </h2>
-            <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{hint}</p>
+            <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-50">{hint}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label={closeLabel}
-            className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+            className="rounded-lg p-1.5 text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-neutral-50"
           >
             <X className="h-4 w-4" />
           </button>
@@ -1475,7 +1475,7 @@ function SourceTab({
         '-mb-px inline-flex shrink-0 items-center gap-2 border-b-2 pb-3 text-sm font-medium',
         active
           ? 'border-neutral-900 text-neutral-900 dark:border-neutral-50 dark:text-neutral-50'
-          : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200',
+          : 'border-transparent text-neutral-900 hover:text-neutral-900 dark:text-neutral-50 dark:hover:text-neutral-50',
       )}
     >
       {children}
@@ -1544,9 +1544,9 @@ function ChannelRow({
           {!identityValid && (
             <p className="mt-1 text-xs text-warning-800 dark:text-amber-200">{ce.invalidChannelIdentity}</p>
           )}
-          {username && <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">@{username}</p>}
+          {username && <p className="mt-0.5 text-xs text-neutral-900 dark:text-neutral-50">@{username}</p>}
           {isNumericTelegramChatId(channel.channel_id) && (
-            <p className="mt-0.5 text-xs text-neutral-400 dark:text-neutral-500 font-mono">
+            <p className="mt-0.5 text-xs text-neutral-900 dark:text-neutral-50 font-mono">
               {interpolate(ce.channelTelegramId, { id: channel.channel_id })}
             </p>
           )}
@@ -1556,7 +1556,7 @@ function ChannelRow({
           <button
             type="button"
             onClick={onDelete}
-            className="rounded-lg p-1.5 text-neutral-400 hover:bg-error-50 hover:text-error-600 transition-colors"
+            className="rounded-lg p-1.5 text-neutral-900 dark:text-neutral-50 hover:bg-error-50 hover:text-error-600 transition-colors"
             aria-label={interpolate(ce.removeAria, { label: channel.display_name })}
           >
             <Trash2 className="w-4 h-4" />
@@ -1565,7 +1565,7 @@ function ChannelRow({
       </div>
       <div className="border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/60 px-4 py-2.5 space-y-2.5">
         <div>
-          <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-400 mb-1.5">{ce.connectedBrokers}</p>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50 mb-1.5">{ce.connectedBrokers}</p>
           {connectedBrokers.length > 0 ? (
             <div className="flex flex-wrap items-center gap-1.5">
               {connectedBrokers.map(broker => {
@@ -1579,7 +1579,7 @@ function ChannelRow({
                       type="button"
                       onClick={() => onDisconnectBroker(broker.id)}
                       disabled={isDisconnecting}
-                      className="ml-0.5 -mr-0.5 rounded-full p-0.5 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-700 dark:hover:bg-neutral-700 dark:hover:text-neutral-100 disabled:opacity-50 transition-colors"
+                      className="ml-0.5 -mr-0.5 rounded-full p-0.5 text-neutral-900 dark:text-neutral-50 hover:bg-neutral-200 hover:text-neutral-900 dark:hover:bg-neutral-700 dark:hover:text-neutral-100 disabled:opacity-50 transition-colors"
                       aria-label={interpolate(ce.removeBrokerConnectionAria, {
                         broker: label,
                         channel: channel.display_name,
@@ -1595,7 +1595,7 @@ function ChannelRow({
                   <button
                     type="button"
                     onClick={onToggleConnectMenu}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 dark:border-neutral-700 text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-100 hover:bg-white dark:hover:bg-neutral-900 transition-colors"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-100 hover:bg-white dark:hover:bg-neutral-900 transition-colors"
                     aria-label={interpolate(ce.addBrokerConnectionAria, { channel: channel.display_name })}
                   >
                     <Plus className="w-3.5 h-3.5" />
@@ -1603,9 +1603,9 @@ function ChannelRow({
                   {connectMenuOpen && (
                     <div className="absolute left-0 top-full z-30 mt-1 min-w-[12rem] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg py-1">
                       {!hasAnyBrokers ? (
-                        <p className="px-3 py-2 text-xs text-neutral-500 dark:text-neutral-400">{ce.noBrokersYet}</p>
+                        <p className="px-3 py-2 text-xs text-neutral-900 dark:text-neutral-50">{ce.noBrokersYet}</p>
                       ) : availableBrokers.length === 0 ? (
-                        <p className="px-3 py-2 text-xs text-neutral-500 dark:text-neutral-400">{ce.connectedBrokers}</p>
+                        <p className="px-3 py-2 text-xs text-neutral-900 dark:text-neutral-50">{ce.connectedBrokers}</p>
                       ) : (
                         availableBrokers.map(broker => (
                           <button
@@ -1613,7 +1613,7 @@ function ChannelRow({
                             type="button"
                             disabled={connectingBrokerId === broker.id}
                             onClick={() => onConnectBroker(broker.id)}
-                            className="w-full px-3 py-2 text-left text-sm text-neutral-800 dark:text-neutral-100 hover:bg-neutral-50 dark:hover:bg-neutral-800 disabled:opacity-50"
+                            className="w-full px-3 py-2 text-left text-sm text-neutral-900 dark:text-neutral-100 hover:bg-neutral-50 dark:hover:bg-neutral-800 disabled:opacity-50"
                           >
                             {getBrokerDisplayLabel(broker)}
                           </button>
@@ -1667,7 +1667,7 @@ function ChannelRow({
                       type="button"
                       disabled={connectingBrokerId === broker.id}
                       onClick={() => onConnectBroker(broker.id)}
-                      className="w-full px-3 py-2 text-left text-sm text-neutral-800 dark:text-neutral-100 hover:bg-neutral-50 dark:hover:bg-neutral-800 disabled:opacity-50"
+                      className="w-full px-3 py-2 text-left text-sm text-neutral-900 dark:text-neutral-100 hover:bg-neutral-50 dark:hover:bg-neutral-800 disabled:opacity-50"
                     >
                       {getBrokerDisplayLabel(broker)}
                     </button>

@@ -13,7 +13,7 @@ export function StepsSection() {
         <h2 className="mt-3 text-3xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-4xl">
           {l.title}
         </h2>
-        <p className="mt-4 text-neutral-600 dark:text-neutral-400">{l.subtitle}</p>
+        <p className="mt-4 text-neutral-900 dark:text-neutral-50">{l.subtitle}</p>
       </div>
 
       <div className="mt-12 grid gap-8 lg:grid-cols-3 lg:gap-6">
@@ -25,7 +25,7 @@ export function StepsSection() {
               </span>
               <div>
                 <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">{step.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">
+                <p className="mt-2 text-sm leading-relaxed text-neutral-900 dark:text-neutral-50">
                   {step.description}
                 </p>
               </div>

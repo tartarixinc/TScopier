@@ -67,7 +67,7 @@ export function UsersPage() {
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead>
-              <tr className="border-b border-neutral-100 text-left text-xs font-medium uppercase tracking-wide text-neutral-400 dark:border-neutral-800">
+              <tr className="border-b border-neutral-100 text-left text-xs font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50 dark:border-neutral-800">
                 <th className="px-4 py-3 sm:px-5">Name</th>
                 <th className="px-4 py-3 sm:px-5">Email</th>
                 <th className="px-4 py-3 sm:px-5">Joined</th>
@@ -93,7 +93,7 @@ export function UsersPage() {
                       </span>
                     ) : null}
                   </td>
-                  <td className="px-4 py-3 text-neutral-600 dark:text-neutral-300 sm:px-5">{row.email || '—'}</td>
+                  <td className="px-4 py-3 text-neutral-900 dark:text-neutral-50 sm:px-5">{row.email || '—'}</td>
                   <td className="px-4 py-3 sm:px-5">{formatJoinedDate(row.created_at)}</td>
                   <td className="px-4 py-3 sm:px-5">{formatMoney(row.total_balance, row.base_currency)}</td>
                   <td className="px-4 py-3 sm:px-5">{row.admin_active ? 'Admin' : 'Free'}</td>

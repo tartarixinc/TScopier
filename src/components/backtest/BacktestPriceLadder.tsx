@@ -22,7 +22,7 @@ function lineStyle(kind: PriceLevelLine['kind']): { line: string; text: string }
     case 'entry':
       return {
         line: 'border-neutral-400 dark:border-neutral-500',
-        text: 'text-neutral-700 dark:text-neutral-200',
+        text: 'text-neutral-900 dark:text-neutral-50',
       }
     case 'sl':
       return {

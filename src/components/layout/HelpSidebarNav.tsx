@@ -25,14 +25,14 @@ export function HelpSidebarNav({ collapsed, onNavigate }: HelpSidebarNavProps) {
       collapsed ? 'justify-center' : 'gap-3',
       isActive
         ? 'bg-teal-50 text-green-500 font-semibold dark:bg-teal-950/60 dark:text-green-400'
-        : 'text-neutral-600 font-medium hover:bg-neutral-50 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
+        : 'text-neutral-900 font-medium hover:bg-neutral-50 hover:text-neutral-900 dark:text-neutral-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
     )
 
   return (
     <div className="space-y-3">
       <p
         className={clsx(
-          'px-3 text-[10px] font-semibold text-neutral-400 dark:text-neutral-500 tracking-widest',
+          'px-3 text-[10px] font-semibold text-neutral-900 dark:text-neutral-50 tracking-widest',
           collapsed && 'hidden',
         )}
       >
@@ -103,7 +103,7 @@ export function HelpSidebarNav({ collapsed, onNavigate }: HelpSidebarNavProps) {
             </span>
             <div className="min-w-0">
               <p className="text-xs font-semibold text-neutral-900 dark:text-neutral-50">{hm.status}</p>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400">{hm.statusOperational}</p>
+              <p className="text-xs text-neutral-900 dark:text-neutral-50">{hm.statusOperational}</p>
             </div>
           </div>
         )}

@@ -119,9 +119,9 @@ export function MarketingHeader() {
   const closeMobile = () => setMobileOpen(false)
 
   const desktopLinkClass =
-    'whitespace-nowrap text-xs font-medium text-neutral-600 transition-colors hover:text-neutral-900 xl:text-sm dark:text-neutral-400 dark:hover:text-neutral-100'
+    'whitespace-nowrap text-xs font-medium text-neutral-900 transition-colors hover:text-neutral-900 xl:text-sm dark:text-neutral-50 dark:hover:text-neutral-100'
   const mobileLinkClass =
-    'rounded-lg px-3 py-2.5 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-white/10'
+    'rounded-lg px-3 py-2.5 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-100 dark:text-neutral-50 dark:hover:bg-white/10'
 
   return (
     <header
@@ -178,7 +178,7 @@ export function MarketingHeader() {
             <MarketingAuthCta variant="header" />
             <button
               type="button"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-neutral-900 lg:hidden dark:text-neutral-400 dark:hover:bg-white/10 dark:hover:text-neutral-100"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-neutral-900 transition-colors hover:bg-neutral-100 hover:text-neutral-900 lg:hidden dark:text-neutral-50 dark:hover:bg-white/10 dark:hover:text-neutral-100"
               aria-expanded={mobileOpen}
               aria-controls="marketing-mobile-nav"
               aria-label={mobileOpen ? l.menuClose : l.menuOpen}
@@ -208,7 +208,7 @@ export function MarketingHeader() {
               />
             ))}
             <div className="flex items-center justify-between gap-2 border-t border-neutral-200/80 px-2 py-2 dark:border-neutral-700/80">
-              <span className="text-xs font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+              <span className="text-xs font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
                 {auth.language.label}
               </span>
               <LanguageSwitcher />

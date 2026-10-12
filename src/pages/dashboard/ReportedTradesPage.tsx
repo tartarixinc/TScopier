@@ -55,7 +55,7 @@ export function ReportedTradesPage() {
           <button
             type="button"
             onClick={refresh}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-neutral-200 px-3 py-2 text-sm font-medium text-neutral-700 transition hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-neutral-200 px-3 py-2 text-sm font-medium text-neutral-900 transition hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-50 dark:hover:bg-neutral-800"
           >
             <RefreshCw className="h-4 w-4" />
             {tr.refresh}
@@ -76,7 +76,7 @@ export function ReportedTradesPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center gap-2 py-8 text-sm text-neutral-500">
+        <div className="flex items-center gap-2 py-8 text-sm text-neutral-900 dark:text-neutral-50">
           <Loader2 className="h-4 w-4 animate-spin" />
           {tr.loadingSignal}
         </div>
@@ -84,7 +84,7 @@ export function ReportedTradesPage() {
         <p className="text-sm text-error-600 dark:text-error-400">{error}</p>
       ) : reports.length === 0 ? (
         <Card className="p-6 text-center">
-          <p className="text-sm text-neutral-500 dark:text-neutral-400">{tr.reportsEmpty}</p>
+          <p className="text-sm text-neutral-900 dark:text-neutral-50">{tr.reportsEmpty}</p>
         </Card>
       ) : (
         <ul className="space-y-3">
@@ -118,12 +118,12 @@ export function ReportedTradesPage() {
               </div>
 
               {r.reason ? (
-                <p className="mt-2 whitespace-pre-wrap break-words text-sm text-neutral-600 dark:text-neutral-300">
+                <p className="mt-2 whitespace-pre-wrap break-words text-sm text-neutral-900 dark:text-neutral-50">
                   {r.reason}
                 </p>
               ) : null}
 
-              <p className="mt-1.5 text-[11px] text-neutral-500 dark:text-neutral-400">
+              <p className="mt-1.5 text-[11px] text-neutral-900 dark:text-neutral-50">
                 {new Date(r.created_at).toLocaleString()}
                 {r.broker_label ? ` · ${r.broker_label}` : ''}
                 {r.entry_price != null || r.sl != null || r.tp != null || r.lot_size != null ? (

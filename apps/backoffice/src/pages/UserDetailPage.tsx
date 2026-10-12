@@ -23,7 +23,7 @@ type User360 = {
 function profileRow(label: string, value: string) {
   return (
     <div className="flex items-start justify-between gap-4 px-4 py-3 sm:px-5">
-      <dt className="text-sm font-medium text-neutral-500 dark:text-neutral-400">{label}</dt>
+      <dt className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{label}</dt>
       <dd className="text-right text-sm font-medium text-neutral-900 dark:text-neutral-100">{value}</dd>
     </div>
   )
@@ -100,7 +100,7 @@ export function UserDetailPage() {
   if (loading) {
     return (
       <PageShell>
-        <p className="text-sm text-neutral-400">Loading user profile…</p>
+        <p className="text-sm text-neutral-900 dark:text-neutral-50">Loading user profile…</p>
       </PageShell>
     )
   }
@@ -129,7 +129,7 @@ export function UserDetailPage() {
         actions={(
           <Link
             to="/users"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-600 transition-colors hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-900 transition-colors hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-50 dark:hover:bg-neutral-800"
           >
             <ArrowLeft className="h-4 w-4" />
             Back to users
@@ -147,8 +147,8 @@ export function UserDetailPage() {
         </dl>
 
         <div className="space-y-3 border-t border-neutral-100 px-4 py-4 dark:border-neutral-800 sm:px-5">
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">Admin access</p>
-          <label className="block text-xs text-neutral-500 dark:text-neutral-400">
+          <p className="text-xs font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50">Admin access</p>
+          <label className="block text-xs text-neutral-900 dark:text-neutral-50">
             Until (leave empty for permanent ∞)
             <input
               type="datetime-local"
@@ -157,7 +157,7 @@ export function UserDetailPage() {
               className="mt-1 w-full max-w-xs rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
             />
           </label>
-          <label className="block text-xs text-neutral-500 dark:text-neutral-400">
+          <label className="block text-xs text-neutral-900 dark:text-neutral-50">
             Reason (required)
             <input
               type="text"

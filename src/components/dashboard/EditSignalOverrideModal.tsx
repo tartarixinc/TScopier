@@ -437,7 +437,7 @@ export function EditSignalOverrideModal({
           </h2>
           <button
             type="button"
-            className="p-2 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40"
+            className="p-2 rounded-lg text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40"
             aria-label={sh.closeModal}
             onClick={onClose}
             disabled={actionBusy}
@@ -478,11 +478,11 @@ export function EditSignalOverrideModal({
             <div className="rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/40 px-3 py-2.5 text-sm text-amber-900 dark:text-amber-200">
               {sh.closeConfirmBody}
             </div>
-            <div className="rounded-xl border border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950/50 px-3 py-2.5 text-xs text-neutral-500 space-y-1">
+            <div className="rounded-xl border border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950/50 px-3 py-2.5 text-xs text-neutral-900 dark:text-neutral-50 space-y-1">
               <p>{sh.originalSignal}: {symbolPrefix}SL {original.sl} · TP {original.tp}</p>
               <p>{sh.overrideSignal}: {symbolPrefix}SL {current.sl} · TP {current.tp}</p>
               {channelName ? (
-                <p className="pt-1 font-medium text-neutral-600 dark:text-neutral-300">{channelName}</p>
+                <p className="pt-1 font-medium text-neutral-900 dark:text-neutral-50">{channelName}</p>
               ) : null}
               {channelMessage ? (
                 <p className="whitespace-pre-wrap break-words">
@@ -491,21 +491,21 @@ export function EditSignalOverrideModal({
               ) : null}
               {accounts.length ? (
                 <div className="space-y-1 pt-1">
-                  <p className="font-medium text-neutral-600 dark:text-neutral-300">{sh.accountsHolding}</p>
+                  <p className="font-medium text-neutral-900 dark:text-neutral-50">{sh.accountsHolding}</p>
                   {accounts.map(account => (
                     <div key={account.id} className="flex items-center justify-between gap-3">
                       <span className="truncate">{account.label}</span>
                       <span className="flex shrink-0 items-center gap-2">
                         <span className={account.open > 0
                           ? 'text-emerald-600 dark:text-emerald-400'
-                          : 'text-neutral-400 dark:text-neutral-500'}
+                          : 'text-neutral-900 dark:text-neutral-50'}
                         >
                           {account.open > 0 ? sh.statusOpen : sh.statusClosed}
                         </span>
                         {mode === 'confirmClose' && account.open > 0 ? (
                           <button
                             type="button"
-                            className="underline underline-offset-2 hover:text-neutral-700 dark:hover:text-neutral-200"
+                            className="underline underline-offset-2 hover:text-neutral-900 dark:hover:text-neutral-50"
                             disabled={actionBusy}
                             onClick={() => { void handleCloseAccount(account.id) }}
                           >
@@ -547,11 +547,11 @@ export function EditSignalOverrideModal({
           </div>
         ) : (
           <div className="p-5 space-y-4">
-            <div className="rounded-xl border border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950/50 px-3 py-2.5 text-xs text-neutral-500 space-y-1">
+            <div className="rounded-xl border border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950/50 px-3 py-2.5 text-xs text-neutral-900 dark:text-neutral-50 space-y-1">
               <p>{sh.originalSignal}: {symbolPrefix}SL {original.sl} · TP {original.tp}</p>
               <p>{sh.overrideSignal}: {symbolPrefix}SL {current.sl} · TP {current.tp}</p>
               {channelName ? (
-                <p className="pt-1 font-medium text-neutral-600 dark:text-neutral-300">{channelName}</p>
+                <p className="pt-1 font-medium text-neutral-900 dark:text-neutral-50">{channelName}</p>
               ) : null}
               {channelMessage ? (
                 <p className="whitespace-pre-wrap break-words">
@@ -560,14 +560,14 @@ export function EditSignalOverrideModal({
               ) : null}
               {accounts.length ? (
                 <div className="space-y-1 pt-1">
-                  <p className="font-medium text-neutral-600 dark:text-neutral-300">{sh.accountsHolding}</p>
+                  <p className="font-medium text-neutral-900 dark:text-neutral-50">{sh.accountsHolding}</p>
                   {accounts.map(account => (
                     <div key={account.id} className="flex items-center justify-between gap-3">
                       <span className="truncate">{account.label}</span>
                       <span className="flex shrink-0 items-center gap-2">
                         <span className={account.open > 0
                           ? 'text-emerald-600 dark:text-emerald-400'
-                          : 'text-neutral-400 dark:text-neutral-500'}
+                          : 'text-neutral-900 dark:text-neutral-50'}
                         >
                           {account.open > 0 ? sh.statusOpen : sh.statusClosed}
                         </span>
@@ -591,7 +591,7 @@ export function EditSignalOverrideModal({
 
             <div>
               <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="text-xs font-medium text-neutral-500">{sh.takeProfits}</span>
+                <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50">{sh.takeProfits}</span>
                 <button
                   type="button"
                   disabled={busy}
@@ -628,7 +628,7 @@ export function EditSignalOverrideModal({
                           const next = d.tpLevels.filter((_, i) => i !== idx)
                           return { ...d, tpLevels: next.length ? next : [''] }
                         })}
-                        className="shrink-0 rounded-xl border border-neutral-200 dark:border-neutral-700 px-3 text-neutral-400 hover:text-error-600"
+                        className="shrink-0 rounded-xl border border-neutral-200 dark:border-neutral-700 px-3 text-neutral-900 dark:text-neutral-50 hover:text-error-600"
                       >
                         <X className="w-4 h-4" />
                       </button>

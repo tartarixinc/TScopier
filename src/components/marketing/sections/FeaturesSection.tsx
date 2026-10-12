@@ -14,7 +14,7 @@ export function FeaturesSection() {
         <h2 className="mt-3 text-3xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-4xl">
           {l.title}
         </h2>
-        <p className="mt-4 text-neutral-600 dark:text-neutral-400">{l.subtitle}</p>
+        <p className="mt-4 text-neutral-900 dark:text-neutral-50">{l.subtitle}</p>
       </div>
 
       <div className="mt-12 space-y-8">

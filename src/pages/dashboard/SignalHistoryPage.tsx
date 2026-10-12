@@ -50,7 +50,7 @@ type DatePreset = 'all' | 'today' | '7d' | '30d' | 'custom'
 const DESKTOP_TD = 'px-4 py-3.5 align-middle border-b border-neutral-100 dark:border-neutral-800'
 
 const DESKTOP_TH =
-  'px-4 py-3 text-start text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide border-b border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-950'
+  'px-4 py-3 text-start text-xs font-semibold text-neutral-900 dark:text-neutral-50 uppercase tracking-wide border-b border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-950'
 
 const OPEN_ROW_BG = 'bg-teal-50 dark:bg-teal-950/40'
 const OPEN_ROW_HOVER = 'group-hover:bg-teal-100 dark:group-hover:bg-teal-900/50'
@@ -58,10 +58,10 @@ const OPEN_ROW_CELL = 'transition-colors duration-150'
 const EDIT_PEN_ICON = 'w-4 h-4 shrink-0 text-green-400 dark:text-green-400 opacity-0 group-hover:opacity-100 transition-opacity duration-150'
 
 const selectClass =
-  'px-3 py-2.5 rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 text-sm text-neutral-700 dark:text-neutral-300 focus:outline-none focus:ring-2 focus:ring-green-400 w-full'
+  'px-3 py-2.5 rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 text-sm text-neutral-900 dark:text-neutral-50 focus:outline-none focus:ring-2 focus:ring-green-400 w-full'
 
 const dateInputClass =
-  'px-3 py-2.5 rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 text-sm text-neutral-700 dark:text-neutral-300 focus:outline-none focus:ring-2 focus:ring-green-400 w-full'
+  'px-3 py-2.5 rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 text-sm text-neutral-900 dark:text-neutral-50 focus:outline-none focus:ring-2 focus:ring-green-400 w-full'
 
 function formatDateInput(date: Date): string {
   const year = date.getFullYear()
@@ -562,7 +562,7 @@ export function SignalHistoryPage() {
         <div className="p-4 border-b border-neutral-100 dark:border-neutral-800">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1fr_auto] gap-3 items-end">
             <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400 sr-only">{sh.colChannel}</span>
+              <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50 sr-only">{sh.colChannel}</span>
               <select
                 value={channelFilter}
                 onChange={e => setChannelFilter(e.target.value)}
@@ -575,7 +575,7 @@ export function SignalHistoryPage() {
               </select>
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{sh.dateFrom}</span>
+              <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50">{sh.dateFrom}</span>
               <input
                 type="date"
                 value={dateFrom}
@@ -585,7 +585,7 @@ export function SignalHistoryPage() {
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{sh.dateTo}</span>
+              <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50">{sh.dateTo}</span>
               <input
                 type="date"
                 value={dateTo}
@@ -595,7 +595,7 @@ export function SignalHistoryPage() {
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400 sr-only">Preset</span>
+              <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50 sr-only">Preset</span>
               <select
                 value={datePreset}
                 onChange={e => {
@@ -650,7 +650,7 @@ export function SignalHistoryPage() {
                 ))
               ) : showEmpty ? (
                 <tr>
-                  <td colSpan={4} className="py-16 text-center text-neutral-400 text-sm">{sh.noSignals}</td>
+                  <td colSpan={4} className="py-16 text-center text-neutral-900 dark:text-neutral-50 text-sm">{sh.noSignals}</td>
                 </tr>
               ) : (
                 signalDisplayRows.map(row => (
@@ -682,7 +682,7 @@ export function SignalHistoryPage() {
               </div>
             ))
           ) : showEmpty ? (
-            <div className="py-16 text-center text-neutral-400 text-sm">{sh.noSignals}</div>
+            <div className="py-16 text-center text-neutral-900 dark:text-neutral-50 text-sm">{sh.noSignals}</div>
           ) : (
             signalDisplayRows.map(row => (
               <SignalRow
@@ -744,7 +744,7 @@ const SignalRow = memo(function SignalRow({
       ? 'text-green-400 dark:text-green-400'
       : action === 'sell'
         ? 'text-error-600 dark:text-error-400'
-        : 'text-neutral-600 dark:text-neutral-300'
+        : 'text-neutral-900 dark:text-neutral-50'
 
   const openRowCellClass = isOpen
     ? clsx(OPEN_ROW_BG, OPEN_ROW_HOVER, OPEN_ROW_CELL)
@@ -773,7 +773,7 @@ const SignalRow = memo(function SignalRow({
         'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide',
         isOpen
           ? 'bg-teal-100 text-teal-800 dark:bg-teal-900/50 dark:text-teal-200'
-          : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300',
+          : 'bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50',
       )}
     >
       {isOpen ? statusOpenLabel : statusClosedLabel}
@@ -783,14 +783,14 @@ const SignalRow = memo(function SignalRow({
   const signalContent = (
     <>
       <p className={clsx('text-xs font-semibold uppercase mb-1', actionTone)}>{actionLabel}</p>
-      <p className="text-sm text-neutral-800 dark:text-neutral-100 truncate" title={summary}>{summary}</p>
+      <p className="text-sm text-neutral-900 dark:text-neutral-100 truncate" title={summary}>{summary}</p>
     </>
   )
 
   const signalContentMobile = (
     <>
       <p className={clsx('text-xs font-semibold uppercase mb-1.5', actionTone)}>{actionLabel}</p>
-      <p className="text-sm text-neutral-700 dark:text-neutral-200 leading-relaxed">{summary}</p>
+      <p className="text-sm text-neutral-900 dark:text-neutral-50 leading-relaxed">{summary}</p>
     </>
   )
 
@@ -803,11 +803,11 @@ const SignalRow = memo(function SignalRow({
         <div className="flex items-start justify-between gap-3 mb-2">
           <div className="min-w-0">
             <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 truncate">{symbol !== '—' ? symbol : actionLabel}</p>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate mt-0.5">{channelName}</p>
+            <p className="text-xs text-neutral-900 dark:text-neutral-50 truncate mt-0.5">{channelName}</p>
           </div>
           <div className="flex flex-col items-end gap-1 shrink-0">
             {statusBadge}
-            <span className="text-xs text-neutral-400 whitespace-nowrap">{formattedTime}</span>
+            <span className="text-xs text-neutral-900 dark:text-neutral-50 whitespace-nowrap">{formattedTime}</span>
           </div>
         </div>
         {isOpen ? (
@@ -827,7 +827,7 @@ const SignalRow = memo(function SignalRow({
       <td className={clsx(DESKTOP_TD, openRowCellClass)}>
         <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50 truncate">{channelName}</p>
         {symbol !== '—' ? (
-          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{symbol}</p>
+          <p className="text-xs text-neutral-900 dark:text-neutral-50 mt-0.5">{symbol}</p>
         ) : null}
       </td>
       <td className={clsx(DESKTOP_TD, openRowCellClass)}>
@@ -841,7 +841,7 @@ const SignalRow = memo(function SignalRow({
         )}
       </td>
       <td className={clsx(DESKTOP_TD, 'text-center', openRowCellClass)}>{statusBadge}</td>
-      <td className={clsx(DESKTOP_TD, 'text-right text-xs text-neutral-500 dark:text-neutral-400 whitespace-nowrap', openRowCellClass)}>
+      <td className={clsx(DESKTOP_TD, 'text-right text-xs text-neutral-900 dark:text-neutral-50 whitespace-nowrap', openRowCellClass)}>
         {formattedTime}
       </td>
     </tr>
@@ -851,7 +851,7 @@ const SignalRow = memo(function SignalRow({
 function StatCell({ label, value }: { label: string; value: number }) {
   return (
     <div className="px-6 py-4">
-      <p className="text-xs text-neutral-400 mb-1.5">{label}</p>
+      <p className="text-xs text-neutral-900 dark:text-neutral-50 mb-1.5">{label}</p>
       <p className="text-3xl font-semibold text-neutral-900 dark:text-neutral-50">{value}</p>
     </div>
   )

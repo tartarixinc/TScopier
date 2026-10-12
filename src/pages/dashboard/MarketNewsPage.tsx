@@ -92,7 +92,7 @@ export function MarketNewsPage() {
         actions={(
           <>
             {lastUpdatedLabel && !loading ? (
-              <span className="text-xs tabular-nums text-neutral-400 dark:text-neutral-500">
+              <span className="text-xs tabular-nums text-neutral-900 dark:text-neutral-50">
                 {lastUpdatedLabel}
               </span>
             ) : null}
@@ -140,7 +140,7 @@ export function MarketNewsPage() {
           ) : null}
           {rest.length > 0 ? (
             <section>
-              <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+              <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
                 {mn.moreHeadlines}
               </h2>
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -162,7 +162,7 @@ export function MarketNewsPage() {
           href="https://site.financialmodelingprep.com"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-xs text-neutral-400 hover:text-green-400 dark:hover:text-green-400"
+          className="text-xs text-neutral-900 dark:text-neutral-50 hover:text-green-400 dark:hover:text-green-400"
         >
           {mn.dataByFmp}
         </a>

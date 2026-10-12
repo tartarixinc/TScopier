@@ -41,7 +41,7 @@ export function AccountPerformanceTable({
   const { formatMoney } = useFormatMoney()
   if (accounts.length === 0) {
     return (
-      <p className="px-4 py-10 text-center text-sm text-neutral-500 dark:text-neutral-400">{labels.empty}</p>
+      <p className="px-4 py-10 text-center text-sm text-neutral-900 dark:text-neutral-50">{labels.empty}</p>
     )
   }
 
@@ -49,7 +49,7 @@ export function AccountPerformanceTable({
     <div className="overflow-x-auto">
       <table className="w-full min-w-[640px] text-start text-sm">
         <thead>
-          <tr className="border-b border-neutral-200/65 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:border-neutral-800/55 dark:text-neutral-400">
+          <tr className="border-b border-neutral-200/65 text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:border-neutral-800/55 dark:text-neutral-50">
             <th className="px-4 py-3">{labels.account}</th>
             <th className="px-4 py-3">{labels.broker}</th>
             <th className="px-4 py-3 text-end">{labels.equity}</th>
@@ -81,7 +81,7 @@ export function AccountPerformanceTable({
                     {account.platform}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-neutral-600 dark:text-neutral-400">{broker}</td>
+                <td className="px-4 py-3 text-neutral-900 dark:text-neutral-50">{broker}</td>
                 <td className="px-4 py-3 text-end tabular-nums">{formatMoney(equity)}</td>
                 <td
                   className={`px-4 py-3 text-end font-semibold tabular-nums ${

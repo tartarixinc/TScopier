@@ -32,8 +32,8 @@ export function NotificationBell({ open, onOpen, onClose }: NotificationBellProp
           open
             ? 'text-green-400 bg-teal-50 dark:text-green-400 dark:bg-teal-950/50'
             : soundEnabled
-              ? 'text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
-              : 'text-neutral-300 hover:bg-neutral-100 dark:text-neutral-600 dark:hover:bg-neutral-800',
+              ? 'text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+              : 'text-neutral-900 hover:bg-neutral-100 dark:text-neutral-50 dark:hover:bg-neutral-800',
         )}
       >
         {soundEnabled ? (

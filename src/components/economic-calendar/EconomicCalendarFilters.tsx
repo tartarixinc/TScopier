@@ -47,15 +47,15 @@ export function EconomicCalendarFilters({
     <div className="flex flex-col gap-4 rounded-xl border border-neutral-200/55 bg-white p-4 shadow-sm dark:border-neutral-800/55 dark:bg-neutral-950">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{labels.from}</span>
+          <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50">{labels.from}</span>
           <input type="date" className={inputClass} value={from} onChange={(e) => onFromChange(e.target.value)} />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{labels.to}</span>
+          <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50">{labels.to}</span>
           <input type="date" className={inputClass} value={to} onChange={(e) => onToChange(e.target.value)} />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{labels.country}</span>
+          <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50">{labels.country}</span>
           <select className={inputClass} value={country} onChange={(e) => onCountryChange(e.target.value)}>
             {countries.map((c) => (
               <option key={c.code} value={c.code}>
@@ -65,7 +65,7 @@ export function EconomicCalendarFilters({
           </select>
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{labels.impact}</span>
+          <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50">{labels.impact}</span>
           <select
             className={inputClass}
             value={impact}
@@ -78,7 +78,7 @@ export function EconomicCalendarFilters({
           </select>
         </label>
       </div>
-      <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-neutral-700 dark:text-neutral-300">
+      <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-neutral-900 dark:text-neutral-50">
         <input
           type="checkbox"
           checked={showNewsFilter}
@@ -98,7 +98,7 @@ export function ImpactBadge({ impact, label }: { impact: 'low' | 'medium' | 'hig
         'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide',
         impact === 'high' && 'bg-error-100 text-error-800 dark:bg-error-950/50 dark:text-error-300',
         impact === 'medium' && 'bg-amber-100 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200',
-        impact === 'low' && 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400',
+        impact === 'low' && 'bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50',
       )}
     >
       {label}

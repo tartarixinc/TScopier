@@ -35,9 +35,9 @@ function ContactChannelCard({
         <Icon className="h-5 w-5" aria-hidden />
       </span>
       <h2 className="mt-4 text-base font-semibold text-neutral-900 dark:text-neutral-50">{title}</h2>
-      <p className="mt-2 flex-1 text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">{description}</p>
+      <p className="mt-2 flex-1 text-sm leading-relaxed text-neutral-900 dark:text-neutral-50">{description}</p>
       {detail ? (
-        <p className="mt-3 break-all text-sm font-medium text-neutral-800 dark:text-neutral-200">{detail}</p>
+        <p className="mt-3 break-all text-sm font-medium text-neutral-900 dark:text-neutral-50">{detail}</p>
       ) : null}
       <div className="mt-4">
         {href ? (
@@ -74,7 +74,7 @@ export function ContactSupportPage() {
           <h2 id="support-channels-heading" className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">
             {cs.channelsTitle}
           </h2>
-          <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">{cs.channelsSubtitle}</p>
+          <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-50">{cs.channelsSubtitle}</p>
         </div>
         <div className="grid gap-4 sm:grid-cols-3">
           <ContactChannelCard
@@ -109,7 +109,7 @@ export function ContactSupportPage() {
           <h2 id="support-faq-heading" className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">
             {cs.faq.title}
           </h2>
-          <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">{cs.faq.subtitle}</p>
+          <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-50">{cs.faq.subtitle}</p>
         </div>
         <div className="overflow-hidden rounded-2xl border border-neutral-200/65 bg-white dark:border-neutral-800/55 dark:bg-neutral-950">
           {cs.faq.items.map((item, index) => (
@@ -123,11 +123,11 @@ export function ContactSupportPage() {
               <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 text-left text-sm font-medium text-neutral-900 marker:content-none dark:text-neutral-50 sm:px-6">
                 <span>{item.question}</span>
                 <ChevronDown
-                  className="h-5 w-5 shrink-0 text-neutral-400 transition-transform duration-200 group-open:rotate-180 dark:text-neutral-500"
+                  className="h-5 w-5 shrink-0 text-neutral-900 transition-transform duration-200 group-open:rotate-180 dark:text-neutral-50"
                   aria-hidden
                 />
               </summary>
-              <p className="border-t border-neutral-100 px-5 pb-4 pt-0 text-sm leading-relaxed text-neutral-600 dark:border-neutral-800 dark:text-neutral-400 sm:px-6 sm:pb-5">
+              <p className="border-t border-neutral-100 px-5 pb-4 pt-0 text-sm leading-relaxed text-neutral-900 dark:border-neutral-800 dark:text-neutral-50 sm:px-6 sm:pb-5">
                 {item.answer}
               </p>
             </details>

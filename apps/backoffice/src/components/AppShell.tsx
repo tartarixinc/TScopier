@@ -67,7 +67,7 @@ export function AppShell() {
       'flex min-h-[44px] items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
       isActive
         ? 'bg-teal-50 text-green-500 dark:bg-teal-950/60 dark:text-green-400'
-        : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
+        : 'text-neutral-900 hover:bg-neutral-50 hover:text-neutral-900 dark:text-neutral-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
     )
 
   return (
@@ -94,14 +94,14 @@ export function AppShell() {
           </div>
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">UniCopier</p>
-            <p className="truncate text-[11px] text-neutral-500 dark:text-neutral-400">Backoffice</p>
+            <p className="truncate text-[11px] text-neutral-900 dark:text-neutral-50">Backoffice</p>
           </div>
         </div>
 
         <nav className="min-h-0 flex-1 space-y-6 overflow-y-auto px-3 py-4">
           {NAV_SECTIONS.map((section) => (
             <div key={section.label}>
-              <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-widest text-neutral-400 dark:text-neutral-500">
+              <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-widest text-neutral-900 dark:text-neutral-50">
                 {section.label}
               </p>
               <div className="space-y-0.5">
@@ -128,18 +128,18 @@ export function AppShell() {
 
         <div className="shrink-0 border-t border-neutral-100 p-3 dark:border-neutral-800">
           <div className="mb-2 flex items-center gap-3 rounded-lg px-2 py-2">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-xs font-semibold text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-xs font-semibold text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50">
               {initials}
             </div>
             <div className="min-w-0">
               <p className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-100">Admin</p>
-              <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">{user?.email ?? '—'}</p>
+              <p className="truncate text-xs text-neutral-900 dark:text-neutral-50">{user?.email ?? '—'}</p>
             </div>
           </div>
           <button
             type="button"
             onClick={() => void signOut()}
-            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-50 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-50 hover:text-neutral-900 dark:text-neutral-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
           >
             <LogOut className="h-4 w-4" />
             Sign out
@@ -152,7 +152,7 @@ export function AppShell() {
           <button
             type="button"
             aria-label="Open menu"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-neutral-900 hover:bg-neutral-100 dark:text-neutral-50 dark:hover:bg-neutral-800"
             onClick={() => setMobileNavOpen(true)}
           >
             {mobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}

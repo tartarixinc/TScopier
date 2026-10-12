@@ -147,33 +147,33 @@ function CopierLogCard({
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="min-w-0">
           <p className="text-base font-semibold text-neutral-900 dark:text-neutral-50 truncate">{symbol}</p>
-          <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400" title={channelTitle}>
+          <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-neutral-900 dark:text-neutral-50" title={channelTitle}>
             <SignalSourceLogo kind={sourceKind} />
             <span className="truncate">{channelName}</span>
           </p>
         </div>
         <div className="flex flex-col items-end gap-1.5 shrink-0">
           <Badge variant={status.variant} size="sm">{status.label}</Badge>
-          <span className="text-xs text-neutral-400 whitespace-nowrap">{timeLabel}</span>
+          <span className="text-xs text-neutral-900 dark:text-neutral-50 whitespace-nowrap">{timeLabel}</span>
         </div>
       </div>
 
       {action ? (
         <p className={clsx(
           'text-sm font-medium uppercase mb-3',
-          action === 'buy' ? 'text-green-400' : action === 'sell' ? 'text-error-600' : 'text-neutral-400',
+          action === 'buy' ? 'text-green-400' : action === 'sell' ? 'text-error-600' : 'text-neutral-900 dark:text-neutral-50',
         )}>
           {action}
         </p>
       ) : null}
 
-      <p className="text-sm text-neutral-600 dark:text-neutral-300 mb-3 line-clamp-3" title={signal.raw_message ?? ''}>
+      <p className="text-sm text-neutral-900 dark:text-neutral-50 mb-3 line-clamp-3" title={signal.raw_message ?? ''}>
         {messagePreview}
       </p>
 
       {reason !== '—' ? (
-        <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3">
-          <span className="font-medium text-neutral-600 dark:text-neutral-300">{labels.colReason}: </span>
+        <p className="text-xs text-neutral-900 dark:text-neutral-50 mb-3">
+          <span className="font-medium text-neutral-900 dark:text-neutral-50">{labels.colReason}: </span>
           <span className="underline decoration-dotted underline-offset-2">{reason}</span>
         </p>
       ) : null}
@@ -252,24 +252,24 @@ function CopierLogRow({
       aria-label={viewDetailsLabel}
     >
       <Badge variant={status.variant} size="sm">{status.label}</Badge>
-      <span className="text-xs text-neutral-600 dark:text-neutral-300 truncate underline decoration-dotted underline-offset-2" title={reasonShort}>
+      <span className="text-xs text-neutral-900 dark:text-neutral-50 truncate underline decoration-dotted underline-offset-2" title={reasonShort}>
         {reasonShort}
       </span>
-      <span className="flex min-w-0 items-center gap-1.5 text-xs text-neutral-600 dark:text-neutral-400" title={channelTitle}>
+      <span className="flex min-w-0 items-center gap-1.5 text-xs text-neutral-900 dark:text-neutral-50" title={channelTitle}>
         <SignalSourceLogo kind={sourceKind} />
         <span className="truncate">{channelName}</span>
       </span>
       <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{symbol}</span>
-      <span className="text-xs text-neutral-500 dark:text-neutral-400 truncate" title={signal.raw_message ?? ''}>
+      <span className="text-xs text-neutral-900 dark:text-neutral-50 truncate" title={signal.raw_message ?? ''}>
         {messagePreview}
       </span>
       <span className={clsx(
         'text-xs font-medium uppercase',
-        action === 'buy' ? 'text-green-400' : action === 'sell' ? 'text-error-600' : 'text-neutral-400',
+        action === 'buy' ? 'text-green-400' : action === 'sell' ? 'text-error-600' : 'text-neutral-900 dark:text-neutral-50',
       )}>
         {action ?? '—'}
       </span>
-      <span className="text-xs text-neutral-400 text-right whitespace-nowrap">{timeLabel}</span>
+      <span className="text-xs text-neutral-900 dark:text-neutral-50 text-right whitespace-nowrap">{timeLabel}</span>
       <div className="flex justify-end">
         {retryEligible && onRetry ? (
           <Button
@@ -454,7 +454,7 @@ export function CopierLogsPage() {
                 type="button"
                 onClick={() => setFilter(f.value)}
                 className={`shrink-0 px-3 py-2 text-xs rounded-md font-medium transition-colors whitespace-nowrap ${
-                  filter === f.value ? 'bg-green-400 text-neutral-950' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                  filter === f.value ? 'bg-green-400 text-neutral-950' : 'text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800'
                 }`}
               >
                 {f.label}
@@ -493,12 +493,12 @@ export function CopierLogsPage() {
         ) : signals.length === 0 ? (
           <div className="px-4 sm:px-6 py-12 sm:py-20 text-center">
             <div className="w-16 h-16 bg-neutral-100 dark:bg-neutral-800 rounded-2xl mx-auto mb-3 flex items-center justify-center">
-              <svg className="w-8 h-8 text-neutral-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-8 h-8 text-neutral-900 dark:text-neutral-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
-            <p className="text-sm font-medium text-neutral-400">{t.copierLogs.emptyTitle}</p>
-            <p className="text-xs text-neutral-300 mt-1">{t.copierLogs.emptySubtitle}</p>
+            <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{t.copierLogs.emptyTitle}</p>
+            <p className="text-xs text-neutral-900 dark:text-neutral-50 mt-1">{t.copierLogs.emptySubtitle}</p>
           </div>
         ) : (
           <>
@@ -523,7 +523,7 @@ export function CopierLogsPage() {
               ))}
             </div>
             <div className="hidden md:block overflow-x-auto">
-              <div className="grid grid-cols-[1.5fr_1.2fr_1fr_1.2fr_1fr_1fr_auto_auto] gap-3 min-w-[48rem] px-4 sm:px-5 py-3 border-b border-neutral-100 dark:border-neutral-800 text-xs font-semibold text-neutral-400 uppercase tracking-wide">
+              <div className="grid grid-cols-[1.5fr_1.2fr_1fr_1.2fr_1fr_1fr_auto_auto] gap-3 min-w-[48rem] px-4 sm:px-5 py-3 border-b border-neutral-100 dark:border-neutral-800 text-xs font-semibold text-neutral-900 dark:text-neutral-50 uppercase tracking-wide">
                 <span>{t.copierLogs.colStatus}</span>
                 <span>{t.copierLogs.colReason}</span>
                 <span>{t.copierLogs.colChannel}</span>
@@ -639,8 +639,8 @@ function CopierLogsPagination({
   return (
     <div className="flex flex-col gap-3 px-3 sm:px-4 py-3 border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <label className="inline-flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
-          <span className="font-medium text-neutral-700 dark:text-neutral-300">{labels.show}</span>
+        <label className="inline-flex items-center gap-2 text-sm text-neutral-900 dark:text-neutral-50">
+          <span className="font-medium text-neutral-900 dark:text-neutral-50">{labels.show}</span>
           <select
             value={pageSize}
             onChange={e => onPageSizeChange(Number(e.target.value) as PageSizeOption)}
@@ -653,7 +653,7 @@ function CopierLogsPagination({
           </select>
           <span>{labels.results}</span>
         </label>
-        <p className="text-xs text-neutral-500 dark:text-neutral-400 tabular-nums">
+        <p className="text-xs text-neutral-900 dark:text-neutral-50 tabular-nums">
           {labels.showingRange(rangeStart, rangeEnd, total)}
         </p>
       </div>
@@ -663,7 +663,7 @@ function CopierLogsPagination({
             type="button"
             onClick={() => onPageChange(page - 1)}
             disabled={page <= 1}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200/65 dark:border-neutral-800/55 text-neutral-700 dark:text-neutral-300 hover:bg-white dark:hover:bg-neutral-900 disabled:opacity-40 disabled:pointer-events-none"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200/65 dark:border-neutral-800/55 text-neutral-900 dark:text-neutral-50 hover:bg-white dark:hover:bg-neutral-900 disabled:opacity-40 disabled:pointer-events-none"
             aria-label="Previous page"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -673,7 +673,7 @@ function CopierLogsPagination({
             {pageNumbers[0]! > 1 && (
               <>
                 <PageButton n={1} active={page === 1} onClick={() => onPageChange(1)} />
-                {pageNumbers[0]! > 2 && <span className="px-1 text-neutral-400 text-sm">…</span>}
+                {pageNumbers[0]! > 2 && <span className="px-1 text-neutral-900 dark:text-neutral-50 text-sm">…</span>}
               </>
             )}
             {pageNumbers.map(n => (
@@ -682,7 +682,7 @@ function CopierLogsPagination({
             {pageNumbers[pageNumbers.length - 1]! < totalPages && (
               <>
                 {pageNumbers[pageNumbers.length - 1]! < totalPages - 1 && (
-                  <span className="px-1 text-neutral-400 text-sm">…</span>
+                  <span className="px-1 text-neutral-900 dark:text-neutral-50 text-sm">…</span>
                 )}
                 <PageButton n={totalPages} active={page === totalPages} onClick={() => onPageChange(totalPages)} />
               </>
@@ -692,7 +692,7 @@ function CopierLogsPagination({
             type="button"
             onClick={() => onPageChange(page + 1)}
             disabled={page >= totalPages}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200/65 dark:border-neutral-800/55 text-neutral-700 dark:text-neutral-300 hover:bg-white dark:hover:bg-neutral-900 disabled:opacity-40 disabled:pointer-events-none"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200/65 dark:border-neutral-800/55 text-neutral-900 dark:text-neutral-50 hover:bg-white dark:hover:bg-neutral-900 disabled:opacity-40 disabled:pointer-events-none"
             aria-label="Next page"
           >
             <span className="hidden sm:inline">{labels.next}</span>
@@ -713,7 +713,7 @@ function PageButton({ n, active, onClick }: { n: number; active: boolean; onClic
       className={`min-w-[2rem] px-2 py-1.5 text-sm rounded-md font-medium tabular-nums transition-colors ${
         active
           ? 'bg-green-400 text-neutral-950'
-          : 'text-neutral-600 dark:text-neutral-400 hover:bg-white dark:hover:bg-neutral-900 border border-transparent hover:border-neutral-200 dark:hover:border-neutral-800'
+          : 'text-neutral-900 dark:text-neutral-50 hover:bg-white dark:hover:bg-neutral-900 border border-transparent hover:border-neutral-200 dark:hover:border-neutral-800'
       }`}
     >
       {n}

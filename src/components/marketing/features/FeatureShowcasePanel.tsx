@@ -33,7 +33,7 @@ export function FeatureShowcasePanel({
           <h3 className="mt-3 text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-3xl">
             {title}
           </h3>
-          <p className="mt-4 text-base leading-relaxed text-neutral-600 dark:text-neutral-400">
+          <p className="mt-4 text-base leading-relaxed text-neutral-900 dark:text-neutral-50">
             {description}
           </p>
         </div>

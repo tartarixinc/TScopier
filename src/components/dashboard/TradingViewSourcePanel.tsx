@@ -211,7 +211,7 @@ export function TradingViewSourcePanel({
                 <Plus className="h-3.5 w-3.5" />
                 {t.common.add}
               </Button>
-              <span className="text-xs text-neutral-400">
+              <span className="text-xs text-neutral-900 dark:text-neutral-50">
                 {interpolate(t.copierEnginePage.configuredCount, { count: String(webhooks.length) })}
               </span>
             </div>
@@ -370,8 +370,8 @@ function WebhookListRow({
         <img src="/tradingview-logo.png" alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />
         <button type="button" onClick={onOpen} className="min-w-0 flex-1 text-left">
           <h3 className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">{webhook.name}</h3>
-          <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">{createdLabel}</p>
-          <p className="mt-0.5 truncate text-xs text-neutral-400 dark:text-neutral-500">{lastEventLabel}</p>
+          <p className="mt-0.5 text-xs text-neutral-900 dark:text-neutral-50">{createdLabel}</p>
+          <p className="mt-0.5 truncate text-xs text-neutral-900 dark:text-neutral-50">{lastEventLabel}</p>
         </button>
         <div className="flex shrink-0 items-center gap-2">
           <Button type="button" variant="secondary" size="sm" onClick={onOpen}>
@@ -381,7 +381,7 @@ function WebhookListRow({
           <button
             type="button"
             onClick={onDelete}
-            className="rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-error-50 hover:text-error-600"
+            className="rounded-lg p-1.5 text-neutral-900 dark:text-neutral-50 transition-colors hover:bg-error-50 hover:text-error-600"
             aria-label={t.channelsPage.tradingViewDelete}
           >
             <Trash2 className="h-4 w-4" />
@@ -389,7 +389,7 @@ function WebhookListRow({
         </div>
       </div>
       <div className="space-y-2.5 border-t border-neutral-100 bg-neutral-50 px-4 py-2.5 dark:border-neutral-800 dark:bg-neutral-800/60">
-        <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-neutral-400">{ce.connectedBrokers}</p>
+        <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50">{ce.connectedBrokers}</p>
         {connectedBrokers.length > 0 ? (
           <div className="flex flex-wrap items-center gap-1.5">
             {connectedBrokers.map(broker => {
@@ -402,7 +402,7 @@ function WebhookListRow({
                     type="button"
                     onClick={() => onDisconnectBroker(broker)}
                     disabled={disconnectingLinkKey === linkKey}
-                    className="ml-0.5 -mr-0.5 rounded-full p-0.5 text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-neutral-700 disabled:opacity-50 dark:hover:bg-neutral-700 dark:hover:text-neutral-100"
+                    className="ml-0.5 -mr-0.5 rounded-full p-0.5 text-neutral-900 dark:text-neutral-50 transition-colors hover:bg-neutral-200 hover:text-neutral-900 disabled:opacity-50 dark:hover:bg-neutral-700 dark:hover:text-neutral-100"
                     aria-label={interpolate(ce.removeBrokerConnectionAria, { broker: label, channel: webhook.name })}
                   >
                     <X className="h-3 w-3" />
@@ -414,7 +414,7 @@ function WebhookListRow({
               <button
                 type="button"
                 onClick={onToggleConnectMenu}
-                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 text-neutral-500 transition-colors hover:bg-white hover:text-neutral-800 dark:border-neutral-700 dark:hover:bg-neutral-900 dark:hover:text-neutral-100"
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 text-neutral-900 dark:text-neutral-50 transition-colors hover:bg-white hover:text-neutral-900 dark:border-neutral-700 dark:hover:bg-neutral-900 dark:hover:text-neutral-100"
                 aria-label={interpolate(ce.addBrokerConnectionAria, { channel: webhook.name })}
               >
                 <Plus className="h-3.5 w-3.5" />
@@ -464,7 +464,7 @@ function WebhookListRow({
                       type="button"
                       disabled={connectingBrokerId === broker.id}
                       onClick={() => onConnectBroker(broker.id)}
-                      className="w-full px-3 py-2 text-left text-sm text-neutral-800 hover:bg-neutral-50 disabled:opacity-50 dark:text-neutral-100 dark:hover:bg-neutral-800"
+                      className="w-full px-3 py-2 text-left text-sm text-neutral-900 hover:bg-neutral-50 disabled:opacity-50 dark:text-neutral-100 dark:hover:bg-neutral-800"
                     >
                       {getBrokerDisplayLabel(broker)}
                     </button>
@@ -505,7 +505,7 @@ function BrokerMenu({
   return (
     <div className="absolute left-0 top-full z-30 mt-1 min-w-[12rem] rounded-lg border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
       {!hasAnyBrokers || brokers.length === 0 ? (
-        <p className="px-3 py-2 text-xs text-neutral-500 dark:text-neutral-400">{emptyLabel}</p>
+        <p className="px-3 py-2 text-xs text-neutral-900 dark:text-neutral-50">{emptyLabel}</p>
       ) : (
         brokers.map(broker => (
           <button
@@ -513,7 +513,7 @@ function BrokerMenu({
             type="button"
             disabled={connectingBrokerId === broker.id}
             onClick={() => onConnectBroker(broker.id)}
-            className="w-full px-3 py-2 text-left text-sm text-neutral-800 hover:bg-neutral-50 disabled:opacity-50 dark:text-neutral-100 dark:hover:bg-neutral-800"
+            className="w-full px-3 py-2 text-left text-sm text-neutral-900 hover:bg-neutral-50 disabled:opacity-50 dark:text-neutral-100 dark:hover:bg-neutral-800"
           >
             {getBrokerDisplayLabel(broker)}
           </button>
@@ -546,13 +546,13 @@ function WelcomeCard({
             <img src="/tradingview-logo.png" alt="" className="h-10 w-10 rounded-full object-cover" loading="lazy" aria-hidden />
           </div>
           <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">{copy.tradingViewHeroTitle}</h2>
-          <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{copy.tradingViewHeroSubtitle}</p>
+          <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-50">{copy.tradingViewHeroSubtitle}</p>
         </div>
       </div>
       <div className="mx-auto max-w-md px-5 py-5 sm:px-6 sm:py-6">
         <ul className="mb-5 space-y-2.5">
           {steps.map((line, index) => (
-            <li key={line} className="flex items-start gap-2.5 text-sm text-neutral-600 dark:text-neutral-300">
+            <li key={line} className="flex items-start gap-2.5 text-sm text-neutral-900 dark:text-neutral-50">
               <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-semibold text-green-500 dark:bg-primary-900/50 dark:text-primary-300">
                 {index + 1}
               </span>
@@ -606,7 +606,7 @@ function WebhookDetails({
       />
       <div>
         <div className="mb-1.5 flex items-center justify-between gap-3">
-          <p className="text-sm font-medium text-neutral-800 dark:text-neutral-200">{copy.tradingViewTemplate}</p>
+          <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{copy.tradingViewTemplate}</p>
           <Button
             variant="secondary"
             size="sm"
@@ -616,25 +616,25 @@ function WebhookDetails({
             {copied === `${webhook.id}:template` ? copy.tradingViewCopied : copy.tradingViewCopy}
           </Button>
         </div>
-        <pre className="overflow-x-auto rounded-lg bg-neutral-50 p-3 text-xs text-neutral-800 dark:bg-neutral-900 dark:text-neutral-200">
+        <pre className="overflow-x-auto rounded-lg bg-neutral-50 p-3 text-xs text-neutral-900 dark:bg-neutral-900 dark:text-neutral-50">
           {TRADINGVIEW_ALERT_TEMPLATE}
         </pre>
-        <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">{copy.tradingViewTemplateHelp}</p>
+        <p className="mt-2 text-xs text-neutral-900 dark:text-neutral-50">{copy.tradingViewTemplateHelp}</p>
       </div>
       <div>
-        <p className="text-sm font-medium text-neutral-800 dark:text-neutral-200">{copy.tradingViewDeliveries}</p>
+        <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{copy.tradingViewDeliveries}</p>
         {recent.length === 0 ? (
-          <p className="mt-2 text-sm text-neutral-500">{copy.tradingViewNoDeliveries}</p>
+          <p className="mt-2 text-sm text-neutral-900 dark:text-neutral-50">{copy.tradingViewNoDeliveries}</p>
         ) : (
           <ul className="mt-2 space-y-2">
             {recent.map(row => (
               <li key={row.id} className="flex items-center justify-between gap-3 text-sm">
-                <span className="text-neutral-500">{formatWhen(row.created_at)}</span>
+                <span className="text-neutral-900 dark:text-neutral-50">{formatWhen(row.created_at)}</span>
                 <span className="flex items-center gap-2">
                   <Badge variant={row.status === 'accepted' ? 'success' : row.status === 'error' ? 'error' : 'neutral'}>
                     {statusLabel(row.status)}
                   </Badge>
-                  {row.skip_reason ? <span className="text-xs text-neutral-400">{row.skip_reason}</span> : null}
+                  {row.skip_reason ? <span className="text-xs text-neutral-900 dark:text-neutral-50">{row.skip_reason}</span> : null}
                 </span>
               </li>
             ))}
@@ -673,7 +673,7 @@ function ModalFrame({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            className="rounded-lg p-2 text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800"
             aria-label={closeLabel}
           >
             <X className="h-4 w-4" />
@@ -699,9 +699,9 @@ function CopyRow({
 }) {
   return (
     <div>
-      <p className="mb-1.5 text-sm font-medium text-neutral-800 dark:text-neutral-200">{label}</p>
+      <p className="mb-1.5 text-sm font-medium text-neutral-900 dark:text-neutral-50">{label}</p>
       <div className="flex gap-2">
-        <code className="min-w-0 flex-1 truncate rounded-lg bg-neutral-50 px-3 py-2 text-xs text-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">
+        <code className="min-w-0 flex-1 truncate rounded-lg bg-neutral-50 px-3 py-2 text-xs text-neutral-900 dark:bg-neutral-900 dark:text-neutral-50">
           {value}
         </code>
         <Button variant="secondary" size="sm" onClick={onCopy}>

@@ -76,7 +76,7 @@ export function AuthTrustpilotSlider({ reviews, trustpilotLabel }: AuthTrustpilo
               ) : null}
               <p
                 className={clsx(
-                  'leading-relaxed text-neutral-700 dark:text-neutral-300',
+                  'leading-relaxed text-neutral-900 dark:text-neutral-50',
                   item.headline
                     ? 'mt-3 text-sm font-normal sm:text-base'
                     : 'text-base font-semibold tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-lg',
@@ -89,7 +89,7 @@ export function AuthTrustpilotSlider({ reviews, trustpilotLabel }: AuthTrustpilo
                   {item.author}
                 </p>
                 {item.role ? (
-                  <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+                  <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-50">
                     {item.role}
                   </p>
                 ) : null}

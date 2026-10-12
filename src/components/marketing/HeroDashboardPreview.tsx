@@ -125,7 +125,7 @@ function HeroLiveMoneyValue({
 function HeroStatBlock({ stat, label }: { stat: LandingHeroHeadlineStat; label: string }) {
   return (
     <div className="min-w-0 px-4 py-5 sm:px-6">
-      <p className="mb-2 inline-flex min-w-0 items-center gap-1 text-sm leading-snug text-neutral-500 dark:text-neutral-400 rtl:text-xs">
+      <p className="mb-2 inline-flex min-w-0 items-center gap-1 text-sm leading-snug text-neutral-900 dark:text-neutral-50 rtl:text-xs">
         <span className="min-w-0">{label}</span>
         {stat.showHint ? <Info className="h-3.5 w-3.5 shrink-0 opacity-60" aria-hidden /> : null}
       </p>
@@ -136,7 +136,7 @@ function HeroStatBlock({ stat, label }: { stat: LandingHeroHeadlineStat; label: 
           {stat.value}
         </p>
       )}
-      <p className="text-xs text-neutral-400">{stat.sub}</p>
+      <p className="text-xs text-neutral-900 dark:text-neutral-50">{stat.sub}</p>
     </div>
   )
 }
@@ -153,7 +153,7 @@ function HeroOverviewStat({
   return (
     <div>
       <div className="mb-1 flex items-center justify-between gap-2">
-        <p className="min-w-0 text-xs leading-snug text-neutral-500 dark:text-neutral-400 rtl:text-[10px]">
+        <p className="min-w-0 text-xs leading-snug text-neutral-900 dark:text-neutral-50 rtl:text-[10px]">
           {label}
         </p>
         {showAdd ? (
@@ -180,7 +180,7 @@ function HeroTradeOutcomeChart() {
         <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
           {t.dashboard.tradeOutcomeTitle}
         </h2>
-        <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
+        <p className="mt-0.5 text-xs text-neutral-900 dark:text-neutral-50">
           {t.dashboard.tradeOutcomeSubtitle}
         </p>
       </div>
@@ -193,7 +193,7 @@ function HeroTradeOutcomeChart() {
             <div key={i} className="border-t border-dashed border-neutral-100 dark:border-neutral-800" />
           ))}
         </div>
-        <div className="absolute start-0 top-0 flex h-[calc(100%-1.25rem)] w-9 flex-col justify-between py-1 text-xs text-neutral-400">
+        <div className="absolute start-0 top-0 flex h-[calc(100%-1.25rem)] w-9 flex-col justify-between py-1 text-xs text-neutral-900 dark:text-neutral-50">
           {['$900', '$600', '$300', '$0'].map(tick => (
             <span key={tick}>{tick}</span>
           ))}
@@ -214,12 +214,12 @@ function HeroTradeOutcomeChart() {
                   style={{ height: barHeightPx(day.profit, 136) }}
                 />
               </div>
-              <span className="mt-1 text-[10px] text-neutral-400">{day.label}</span>
+              <span className="mt-1 text-[10px] text-neutral-900 dark:text-neutral-50">{day.label}</span>
             </div>
           ))}
         </div>
       </div>
-      <div className="mt-3 flex justify-center gap-6 text-xs text-neutral-500">
+      <div className="mt-3 flex justify-center gap-6 text-xs text-neutral-900 dark:text-neutral-50">
         <span className="inline-flex items-center gap-1.5">
           <span
             className="h-2 w-2 rounded-sm"
@@ -258,7 +258,7 @@ function HeroChannelProfitChart() {
         <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
           {t.dashboard.channelProfitTitle}
         </h2>
-        <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
+        <p className="mt-0.5 text-xs text-neutral-900 dark:text-neutral-50">
           {t.dashboard.channelProfitSubtitle}
         </p>
       </div>
@@ -273,7 +273,7 @@ function HeroChannelProfitChart() {
                 key={row.label}
                 className="flex min-h-0 flex-1 items-center justify-end pe-1"
               >
-                <span className="block max-w-full truncate text-end text-[9px] leading-none text-neutral-400 dark:text-neutral-500">
+                <span className="block max-w-full truncate text-end text-[9px] leading-none text-neutral-900 dark:text-neutral-50">
                   {row.label}
                 </span>
               </div>
@@ -295,7 +295,7 @@ function HeroChannelProfitChart() {
                   y1={0}
                   y2={plotH}
                   stroke="currentColor"
-                  className="text-neutral-100 dark:text-neutral-800"
+                  className="text-neutral-100 dark:text-neutral-50"
                   strokeDasharray="4 4"
                 />
               )
@@ -306,7 +306,7 @@ function HeroChannelProfitChart() {
               y1={0}
               y2={plotH}
               stroke="currentColor"
-              className="text-neutral-200 dark:text-neutral-700"
+              className="text-neutral-900 dark:text-neutral-50"
             />
             {CHANNEL_PROFIT_ROWS.map((row, i) => {
               const { x, width } = channelBarGeometry(row.pnl, plotW)
@@ -324,7 +324,7 @@ function HeroChannelProfitChart() {
               )
             })}
           </svg>
-          <div className="col-start-2 row-start-2 grid grid-cols-5 pt-1.5 text-center text-[10px] text-neutral-400">
+          <div className="col-start-2 row-start-2 grid grid-cols-5 pt-1.5 text-center text-[10px] text-neutral-900 dark:text-neutral-50">
             {xTicks.map(tick => (
               <span key={tick}>{formatHeroAxisMoney(tick)}</span>
             ))}
@@ -344,9 +344,9 @@ function copierStatusClass(status: LandingHeroCopierLogRow['status']): string {
     case 'skipped':
       return 'text-warning-800 bg-warning-50 dark:!text-amber-100 dark:!bg-amber-900'
     case 'failed':
-      return 'text-neutral-700 bg-neutral-100 dark:text-neutral-300 dark:bg-neutral-800/70'
+      return 'text-neutral-900 bg-neutral-100 dark:text-neutral-50 dark:bg-neutral-800/70'
     default:
-      return 'text-neutral-600 bg-neutral-100 dark:text-neutral-300 dark:bg-neutral-800'
+      return 'text-neutral-900 bg-neutral-100 dark:text-neutral-50 dark:bg-neutral-800'
   }
 }
 
@@ -446,7 +446,7 @@ export function HeroDashboardPreview() {
             <nav className="min-h-0 flex-1 space-y-5 overflow-hidden px-3 py-4" aria-hidden>
               {navSections.map(section => (
                 <div key={section.label}>
-                  <p className="mb-1.5 px-3 text-[10px] font-semibold tracking-widest text-neutral-400 dark:text-neutral-500">
+                  <p className="mb-1.5 px-3 text-[10px] font-semibold tracking-widest text-neutral-900 dark:text-neutral-50">
                     {section.label}
                   </p>
                   <div className="space-y-0.5">
@@ -459,7 +459,7 @@ export function HeroDashboardPreview() {
                           'flex min-h-[44px] items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium',
                           item.active
                             ? 'bg-teal-50 text-green-500 dark:bg-teal-950/60 dark:text-green-400'
-                            : 'text-neutral-600 dark:text-neutral-400',
+                            : 'text-neutral-900 dark:text-neutral-50',
                         )}
                       >
                         <Icon
@@ -480,17 +480,17 @@ export function HeroDashboardPreview() {
 
           <div className="flex min-w-0 flex-1 flex-col">
             <header className="z-20 flex h-16 shrink-0 items-center gap-3 border-b border-neutral-100 bg-white px-4 dark:border-neutral-800 dark:bg-neutral-950 sm:gap-4 sm:px-6">
-              <DirectionalIcon icon={PanelLeftClose} className="h-5 w-5 shrink-0 text-neutral-400" />
-              <div className="flex h-9 min-w-0 max-w-md flex-1 items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 text-sm text-neutral-400 dark:border-neutral-700 dark:bg-neutral-800/80">
+              <DirectionalIcon icon={PanelLeftClose} className="h-5 w-5 shrink-0 text-neutral-900 dark:text-neutral-50" />
+              <div className="flex h-9 min-w-0 max-w-md flex-1 items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 text-sm text-neutral-900 dark:text-neutral-50 dark:border-neutral-700 dark:bg-neutral-800/80">
                 <Search className="h-4 w-4 shrink-0" aria-hidden />
                 <span className="min-w-0 truncate rtl:text-xs">{t.globalSearch.placeholder}</span>
-                <span className="ms-auto hidden text-xs text-neutral-400 ltr:sm:inline">
+                <span className="ms-auto hidden text-xs text-neutral-900 dark:text-neutral-50 ltr:sm:inline">
                   {t.globalSearch.shortcut}
                 </span>
               </div>
               <div className="ms-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
                 <span
-                  className="flex items-center gap-1 rounded-lg px-1.5 py-1.5 text-xs font-medium text-neutral-600 dark:text-neutral-300 sm:gap-1.5 sm:px-2 sm:text-sm rtl:text-[11px]"
+                  className="flex items-center gap-1 rounded-lg px-1.5 py-1.5 text-xs font-medium text-neutral-900 dark:text-neutral-50 sm:gap-1.5 sm:px-2 sm:text-sm rtl:text-[11px]"
                   aria-hidden
                 >
                   <CopierActiveIndicator />
@@ -502,7 +502,7 @@ export function HeroDashboardPreview() {
                 <ThemeToggle />
                 <button
                   type="button"
-                  className="rounded-lg p-2 text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                  className="rounded-lg p-2 text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800"
                   aria-hidden
                 >
                   <CircleHelp className="h-5 w-5" />
@@ -511,10 +511,10 @@ export function HeroDashboardPreview() {
                   <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-green-400 text-xs font-semibold text-neutral-950">
                     TS
                   </span>
-                  <span className="hidden text-sm font-medium text-neutral-800 dark:text-neutral-100 ltr:inline">
+                  <span className="hidden text-sm font-medium text-neutral-900 dark:text-neutral-100 ltr:inline">
                     Trader
                   </span>
-                  <DirectionalIcon icon={ChevronRight} className="h-3.5 w-3.5 rotate-90 text-neutral-400" mirrorInRtl={false} />
+                  <DirectionalIcon icon={ChevronRight} className="h-3.5 w-3.5 rotate-90 text-neutral-900 dark:text-neutral-50" mirrorInRtl={false} />
                 </div>
               </div>
             </header>
@@ -562,7 +562,7 @@ export function HeroDashboardPreview() {
                         <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
                           {t.dashboard.tradeActivities}
                         </span>
-                        <Info className="h-3.5 w-3.5 text-neutral-300 dark:text-neutral-400" aria-hidden />
+                        <Info className="h-3.5 w-3.5 text-neutral-900 dark:text-neutral-50" aria-hidden />
                       </div>
                       <span className="inline-flex items-center gap-1.5 rounded-lg border border-green-400 px-3 py-1.5 text-xs font-medium text-green-400 dark:border-green-400 dark:text-green-400">
                         {t.nav.items.channels}
@@ -572,8 +572,8 @@ export function HeroDashboardPreview() {
                     <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
                       {d.channelWorkerLogs.map(log => (
                         <div key={log.message} className="px-5 py-3">
-                          <p className="text-sm text-neutral-800 dark:text-neutral-100">{log.message}</p>
-                          <p className="mt-1 text-[11px] text-neutral-400">{log.time}</p>
+                          <p className="text-sm text-neutral-900 dark:text-neutral-100">{log.message}</p>
+                          <p className="mt-1 text-[11px] text-neutral-900 dark:text-neutral-50">{log.time}</p>
                         </div>
                       ))}
                     </div>
@@ -586,7 +586,7 @@ export function HeroDashboardPreview() {
                         <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
                           {t.dashboard.copierLogs}
                         </span>
-                        <Info className="h-3.5 w-3.5 text-neutral-300 dark:text-neutral-400" aria-hidden />
+                        <Info className="h-3.5 w-3.5 text-neutral-900 dark:text-neutral-50" aria-hidden />
                       </div>
                       <span className="inline-flex items-center gap-1.5 rounded-lg border border-green-400 px-3 py-1.5 text-xs font-medium text-green-400 dark:border-green-400 dark:text-green-400">
                         {t.dashboard.copierLogs}
@@ -596,7 +596,7 @@ export function HeroDashboardPreview() {
                     <div
                       className={clsx(
                         copierLogGrid,
-                        'border-b border-neutral-100 px-5 py-3 text-xs font-medium uppercase tracking-wide text-neutral-400 dark:border-neutral-800 rtl:normal-case rtl:tracking-normal',
+                        'border-b border-neutral-100 px-5 py-3 text-xs font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50 dark:border-neutral-800 rtl:normal-case rtl:tracking-normal',
                       )}
                     >
                       <span>{t.copierLogs.colStatus}</span>
@@ -616,7 +616,7 @@ export function HeroDashboardPreview() {
                           >
                             {statusLabel(row.status)}
                           </span>
-                          <span className="min-w-0 truncate text-xs text-neutral-500 dark:text-neutral-400">
+                          <span className="min-w-0 truncate text-xs text-neutral-900 dark:text-neutral-50">
                             {row.channel}
                           </span>
                           <span className="min-w-0 truncate text-sm font-medium text-neutral-900 dark:text-neutral-50">
@@ -630,7 +630,7 @@ export function HeroDashboardPreview() {
                           >
                             {row.type}
                           </span>
-                          <span className="text-end text-xs text-neutral-400">{row.time}</span>
+                          <span className="text-end text-xs text-neutral-900 dark:text-neutral-50">{row.time}</span>
                         </div>
                       ))}
                     </div>

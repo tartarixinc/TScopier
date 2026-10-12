@@ -24,7 +24,7 @@ export function ReviewsSection() {
                 {review.headline}
               </p>
             ) : null}
-            <blockquote className="flex-1 text-sm leading-relaxed text-neutral-700 dark:text-neutral-300">
+            <blockquote className="flex-1 text-sm leading-relaxed text-neutral-900 dark:text-neutral-50">
               &ldquo;{review.quote}&rdquo;
             </blockquote>
             <div className="mt-4">
@@ -32,7 +32,7 @@ export function ReviewsSection() {
                 {review.author}
               </p>
               {review.role ? (
-                <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
+                <p className="mt-0.5 text-xs text-neutral-900 dark:text-neutral-50">
                   {review.role}
                 </p>
               ) : null}

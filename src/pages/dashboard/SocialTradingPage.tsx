@@ -77,7 +77,7 @@ function TraderAvatar({
   return (
     <span
       className={clsx(
-        'flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-neutral-100 font-semibold text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300',
+        'flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-neutral-100 font-semibold text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50',
         size === 'profile' ? 'h-14 w-14 text-lg' : 'h-9 w-9 text-sm',
       )}
     >
@@ -255,7 +255,7 @@ function TraderRating({
   copy: { noRating: string; ratingAria: string }
 }) {
   if (rating == null || count <= 0) {
-    return <p className="text-xs text-neutral-400 dark:text-neutral-500">{copy.noRating}</p>
+    return <p className="text-xs text-neutral-900 dark:text-neutral-50">{copy.noRating}</p>
   }
   const rounded = Math.round(rating * 2) / 2
   const score = rating.toFixed(1)
@@ -267,7 +267,7 @@ function TraderRating({
           if (fill === 'half') {
             return (
               <span key={star} className="relative inline-flex h-3.5 w-3.5">
-                <Star className="h-3.5 w-3.5 text-neutral-300 dark:text-neutral-600" />
+                <Star className="h-3.5 w-3.5 text-neutral-900 dark:text-neutral-50" />
                 <Star className="absolute inset-0 h-3.5 w-3.5 fill-green-400 text-green-400" style={{ clipPath: 'inset(0 50% 0 0)' }} />
               </span>
             )
@@ -277,14 +277,14 @@ function TraderRating({
               key={star}
               className={clsx(
                 'h-3.5 w-3.5',
-                fill === 'full' ? 'fill-green-400 text-green-400' : 'text-neutral-300 dark:text-neutral-600',
+                fill === 'full' ? 'fill-green-400 text-green-400' : 'text-neutral-900 dark:text-neutral-50',
               )}
             />
           )
         })}
       </span>
-      <span className="text-xs font-medium text-neutral-700 dark:text-neutral-200">{score}</span>
-      <span className="text-xs text-neutral-400 dark:text-neutral-500">({count})</span>
+      <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50">{score}</span>
+      <span className="text-xs text-neutral-900 dark:text-neutral-50">({count})</span>
     </p>
   )
 }
@@ -405,7 +405,7 @@ export function SocialTradingPage() {
           value={visibility}
           aria-label={copy.visibility}
           onChange={event => setVisibility(event.target.value === 'open' || event.target.value === 'private' ? event.target.value : 'all')}
-          className="rounded-full border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-200"
+          className="rounded-full border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-50"
         >
           <option value="all">{copy.visibility}: {copy.visibilityAll}</option>
           <option value="open">{copy.visibility}: {copy.open}</option>
@@ -414,7 +414,7 @@ export function SocialTradingPage() {
         <select
           value={sort}
           onChange={event => setSort(event.target.value as SortKey)}
-          className="rounded-full border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-200"
+          className="rounded-full border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-50"
         >
           <option value="roi">{copy.sortRoi}</option>
           <option value="winRate">{copy.sortWinRate}</option>
@@ -424,12 +424,12 @@ export function SocialTradingPage() {
       </div>
       <Card padding="none" className="overflow-hidden">
         {traders.length === 0 ? (
-          <p className="px-4 py-8 text-sm text-neutral-500 dark:text-neutral-400">{copy.empty}</p>
+          <p className="px-4 py-8 text-sm text-neutral-900 dark:text-neutral-50">{copy.empty}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[980px] text-sm">
               <thead>
-                <tr className="border-b border-neutral-100 text-left text-xs font-medium text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
+                <tr className="border-b border-neutral-100 text-left text-xs font-medium text-neutral-900 dark:border-neutral-800 dark:text-neutral-50">
                   <th className="px-4 py-3">{copy.colName}</th>
                   <th className="px-3 py-3">{copy.colStatus}</th>
                   <th className="px-3 py-3">{copy.roi}</th>
@@ -466,7 +466,7 @@ export function SocialTradingPage() {
                           <div className="min-w-0">
                             <p className="truncate font-medium text-neutral-900 dark:text-neutral-50">{name}</p>
                             <TraderRating rating={trader.rating} count={trader.ratingCount} copy={copy} />
-                            <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">
+                            <p className="truncate text-xs text-neutral-900 dark:text-neutral-50">
                               #{rank} · {traderAccess === 'open' ? copy.open : copy.private}
                             </p>
                           </div>
@@ -478,11 +478,11 @@ export function SocialTradingPage() {
                           {copy.statusActive}
                         </span>
                       </td>
-                      <td className="px-3 py-3 font-medium text-neutral-800 dark:text-neutral-100">{percent(trader.roi)}</td>
-                      <td className="px-3 py-3 text-neutral-700 dark:text-neutral-200">{percent(trader.winRate)}</td>
-                      <td className="px-3 py-3 text-neutral-700 dark:text-neutral-200">{trader.followerCount}</td>
-                      <td className="px-3 py-3 text-neutral-700 dark:text-neutral-200">{formatMoney(trader.previewBalance)}</td>
-                      <td className="px-3 py-3 font-medium text-neutral-800 dark:text-neutral-100">
+                      <td className="px-3 py-3 font-medium text-neutral-900 dark:text-neutral-100">{percent(trader.roi)}</td>
+                      <td className="px-3 py-3 text-neutral-900 dark:text-neutral-50">{percent(trader.winRate)}</td>
+                      <td className="px-3 py-3 text-neutral-900 dark:text-neutral-50">{trader.followerCount}</td>
+                      <td className="px-3 py-3 text-neutral-900 dark:text-neutral-50">{formatMoney(trader.previewBalance)}</td>
+                      <td className="px-3 py-3 font-medium text-neutral-900 dark:text-neutral-100">
                         {priceLabel(trader.isYou ? copyPriceCents : trader.monthlyCopyPriceCents)}
                       </td>
                       <td className="px-4 py-3">
@@ -501,7 +501,7 @@ export function SocialTradingPage() {
                               onStopCopying={() => runCopyAction(trader.id)}
                             />
                           )}
-                          <ChevronRight className="h-4 w-4 text-neutral-400" aria-hidden="true" />
+                          <ChevronRight className="h-4 w-4 text-neutral-900 dark:text-neutral-50" aria-hidden="true" />
                         </div>
                       </td>
                     </tr>
@@ -536,7 +536,7 @@ function DirectoryTab({ to, active, children }: { to: string; active: boolean; c
         '-mb-px shrink-0 border-b-2 pb-3 text-sm font-medium',
         active
           ? 'border-neutral-900 text-neutral-900 dark:border-neutral-50 dark:text-neutral-50'
-          : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200',
+          : 'border-transparent text-neutral-900 hover:text-neutral-900 dark:text-neutral-50 dark:hover:text-neutral-50',
       )}
     >
       {children}
@@ -566,7 +566,7 @@ function SummaryStat({
           : 'border-neutral-200 hover:border-neutral-300 dark:border-neutral-800 dark:hover:border-neutral-700',
       )}
     >
-      <span className="block text-sm text-neutral-500 dark:text-neutral-400">{label}</span>
+      <span className="block text-sm text-neutral-900 dark:text-neutral-50">{label}</span>
       <span className="mt-2 block text-2xl font-semibold text-neutral-900 dark:text-neutral-50">{value}</span>
     </button>
   )
@@ -588,7 +588,7 @@ function AccessTag({
         'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
         isOpen
           ? 'bg-teal-50 text-green-500 dark:bg-teal-950/50 dark:text-teal-300'
-          : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300',
+          : 'bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50',
       )}
     >
       {isOpen ? openLabel : privateLabel}
@@ -609,7 +609,7 @@ function AccessChoice({
 }) {
   return (
     <label
-      className="relative z-10 flex shrink-0 flex-col gap-1 text-xs text-neutral-600 dark:text-neutral-300"
+      className="relative z-10 flex shrink-0 flex-col gap-1 text-xs text-neutral-900 dark:text-neutral-50"
       onClick={event => event.stopPropagation()}
       onKeyDown={event => event.stopPropagation()}
     >
@@ -618,7 +618,7 @@ function AccessChoice({
         value={access}
         aria-label={copy.whoCanCopy}
         onChange={event => onChange(event.target.value === 'private' ? 'private' : 'open')}
-        className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-700 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-200"
+        className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-50"
       >
         <option value="open">{copy.anyoneCanCopy}</option>
         <option value="private">{copy.requestsRequired}</option>
@@ -651,7 +651,7 @@ function MonthlyPriceChoice({
       onClick={event => event.stopPropagation()}
       onKeyDown={event => event.stopPropagation()}
     >
-      <label className="flex flex-col gap-1 text-xs text-neutral-600 dark:text-neutral-300">
+      <label className="flex flex-col gap-1 text-xs text-neutral-900 dark:text-neutral-50">
         {labelled ? <span>{copy.monthlyPrice}</span> : <span className="sr-only">{copy.monthlyPrice}</span>}
         <select
           value={paid ? 'paid' : 'free'}
@@ -663,14 +663,14 @@ function MonthlyPriceChoice({
             }
             onChange(dollarsToCopyPriceCents(Number(draft) || 50))
           }}
-          className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-700 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-200"
+          className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-50"
         >
           <option value="free">{copy.priceFree}</option>
           <option value="paid">{copy.pricePaid}</option>
         </select>
       </label>
       {paid ? (
-        <label className="flex items-center gap-1 text-xs text-neutral-600 dark:text-neutral-300">
+        <label className="flex items-center gap-1 text-xs text-neutral-900 dark:text-neutral-50">
           <span aria-hidden="true">$</span>
           <input
             type="number"
@@ -684,7 +684,7 @@ function MonthlyPriceChoice({
               const next = dollarsToCopyPriceCents(Number(event.target.value))
               if (next > 0) onChange(next)
             }}
-            className="w-20 rounded-lg border border-neutral-200 bg-white px-2 py-2 text-xs text-neutral-700 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-200"
+            className="w-20 rounded-lg border border-neutral-200 bg-white px-2 py-2 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-50"
           />
         </label>
       ) : null}
@@ -744,7 +744,7 @@ export function SocialTraderActivityPage() {
       <PageShell maxWidth="xl">
         <PageHeader title={copy.title} />
         <Card>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400">{copy.notFound}</p>
+          <p className="text-sm text-neutral-900 dark:text-neutral-50">{copy.notFound}</p>
           <Link to="/social-trading" className="mt-3 inline-block text-sm font-medium text-green-500 dark:text-teal-300">
             {copy.back}
           </Link>
@@ -805,7 +805,7 @@ export function SocialTraderActivityPage() {
                     privateLabel={copy.private}
                   />
                 </div>
-                <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+                <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-50">
                   #{trader.profile.rank} {copy.rank} · {copy.joined} {joined} · {trader.profile.country}
                 </p>
                 <div className="mt-1">
@@ -841,14 +841,14 @@ export function SocialTraderActivityPage() {
             {copy.copyRequests}
           </h2>
           {pendingRequests.length === 0 ? (
-            <p className="px-4 py-3 text-sm text-neutral-500 dark:text-neutral-400">{copy.copyRequestsEmpty}</p>
+            <p className="px-4 py-3 text-sm text-neutral-900 dark:text-neutral-50">{copy.copyRequestsEmpty}</p>
           ) : (
             <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
               {pendingRequests.map(person => (
                 <li key={person.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-50">{person.displayName}</p>
-                    <p className="truncate text-sm text-neutral-500 dark:text-neutral-400">@{person.username}</p>
+                    <p className="truncate text-sm text-neutral-900 dark:text-neutral-50">@{person.username}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <Button type="button" size="sm" onClick={() => resolveIncoming(person.id, 'accepted')}>
@@ -916,9 +916,9 @@ export function SocialTraderActivityPage() {
                       <span className="font-medium text-neutral-900 dark:text-neutral-50">
                         {activity.kind === 'open' ? copy.opened : copy.closed}
                       </span>
-                      <span className="text-neutral-800 dark:text-neutral-100">{activity.symbol}</span>
+                      <span className="text-neutral-900 dark:text-neutral-100">{activity.symbol}</span>
                       <SideLabel side={activity.side} buy={copy.buy} sell={copy.sell} />
-                      <span className="text-neutral-500 dark:text-neutral-400">{formatWhen(activity.at)}</span>
+                      <span className="text-neutral-900 dark:text-neutral-50">{formatWhen(activity.at)}</span>
                       {activity.profit != null ? (
                         <span className={clsx('ms-auto font-medium', activity.profit >= 0 ? 'text-green-500 dark:text-teal-300' : 'text-red-600 dark:text-red-400')}>
                           {formatSignedMoney(activity.profit)}
@@ -971,7 +971,7 @@ export function SocialTraderActivityPage() {
 function HeaderStat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-xs text-neutral-500 dark:text-neutral-400">{label}</dt>
+      <dt className="text-xs text-neutral-900 dark:text-neutral-50">{label}</dt>
       <dd className="mt-1 text-sm font-semibold text-neutral-900 dark:text-neutral-50">{value}</dd>
     </div>
   )
@@ -996,7 +996,7 @@ function ProfileTab({
         'inline-flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium',
         active
           ? 'bg-green-400 text-neutral-950'
-          : 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800',
+          : 'text-neutral-900 hover:bg-neutral-100 dark:text-neutral-50 dark:hover:bg-neutral-800',
       )}
     >
       {icon}
@@ -1081,10 +1081,10 @@ function PnlCalendar({
       <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{copy.pnlCalendar}</h2>
       <div className="mt-4 grid grid-cols-7 gap-2">
         {weekdays.map(label => (
-          <div key={label} className="pb-1 text-center text-[11px] font-medium text-neutral-500 dark:text-neutral-400">{label}</div>
+          <div key={label} className="pb-1 text-center text-[11px] font-medium text-neutral-900 dark:text-neutral-50">{label}</div>
         ))}
         {Array.from({ length: leading }, (_, index) => (
-          <div key={`lead-${index}`} className="min-h-[72px] rounded-lg border border-neutral-100 px-2 py-2 text-xs text-neutral-400 dark:border-neutral-800">
+          <div key={`lead-${index}`} className="min-h-[72px] rounded-lg border border-neutral-100 px-2 py-2 text-xs text-neutral-900 dark:text-neutral-50 dark:border-neutral-800">
             <span>{32 - leading + index}</span>
             <p className="mt-2 text-[11px]">{copy.noTrades}</p>
           </div>
@@ -1100,7 +1100,7 @@ function PnlCalendar({
               className={clsx(
                 'min-h-[72px] rounded-lg border px-2 py-2 text-start text-xs transition-colors',
                 quiet
-                  ? 'border-neutral-100 text-neutral-400 hover:border-neutral-300 dark:border-neutral-800 dark:hover:border-neutral-600'
+                  ? 'border-neutral-100 text-neutral-900 dark:text-neutral-50 hover:border-neutral-300 dark:border-neutral-800 dark:hover:border-neutral-600'
                   : up
                     ? 'border-teal-100 bg-teal-50 text-teal-800 hover:border-teal-300 dark:border-teal-900 dark:bg-teal-950/40 dark:text-teal-200'
                     : 'border-red-100 bg-red-50 text-red-700 hover:border-red-300 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200',
@@ -1248,7 +1248,7 @@ function DayTradesModal({
         <div className="flex items-start justify-between gap-3">
           <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
             {heading}
-            <span className="ms-3 text-sm font-medium text-neutral-500 dark:text-neutral-400">{copy.netPnl}</span>
+            <span className="ms-3 text-sm font-medium text-neutral-900 dark:text-neutral-50">{copy.netPnl}</span>
             <span className={clsx('ms-2 text-sm font-semibold', (day.profit ?? 0) >= 0 ? 'text-green-500 dark:text-teal-300' : 'text-red-600 dark:text-red-400')}>
               {formatSignedMoney(day.profit ?? 0)}
             </span>
@@ -1256,14 +1256,14 @@ function DayTradesModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800"
+            className="rounded-lg p-1.5 text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:text-neutral-50 dark:hover:bg-neutral-800"
             aria-label={copy.copySetup.close}
           >
             <X className="h-4 w-4" />
           </button>
         </div>
         {fills.length === 0 ? (
-          <p className="py-10 text-center text-sm text-neutral-500 dark:text-neutral-400">{copy.noTrades}</p>
+          <p className="py-10 text-center text-sm text-neutral-900 dark:text-neutral-50">{copy.noTrades}</p>
         ) : (
           <>
             <div className="mt-5 grid gap-4 sm:grid-cols-[9rem_minmax(0,1fr)] sm:items-center">
@@ -1280,7 +1280,7 @@ function DayTradesModal({
             <div className="mt-5 overflow-x-auto">
               <table className="w-full min-w-[720px] text-sm">
                 <thead>
-                  <tr className="text-left text-xs font-medium text-neutral-500 dark:text-neutral-400">
+                  <tr className="text-left text-xs font-medium text-neutral-900 dark:text-neutral-50">
                     <th className="px-2 py-2">{copy.asset} ({fills.length})</th>
                     <th className="px-2 py-2">{copy.unit}</th>
                     <th className="px-2 py-2">{copy.openRate}</th>
@@ -1299,11 +1299,11 @@ function DayTradesModal({
                           <SideLabel side={fill.side} buy={copy.buy} sell={copy.sell} />
                         </span>
                       </td>
-                      <td className="px-2 py-3 text-neutral-700 dark:text-neutral-200">{fill.unit}</td>
-                      <td className="px-2 py-3 text-neutral-700 dark:text-neutral-200">{fill.openRate}</td>
-                      <td className="px-2 py-3 text-neutral-700 dark:text-neutral-200">{fill.closeRate}</td>
-                      <td className="px-2 py-3 text-neutral-600 dark:text-neutral-300">{stamp(fill.openedAt)}</td>
-                      <td className="px-2 py-3 text-neutral-600 dark:text-neutral-300">{stamp(fill.closedAt)}</td>
+                      <td className="px-2 py-3 text-neutral-900 dark:text-neutral-50">{fill.unit}</td>
+                      <td className="px-2 py-3 text-neutral-900 dark:text-neutral-50">{fill.openRate}</td>
+                      <td className="px-2 py-3 text-neutral-900 dark:text-neutral-50">{fill.closeRate}</td>
+                      <td className="px-2 py-3 text-neutral-900 dark:text-neutral-50">{stamp(fill.openedAt)}</td>
+                      <td className="px-2 py-3 text-neutral-900 dark:text-neutral-50">{stamp(fill.closedAt)}</td>
                       <td className={clsx('px-2 py-3 text-end font-medium', fill.profit >= 0 ? 'text-green-500 dark:text-teal-300' : 'text-red-600 dark:text-red-400')}>
                         {formatSignedMoney(fill.profit)}
                       </td>
@@ -1363,13 +1363,13 @@ function OverviewPanel({
           <p className={clsx('text-lg font-semibold', stats.dailyProfitPercent >= 0 ? 'text-green-500 dark:text-teal-300' : 'text-red-600')}>
             {stats.dailyProfitPercent.toFixed(2)}%
           </p>
-          <p className="text-xs text-neutral-500 dark:text-neutral-400">{copy.dailyProfit}</p>
+          <p className="text-xs text-neutral-900 dark:text-neutral-50">{copy.dailyProfit}</p>
         </div>
         <div>
           <p className={clsx('text-lg font-semibold', stats.monthlyProfitPercent >= 0 ? 'text-green-500 dark:text-teal-300' : 'text-red-600')}>
             {stats.monthlyProfitPercent.toFixed(2)}%
           </p>
-          <p className="text-xs text-neutral-500 dark:text-neutral-400">{copy.monthlyProfit}</p>
+          <p className="text-xs text-neutral-900 dark:text-neutral-50">{copy.monthlyProfit}</p>
         </div>
       </div>
       <dl className="mt-4 space-y-3 text-sm">
@@ -1377,7 +1377,7 @@ function OverviewPanel({
         <OverviewRow label={copy.drawdown} value={`${trader.maxDrawdown.toFixed(2)}%`} tone="down" />
         <div>
           <div className="flex items-center justify-between">
-            <dt className="text-neutral-500 dark:text-neutral-400">{copy.winRate}</dt>
+            <dt className="text-neutral-900 dark:text-neutral-50">{copy.winRate}</dt>
             <dd className="font-semibold text-green-500 dark:text-teal-300">{trader.winRate.toFixed(2)}%</dd>
           </div>
           <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800">
@@ -1405,7 +1405,7 @@ function OverviewPanel({
 function OverviewRow({ label, value, tone }: { label: string; value: string; tone?: 'up' | 'down' }) {
   return (
     <div className="flex items-start justify-between gap-3 border-b border-neutral-100 pb-2 dark:border-neutral-800">
-      <dt className="text-neutral-500 dark:text-neutral-400">{label}</dt>
+      <dt className="text-neutral-900 dark:text-neutral-50">{label}</dt>
       <dd className={clsx('text-end font-medium text-neutral-900 dark:text-neutral-50', tone === 'up' && 'text-green-500 dark:text-teal-300', tone === 'down' && 'text-red-600 dark:text-red-400')}>{value}</dd>
     </div>
   )
@@ -1414,7 +1414,7 @@ function OverviewRow({ label, value, tone }: { label: string; value: string; ton
 function Metric({ label, value, tone }: { label: string; value: string; tone?: 'up' | 'down' }) {
   return (
     <div>
-      <dt className="text-xs text-neutral-500 dark:text-neutral-400">{label}</dt>
+      <dt className="text-xs text-neutral-900 dark:text-neutral-50">{label}</dt>
       <dd className={clsx('mt-1 text-sm font-semibold text-neutral-900 dark:text-neutral-50', tone === 'up' && 'text-green-500 dark:text-teal-300', tone === 'down' && 'text-red-600 dark:text-red-400')}>{value}</dd>
     </div>
   )
@@ -1446,7 +1446,7 @@ function TradeTable({
       <div className="overflow-x-auto">
         <table className="w-full min-w-[520px] text-sm">
           <thead>
-            <tr className="text-left text-xs font-medium text-neutral-500 dark:text-neutral-400">
+            <tr className="text-left text-xs font-medium text-neutral-900 dark:text-neutral-50">
               <th className="px-4 py-2">{copy.symbol}</th>
               <th className="px-3 py-2">{copy.buy}/{copy.sell}</th>
               <th className="px-3 py-2">{whenLabel}</th>
@@ -1460,8 +1460,8 @@ function TradeTable({
                 <td className="px-3 py-3">
                   <SideLabel side={row.side} buy={copy.buy} sell={copy.sell} />
                 </td>
-                <td className="px-3 py-3 text-neutral-600 dark:text-neutral-300">{row.when}</td>
-                <td className={clsx('px-4 py-3 text-end font-medium', row.result == null ? 'text-neutral-400' : row.result >= 0 ? 'text-green-500 dark:text-teal-300' : 'text-red-600 dark:text-red-400')}>
+                <td className="px-3 py-3 text-neutral-900 dark:text-neutral-50">{row.when}</td>
+                <td className={clsx('px-4 py-3 text-end font-medium', row.result == null ? 'text-neutral-900 dark:text-neutral-50' : row.result >= 0 ? 'text-green-500 dark:text-teal-300' : 'text-red-600 dark:text-red-400')}>
                   {row.result == null ? '—' : formatSignedMoney(row.result)}
                 </td>
               </tr>

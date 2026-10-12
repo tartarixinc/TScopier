@@ -56,11 +56,11 @@ function invoiceStatusClass(status: string): string {
     case 'paid':
       return 'bg-teal-50 text-green-500 dark:bg-teal-950/40 dark:text-teal-300'
     case 'draft':
-      return 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400'
+      return 'bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50'
     case 'open':
       return 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
     default:
-      return 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400'
+      return 'bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50'
   }
 }
 
@@ -77,7 +77,7 @@ function SummaryCard({
 }) {
   return (
     <Card padding="md" className="flex flex-col justify-between min-h-[120px]">
-      <p className="text-xs font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+      <p className="text-xs font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
         {label}
       </p>
       <div className="mt-3">
@@ -85,7 +85,7 @@ function SummaryCard({
         {status ? (
           <p className="mt-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">{status}</p>
         ) : hint ? (
-          <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">{hint}</p>
+          <p className="mt-1 text-xs text-neutral-900 dark:text-neutral-50">{hint}</p>
         ) : null}
       </div>
     </Card>
@@ -341,7 +341,7 @@ export function BillingPage() {
           <div className="flex flex-col items-stretch gap-3 sm:items-end">
             <div className="flex flex-wrap items-center justify-end gap-x-5 gap-y-1 text-sm">
               <div>
-                <span className="text-neutral-500 dark:text-neutral-400">{bt.customerId}: </span>
+                <span className="text-neutral-900 dark:text-neutral-50">{bt.customerId}: </span>
                 <span className="font-semibold text-neutral-900 dark:text-neutral-100">{customerRef}</span>
               </div>
             </div>
@@ -410,7 +410,7 @@ export function BillingPage() {
               ) : null}
             </div>
             {canCancelSubscription ? (
-              <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              <p className="text-xs text-neutral-900 dark:text-neutral-50">
                 {bt.cancelSubscriptionHint}
               </p>
             ) : null}
@@ -431,9 +431,9 @@ export function BillingPage() {
                   <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
                     {bt.invoices}
                   </h2>
-                  <Info className="h-3.5 w-3.5 text-neutral-400" aria-hidden />
+                  <Info className="h-3.5 w-3.5 text-neutral-900 dark:text-neutral-50" aria-hidden />
                 </div>
-                <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">{bt.invoicesHint}</p>
+                <p className="mt-0.5 text-xs text-neutral-900 dark:text-neutral-50">{bt.invoicesHint}</p>
               </div>
             </div>
           </div>
@@ -441,18 +441,18 @@ export function BillingPage() {
           {invoicesError ? (
             <div className="px-6 py-8 text-sm text-amber-700 dark:text-amber-300">{invoicesError}</div>
           ) : invoicesLoading && currentInvoices.length === 0 ? (
-            <div className="px-6 py-12 text-center text-sm text-neutral-500 dark:text-neutral-400">
+            <div className="px-6 py-12 text-center text-sm text-neutral-900 dark:text-neutral-50">
               {t.common.loading}
             </div>
           ) : currentInvoices.length === 0 ? (
-            <div className="px-6 py-12 text-center text-sm text-neutral-500 dark:text-neutral-400">
+            <div className="px-6 py-12 text-center text-sm text-neutral-900 dark:text-neutral-50">
               {bt.noInvoices}
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead>
-                  <tr className="border-b border-neutral-200/65 bg-neutral-50/80 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:border-neutral-800/55 dark:bg-neutral-900/60 dark:text-neutral-400">
+                  <tr className="border-b border-neutral-200/65 bg-neutral-50/80 text-left text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:border-neutral-800/55 dark:bg-neutral-900/60 dark:text-neutral-50">
                     <th className="px-6 py-3">{bt.invoiceNumber}</th>
                     <th className="px-6 py-3">{bt.period}</th>
                     <th className="px-6 py-3">{bt.date}</th>
@@ -467,10 +467,10 @@ export function BillingPage() {
                       <td className="px-6 py-4 font-medium text-neutral-900 dark:text-neutral-100">
                         {inv.number ?? inv.id.slice(-8).toUpperCase()}
                       </td>
-                      <td className="px-6 py-4 text-neutral-600 dark:text-neutral-300">
+                      <td className="px-6 py-4 text-neutral-900 dark:text-neutral-50">
                         {formatInvoicePeriod(inv.periodStart, inv.periodEnd, localeTag)}
                       </td>
-                      <td className="px-6 py-4 text-neutral-600 dark:text-neutral-300">
+                      <td className="px-6 py-4 text-neutral-900 dark:text-neutral-50">
                         {formatShortDate(inv.created, localeTag)}
                       </td>
                       <td className="px-6 py-4 font-medium text-neutral-900 dark:text-neutral-100">
@@ -497,7 +497,7 @@ export function BillingPage() {
                             {bt.downloadInvoice}
                           </a>
                         ) : (
-                          <span className="text-neutral-400">—</span>
+                          <span className="text-neutral-900 dark:text-neutral-50">—</span>
                         )}
                       </td>
                     </tr>
@@ -542,7 +542,7 @@ export function BillingPage() {
                 <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
                   {bt.extraAccounts}
                 </h3>
-                <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
+                <p className="mt-0.5 text-xs text-neutral-900 dark:text-neutral-50">
                   {interpolate(bt.extraAccountsSummary, {
                     included: String(PRICING_ADVANCED_INCLUDED_ACCOUNTS),
                     extra: String(editingExtra),
@@ -556,7 +556,7 @@ export function BillingPage() {
                   type="button"
                   onClick={() => setExtraCount(Math.max(0, editingExtra - 1))}
                   disabled={editingExtra === 0 || savingExtras}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 text-neutral-600 transition-colors hover:bg-neutral-50 disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 text-neutral-900 transition-colors hover:bg-neutral-50 disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-50 dark:hover:bg-neutral-800"
                 >
                   <Minus className="h-4 w-4" />
                 </button>
@@ -573,7 +573,7 @@ export function BillingPage() {
                   type="button"
                   onClick={() => setExtraCount(Math.min(95, editingExtra + 1))}
                   disabled={editingExtra >= 95 || savingExtras}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 text-neutral-600 transition-colors hover:bg-neutral-50 disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 text-neutral-900 transition-colors hover:bg-neutral-50 disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-50 dark:hover:bg-neutral-800"
                 >
                   <Plus className="h-4 w-4" />
                 </button>
@@ -595,8 +595,8 @@ export function BillingPage() {
         {!hasActiveSubscription && !subscriptionLoading ? (
           <Card padding="lg">
             <div className="flex flex-col items-center py-6 text-center">
-              <CreditCard className="h-10 w-10 text-neutral-300 dark:text-neutral-600" />
-              <p className="mt-4 text-sm text-neutral-500 dark:text-neutral-400">{bt.noPlan}</p>
+              <CreditCard className="h-10 w-10 text-neutral-900 dark:text-neutral-50" />
+              <p className="mt-4 text-sm text-neutral-900 dark:text-neutral-50">{bt.noPlan}</p>
               <Button className="mt-4" onClick={() => navigate('/pricing')}>
                 {bt.choosePlan}
               </Button>
@@ -609,7 +609,7 @@ export function BillingPage() {
                 <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">
                   {bt.subscriptionPlans}
                 </h2>
-                <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+                <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-50">
                   {bt.subscriptionPlansIntro}
                 </p>
               </div>

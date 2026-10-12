@@ -56,12 +56,12 @@ export function PerformanceDistributionChart({
     <div className="min-w-0 rounded-2xl border border-neutral-200/65 bg-white p-4 sm:p-5 dark:border-neutral-800/55 dark:bg-neutral-950">
       <div className="mb-4">
         <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{title}</h2>
-        <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">{subtitle}</p>
+        <p className="mt-0.5 text-xs text-neutral-900 dark:text-neutral-50">{subtitle}</p>
       </div>
       {loading ? (
         <div className="h-72 animate-pulse rounded-xl bg-neutral-50 dark:bg-neutral-800/50" />
       ) : empty ? (
-        <div className="flex h-72 items-center justify-center text-sm text-neutral-400 dark:text-neutral-500">
+        <div className="flex h-72 items-center justify-center text-sm text-neutral-900 dark:text-neutral-50">
           {emptyLabel}
         </div>
       ) : (

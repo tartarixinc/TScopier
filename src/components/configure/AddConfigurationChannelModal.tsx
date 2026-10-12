@@ -173,7 +173,7 @@ export function AddConfigurationChannelModal({
             )}
             <button
               type="button"
-              className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+              className="rounded-lg p-2 text-neutral-900 hover:bg-neutral-100 dark:text-neutral-50 dark:hover:bg-neutral-800"
               aria-label={t.accountConfig.configureModal.close}
               onClick={onClose}
             >
@@ -184,7 +184,7 @@ export function AddConfigurationChannelModal({
         <div className="overflow-y-auto px-5 py-4">
           {step === 'choose' ? (
             <div className="space-y-3">
-              <p className="text-sm text-neutral-500 dark:text-neutral-400">{copy.sourceKindPrompt}</p>
+              <p className="text-sm text-neutral-900 dark:text-neutral-50">{copy.sourceKindPrompt}</p>
               <button
                 type="button"
                 className="flex w-full items-center gap-3 rounded-xl border border-neutral-200 px-4 py-3 text-start hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900"
@@ -229,7 +229,7 @@ export function AddConfigurationChannelModal({
           ) : null}
           {step === 'broker' ? (
             brokers.length === 0 ? (
-              <p className="text-sm text-neutral-500 dark:text-neutral-400">{brokerEmptyLabel}</p>
+              <p className="text-sm text-neutral-900 dark:text-neutral-50">{brokerEmptyLabel}</p>
             ) : (
               <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
                 {brokers.map(broker => (
@@ -248,7 +248,7 @@ export function AddConfigurationChannelModal({
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-medium text-neutral-900 dark:text-neutral-50">{broker.label}</span>
                         {broker.login ? (
-                          <span className="block truncate text-xs text-neutral-500 dark:text-neutral-400">{copy.login} {broker.login}</span>
+                          <span className="block truncate text-xs text-neutral-900 dark:text-neutral-50">{copy.login} {broker.login}</span>
                         ) : null}
                       </span>
                     </button>
@@ -290,7 +290,7 @@ export function AddConfigurationChannelModal({
             </form>
           ) : null}
           {step === 'whatsapp' && whatsappChannels.length === 0 ? (
-            <p className="text-sm text-neutral-500 dark:text-neutral-400">{formCopy.whatsappEmptyGroups}</p>
+            <p className="text-sm text-neutral-900 dark:text-neutral-50">{formCopy.whatsappEmptyGroups}</p>
           ) : null}
           {step === 'whatsapp' && whatsappChannels.length > 0 ? (
             <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
@@ -312,7 +312,7 @@ export function AddConfigurationChannelModal({
             </ul>
           ) : null}
           {step === 'discord' && discordChannels.length === 0 ? (
-            <p className="text-sm text-neutral-500 dark:text-neutral-400">{formCopy.discordEmptyChannels}</p>
+            <p className="text-sm text-neutral-900 dark:text-neutral-50">{formCopy.discordEmptyChannels}</p>
           ) : null}
           {step === 'discord' && discordChannels.length > 0 ? (
             <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
@@ -334,7 +334,7 @@ export function AddConfigurationChannelModal({
             </ul>
           ) : null}
           {step === 'tradingview' && tradingViewChannels.length === 0 ? (
-            <p className="text-sm text-neutral-500 dark:text-neutral-400">{formCopy.tradingViewEmpty}</p>
+            <p className="text-sm text-neutral-900 dark:text-neutral-50">{formCopy.tradingViewEmpty}</p>
           ) : null}
           {step === 'tradingview' && tradingViewChannels.length > 0 ? (
             <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
@@ -356,7 +356,7 @@ export function AddConfigurationChannelModal({
             </ul>
           ) : null}
           {step === 'telegram' && telegramChannels.length === 0 ? (
-            <p className="text-sm text-neutral-500 dark:text-neutral-400">{emptyLabel}</p>
+            <p className="text-sm text-neutral-900 dark:text-neutral-50">{emptyLabel}</p>
           ) : null}
           {step === 'telegram' && telegramChannels.length > 0 ? (
             <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
@@ -374,7 +374,7 @@ export function AddConfigurationChannelModal({
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-medium text-neutral-900 dark:text-neutral-50">{name}</span>
                         {username ? (
-                          <span className="block truncate text-xs text-neutral-500 dark:text-neutral-400">@{username}</span>
+                          <span className="block truncate text-xs text-neutral-900 dark:text-neutral-50">@{username}</span>
                         ) : null}
                       </span>
                     </button>

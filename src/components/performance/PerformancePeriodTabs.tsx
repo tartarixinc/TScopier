@@ -21,7 +21,7 @@ export function PerformancePeriodTabs({ value, labels, onChange }: PerformancePe
             'rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
             value === p
               ? 'bg-green-400 text-neutral-950 dark:bg-green-400'
-              : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700',
+              : 'bg-neutral-100 text-neutral-900 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-50 dark:hover:bg-neutral-700',
           )}
         >
           {labels[p]}

@@ -32,12 +32,12 @@ export function TradeVolumeChart({ data, loading, stale }: TradeVolumeChartProps
     <div className="min-w-0 rounded-2xl border border-neutral-200/65 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-neutral-800/55 dark:bg-neutral-950 dark:shadow-none">
       <div className="mb-5">
         <h2 className="text-[15px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">{t.dashboard.tradeOutcomeTitle}</h2>
-        <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">{t.dashboard.tradeOutcomeSubtitle}</p>
+        <p className="mt-1 text-xs text-neutral-900 dark:text-neutral-50">{t.dashboard.tradeOutcomeSubtitle}</p>
       </div>
       {loading ? (
         <div className="h-64 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl animate-pulse" />
       ) : data.every(d => d.profit === 0 && d.loss === 0) ? (
-        <div className="h-64 flex items-center justify-center text-sm text-neutral-400 dark:text-neutral-500">
+        <div className="h-64 flex items-center justify-center text-sm text-neutral-900 dark:text-neutral-50">
           {t.dashboard.tradeOutcomeEmpty}
         </div>
       ) : (

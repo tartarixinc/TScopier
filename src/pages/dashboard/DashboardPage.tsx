@@ -147,7 +147,7 @@ const DASHBOARD_CARD =
   'rounded-2xl border border-neutral-200/65 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-neutral-800/55 dark:bg-neutral-950 dark:shadow-none'
 
 const DASHBOARD_SECTION_LINK =
-  'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-neutral-500 transition-colors hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100'
+  'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-neutral-900 transition-colors hover:text-neutral-900 dark:text-neutral-50 dark:hover:text-neutral-100'
 
 function isNonTradeSkipReason(value: string | null | undefined): boolean {
   const normalized = String(value ?? '')
@@ -2400,7 +2400,7 @@ export function DashboardPage() {
             label={t.dashboard.totalBalance}
             value={formatMoney(stats.totalEquity)}
             sub={interpolate(t.dashboard.acrossAccounts, { count: stats.accounts })}
-            subColor="text-neutral-500 dark:text-neutral-400"
+            subColor="text-neutral-900 dark:text-neutral-50"
           />
           <StatBlock
             label={t.dashboard.todaysProfit}
@@ -2415,7 +2415,7 @@ export function DashboardPage() {
             subColor={
               headlineStats.todayProfit - headlineStats.yesterdayProfit < 0
                 ? lossTextClass
-                : 'text-neutral-500 dark:text-neutral-400'
+                : 'text-neutral-900 dark:text-neutral-50'
             }
           />
           <StatBlock
@@ -2429,14 +2429,14 @@ export function DashboardPage() {
                   <span className="text-green-500 dark:text-green-400">
                     {interpolate(t.common.won, { count: headlineStats.tradesWon })}
                   </span>
-                  <span className="text-neutral-300 dark:text-neutral-600">•</span>
+                  <span className="text-neutral-900 dark:text-neutral-50">•</span>
                   <span className={lossTextClass}>
                     {interpolate(t.common.lost, { count: headlineStats.tradesLost })}
                   </span>
                   {headlineStats.tradesBreakeven > 0 ? (
                     <>
-                      <span className="text-neutral-300 dark:text-neutral-600">•</span>
-                      <span className="text-neutral-500 dark:text-neutral-400">
+                      <span className="text-neutral-900 dark:text-neutral-50">•</span>
+                      <span className="text-neutral-900 dark:text-neutral-50">
                         {interpolate(t.common.breakeven, { count: headlineStats.tradesBreakeven })}
                       </span>
                     </>
@@ -2444,7 +2444,7 @@ export function DashboardPage() {
                 </span>
               )
             }
-            subColor="text-neutral-500 dark:text-neutral-400"
+            subColor="text-neutral-900 dark:text-neutral-50"
           />
           <StatBlock
             label={t.dashboard.openPnl}
@@ -2463,7 +2463,7 @@ export function DashboardPage() {
               )
             }
             valueColor={pnlSignTextClass(stats.openPnl)}
-            subColor="text-neutral-500 dark:text-neutral-400"
+            subColor="text-neutral-900 dark:text-neutral-50"
           />
       </div>
 
@@ -2529,7 +2529,7 @@ export function DashboardPage() {
               ))}
             </div>
           ) : visibleTradeActivities.length === 0 ? (
-            <div className="px-5 py-10 text-sm text-neutral-400">{t.dashboard.noTradeActivities}</div>
+            <div className="px-5 py-10 text-sm text-neutral-900 dark:text-neutral-50">{t.dashboard.noTradeActivities}</div>
           ) : (
             <div className="divide-y divide-neutral-100 dark:divide-neutral-800 max-h-96 overflow-y-auto">
               {visibleTradeActivities.map(activity => (
@@ -2559,7 +2559,7 @@ export function DashboardPage() {
           <div className="overflow-x-auto">
           {/* Table header */}
           <div
-            className={`${DASHBOARD_COPIER_LOG_GRID} min-w-[28rem] border-b border-neutral-100 px-5 py-2.5 text-[11px] font-medium uppercase tracking-[0.06em] text-neutral-400 dark:border-neutral-800/80`}
+            className={`${DASHBOARD_COPIER_LOG_GRID} min-w-[28rem] border-b border-neutral-100 px-5 py-2.5 text-[11px] font-medium uppercase tracking-[0.06em] text-neutral-900 dark:text-neutral-50 dark:border-neutral-800/80`}
           >
             <span>{t.copierLogs.colStatus}</span>
             <span className="min-w-0">{t.copierLogs.colChannel}</span>
@@ -2580,7 +2580,7 @@ export function DashboardPage() {
             </div>
           ) : copierLogs.length === 0 ? (
             <div className="flex flex-col items-center justify-center px-5 py-16 text-center">
-              <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400">{t.dashboard.noData}</p>
+              <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{t.dashboard.noData}</p>
             </div>
           ) : (
             <div className="divide-y divide-neutral-100 dark:divide-neutral-800 max-h-80 overflow-y-auto min-w-[28rem]">
@@ -2604,7 +2604,7 @@ export function DashboardPage() {
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800/80">
           <h2 className="inline-flex items-center gap-2 text-[15px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
             {la.title}
-            <span className="text-xs font-medium tabular-nums text-neutral-400">
+            <span className="text-xs font-medium tabular-nums text-neutral-900 dark:text-neutral-50">
               {linkedAccounts.length}
             </span>
           </h2>
@@ -2619,7 +2619,7 @@ export function DashboardPage() {
         </div>
 
         {brokerReconnectError ? (
-          <div className="px-4 sm:px-5 py-2 text-sm text-neutral-600 dark:text-neutral-400 border-b border-neutral-100 dark:border-neutral-800">
+          <div className="px-4 sm:px-5 py-2 text-sm text-neutral-900 dark:text-neutral-50 border-b border-neutral-100 dark:border-neutral-800">
             {brokerReconnectError}
           </div>
         ) : null}
@@ -2632,7 +2632,7 @@ export function DashboardPage() {
 
         <div className="overflow-x-auto">
         <div className="min-w-[52rem] lg:min-w-0">
-        <div className="hidden lg:grid grid-cols-9 gap-2 border-b border-neutral-100 px-5 py-2.5 text-[11px] font-medium uppercase tracking-[0.06em] text-neutral-400 dark:border-neutral-800/80">
+        <div className="hidden lg:grid grid-cols-9 gap-2 border-b border-neutral-100 px-5 py-2.5 text-[11px] font-medium uppercase tracking-[0.06em] text-neutral-900 dark:text-neutral-50 dark:border-neutral-800/80">
           <LinkedAccountSortHeader
             label={la.colAccount}
             sortKey="account"
@@ -2712,7 +2712,7 @@ export function DashboardPage() {
             ))}
           </div>
         ) : linkedAccounts.length === 0 ? (
-          <div className="px-5 py-8 text-sm text-neutral-400">{la.empty}</div>
+          <div className="px-5 py-8 text-sm text-neutral-900 dark:text-neutral-50">{la.empty}</div>
         ) : (
           <div className="divide-y divide-neutral-100 dark:divide-neutral-800"> 
             {displayedLinkedAccounts.map(account => (
@@ -2767,7 +2767,7 @@ function StatBlock({ label, labelHint, value, sub, subColor, valueColor = 'text-
 }) {
   return (
     <div className="rounded-2xl bg-[#F7F8FA] px-4 py-4 sm:px-5 dark:bg-white/[0.03] dark:ring-1 dark:ring-inset dark:ring-white/[0.06]">
-      <p className="inline-flex items-center gap-1 text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">
+      <p className="inline-flex items-center gap-1 text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-900 dark:text-neutral-50">
         {label}
         {labelHint ? <InfoTooltip text={labelHint} /> : null}
       </p>
@@ -2796,11 +2796,11 @@ function OverviewStat({
   onAdd?: () => void
   addLabel?: string
 }) {
-  const actionClass = 'mt-2 inline-flex items-center gap-1 text-xs font-medium text-neutral-500 transition-colors hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100'
+  const actionClass = 'mt-2 inline-flex items-center gap-1 text-xs font-medium text-neutral-900 transition-colors hover:text-neutral-900 dark:text-neutral-50 dark:hover:text-neutral-100'
 
   return (
     <div className="px-4 py-4 sm:px-5">
-      <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-400">{label}</p>
+      <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-900 dark:text-neutral-50">{label}</p>
       <p className="mt-2 text-xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">{value}</p>
       {onAdd ? (
         <button type="button" onClick={onAdd} className={actionClass}>
@@ -2813,7 +2813,7 @@ function OverviewStat({
           <ChevronRight className="h-3.5 w-3.5" />
         </Link>
       ) : sub ? (
-        <p className="mt-2 text-xs text-neutral-400">{sub}</p>
+        <p className="mt-2 text-xs text-neutral-900 dark:text-neutral-50">{sub}</p>
       ) : (
         <span className="mt-2 block h-5" aria-hidden />
       )}
@@ -2830,11 +2830,11 @@ function LogRow({ signal, channelName, symbol, sourceKind }: { signal: Signal; c
     executed: { color: 'text-green-500 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60', label: t.copierLogs.statusExecuted },
     skipped:  { color: 'text-warning-800 bg-warning-50 dark:!text-amber-100 dark:!bg-amber-900', label: t.copierLogs.statusSkipped },
     failed:   { color: 'text-error-800 bg-error-50 dark:text-error-300 dark:bg-error-950/70', label: t.copierLogs.statusFailed },
-    pending:  { color: 'text-neutral-600 bg-neutral-100 dark:text-neutral-300 dark:bg-neutral-800', label: t.copierLogs.statusPending },
+    pending:  { color: 'text-neutral-900 bg-neutral-100 dark:text-neutral-50 dark:bg-neutral-800', label: t.copierLogs.statusPending },
     parsed:   { color: 'text-green-500 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60', label: t.copierLogs.statusParsed },
   }
 
-  const s = statusConfig[signal.status] ?? { color: 'text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800', label: signal.status }
+  const s = statusConfig[signal.status] ?? { color: 'text-neutral-900 dark:text-neutral-50 bg-neutral-100 dark:bg-neutral-800', label: signal.status }
   const isBuy = action === 'buy'
 
   const typeLabel = action ? action.replace(/_/g, ' ') : '—'
@@ -2845,20 +2845,20 @@ function LogRow({ signal, channelName, symbol, sourceKind }: { signal: Signal; c
       <span className={`inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${s.color}`}>
         {s.label}
       </span>
-      <span className="flex min-w-0 items-center gap-2 text-xs text-neutral-700 dark:text-neutral-200" title={channelTitle}>
+      <span className="flex min-w-0 items-center gap-2 text-xs text-neutral-900 dark:text-neutral-50" title={channelTitle}>
         {sourceKind ? <SignalSourceLogo kind={sourceKind} /> : null}
         <span className="truncate">{channelName}</span>
       </span>
       <span className="min-w-0 text-sm font-medium text-neutral-900 dark:text-neutral-50 truncate" title={symbol}>{symbol}</span>
       <span
         className={`min-w-0 text-xs font-medium uppercase truncate ${
-          isBuy ? 'text-green-400' : action === 'sell' ? 'text-error-600' : 'text-neutral-600 dark:text-neutral-400'
+          isBuy ? 'text-green-400' : action === 'sell' ? 'text-error-600' : 'text-neutral-900 dark:text-neutral-50'
         }`}
         title={typeLabel}
       >
         {typeLabel}
       </span>
-      <span className="text-xs text-neutral-400 text-right whitespace-nowrap">
+      <span className="text-xs text-neutral-900 dark:text-neutral-50 text-right whitespace-nowrap">
         {signal.created_at
           ? new Date(signal.created_at).toLocaleString([], {
               month: 'short',
@@ -2906,9 +2906,9 @@ function LinkedAccountSortHeader({
       type="button"
       onClick={() => onSort(sortKey)}
       title={title}
-      className={`inline-flex min-w-0 items-center gap-0.5 rounded-md transition-colors hover:text-neutral-600 dark:hover:text-neutral-300 ${
+      className={`inline-flex min-w-0 items-center gap-0.5 rounded-md transition-colors hover:text-neutral-900 dark:hover:text-neutral-50 ${
         align === 'right' ? 'ml-auto justify-end' : 'justify-start'
-      } ${isActive ? 'text-neutral-700 dark:text-neutral-200' : 'text-neutral-400'}`}
+      } ${isActive ? 'text-neutral-900 dark:text-neutral-50' : 'text-neutral-900 dark:text-neutral-50'}`}
     >
       <span className="truncate">{label}</span>
       <SortIcon
@@ -2949,10 +2949,10 @@ function LinkedAccountRow({
   const intlLocale = locale === 'en' ? undefined : locale
   const isDisconnected = !isBrokerSessionConnected(account)
   const statusClass = isDisconnected
-    ? 'text-neutral-700 border-neutral-200 bg-neutral-100 dark:text-neutral-300 dark:border-neutral-700 dark:bg-neutral-800/80'
+    ? 'text-neutral-900 border-neutral-200 bg-neutral-100 dark:text-neutral-50 dark:border-neutral-700 dark:bg-neutral-800/80'
     : account.is_active
       ? 'text-green-500 border-teal-200 bg-teal-50 dark:text-teal-300 dark:border-teal-800 dark:bg-teal-950/50'
-      : 'text-neutral-600 border-neutral-200 bg-neutral-100 dark:text-neutral-400 dark:border-neutral-700 dark:bg-neutral-800/80'
+      : 'text-neutral-900 border-neutral-200 bg-neutral-100 dark:text-neutral-50 dark:border-neutral-700 dark:bg-neutral-800/80'
   const cashBalance = accountSummary?.balance ?? account.last_balance ?? null
   // Cash balance stays put while positions tick. Show cash + live floating P/L.
   const balance = equityWithFloatingPnl(
@@ -3026,7 +3026,7 @@ function LinkedAccountRow({
           {accountLabel}
         </span>
         <span
-          className="truncate text-[11px] font-medium tracking-wide text-neutral-400"
+          className="truncate text-[11px] font-medium tracking-wide text-neutral-900 dark:text-neutral-50"
           title={platformLine}
         >
           {platformLine}

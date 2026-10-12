@@ -329,7 +329,7 @@ export function TelegramLinkStep({ onDone }: Props) {
             </svg>
           </div>
           <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">Telegram connected</h2>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">Your session is saved and active.</p>
+          <p className="text-sm text-neutral-900 dark:text-neutral-50 mt-1">Your session is saved and active.</p>
         </div>
       </Card>
     )
@@ -343,13 +343,13 @@ export function TelegramLinkStep({ onDone }: Props) {
             <ShieldCheck className="w-5 h-5 text-green-400" />
             <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">Secure your Telegram account</h2>
           </div>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400">
+          <p className="text-sm text-neutral-900 dark:text-neutral-50">
             Accounts without a Two-Step Verification password are auto-flagged by Telegram much faster.
             Set one in the Telegram app before you continue, then confirm below.
           </p>
         </div>
 
-        <ol className="space-y-2.5 text-sm text-neutral-700 dark:text-neutral-300 mb-5 list-decimal list-inside">
+        <ol className="space-y-2.5 text-sm text-neutral-900 dark:text-neutral-50 mb-5 list-decimal list-inside">
           <li>Open the Telegram app on your phone.</li>
           <li>Go to <span className="font-medium">Settings → Privacy and Security → Two-Step Verification</span>.</li>
           <li>Set a password and a recovery email.</li>
@@ -362,7 +362,7 @@ export function TelegramLinkStep({ onDone }: Props) {
             onChange={e => setTwoFaConfirmed(e.target.checked)}
             className="mt-0.5 w-4 h-4 rounded border-neutral-300 text-green-400 focus:ring-green-400"
           />
-          <span className="text-sm text-neutral-700 dark:text-neutral-300">
+          <span className="text-sm text-neutral-900 dark:text-neutral-50">
             I have set a Two-Step Verification password on this Telegram account.
           </span>
         </label>

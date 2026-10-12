@@ -119,7 +119,7 @@ export function OverviewPage() {
 
       <DataPanel title="Signup abuse" subtitle="Ban accounts matching known spam email patterns.">
         <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-          <p className="text-sm text-neutral-500 dark:text-neutral-400">
+          <p className="text-sm text-neutral-900 dark:text-neutral-50">
             Matches patterns like <code className="text-xs">pornhub#####@hotmail.com</code> and disposable domains.
           </p>
           <button
@@ -132,7 +132,7 @@ export function OverviewPage() {
           </button>
         </div>
         {banResult ? (
-          <p className="border-t border-neutral-100 px-4 py-3 text-sm text-neutral-600 dark:border-neutral-800 dark:text-neutral-300 sm:px-5">
+          <p className="border-t border-neutral-100 px-4 py-3 text-sm text-neutral-900 dark:border-neutral-800 dark:text-neutral-50 sm:px-5">
             {banResult}
           </p>
         ) : null}

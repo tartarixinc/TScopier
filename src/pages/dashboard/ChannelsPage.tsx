@@ -153,7 +153,7 @@ export function ChannelsPage() {
         <Card>
           <div className="py-10 text-center">
             <Badge variant="neutral">{ch.comingSoon}</Badge>
-            <p className="mt-3 text-sm text-neutral-500 dark:text-neutral-400">{ch.comingSoonBody}</p>
+            <p className="mt-3 text-sm text-neutral-900 dark:text-neutral-50">{ch.comingSoonBody}</p>
           </div>
         </Card>
       ) : null}
@@ -202,9 +202,9 @@ export function ChannelsPage() {
       ) : source === 'telegram' && channels.length === 0 ? (
         <Card>
           <div className="text-center py-8">
-            <Radio className="w-10 h-10 mx-auto mb-3 text-neutral-200" />
-            <p className="text-neutral-500 dark:text-neutral-400 text-sm font-medium">{ch.emptyTitle}</p>
-            <p className="text-neutral-400 text-xs mt-1">{ch.emptySubtitle}</p>
+            <Radio className="w-10 h-10 mx-auto mb-3 text-neutral-900 dark:text-neutral-50" />
+            <p className="text-neutral-900 dark:text-neutral-50 text-sm font-medium">{ch.emptyTitle}</p>
+            <p className="text-neutral-900 dark:text-neutral-50 text-xs mt-1">{ch.emptySubtitle}</p>
           </div>
         </Card>
       ) : source === 'telegram' ? (
@@ -243,7 +243,7 @@ function SourceTab({
         '-mb-px inline-flex shrink-0 items-center gap-2 border-b-2 pb-3 text-sm font-medium',
         active
           ? 'border-neutral-900 text-neutral-900 dark:border-neutral-50 dark:text-neutral-50'
-          : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200',
+          : 'border-transparent text-neutral-900 hover:text-neutral-900 dark:text-neutral-50 dark:hover:text-neutral-50',
       )}
     >
       {children}
@@ -283,7 +283,7 @@ function ChannelCard({
             {!channel.is_active && <Badge variant="neutral" size="sm">{ch.statusPaused}</Badge>}
           </div>
           {channel.channel_username && (
-            <p className="text-xs text-neutral-400">@{channel.channel_username}</p>
+            <p className="text-xs text-neutral-900 dark:text-neutral-50">@{channel.channel_username}</p>
           )}
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
@@ -291,14 +291,14 @@ function ChannelCard({
           <button
             type="button"
             onClick={onEditToggle}
-            className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:bg-neutral-800 transition-colors"
+            className="p-1.5 rounded-lg text-neutral-900 hover:text-neutral-900 dark:hover:text-neutral-50 dark:text-neutral-50 hover:bg-neutral-100 dark:bg-neutral-800 transition-colors"
           >
             <Settings className="w-4 h-4" />
           </button>
           <button
             type="button"
             onClick={onDelete}
-            className="p-1.5 rounded-lg text-neutral-400 hover:text-error-600 hover:bg-error-50 transition-colors"
+            className="p-1.5 rounded-lg text-neutral-900 dark:text-neutral-50 hover:text-error-600 hover:bg-error-50 transition-colors"
           >
             <Trash2 className="w-4 h-4" />
           </button>
@@ -307,7 +307,7 @@ function ChannelCard({
 
       {isEditing && (
         <div className="px-4 pb-4 border-t border-neutral-100 dark:border-neutral-800 pt-3">
-          <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-3">{ch.overridesTitle}</p>
+          <p className="text-xs font-medium text-neutral-900 dark:text-neutral-50 mb-3">{ch.overridesTitle}</p>
           <div className="grid grid-cols-2 gap-3">
             <Input
               label={ch.lotSizeOverride}

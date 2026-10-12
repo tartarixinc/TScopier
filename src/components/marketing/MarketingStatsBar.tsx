@@ -51,7 +51,7 @@ function StatItem({
 }) {
   return (
     <div className="text-center">
-      <dt className="text-sm font-medium text-neutral-500 dark:text-neutral-400 sm:text-base">
+      <dt className="text-sm font-medium text-neutral-900 dark:text-neutral-50 sm:text-base">
         {stat.label}
       </dt>
       <dd className="mt-2 text-2xl tracking-tight text-green-500 dark:text-green-400 sm:mt-3 sm:text-4xl lg:text-[2.75rem] lg:leading-none">

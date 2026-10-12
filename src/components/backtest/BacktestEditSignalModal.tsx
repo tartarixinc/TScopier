@@ -129,7 +129,7 @@ export function BacktestEditSignalModal({
           </h2>
           <button
             type="button"
-            className="p-2 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40"
+            className="p-2 rounded-lg text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40"
             aria-label={bt.close}
             onClick={onClose}
             disabled={busy}
@@ -141,7 +141,7 @@ export function BacktestEditSignalModal({
         <div className="p-5 space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <label className="block col-span-2 sm:col-span-1">
-              <span className="text-xs font-medium text-neutral-500">{bt.direction}</span>
+              <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50">{bt.direction}</span>
               <select
                 value={draft.direction}
                 disabled={busy}
@@ -177,7 +177,7 @@ export function BacktestEditSignalModal({
           </div>
           <div>
             <div className="flex items-center justify-between gap-2 mb-2">
-              <span className="text-xs font-medium text-neutral-500">{bt.takeProfits}</span>
+              <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50">{bt.takeProfits}</span>
               <button
                 type="button"
                 disabled={busy}
@@ -216,7 +216,7 @@ export function BacktestEditSignalModal({
                         const next = d.tpLevels.filter((_, i) => i !== idx)
                         return { ...d, tpLevels: next.length ? next : [''] }
                       })}
-                      className="shrink-0 rounded-xl border border-neutral-200 dark:border-neutral-700 px-3 text-neutral-400 hover:text-error-600"
+                      className="shrink-0 rounded-xl border border-neutral-200 dark:border-neutral-700 px-3 text-neutral-900 dark:text-neutral-50 hover:text-error-600"
                     >
                       <X className="w-4 h-4" />
                     </button>
@@ -243,7 +243,7 @@ export function BacktestEditSignalModal({
             )}
           </Button>
           {isDirty && !busy ? (
-            <p className="text-[11px] text-neutral-500 text-center">{bt.unsavedHint}</p>
+            <p className="text-[11px] text-neutral-900 dark:text-neutral-50 text-center">{bt.unsavedHint}</p>
           ) : null}
         </div>
       </div>

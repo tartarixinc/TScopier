@@ -74,7 +74,7 @@ export function SearchableSelect({
   return (
     <div ref={rootRef} className={clsx('relative flex flex-col gap-1.5', className)}>
       {label ? (
-        <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+        <label className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
           {label}
           {required ? <span className="text-error-500 ms-0.5">*</span> : null}
         </label>
@@ -91,11 +91,11 @@ export function SearchableSelect({
           error
             ? 'border-error-500 bg-error-50 dark:bg-error-950/40'
             : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 hover:border-neutral-300 dark:hover:border-neutral-600',
-          !selected?.label && 'text-neutral-400',
+          !selected?.label && 'text-neutral-900 dark:text-neutral-50',
         )}
       >
         <span className="truncate">{selected?.label || placeholder}</span>
-        <ChevronDown className={clsx('h-4 w-4 shrink-0 text-neutral-400 transition-transform', open && 'rotate-180')} />
+        <ChevronDown className={clsx('h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50 transition-transform', open && 'rotate-180')} />
       </button>
 
       {open ? (
@@ -106,7 +106,7 @@ export function SearchableSelect({
         >
           <div className="p-2 border-b border-neutral-100 dark:border-neutral-800">
             <div className="relative">
-              <Search className="absolute start-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-400" />
+              <Search className="absolute start-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-900 dark:text-neutral-50" />
               <input
                 ref={searchRef}
                 type="text"
@@ -119,7 +119,7 @@ export function SearchableSelect({
           </div>
           <ul className="max-h-56 overflow-y-auto py-1">
             {filtered.length === 0 ? (
-              <li className="px-3 py-2 text-sm text-neutral-400">{noMatchesLabel}</li>
+              <li className="px-3 py-2 text-sm text-neutral-900 dark:text-neutral-50">{noMatchesLabel}</li>
             ) : (
               filtered.map(opt => {
                 const active = opt.value === value
@@ -135,7 +135,7 @@ export function SearchableSelect({
                         'w-full px-3 py-2 text-start text-sm truncate transition-colors',
                         active
                           ? 'bg-teal-50 text-teal-800 dark:bg-teal-950/50 dark:text-teal-200'
-                          : 'text-neutral-800 dark:text-neutral-100 hover:bg-neutral-50 dark:hover:bg-neutral-800',
+                          : 'text-neutral-900 dark:text-neutral-100 hover:bg-neutral-50 dark:hover:bg-neutral-800',
                       )}
                     >
                       {opt.label}

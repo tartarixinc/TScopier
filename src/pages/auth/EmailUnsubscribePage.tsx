@@ -156,7 +156,7 @@ export function EmailUnsubscribePage() {
         {view === 'loading' && (
           <>
             <h1 className="mb-2 text-center text-xl font-bold text-slate-900">Checking link…</h1>
-            <p className="text-center text-sm leading-relaxed text-slate-500">
+            <p className="text-center text-sm leading-relaxed text-neutral-900 dark:text-neutral-50">
               Please wait while we verify your unsubscribe request.
             </p>
           </>
@@ -171,12 +171,12 @@ export function EmailUnsubscribePage() {
               </svg>
             </div>
             <h1 className="mb-2 text-center text-xl font-bold text-slate-900">Unsubscribe from emails?</h1>
-            <p className="mb-6 text-center text-sm leading-relaxed text-slate-500">
+            <p className="mb-6 text-center text-sm leading-relaxed text-neutral-900 dark:text-neutral-50">
               You&apos;ll stop receiving subscription reminders and campaign emails from UniCopier.
               Transactional emails (password resets, security alerts) will still be delivered.
             </p>
             <div className="mb-6">
-              <span className="mb-2 block text-[13px] font-semibold text-slate-700">Help us improve (optional)</span>
+              <span className="mb-2 block text-[13px] font-semibold text-neutral-900 dark:text-neutral-50">Help us improve (optional)</span>
               <div className="space-y-1.5">
                 {REASONS.map((r) => (
                   <label
@@ -191,7 +191,7 @@ export function EmailUnsubscribePage() {
                       onChange={() => setReason(r.value)}
                       className="mr-2.5"
                     />
-                    <span className="text-[13px] text-slate-700">{r.label}</span>
+                    <span className="text-[13px] text-neutral-900 dark:text-neutral-50">{r.label}</span>
                   </label>
                 ))}
               </div>
@@ -206,7 +206,7 @@ export function EmailUnsubscribePage() {
             </button>
             <a
               href={APP_ORIGIN}
-              className="mt-3 block w-full bg-transparent py-3 text-center text-sm font-semibold text-slate-500 transition hover:text-slate-900"
+              className="mt-3 block w-full bg-transparent py-3 text-center text-sm font-semibold text-neutral-900 dark:text-neutral-50 transition hover:text-slate-900"
             >
               Never mind, take me back
             </a>
@@ -223,13 +223,13 @@ export function EmailUnsubscribePage() {
             <h1 className="mb-2 text-center text-xl font-bold text-slate-900">
               {view === 'already' ? 'Already unsubscribed' : "You've been unsubscribed"}
             </h1>
-            <p className="mb-6 text-center text-sm leading-relaxed text-slate-500">
+            <p className="mb-6 text-center text-sm leading-relaxed text-neutral-900 dark:text-neutral-50">
               {view === 'already'
                 ? "You're already unsubscribed from UniCopier campaign emails. No further action is needed."
                 : "You won't receive any more campaign emails from UniCopier. If you change your mind, you can re-subscribe from your account settings."}
             </p>
             <div className="mb-6 h-px bg-slate-200" />
-            <p className="text-center text-xs leading-relaxed text-slate-400">
+            <p className="text-center text-xs leading-relaxed text-neutral-900 dark:text-neutral-50">
               Changed your mind?{' '}
               <Link to="/settings" className="underline">
                 Account settings
@@ -248,12 +248,12 @@ export function EmailUnsubscribePage() {
               </svg>
             </div>
             <h1 className="mb-2 text-center text-xl font-bold text-slate-900">{errorTitle}</h1>
-            <p className="text-center text-sm leading-relaxed text-slate-500">{errorMessage}</p>
+            <p className="text-center text-sm leading-relaxed text-neutral-900 dark:text-neutral-50">{errorMessage}</p>
           </>
         )}
       </div>
 
-      <div className="mt-8 text-center text-[11px] leading-relaxed text-slate-500">
+      <div className="mt-8 text-center text-[11px] leading-relaxed text-neutral-900 dark:text-neutral-50">
         Tartarix Inc. · 131 Continental Dr, Suite 305, Newark, DE 19713 US
       </div>
     </div>

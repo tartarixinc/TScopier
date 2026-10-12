@@ -151,7 +151,7 @@ export function PerformancePage() {
             <PerformancePeriodTabs value={period} labels={periodLabels} onChange={setPeriod} />
             <div className="flex items-center justify-end gap-2">
               {lastUpdatedLabel && !loading ? (
-                <span className="text-xs tabular-nums text-neutral-400 dark:text-neutral-500">
+                <span className="text-xs tabular-nums text-neutral-900 dark:text-neutral-50">
                   {lastUpdatedLabel}
                 </span>
               ) : null}
@@ -189,7 +189,7 @@ export function PerformancePage() {
               <span className={profitTextClass}>
                 {interpolate(t.common.won, { count: stats.tradesWon })}
               </span>
-              <span className="text-neutral-300 dark:text-neutral-600">·</span>
+              <span className="text-neutral-900 dark:text-neutral-50">·</span>
               <span className={lossTextClass}>
                 {interpolate(t.common.lost, { count: stats.tradesLost })}
               </span>
@@ -284,7 +284,7 @@ export function PerformancePage() {
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-200/65 px-4 py-3 dark:border-neutral-800/55">
           <div>
             <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{p.accountsTitle}</h2>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">{p.accountsSubtitle}</p>
+            <p className="text-xs text-neutral-900 dark:text-neutral-50">{p.accountsSubtitle}</p>
           </div>
           <Link
             to="/account-trades"
@@ -319,7 +319,7 @@ export function PerformancePage() {
         )}
       </section>
 
-      <p className="text-xs text-neutral-400 dark:text-neutral-500">{p.baselineNote}</p>
+      <p className="text-xs text-neutral-900 dark:text-neutral-50">{p.baselineNote}</p>
     </PageShell>
   )
 }

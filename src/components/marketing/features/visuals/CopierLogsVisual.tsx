@@ -20,7 +20,7 @@ function typeClass(type: LandingCopierLogType): string {
   if (type === 'buy') return 'text-green-400 dark:text-green-400'
   if (type === 'sell') return 'text-error-600 dark:text-error-400'
   if (type === 'close') return 'font-medium text-neutral-900 dark:text-neutral-100'
-  return 'font-medium text-neutral-600 dark:text-neutral-400'
+  return 'font-medium text-neutral-900 dark:text-neutral-50'
 }
 
 export function CopierLogsVisual() {
@@ -36,7 +36,7 @@ export function CopierLogsVisual() {
             <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
               {t.dashboard.copierLogs}
             </span>
-            <Info className="h-3.5 w-3.5 text-neutral-300 dark:text-neutral-400" aria-hidden />
+            <Info className="h-3.5 w-3.5 text-neutral-900 dark:text-neutral-50" aria-hidden />
           </div>
           <span className="inline-flex items-center gap-1.5 rounded-lg border border-green-400 px-3 py-1.5 text-xs font-medium text-green-400 dark:border-green-400 dark:text-green-400">
             {t.dashboard.copierLogs}
@@ -47,7 +47,7 @@ export function CopierLogsVisual() {
         <div
           className={clsx(
             COPIER_LOG_GRID,
-            'border-b border-neutral-100 px-4 py-3 text-xs font-medium uppercase tracking-wide text-neutral-400 dark:border-neutral-800 sm:px-5',
+            'border-b border-neutral-100 px-4 py-3 text-xs font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50 dark:border-neutral-800 sm:px-5',
           )}
         >
           <span>{t.copierLogs.colStatus}</span>
@@ -71,7 +71,7 @@ export function CopierLogsVisual() {
               <span className={clsx('min-w-0 truncate text-xs font-medium uppercase', typeClass(row.type))}>
                 {TYPE_LABEL[row.type]}
               </span>
-              <span className="text-right text-xs tabular-nums text-neutral-400">{row.time}</span>
+              <span className="text-right text-xs tabular-nums text-neutral-900 dark:text-neutral-50">{row.time}</span>
             </div>
           ))}
         </div>

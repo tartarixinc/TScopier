@@ -45,7 +45,7 @@ export function BacktestResultsTable({ trades }: BacktestResultsTableProps) {
 
   if (rows.length === 0) {
     return (
-      <p className="px-5 py-8 text-center text-sm text-neutral-500">
+      <p className="px-5 py-8 text-center text-sm text-neutral-900 dark:text-neutral-50">
         No signal results for this run.
       </p>
     )
@@ -54,7 +54,7 @@ export function BacktestResultsTable({ trades }: BacktestResultsTableProps) {
   return (
     <div className="overflow-x-auto max-h-[min(70vh,640px)] overflow-y-auto">
       <table className="w-full text-xs sm:text-sm">
-        <thead className="text-neutral-500 bg-neutral-50 dark:bg-neutral-800/60 sticky top-0">
+        <thead className="text-neutral-900 dark:text-neutral-50 bg-neutral-50 dark:bg-neutral-800/60 sticky top-0">
           <tr className="border-b border-neutral-200 dark:border-neutral-700">
             <th className="text-start font-medium py-2.5 px-3 whitespace-nowrap">Time</th>
             <th className="text-start font-medium py-2.5 px-2 whitespace-nowrap">Symbol</th>
@@ -81,7 +81,7 @@ export function BacktestResultsTable({ trades }: BacktestResultsTableProps) {
                 key={trade.id}
                 className="border-b border-neutral-100 dark:border-neutral-800/80 hover:bg-neutral-50/80 dark:hover:bg-neutral-800/30"
               >
-                <td className="py-2.5 px-3 whitespace-nowrap text-neutral-600 dark:text-neutral-400 tabular-nums">
+                <td className="py-2.5 px-3 whitespace-nowrap text-neutral-900 dark:text-neutral-50 tabular-nums">
                   {formatSignalTimestamp(trade.signal_at)}
                 </td>
                 <td className="py-2.5 px-2 font-medium text-neutral-900 dark:text-neutral-100">
@@ -95,19 +95,19 @@ export function BacktestResultsTable({ trades }: BacktestResultsTableProps) {
                 >
                   {isBuy ? 'Buy' : 'Sell'}
                 </td>
-                <td className="py-2.5 px-2 text-end tabular-nums text-neutral-700 dark:text-neutral-300">
+                <td className="py-2.5 px-2 text-end tabular-nums text-neutral-900 dark:text-neutral-50">
                   {trade.sl != null ? formatEntryPrice(trade.sl) : '—'}
                 </td>
-                <td className="py-2.5 px-2 tabular-nums text-neutral-700 dark:text-neutral-300 max-w-[10rem] truncate" title={formatTpLevels(trade.tp_levels)}>
+                <td className="py-2.5 px-2 tabular-nums text-neutral-900 dark:text-neutral-50 max-w-[10rem] truncate" title={formatTpLevels(trade.tp_levels)}>
                   {formatTpLevels(trade.tp_levels)}
                 </td>
-                <td className="py-2.5 px-2 text-neutral-700 dark:text-neutral-300 whitespace-nowrap">
+                <td className="py-2.5 px-2 text-neutral-900 dark:text-neutral-50 whitespace-nowrap">
                   {outcomeLabel}
                 </td>
                 <td className={clsx('py-2.5 px-2 text-end tabular-nums font-semibold', pipClass)}>
                   {formatPipValue(pips)}
                 </td>
-                <td className="py-2.5 px-3 text-end tabular-nums text-neutral-600 dark:text-neutral-400 whitespace-nowrap">
+                <td className="py-2.5 px-3 text-end tabular-nums text-neutral-900 dark:text-neutral-50 whitespace-nowrap">
                   {formatDurationMs(durationMs)}
                 </td>
               </tr>

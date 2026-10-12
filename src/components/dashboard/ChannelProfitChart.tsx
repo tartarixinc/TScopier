@@ -35,14 +35,14 @@ export function ChannelProfitChart({ data, loading, stale }: ChannelProfitChartP
         <h2 className="text-[15px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
           {t.dashboard.channelProfitTitle}
         </h2>
-        <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+        <p className="mt-1 text-xs text-neutral-900 dark:text-neutral-50">
           {t.dashboard.channelProfitSubtitle}
         </p>
       </div>
       {loading ? (
         <div className="h-64 animate-pulse rounded-xl bg-neutral-50 dark:bg-neutral-800/50" />
       ) : empty ? (
-        <div className="flex h-64 items-center justify-center px-6 text-center text-sm text-neutral-400 dark:text-neutral-500">
+        <div className="flex h-64 items-center justify-center px-6 text-center text-sm text-neutral-900 dark:text-neutral-50">
           {t.dashboard.channelProfitEmpty}
         </div>
       ) : (

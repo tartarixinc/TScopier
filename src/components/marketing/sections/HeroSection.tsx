@@ -94,7 +94,7 @@ export function HeroSection() {
             ) : null}
           </h1>
 
-          <p className="mt-5 text-base leading-relaxed text-neutral-600 dark:text-neutral-400 sm:text-xl">
+          <p className="mt-5 text-base leading-relaxed text-neutral-900 dark:text-neutral-50 sm:text-xl">
             <HeroSubheadline text={l.hero.subheadline} />
           </p>
 

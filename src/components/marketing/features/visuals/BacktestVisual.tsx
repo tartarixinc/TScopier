@@ -7,7 +7,7 @@ import type { LandingBacktestPipsTone } from '../../../../i18n/locales/landing/t
 function pipsClass(tone: LandingBacktestPipsTone): string {
   if (tone === 'good') return profitTextClass
   if (tone === 'bad') return lossTextClass
-  return 'text-neutral-600 dark:text-neutral-400'
+  return 'text-neutral-900 dark:text-neutral-50'
 }
 
 function toneBarClass(tone: LandingBacktestPipsTone): string {
@@ -28,11 +28,11 @@ export function BacktestVisual() {
         <div className="flex items-start justify-between gap-2 px-4 pt-4 pb-2">
           <div className="min-w-0">
             <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{v.resultsTitle}</p>
-            <p className="mt-0.5 truncate text-[10px] text-neutral-500 dark:text-neutral-400">
+            <p className="mt-0.5 truncate text-[10px] text-neutral-900 dark:text-neutral-50">
               {v.resultsSubtitle}
             </p>
           </div>
-          <span className="inline-flex shrink-0 items-center gap-1 text-[10px] text-neutral-500 dark:text-neutral-400">
+          <span className="inline-flex shrink-0 items-center gap-1 text-[10px] text-neutral-900 dark:text-neutral-50">
             <ArrowLeft className="h-3 w-3" aria-hidden />
             {v.newRunLabel}
           </span>
@@ -40,24 +40,24 @@ export function BacktestVisual() {
 
         <div className="grid grid-cols-2 gap-2 px-4 pb-3 sm:grid-cols-4">
           <div className="rounded-xl border border-neutral-200/65 p-2.5 dark:border-neutral-800/55">
-            <p className="text-[9px] font-medium uppercase tracking-wide text-neutral-400">{v.totalPipsLabel}</p>
+            <p className="text-[9px] font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50">{v.totalPipsLabel}</p>
             <p className="mt-0.5 text-lg font-bold tabular-nums text-green-400 dark:text-green-400 sm:text-xl">
               {v.totalPips}
             </p>
           </div>
           <div className="rounded-xl border border-neutral-200/65 p-2.5 dark:border-neutral-800/55">
-            <p className="text-[9px] font-medium uppercase tracking-wide text-neutral-400">{v.winRateLabel}</p>
+            <p className="text-[9px] font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50">{v.winRateLabel}</p>
             <p className="mt-0.5 text-lg font-bold tabular-nums text-neutral-900 dark:text-neutral-50 sm:text-xl">
               {v.winRate}
             </p>
           </div>
           <div className="rounded-xl border border-neutral-200/65 p-2.5 dark:border-neutral-800/55">
-            <p className="text-[9px] font-medium uppercase tracking-wide text-neutral-400">{v.winLossLabel}</p>
+            <p className="text-[9px] font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50">{v.winLossLabel}</p>
             <p className="mt-0.5 text-lg font-bold tabular-nums sm:text-xl">
               {winLossLosses ? (
                 <>
                   <span className={profitTextClass}>{winLossWins}</span>
-                  <span className="text-neutral-300 dark:text-neutral-600">/</span>
+                  <span className="text-neutral-900 dark:text-neutral-50">/</span>
                   <span className={lossTextClass}>{winLossLosses}</span>
                 </>
               ) : (
@@ -66,7 +66,7 @@ export function BacktestVisual() {
             </p>
           </div>
           <div className="rounded-xl border border-neutral-200/65 p-2.5 dark:border-neutral-800/55">
-            <p className="text-[9px] font-medium uppercase tracking-wide text-neutral-400">{v.signalsLabel}</p>
+            <p className="text-[9px] font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50">{v.signalsLabel}</p>
             <p className="mt-0.5 text-lg font-bold tabular-nums text-neutral-900 dark:text-neutral-50 sm:text-xl">
               {v.signalsCount}
             </p>
@@ -74,7 +74,7 @@ export function BacktestVisual() {
         </div>
 
         <div className="border-t border-neutral-100 dark:border-neutral-800">
-          <p className="px-4 py-2 text-xs font-medium text-neutral-700 dark:text-neutral-200">
+          <p className="px-4 py-2 text-xs font-medium text-neutral-900 dark:text-neutral-50">
             {v.signalsListLabel}
           </p>
           <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
@@ -102,7 +102,7 @@ export function BacktestVisual() {
                       {signal.side === 'buy' ? 'Buy' : 'Sell'}
                     </span>
                   </p>
-                  <p className="mt-0.5 text-[10px] tabular-nums text-neutral-500">
+                  <p className="mt-0.5 text-[10px] tabular-nums text-neutral-900 dark:text-neutral-50">
                     {signal.timestamp}
                     <span className="mx-1">·</span>
                     {signal.outcome}
@@ -112,9 +112,9 @@ export function BacktestVisual() {
                   <p className={clsx('text-sm font-bold tabular-nums', pipsClass(signal.pipsTone))}>
                     {signal.pips}
                   </p>
-                  <p className="text-[10px] tabular-nums text-neutral-500">{signal.duration}</p>
+                  <p className="text-[10px] tabular-nums text-neutral-900 dark:text-neutral-50">{signal.duration}</p>
                 </div>
-                <ChevronRight className="h-4 w-4 shrink-0 text-neutral-300" aria-hidden />
+                <ChevronRight className="h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50" aria-hidden />
               </li>
             ))}
           </ul>

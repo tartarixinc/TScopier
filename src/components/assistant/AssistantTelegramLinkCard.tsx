@@ -96,7 +96,7 @@ export function AssistantTelegramLinkCard({
       )}
     >
       <p className="text-[13.5px] font-semibold text-neutral-900 dark:text-neutral-50">{title}</p>
-      <p className="mt-1 text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">{hint}</p>
+      <p className="mt-1 text-xs leading-relaxed text-neutral-900 dark:text-neutral-50">{hint}</p>
 
       {stage === 'phone' ? (
         <input

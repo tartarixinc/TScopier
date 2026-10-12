@@ -58,7 +58,7 @@ export function AuthLayout() {
           </div>
 
           <footer className="mx-auto w-full max-w-[420px] shrink-0 pt-4">
-            <p className="text-xs text-neutral-400 dark:text-neutral-500">{copyright}</p>
+            <p className="text-xs text-neutral-900 dark:text-neutral-50">{copyright}</p>
           </footer>
         </div>
       </main>

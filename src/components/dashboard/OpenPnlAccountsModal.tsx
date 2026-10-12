@@ -86,7 +86,7 @@ export function OpenPnlAccountsModal({
             <h2 id="open-pnl-accounts-title" className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">
               {d.openPnlModalTitle}
             </h2>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+            <p className="text-xs text-neutral-900 dark:text-neutral-50 mt-0.5">
               {interpolate(d.openPnlModalSubtitle, {
                 count: String(accountCount),
                 pnl: formatSignedMoney(totalOpenPnl),
@@ -111,7 +111,7 @@ export function OpenPnlAccountsModal({
             ) : null}
             <button
               type="button"
-              className="p-2 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+              className="p-2 rounded-lg text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
               aria-label={bs.close}
               onClick={onClose}
             >
@@ -122,7 +122,7 @@ export function OpenPnlAccountsModal({
 
         <div className="px-5 py-4 space-y-4">
           {groups.length === 0 ? (
-            <p className="text-sm text-neutral-400 dark:text-neutral-500">{d.openPnlModalEmpty}</p>
+            <p className="text-sm text-neutral-900 dark:text-neutral-50">{d.openPnlModalEmpty}</p>
           ) : (
             groups.map(group => (
               <section
@@ -135,12 +135,12 @@ export function OpenPnlAccountsModal({
                       {group.accountLabel}
                     </p>
                     <p className="text-xs text-green-400 font-medium uppercase tabular-nums">{group.platformLine}</p>
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 truncate">{group.brokerLabel}</p>
+                    <p className="text-xs text-neutral-900 dark:text-neutral-50 mt-0.5 truncate">{group.brokerLabel}</p>
                   </div>
                   <div className="text-right shrink-0">
                     {group.brokerOpenPnl != null ? (
                       <>
-                        <p className="text-[10px] uppercase tracking-wide text-neutral-400">{bs.openPnl}</p>
+                        <p className="text-[10px] uppercase tracking-wide text-neutral-900 dark:text-neutral-50">{bs.openPnl}</p>
                         <p className={clsx('text-sm font-semibold tabular-nums', pnlColor(group.brokerOpenPnl))}>
                           {formatSignedMoney(group.brokerOpenPnl)}
                         </p>

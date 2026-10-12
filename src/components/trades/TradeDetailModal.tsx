@@ -236,13 +236,13 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
             <h2 id="trade-detail-title" className="text-lg font-semibold text-neutral-900 dark:text-neutral-50 truncate">
               {trade.symbol || '—'}
             </h2>
-            <p className="text-xs text-neutral-400 tabular-nums">#{trade.ticket}</p>
+            <p className="text-xs text-neutral-900 dark:text-neutral-50 tabular-nums">#{trade.ticket}</p>
           </div>
           <div className="flex items-center gap-1.5">
             <button
               type="button"
               onClick={() => setShowReport(true)}
-              className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
             >
               {tr.report}
             </button>
@@ -250,13 +250,13 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
               type="button"
               disabled={!linkedSignalId}
               onClick={handleManage}
-              className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-40 disabled:pointer-events-none transition-colors"
             >
               {tr.manage}
             </button>
             <button
               type="button"
-              className="p-2 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+              className="p-2 rounded-lg text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
               aria-label={tr.close}
               onClick={onClose}
             >
@@ -267,7 +267,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
 
         <div className="p-5 space-y-5">
           <section className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 p-4 space-y-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{tr.tradeSummary}</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-50">{tr.tradeSummary}</p>
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={display.status.variant} size="sm">{statusLabel}</Badge>
               <span
@@ -275,7 +275,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                   'inline-flex items-center gap-1 text-sm font-medium',
                   display.isBuy && 'text-success-600',
                   display.isSell && 'text-error-600',
-                  !display.isBuy && !display.isSell && 'text-neutral-500',
+                  !display.isBuy && !display.isSell && 'text-neutral-900 dark:text-neutral-50',
                 )}
               >
                 {display.isBuy ? (
@@ -291,12 +291,12 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                 className={clsx(
                   'text-sm font-semibold tabular-nums ml-auto',
                   display.profit === null
-                    ? 'text-neutral-400'
+                    ? 'text-neutral-900 dark:text-neutral-50'
                     : display.profit > 0
                       ? 'text-success-600'
                       : display.profit < 0
                         ? 'text-error-600'
-                        : 'text-neutral-500',
+                        : 'text-neutral-900 dark:text-neutral-50',
                 )}
               >
                 {display.profit === null
@@ -306,44 +306,44 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
             </div>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
               <div>
-                <dt className="text-neutral-400 uppercase tracking-wide">{tr.colBroker}</dt>
-                <dd className="text-neutral-700 dark:text-neutral-300 mt-0.5 truncate" title={display.broker}>
+                <dt className="text-neutral-900 dark:text-neutral-50 uppercase tracking-wide">{tr.colBroker}</dt>
+                <dd className="text-neutral-900 dark:text-neutral-50 mt-0.5 truncate" title={display.broker}>
                   {display.broker}
                 </dd>
               </div>
               <div>
-                <dt className="text-neutral-400 uppercase tracking-wide">{tr.colLots}</dt>
-                <dd className="text-neutral-700 dark:text-neutral-300 tabular-nums mt-0.5">
+                <dt className="text-neutral-900 dark:text-neutral-50 uppercase tracking-wide">{tr.colLots}</dt>
+                <dd className="text-neutral-900 dark:text-neutral-50 tabular-nums mt-0.5">
                   {formatTradeLots(trade.lot_size)}
                 </dd>
               </div>
               <div>
-                <dt className="text-neutral-400 uppercase tracking-wide">{tr.colEntry}</dt>
-                <dd className="text-neutral-700 dark:text-neutral-300 tabular-nums mt-0.5">
+                <dt className="text-neutral-900 dark:text-neutral-50 uppercase tracking-wide">{tr.colEntry}</dt>
+                <dd className="text-neutral-900 dark:text-neutral-50 tabular-nums mt-0.5">
                   {formatTradePrice(trade.entry_price)}
                 </dd>
               </div>
               <div>
-                <dt className="text-neutral-400 uppercase tracking-wide">{tr.colTime}</dt>
-                <dd className="text-neutral-600 dark:text-neutral-400 mt-0.5">{display.timeLabel}</dd>
+                <dt className="text-neutral-900 dark:text-neutral-50 uppercase tracking-wide">{tr.colTime}</dt>
+                <dd className="text-neutral-900 dark:text-neutral-50 mt-0.5">{display.timeLabel}</dd>
               </div>
               <div>
-                <dt className="text-neutral-400 uppercase tracking-wide">{tr.colSl}</dt>
-                <dd className="text-neutral-700 dark:text-neutral-300 tabular-nums mt-0.5">
+                <dt className="text-neutral-900 dark:text-neutral-50 uppercase tracking-wide">{tr.colSl}</dt>
+                <dd className="text-neutral-900 dark:text-neutral-50 tabular-nums mt-0.5">
                   {formatTradePrice(trade.sl)}
                 </dd>
               </div>
               <div>
-                <dt className="text-neutral-400 uppercase tracking-wide">{tr.colTp}</dt>
-                <dd className="text-neutral-700 dark:text-neutral-300 tabular-nums mt-0.5">
+                <dt className="text-neutral-900 dark:text-neutral-50 uppercase tracking-wide">{tr.colTp}</dt>
+                <dd className="text-neutral-900 dark:text-neutral-50 tabular-nums mt-0.5">
                   {formatTradePrice(trade.tp)}
                 </dd>
               </div>
               {trade.status === 'open' ? (
                 <div className="col-span-2">
-                  <dt className="text-neutral-400 uppercase tracking-wide">{tr.colCurrent}</dt>
+                  <dt className="text-neutral-900 dark:text-neutral-50 uppercase tracking-wide">{tr.colCurrent}</dt>
                   <dd className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
-                    <span className="text-neutral-700 dark:text-neutral-300 tabular-nums font-semibold">
+                    <span className="text-neutral-900 dark:text-neutral-50 tabular-nums font-semibold">
                       {liveQuote.price != null
                         ? formatTradePrice(liveQuote.price)
                         : liveQuote.loading
@@ -351,17 +351,17 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                           : '—'}
                     </span>
                     {bidAskLine ? (
-                      <span className="text-neutral-400 tabular-nums text-[11px]">{bidAskLine}</span>
+                      <span className="text-neutral-900 dark:text-neutral-50 tabular-nums text-[11px]">{bidAskLine}</span>
                     ) : null}
                     {liveQuote.loading ? (
-                      <Loader2 className="w-3 h-3 animate-spin text-neutral-400" aria-hidden="true" />
+                      <Loader2 className="w-3 h-3 animate-spin text-neutral-900 dark:text-neutral-50" aria-hidden="true" />
                     ) : null}
                   </dd>
                 </div>
               ) : (
                 <div className="col-span-2">
-                  <dt className="text-neutral-400 uppercase tracking-wide">{tr.colClosePrice}</dt>
-                  <dd className="text-neutral-700 dark:text-neutral-300 tabular-nums mt-0.5 font-semibold">
+                  <dt className="text-neutral-900 dark:text-neutral-50 uppercase tracking-wide">{tr.colClosePrice}</dt>
+                  <dd className="text-neutral-900 dark:text-neutral-50 tabular-nums mt-0.5 font-semibold">
                     {formatTradePrice(trade.close_price)}
                   </dd>
                 </div>
@@ -384,17 +384,17 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                   {tr.brokerErrorTitle}
                 </p>
               </div>
-              <p className="text-sm text-neutral-700 dark:text-neutral-300">{tr.brokerErrorIntro}</p>
+              <p className="text-sm text-neutral-900 dark:text-neutral-50">{tr.brokerErrorIntro}</p>
               {structuredBrokerFailure ? (
                 <div className="space-y-1 rounded-lg border border-error-200/80 dark:border-error-900/60 bg-white/70 dark:bg-neutral-900/40 px-3 py-2">
                   <p className="text-sm font-semibold text-error-800 dark:text-error-200">
                     {structuredBrokerFailure.title}
                   </p>
-                  <p className="text-xs text-neutral-700 dark:text-neutral-300">
+                  <p className="text-xs text-neutral-900 dark:text-neutral-50">
                     {structuredBrokerFailure.explanation}
                   </p>
                   {structuredBrokerFailure.recommendedAction ? (
-                    <p className="text-xs text-neutral-600 dark:text-neutral-400">
+                    <p className="text-xs text-neutral-900 dark:text-neutral-50">
                       {structuredBrokerFailure.recommendedAction}
                     </p>
                   ) : null}
@@ -413,7 +413,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                     key={`${failure.created_at}-${failure.action}-${idx}`}
                     className="flex gap-2 text-xs"
                   >
-                    <span className="text-neutral-400 whitespace-nowrap tabular-nums shrink-0 pt-0.5">
+                    <span className="text-neutral-900 dark:text-neutral-50 whitespace-nowrap tabular-nums shrink-0 pt-0.5">
                       {new Date(failure.created_at).toLocaleTimeString([], {
                         hour: '2-digit',
                         minute: '2-digit',
@@ -439,14 +439,14 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
           ) : null}
 
           {loading ? (
-            <div className="flex items-center gap-2 text-sm text-neutral-500 py-4">
+            <div className="flex items-center gap-2 text-sm text-neutral-900 dark:text-neutral-50 py-4">
               <Loader2 className="w-4 h-4 animate-spin" />
               {tr.loadingSignal}
             </div>
           ) : loadError ? (
             <p className="text-sm text-error-600 dark:text-error-400">{loadError}</p>
           ) : context === null || !context ? (
-            <p className="text-sm text-neutral-500 dark:text-neutral-400 rounded-xl bg-neutral-50 dark:bg-neutral-800/40 px-4 py-3">
+            <p className="text-sm text-neutral-900 dark:text-neutral-50 rounded-xl bg-neutral-50 dark:bg-neutral-800/40 px-4 py-3">
               {tr.noLinkedSignal}
             </p>
           ) : (
@@ -461,7 +461,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                 <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                   {channelLabel ?? '—'}
                 </p>
-                <p className="text-xs text-neutral-500 tabular-nums">
+                <p className="text-xs text-neutral-900 dark:text-neutral-50 tabular-nums">
                   {tr.signalTime}:{' '}
                   {new Date(context.signal.created_at).toLocaleString([], {
                     day: '2-digit',
@@ -483,10 +483,10 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
 
               {messageBody ? (
                 <section className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
                     {tr.telegramMessage}
                   </p>
-                  <p className="text-sm text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50/80 dark:bg-neutral-800/30 px-4 py-3">
+                  <p className="text-sm text-neutral-900 dark:text-neutral-50 whitespace-pre-wrap rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50/80 dark:bg-neutral-800/30 px-4 py-3">
                     {messageBody}
                   </p>
                   {context.signal.raw_image_url ? (
@@ -504,14 +504,14 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
 
               {instructionLines.length > 0 ? (
                 <section className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
                     {tr.parsedInstruction}
                   </p>
                   <dl className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 divide-y divide-neutral-100 dark:divide-neutral-800">
                     {instructionLines.map(line => (
                       <div key={line.label} className="flex justify-between gap-3 px-4 py-2.5 text-sm">
-                        <dt className="text-neutral-500 shrink-0">{line.label}</dt>
-                        <dd className="text-neutral-800 dark:text-neutral-200 text-right font-medium tabular-nums">
+                        <dt className="text-neutral-900 dark:text-neutral-50 shrink-0">{line.label}</dt>
+                        <dd className="text-neutral-900 dark:text-neutral-50 text-right font-medium tabular-nums">
                           {line.value}
                         </dd>
                       </div>

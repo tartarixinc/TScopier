@@ -107,7 +107,7 @@ export function BacktestSignalBreakdown({ trades, channelNames }: BacktestSignal
 
   if (groups.length === 0) {
     return (
-      <p className="px-5 py-8 text-center text-sm text-neutral-500">No simulated signals in this run.</p>
+      <p className="px-5 py-8 text-center text-sm text-neutral-900 dark:text-neutral-50">No simulated signals in this run.</p>
     )
   }
 
@@ -126,18 +126,18 @@ export function BacktestSignalBreakdown({ trades, channelNames }: BacktestSignal
               className="flex w-full items-center gap-3 bg-neutral-50/80 px-4 py-3 text-left transition-colors hover:bg-neutral-100/80 dark:bg-neutral-800/40 dark:hover:bg-neutral-800/70 sm:px-5"
             >
               {open ? (
-                <ChevronDown className="h-4 w-4 shrink-0 text-neutral-400" />
+                <ChevronDown className="h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50" />
               ) : (
-                <ChevronRight className="h-4 w-4 shrink-0 text-neutral-400" />
+                <ChevronRight className="h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50" />
               )}
               <div className="min-w-0 flex-1">
                 <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{group.label}</span>
-                <span className="ml-2 text-xs text-neutral-500 dark:text-neutral-400">
+                <span className="ml-2 text-xs text-neutral-900 dark:text-neutral-50">
                   {group.trades.length} signal{group.trades.length === 1 ? '' : 's'}
                 </span>
               </div>
               <div className="flex shrink-0 items-center gap-3 text-xs tabular-nums">
-                <span className="text-neutral-500 dark:text-neutral-400">
+                <span className="text-neutral-900 dark:text-neutral-50">
                   <span className={profitTextClass}>{group.wins}W</span>
                   {' / '}
                   <span className={lossTextClass}>{group.losses}L</span>
@@ -200,7 +200,7 @@ function SignalRow({
       ? 'border-teal-200 text-green-500 dark:border-teal-800 dark:text-teal-300'
       : tone === 'bad'
         ? lossBadgeOutlineClass
-        : 'border-neutral-200 text-neutral-600 dark:border-neutral-700 dark:text-neutral-400'
+        : 'border-neutral-200 text-neutral-900 dark:border-neutral-700 dark:text-neutral-50'
 
   return (
     <li>
@@ -233,11 +233,11 @@ function SignalRow({
             >
               {isBuy ? 'BUY' : 'SELL'}
             </span>
-            <span className="text-neutral-400 dark:text-neutral-500">
+            <span className="text-neutral-900 dark:text-neutral-50">
               {' '}@ {formatEntryPrice(trade.entry_price)}
             </span>
           </p>
-          <p className="mt-0.5 text-[11px] text-neutral-400 dark:text-neutral-500">
+          <p className="mt-0.5 text-[11px] text-neutral-900 dark:text-neutral-50">
             {formatSignalTimestamp(trade.signal_at)}
             {tpCount > 0 ? ` · ${tpCount} TP${tpCount === 1 ? '' : 's'}` : null}
             {trade.tps_hit > 0 ? ` · ${trade.tps_hit} hit` : null}
@@ -258,7 +258,7 @@ function SignalRow({
           </span>
           <ChevronRight
             className={clsx(
-              'h-4 w-4 text-neutral-300 transition-transform dark:text-neutral-600',
+              'h-4 w-4 text-neutral-900 transition-transform dark:text-neutral-50',
               expanded && 'rotate-90',
             )}
           />
@@ -290,7 +290,7 @@ function SignalRow({
           </div>
           {tpEvents.length > 0 ? (
             <div>
-              <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400 mb-2">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50 mb-2">
                 Event timeline
               </p>
               <ul className="space-y-2 border-l-2 border-neutral-200 dark:border-neutral-700 pl-3">
@@ -300,7 +300,7 @@ function SignalRow({
                     <p className="font-medium text-green-500 dark:text-teal-300">
                       TP{ev.index} Hit → {formatEntryPrice(ev.price)}
                     </p>
-                    <p className="text-neutral-500 dark:text-neutral-400">
+                    <p className="text-neutral-900 dark:text-neutral-50">
                       {new Date(ev.ts).toLocaleString()}
                     </p>
                   </li>
@@ -325,8 +325,8 @@ function Detail({
 }) {
   return (
     <div className={className}>
-      <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">{label}</p>
-      <p className="mt-0.5 text-neutral-700 dark:text-neutral-300">{value}</p>
+      <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50">{label}</p>
+      <p className="mt-0.5 text-neutral-900 dark:text-neutral-50">{value}</p>
     </div>
   )
 }

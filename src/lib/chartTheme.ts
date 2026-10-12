@@ -32,7 +32,7 @@ export function chartThemeColors(theme: Theme): ChartThemeColors {
     return {
       grid: '#262626',
       axis: '#404040',
-      tick: '#a3a3a3',
+      tick: '#f8fafc',
       tooltipBg: '#0f172a',
       tooltipBorder: '#334155',
       tooltipText: '#f1f5f9',
@@ -52,7 +52,7 @@ export function chartThemeColors(theme: Theme): ChartThemeColors {
   return {
     grid: '#f5f5f5',
     axis: '#e5e5e5',
-    tick: '#737373',
+    tick: '#0f172a',
     tooltipBg: '#ffffff',
     tooltipBorder: '#e5e5e5',
     tooltipText: '#171717',

@@ -67,7 +67,7 @@ function StatusValue({ children, tone }: { children: string; tone: Tone }) {
         tone === 'ok' && 'text-green-400 dark:text-green-400',
         tone === 'warn' && 'text-amber-600 dark:text-amber-400',
         tone === 'bad' && 'text-rose-600 dark:text-rose-400',
-        tone === 'muted' && 'text-neutral-500 dark:text-neutral-400',
+        tone === 'muted' && 'text-neutral-900 dark:text-neutral-50',
       )}
     >
       {children}
@@ -86,7 +86,7 @@ function StatusRow({
 }) {
   return (
     <div className="flex items-baseline justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
-      <span className="text-sm text-neutral-600 dark:text-neutral-400">{label}</span>
+      <span className="text-sm text-neutral-900 dark:text-neutral-50">{label}</span>
       <StatusValue tone={tone}>{value}</StatusValue>
     </div>
   )
@@ -394,7 +394,7 @@ export function CopierStatusCard({
           expanded && 'border-b border-neutral-100 dark:border-neutral-800',
         )}
       >
-        <Activity className="h-4 w-4 shrink-0 text-neutral-400" />
+        <Activity className="h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50" />
         {!expanded ? (
           <span className="min-w-0 flex-1 truncate text-sm">
             <span className="font-semibold text-neutral-900 dark:text-neutral-50">
@@ -412,7 +412,7 @@ export function CopierStatusCard({
         )}
         <ChevronDown
           className={clsx(
-            'w-4 h-4 text-neutral-400 shrink-0 transition-transform',
+            'w-4 h-4 text-neutral-900 dark:text-neutral-50 shrink-0 transition-transform',
             expanded && 'rotate-180',
           )}
           aria-hidden
@@ -422,21 +422,21 @@ export function CopierStatusCard({
 
       {expanded ? (
         <div className="divide-y divide-neutral-100 px-5 py-4 dark:divide-neutral-800/80">
-          <div className="pb-3 text-sm text-neutral-700 dark:text-neutral-300">
+          <div className="pb-3 text-sm text-neutral-900 dark:text-neutral-50">
             <div>{statusMessage}</div>
             {lastHealthy ? (
-              <div className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+              <div className="mt-1 text-xs text-neutral-900 dark:text-neutral-50">
                 {cs.lastHealthy}: {lastHealthy}
               </div>
             ) : null}
           </div>
           <div className="py-1">
-            <p className="pb-1 text-xs font-medium uppercase tracking-wide text-neutral-400">
+            <p className="pb-1 text-xs font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
               {cs.signalSources}
             </p>
             {SOURCE_ORDER.map(kind => (
               <div key={kind} className="flex items-center justify-between gap-3 py-2">
-                <span className="flex min-w-0 items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
+                <span className="flex min-w-0 items-center gap-2 text-sm text-neutral-900 dark:text-neutral-50">
                   <SignalSourceLogo kind={kind} className="h-4 w-4 shrink-0" />
                   <span className="truncate">{SIGNAL_SOURCE_MARKS[kind].label}</span>
                 </span>

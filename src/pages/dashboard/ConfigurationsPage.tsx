@@ -898,7 +898,7 @@ export function ConfigurationsPage() {
           {mergedBrokers.length === 0 ? (
             <Card className="text-center">
               <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">{copy.emptyTitle}</h2>
-              <p className="mx-auto mt-2 max-w-md text-sm text-neutral-500 dark:text-neutral-400">{copy.emptyBody}</p>
+              <p className="mx-auto mt-2 max-w-md text-sm text-neutral-900 dark:text-neutral-50">{copy.emptyBody}</p>
             </Card>
           ) : null}
           <ConfigurationMap
@@ -1554,7 +1554,7 @@ function ConfigurationMap({
             className={`flex items-center justify-center gap-2 rounded-2xl border border-dashed px-4 py-4 text-sm font-medium ${
               cardDrag.overBin
                 ? 'border-error-500 bg-error-50 text-error-600 dark:bg-error-950/40 dark:text-error-400'
-                : 'border-neutral-300 text-neutral-500 dark:border-neutral-700 dark:text-neutral-400'
+                : 'border-neutral-300 text-neutral-900 dark:border-neutral-700 dark:text-neutral-50'
             }`}
           >
             <Trash2 className="h-5 w-5" />
@@ -1600,7 +1600,7 @@ function ConfigurationMap({
             className={`flex items-center justify-center gap-2 rounded-2xl border border-dashed px-4 py-4 text-sm font-medium ${
               cardDrag.overBin
                 ? 'border-error-500 bg-error-50 text-error-600 dark:bg-error-950/40 dark:text-error-400'
-                : 'border-neutral-300 text-neutral-500 dark:border-neutral-700 dark:text-neutral-400'
+                : 'border-neutral-300 text-neutral-900 dark:border-neutral-700 dark:text-neutral-50'
             }`}
           >
             <Trash2 className="h-5 w-5" />
@@ -1920,7 +1920,7 @@ function ConfigurationStack({
           className={`flex items-center justify-center gap-2 rounded-2xl border border-dashed px-4 py-4 text-sm font-medium ${
             cardDrag.overBin
               ? 'border-error-500 bg-error-50 text-error-600 dark:bg-error-950/40 dark:text-error-400'
-              : 'border-neutral-300 text-neutral-500 dark:border-neutral-700 dark:text-neutral-400'
+              : 'border-neutral-300 text-neutral-900 dark:border-neutral-700 dark:text-neutral-50'
           }`}
         >
           <Trash2 className="h-5 w-5" />
@@ -1957,7 +1957,7 @@ function ConfigurationStack({
           className={`flex items-center justify-center gap-2 rounded-2xl border border-dashed px-4 py-4 text-sm font-medium ${
             cardDrag.overBin
               ? 'border-error-500 bg-error-50 text-error-600 dark:bg-error-950/40 dark:text-error-400'
-              : 'border-neutral-300 text-neutral-500 dark:border-neutral-700 dark:text-neutral-400'
+              : 'border-neutral-300 text-neutral-900 dark:border-neutral-700 dark:text-neutral-50'
           }`}
         >
           <Trash2 className="h-5 w-5" />
@@ -1976,7 +1976,7 @@ function ConfigurationStack({
 
 function SectionLabel({ label }: { label: string }) {
   return (
-    <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400">{label}</p>
+    <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{label}</p>
   )
 }
 
@@ -2017,8 +2017,8 @@ function ChannelLogo({ username }: { username: string }) {
 function MetaRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
-      <dt className="shrink-0 text-neutral-500 dark:text-neutral-400">{label}</dt>
-      <dd dir="auto" className="min-w-0 truncate text-end text-neutral-800 dark:text-neutral-200">{value}</dd>
+      <dt className="shrink-0 text-neutral-900 dark:text-neutral-50">{label}</dt>
+      <dd dir="auto" className="min-w-0 truncate text-end text-neutral-900 dark:text-neutral-50">{value}</dd>
     </div>
   )
 }
@@ -2113,7 +2113,7 @@ function BrokerNode({
             <MetaRow label={copy.accountType} value={accountType} />
           </dl>
           {linked ? null : (
-            <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">{copy.noChannelsLinked}</p>
+            <p className="mt-1 text-xs text-neutral-900 dark:text-neutral-50">{copy.noChannelsLinked}</p>
           )}
         </div>
       </div>
@@ -2208,14 +2208,14 @@ function ConfigurationModal({
               {sourceBroker ? <PlatformLogo platform={sourceBroker.platform} /> : <TelegramLogo />}
               <span className="truncate">{sourceName}</span>
             </h2>
-            <p className="mt-2 flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-300">
+            <p className="mt-2 flex items-center gap-2 text-sm text-neutral-900 dark:text-neutral-50">
               <PlatformLogo platform={broker.platform} />
               <span className="truncate">{broker.label}</span>
             </p>
           </div>
           <button
             type="button"
-            className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+            className="rounded-lg p-2 text-neutral-900 hover:bg-neutral-100 dark:text-neutral-50 dark:hover:bg-neutral-800"
             aria-label={closeLabel}
             onClick={onClose}
           >
@@ -2237,7 +2237,7 @@ function ConfigurationModal({
         <div className="flex justify-end gap-2 border-t border-neutral-100 px-5 py-4 dark:border-neutral-800">
           <button
             type="button"
-            className="rounded-lg px-4 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+            className="rounded-lg px-4 py-2 text-sm font-medium text-neutral-900 hover:bg-neutral-100 dark:text-neutral-50 dark:hover:bg-neutral-800"
             onClick={onClose}
           >
             {closeLabel}

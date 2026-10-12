@@ -122,8 +122,8 @@ export function VerifyEmailPage() {
         {verifyT.heading}
       </h1>
 
-      <p className="mt-3 text-sm text-neutral-500 dark:text-neutral-400">{subtitle}</p>
-      <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">
+      <p className="mt-3 text-sm text-neutral-900 dark:text-neutral-50">{subtitle}</p>
+      <p className="mt-2 text-sm text-neutral-900 dark:text-neutral-50">
         {verifyT.instructions ?? 'Open the link in that email to activate your account. You cannot use UniCopier until verification is complete.'}
       </p>
 

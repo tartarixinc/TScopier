@@ -37,7 +37,7 @@ export function ProfileSignalsPanel({
 }: ProfileSignalsPanelProps) {
   if (signals.length === 0) {
     return (
-      <p className="text-sm text-neutral-400 py-6 text-center">
+      <p className="text-sm text-neutral-900 dark:text-neutral-50 py-6 text-center">
         No tradeable signals in this range. Try a wider date range or another channel.
       </p>
     )
@@ -46,8 +46,8 @@ export function ProfileSignalsPanel({
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-xs font-medium text-neutral-500 mb-2">Symbols ({symbols.length})</p>
-        <p className="text-[11px] text-neutral-400 mb-2">
+        <p className="text-xs font-medium text-neutral-900 dark:text-neutral-50 mb-2">Symbols ({symbols.length})</p>
+        <p className="text-[11px] text-neutral-900 dark:text-neutral-50 mb-2">
           Select a symbol to backtest against live market data.
         </p>
         <div className="flex flex-wrap gap-2">
@@ -60,7 +60,7 @@ export function ProfileSignalsPanel({
                 'px-3 py-1.5 rounded-lg text-sm border transition-colors',
                 selectedSymbol === symbol
                   ? 'border-green-400 bg-teal-50 text-teal-800 dark:bg-teal-950 dark:text-teal-200'
-                  : 'border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:border-neutral-300',
+                  : 'border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-50 hover:border-neutral-300',
               )}
             >
               {symbol}
@@ -71,12 +71,12 @@ export function ProfileSignalsPanel({
       </div>
 
       {profileNote ? (
-        <p className="text-xs text-neutral-500 dark:text-neutral-400">{profileNote}</p>
+        <p className="text-xs text-neutral-900 dark:text-neutral-50">{profileNote}</p>
       ) : null}
 
       <div className="overflow-x-auto max-h-64 overflow-y-auto border border-neutral-100 dark:border-neutral-800 rounded-lg">
         <table className="w-full text-xs">
-          <thead className="text-neutral-500 sticky top-0 bg-white dark:bg-neutral-950 z-10">
+          <thead className="text-neutral-900 dark:text-neutral-50 sticky top-0 bg-white dark:bg-neutral-950 z-10">
             <tr className="border-b border-neutral-100 dark:border-neutral-800">
               <th className="text-left py-2 px-2 font-medium">Time</th>
               <th className="text-left py-2 pr-2 font-medium">Symbol</th>
@@ -97,7 +97,7 @@ export function ProfileSignalsPanel({
                     : '',
                 )}
               >
-                <td className="py-1.5 px-2 whitespace-nowrap text-neutral-600 dark:text-neutral-400">
+                <td className="py-1.5 px-2 whitespace-nowrap text-neutral-900 dark:text-neutral-50">
                   {new Date(row.signal_at).toLocaleString([], {
                     month: 'short',
                     day: 'numeric',

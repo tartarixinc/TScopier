@@ -42,7 +42,7 @@ export function AssistantChatBubble({
             'overflow-hidden px-3.5 py-2.5 shadow-sm',
             isUser
               ? 'rounded-2xl rounded-ee-md bg-green-400 text-neutral-950 shadow-green-500/15'
-              : 'rounded-2xl rounded-es-md border border-neutral-200/60 bg-white text-neutral-800 shadow-neutral-900/5 dark:border-neutral-800/55 dark:bg-neutral-950 dark:text-neutral-100',
+              : 'rounded-2xl rounded-es-md border border-neutral-200/60 bg-white text-neutral-900 shadow-neutral-900/5 dark:border-neutral-800/55 dark:bg-neutral-950 dark:text-neutral-100',
           )}
         >
           {images.length > 0 ? (

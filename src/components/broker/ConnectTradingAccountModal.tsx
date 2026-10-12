@@ -309,7 +309,7 @@ export function ConnectTradingAccountModal({
                   onClick={handleClose}
                   disabled={saving}
                   aria-label={t.common.cancel}
-                  className="rounded-xl p-3 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 disabled:opacity-40 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+                  className="rounded-xl p-3 text-neutral-900 dark:text-neutral-50 transition-colors hover:bg-neutral-100 hover:text-neutral-900 disabled:opacity-40 dark:hover:bg-neutral-800 dark:hover:text-neutral-50"
                 >
                   <X className="h-6 w-6" />
                 </button>
@@ -324,7 +324,7 @@ export function ConnectTradingAccountModal({
 
             <form onSubmit={handleSubmit} className={clsx('space-y-4', saving && 'pointer-events-none opacity-60')}>
               <div className="space-y-2">
-                <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                   {cf.platformLabel}
                 </p>
                 <div className="grid grid-cols-2 gap-2">
@@ -338,7 +338,7 @@ export function ConnectTradingAccountModal({
                         'rounded-xl border px-3 py-2.5 text-left text-sm transition-colors',
                         selectedPlatform === option
                           ? 'border-green-400 bg-teal-50 text-teal-900 dark:border-green-400 dark:bg-teal-950/40 dark:text-teal-100'
-                          : 'border-neutral-200/65 bg-white text-neutral-700 hover:border-neutral-300 dark:border-neutral-800/55 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:border-neutral-700',
+                          : 'border-neutral-200/65 bg-white text-neutral-900 hover:border-neutral-300 dark:border-neutral-800/55 dark:bg-neutral-900 dark:text-neutral-50 dark:hover:border-neutral-700',
                       )}
                     >
                       {option === 'MT5' ? cf.platformMt5 : cf.platformMt4}
@@ -370,7 +370,7 @@ export function ConnectTradingAccountModal({
                   className="space-y-3 rounded-2xl border border-neutral-100 p-4 dark:border-neutral-800"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                    <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                       {interpolate(cf.accountRowTitle, { index: String(index + 1) })}
                     </p>
                     {rows.length > 1 ? (
@@ -378,7 +378,7 @@ export function ConnectTradingAccountModal({
                         type="button"
                         onClick={() => removeRow(index)}
                         aria-label={cf.removeRowAria}
-                        className="rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-error-600 dark:hover:bg-neutral-800"
+                        className="rounded-lg p-1.5 text-neutral-900 dark:text-neutral-50 transition-colors hover:bg-neutral-100 hover:text-error-600 dark:hover:bg-neutral-800"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -452,7 +452,7 @@ export function ConnectTradingAccountModal({
                   <p className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
                     {cf.connectingTitle}
                   </p>
-                  <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+                  <p className="mt-2 text-sm text-neutral-900 dark:text-neutral-50">
                     {connectStepMessage}
                   </p>
                 </div>

@@ -283,7 +283,7 @@ function AccountLogo({ platform }: { platform: string }) {
   const normalized = platform.trim().toUpperCase()
   if (failed || (normalized !== 'MT4' && normalized !== 'MT5')) {
     return (
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-neutral-100 text-[11px] font-semibold text-neutral-500 dark:bg-neutral-800 dark:text-neutral-300">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-neutral-100 text-[11px] font-semibold text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50">
         {normalized || 'MT'}
       </span>
     )
@@ -324,7 +324,7 @@ function SettingToggle({
     )}>
       <div className="flex min-w-0 items-center gap-2">
         {safety ? <ShieldCheck className="h-4 w-4 shrink-0 text-green-400 dark:text-green-400" aria-hidden /> : null}
-        <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{label}</p>
+        <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{label}</p>
       </div>
       <Toggle checked={checked} onChange={onChange} />
     </div>
@@ -334,8 +334,8 @@ function SettingToggle({
 function PreviewValue({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-start justify-between gap-4 text-xs">
-      <dt className="text-neutral-500 dark:text-neutral-400">{label}</dt>
-      <dd className="max-w-[55%] text-right font-medium text-neutral-800 dark:text-neutral-100">{value}</dd>
+      <dt className="text-neutral-900 dark:text-neutral-50">{label}</dt>
+      <dd className="max-w-[55%] text-right font-medium text-neutral-900 dark:text-neutral-100">{value}</dd>
     </div>
   )
 }
@@ -473,18 +473,18 @@ export function SlaveConfigureModal({
                 {setup.preview}
               </span>
             </div>
-            <p className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">{setup.subtitle}</p>
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-500 dark:text-neutral-400">
+            <p className="mt-0.5 text-sm text-neutral-900 dark:text-neutral-50">{setup.subtitle}</p>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-900 dark:text-neutral-50">
               {sourceName ? <span>{sourceName}</span> : null}
               {slaveBalance != null ? (
-                <span>{balanceLabel} <strong className="font-semibold text-neutral-700 dark:text-neutral-200">{formatMoney(slaveBalance)}</strong></span>
+                <span>{balanceLabel} <strong className="font-semibold text-neutral-900 dark:text-neutral-50">{formatMoney(slaveBalance)}</strong></span>
               ) : null}
-              <span className="font-semibold text-neutral-700 dark:text-neutral-200">{slave.platform.toUpperCase()}</span>
+              <span className="font-semibold text-neutral-900 dark:text-neutral-50">{slave.platform.toUpperCase()}</span>
             </div>
           </div>
           <button
             type="button"
-            className="shrink-0 rounded-lg p-2 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800"
+            className="shrink-0 rounded-lg p-2 text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:text-neutral-50 dark:hover:bg-neutral-800"
             aria-label={closeLabel}
             onClick={onClose}
           >
@@ -502,7 +502,7 @@ export function SlaveConfigureModal({
               <div className="flex items-center justify-between gap-4 rounded-xl border border-neutral-200 px-3 py-2.5 dark:border-neutral-800">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{setup.advanced}</p>
-                  <p className="mt-0.5 text-xs leading-5 text-neutral-500 dark:text-neutral-400">{setup.advancedHint}</p>
+                  <p className="mt-0.5 text-xs leading-5 text-neutral-900 dark:text-neutral-50">{setup.advancedHint}</p>
                 </div>
                 <Toggle checked={advanced} onChange={setAdvanced} />
               </div>
@@ -513,7 +513,7 @@ export function SlaveConfigureModal({
                   <AccountLogo platform={slave.platform} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">{getBrokerDisplayLabel(slave)}</span>
-                    <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-neutral-500 dark:text-neutral-400">
+                    <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-neutral-900 dark:text-neutral-50">
                       {slave.broker_name?.trim() ? <span>{slave.broker_name.trim()}</span> : null}
                       <span>{slave.platform.toUpperCase()}</span>
                       {login ? <span>{loginLabel} {login}</span> : null}
@@ -542,22 +542,22 @@ export function SlaveConfigureModal({
                       onClick={() => patch({ ...settings, sizing: { ...sizing, mode } })}
                     >
                       <span className="block text-sm font-medium text-neutral-900 dark:text-neutral-50">{labels.modes[mode]}</span>
-                      <span className="mt-0.5 block text-xs leading-4 text-neutral-500 dark:text-neutral-400">{setup.modes[mode]}</span>
+                      <span className="mt-0.5 block text-xs leading-4 text-neutral-900 dark:text-neutral-50">{setup.modes[mode]}</span>
                     </button>
                   ))}
                 </div>
                 {sizing.mode === 'fixed_lot' || sizing.mode === 'stop_distance' ? (
-                  <label className="mt-3 flex items-center gap-3 text-sm text-neutral-700 dark:text-neutral-200">
+                  <label className="mt-3 flex items-center gap-3 text-sm text-neutral-900 dark:text-neutral-50">
                     <span>{labels.sizing.fixedLot}</span>
                     <LiveNumber
                       value={sizing.fixed_lot}
                       onCommit={next => patch({ ...settings, sizing: { ...sizing, fixed_lot: next } })}
                     />
-                    <span className="text-xs text-neutral-500">{setup.lots}</span>
+                    <span className="text-xs text-neutral-900 dark:text-neutral-50">{setup.lots}</span>
                   </label>
                 ) : null}
                 {sizing.mode === 'stop_distance' ? (
-                  <label className="mt-3 flex items-center gap-3 text-sm text-neutral-700 dark:text-neutral-200">
+                  <label className="mt-3 flex items-center gap-3 text-sm text-neutral-900 dark:text-neutral-50">
                     <span>{labels.sizing.referencePips}</span>
                     <LiveNumber
                       value={sizing.stop_distance_reference_pips}
@@ -581,7 +581,7 @@ export function SlaveConfigureModal({
                             'rounded-lg border px-2 py-2 text-xs font-semibold tabular-nums',
                             current === value
                               ? 'border-green-400 bg-teal-50 text-green-500 dark:bg-teal-950/30 dark:text-teal-300'
-                              : 'border-neutral-200 text-neutral-600 dark:border-neutral-800 dark:text-neutral-300',
+                              : 'border-neutral-200 text-neutral-900 dark:border-neutral-800 dark:text-neutral-50',
                           )}
                           onClick={() => patch({
                             ...settings,
@@ -599,7 +599,7 @@ export function SlaveConfigureModal({
                   </div>
                 ) : null}
                 {sizing.mode === 'percent_risk' ? (
-                  <label className="mt-3 flex items-center gap-3 text-sm text-neutral-700 dark:text-neutral-200">
+                  <label className="mt-3 flex items-center gap-3 text-sm text-neutral-900 dark:text-neutral-50">
                     <span>{labels.sizing.percentRisk}</span>
                     <LiveNumber
                       value={sizing.percent_risk}
@@ -608,7 +608,7 @@ export function SlaveConfigureModal({
                   </label>
                 ) : null}
                 {sizing.mode === 'cash_risk' ? (
-                  <label className="mt-3 flex items-center gap-3 text-sm text-neutral-700 dark:text-neutral-200">
+                  <label className="mt-3 flex items-center gap-3 text-sm text-neutral-900 dark:text-neutral-50">
                     <span>{labels.sizing.cashRisk}</span>
                     <LiveNumber
                       value={sizing.cash_risk}
@@ -637,17 +637,17 @@ export function SlaveConfigureModal({
                       onClick={() => selectSimple(method)}
                     >
                       <span className="block text-sm font-medium text-neutral-900 dark:text-neutral-50">{label}</span>
-                      <span className="mt-0.5 block text-xs leading-4 text-neutral-500 dark:text-neutral-400">{description}</span>
+                      <span className="mt-0.5 block text-xs leading-4 text-neutral-900 dark:text-neutral-50">{description}</span>
                     </button>
                   ))}
                   {activeSimple === 'fixed_lot' ? (
-                    <label className="mt-1.5 flex items-center gap-3 text-sm text-neutral-700 dark:text-neutral-200">
+                    <label className="mt-1.5 flex items-center gap-3 text-sm text-neutral-900 dark:text-neutral-50">
                       <span>{labels.sizing.fixedLot}</span>
                       <LiveNumber
                         value={sizing.fixed_lot}
                         onCommit={next => patch({ ...settings, sizing: { ...sizing, fixed_lot: next } })}
                       />
-                      <span className="text-xs text-neutral-500">{setup.lots}</span>
+                      <span className="text-xs text-neutral-900 dark:text-neutral-50">{setup.lots}</span>
                     </label>
                   ) : null}
                   {activeSimple === 'risk_multiplier' ? (
@@ -660,7 +660,7 @@ export function SlaveConfigureModal({
                             'rounded-lg border px-2 py-2 text-xs font-semibold tabular-nums',
                             sizing.lot_multiplier === value
                               ? 'border-green-400 bg-teal-50 text-green-500 dark:bg-teal-950/30 dark:text-teal-300'
-                              : 'border-neutral-200 text-neutral-600 dark:border-neutral-800 dark:text-neutral-300',
+                              : 'border-neutral-200 text-neutral-900 dark:border-neutral-800 dark:text-neutral-50',
                           )}
                           onClick={() => patch({ ...settings, sizing: { ...sizing, mode: 'lot_multiplier', lot_multiplier: value } })}
                         >
@@ -724,7 +724,7 @@ export function SlaveConfigureModal({
               </div>
               <div className="mt-4">
                 <div className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-950">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-neutral-400">{setup.exampleTrade}</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-neutral-900 dark:text-neutral-50">{setup.exampleTrade}</p>
                   <div className="mt-1 flex items-center justify-between gap-3">
                     <p className="text-base font-semibold text-neutral-900 dark:text-neutral-50">{sourceName ?? setup.exampleTrade}</p>
                     <p className="text-xs font-semibold text-green-500 dark:text-teal-300">{setup.masterSize}: {EXAMPLE_LOT.toFixed(2)}</p>
@@ -737,14 +737,14 @@ export function SlaveConfigureModal({
                     <AccountLogo platform={slave.platform} />
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">{accountRouteLabel(slave)}</p>
-                      {login ? <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">{loginLabel} {login}</p> : null}
+                      {login ? <p className="truncate text-xs text-neutral-900 dark:text-neutral-50">{loginLabel} {login}</p> : null}
                     </div>
                   </div>
                   {advanced ? (
                     <div className="mt-4 space-y-4 border-t border-neutral-100 pt-3 dark:border-neutral-800">
                       {groups.map(group => (
                         <div key={group.title}>
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-neutral-400">{group.title}</p>
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-neutral-900 dark:text-neutral-50">{group.title}</p>
                           <dl className="mt-2 space-y-2">
                             {group.rows.map(row => (
                               <PreviewValue key={`${group.title}-${row.label}`} label={row.label} value={row.value} />
@@ -764,7 +764,7 @@ export function SlaveConfigureModal({
                   )}
                 </div>
                 {sourceName ? (
-                  <div className="mt-3 flex items-center justify-center gap-2 text-xs font-medium text-neutral-500 dark:text-neutral-400">
+                  <div className="mt-3 flex items-center justify-center gap-2 text-xs font-medium text-neutral-900 dark:text-neutral-50">
                     <span className="truncate">{sourceName}</span>
                     <ArrowRight className="h-3.5 w-3.5 shrink-0 text-green-400 dark:text-green-400" aria-hidden />
                     <span className="truncate">{accountRouteLabel(slave)}</span>

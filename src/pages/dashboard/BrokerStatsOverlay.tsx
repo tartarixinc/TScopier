@@ -115,7 +115,7 @@ function StatTile({
 }) {
   return (
     <div className="rounded-xl border border-neutral-200/65 bg-neutral-50/80 p-3 dark:border-neutral-800/55 dark:bg-neutral-800/40">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400" title={hint}>
+      <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50" title={hint}>
         {label}
       </p>
       <p className={clsx('mt-1 text-lg font-semibold tabular-nums', valueClassName ?? 'text-neutral-900 dark:text-neutral-50')}>
@@ -332,7 +332,7 @@ export function BrokerStatsOverlay() {
                 {accountLabel}
               </h2>
               <p className="text-xs text-green-400 font-medium uppercase tabular-nums">{platformLine}</p>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+              <p className="text-xs text-neutral-900 dark:text-neutral-50 mt-0.5">
                 {brokerLabel}
                 {account ? (
                   <>
@@ -374,7 +374,7 @@ export function BrokerStatsOverlay() {
             </Button>
             <button
               type="button"
-              className="p-2 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+              className="p-2 rounded-lg text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
               aria-label={bs.close}
               onClick={close}
             >
@@ -389,7 +389,7 @@ export function BrokerStatsOverlay() {
           ) : null}
 
           {!account && !loading ? (
-            <p className="text-sm text-neutral-500 dark:text-neutral-400 py-8 text-center">{bs.notFound}</p>
+            <p className="text-sm text-neutral-900 dark:text-neutral-50 py-8 text-center">{bs.notFound}</p>
           ) : null}
 
           {showBodySkeleton ? (
@@ -460,9 +460,9 @@ export function BrokerStatsOverlay() {
 
               <section>
                 <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{bs.connectedChannels}</h3>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{bs.connectedChannelsHint}</p>
+                <p className="text-xs text-neutral-900 dark:text-neutral-50 mt-0.5">{bs.connectedChannelsHint}</p>
                 {stats.profitByChannel.length === 0 ? (
-                  <p className="mt-3 text-sm text-neutral-400 dark:text-neutral-500">{bs.noChannels}</p>
+                  <p className="mt-3 text-sm text-neutral-900 dark:text-neutral-50">{bs.noChannels}</p>
                 ) : (
                   <ul className="mt-3 divide-y divide-neutral-100 dark:divide-neutral-800 rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 overflow-hidden">
                     {stats.profitByChannel.map(row => (
@@ -472,7 +472,7 @@ export function BrokerStatsOverlay() {
                       >
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50 truncate">{row.label}</p>
-                          <p className="text-xs text-neutral-400">{interpolate(bs.tradesCount, { count: String(row.count) })}</p>
+                          <p className="text-xs text-neutral-900 dark:text-neutral-50">{interpolate(bs.tradesCount, { count: String(row.count) })}</p>
                         </div>
                         <span className={clsx('text-sm font-semibold tabular-nums shrink-0', pnlColor(row.pnl))}>
                           {formatSignedMoney(row.pnl)}
@@ -522,7 +522,7 @@ export function BrokerStatsOverlay() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{bs.lastSignalTrade}</h3>
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{bs.lastSignalTradeHint}</p>
+                    <p className="text-xs text-neutral-900 dark:text-neutral-50 mt-0.5">{bs.lastSignalTradeHint}</p>
                   </div>
                   <Link
                     to="/account-trades"
@@ -534,23 +534,23 @@ export function BrokerStatsOverlay() {
                 {stats.lastSignalTrade ? (
                   <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                     <div>
-                      <p className="text-xs text-neutral-400">{bs.channel}</p>
+                      <p className="text-xs text-neutral-900 dark:text-neutral-50">{bs.channel}</p>
                       <p className="font-medium text-neutral-900 dark:text-neutral-50 truncate">
                         {stats.lastSignalTrade.channelLabel}
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs text-neutral-400">{bs.symbol}</p>
+                      <p className="text-xs text-neutral-900 dark:text-neutral-50">{bs.symbol}</p>
                       <p className="font-medium text-neutral-900 dark:text-neutral-50">{stats.lastSignalTrade.symbol}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-neutral-400">{bs.lastSignalTotalProfit}</p>
+                      <p className="text-xs text-neutral-900 dark:text-neutral-50">{bs.lastSignalTotalProfit}</p>
                       <p className={clsx('font-semibold tabular-nums', pnlColor(stats.lastSignalTrade.pnl))}>
                         {formatSignedMoney(stats.lastSignalTrade.pnl)}
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs text-neutral-400">{bs.closedAt}</p>
+                      <p className="text-xs text-neutral-900 dark:text-neutral-50">{bs.closedAt}</p>
                       <p className="font-medium text-neutral-900 dark:text-neutral-50 tabular-nums">
                         {new Date(stats.lastSignalTrade.closedAt).toLocaleString([], {
                           day: '2-digit',
@@ -563,7 +563,7 @@ export function BrokerStatsOverlay() {
                     </div>
                   </div>
                 ) : (
-                  <p className="mt-3 text-sm text-neutral-400 dark:text-neutral-500">{bs.noLastSignalTrade}</p>
+                  <p className="mt-3 text-sm text-neutral-900 dark:text-neutral-50">{bs.noLastSignalTrade}</p>
                 )}
               </section>
             </>

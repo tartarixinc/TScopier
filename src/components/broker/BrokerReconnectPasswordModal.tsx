@@ -172,7 +172,7 @@ function BrokerReconnectPasswordModalInner({
         <button
           type="button"
           onClick={() => setConfirmingDelete(true)}
-          className="w-full text-center text-xs text-neutral-400 underline underline-offset-2 transition-colors hover:text-error-600 disabled:opacity-50 dark:text-neutral-500 dark:hover:text-error-400"
+          className="w-full text-center text-xs text-neutral-900 underline underline-offset-2 transition-colors hover:text-error-600 disabled:opacity-50 dark:text-neutral-50 dark:hover:text-error-400"
         >
           {copy.deleteAccountLink}
         </button>
@@ -203,7 +203,7 @@ function BrokerReconnectPasswordModalInner({
                 <h2 id="broker-delete-confirm-title" className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
                   {copy.deleteConfirmTitle}
                 </h2>
-                <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed">
+                <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-50 leading-relaxed">
                   {copy.deleteConfirmBody}
                 </p>
                 <p className="mt-2 text-xs font-medium text-error-600 dark:text-error-400">
@@ -215,7 +215,7 @@ function BrokerReconnectPasswordModalInner({
           <div className="px-5 py-4 space-y-4">
             <div className="rounded-xl border border-neutral-100 bg-neutral-50 px-3 py-3 dark:border-neutral-800 dark:bg-neutral-800/50">
               <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{broker.label}</p>
-              <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
+              <p className="mt-0.5 text-xs text-neutral-900 dark:text-neutral-50">
                 {copy.detailLogin}: {broker.account_login || '—'}
               </p>
             </div>
@@ -298,11 +298,11 @@ function BrokerReconnectPasswordModalInner({
               >
                 {copy.title}
               </h2>
-              <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed">
+              <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-50 leading-relaxed">
                 {copy.body}
               </p>
               {copy.hint && (
-                <p className="mt-2 text-xs font-medium text-neutral-600 dark:text-neutral-300 leading-relaxed">
+                <p className="mt-2 text-xs font-medium text-neutral-900 dark:text-neutral-50 leading-relaxed">
                   {copy.hint}
                 </p>
               )}
@@ -312,7 +312,7 @@ function BrokerReconnectPasswordModalInner({
                 type="button"
                 onClick={onCancel}
                 aria-label={copy.cancel}
-                className="shrink-0 rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+                className="shrink-0 rounded-lg p-2 text-neutral-900 dark:text-neutral-50 transition-colors hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-neutral-50"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -326,18 +326,18 @@ function BrokerReconnectPasswordModalInner({
               {logo ? (
                 <img src={logo} alt={broker.platform} className="h-8 w-8 object-contain" decoding="async" />
               ) : (
-                <span className="text-xs font-semibold text-neutral-500">{broker.platform}</span>
+                <span className="text-xs font-semibold text-neutral-900 dark:text-neutral-50">{broker.platform}</span>
               )}
             </div>
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">
                 {broker.label}
               </p>
-              <p className="mt-0.5 truncate text-xs text-neutral-500 dark:text-neutral-400">
+              <p className="mt-0.5 truncate text-xs text-neutral-900 dark:text-neutral-50">
                 {copy.detailLogin}: {broker.account_login || '—'}
               </p>
               {broker.broker_server && (
-                <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">
+                <p className="truncate text-xs text-neutral-900 dark:text-neutral-50">
                   {copy.detailServer}: {broker.broker_server}
                 </p>
               )}

@@ -34,7 +34,7 @@ function AccountLogo({ platform }: { platform: string }) {
   const normalized = platform.trim().toUpperCase()
   if (failed || (normalized !== 'MT4' && normalized !== 'MT5')) {
     return (
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-neutral-100 text-[11px] font-semibold text-neutral-500 dark:bg-neutral-800 dark:text-neutral-300">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-neutral-100 text-[11px] font-semibold text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50">
         {normalized || 'MT'}
       </span>
     )
@@ -78,10 +78,10 @@ function SettingToggle({
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           {safety ? <ShieldCheck className="h-4 w-4 shrink-0 text-green-400 dark:text-green-400" aria-hidden /> : null}
-          <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{label}</p>
+          <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{label}</p>
         </div>
         {description ? (
-          <p className="mt-0.5 text-xs leading-5 text-neutral-500 dark:text-neutral-400">{description}</p>
+          <p className="mt-0.5 text-xs leading-5 text-neutral-900 dark:text-neutral-50">{description}</p>
         ) : null}
       </div>
       <Toggle checked={checked} onChange={onChange} />
@@ -92,8 +92,8 @@ function SettingToggle({
 function PreviewValue({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-4 text-xs">
-      <dt className="text-neutral-500 dark:text-neutral-400">{label}</dt>
-      <dd className="text-right font-medium text-neutral-800 dark:text-neutral-100">{value}</dd>
+      <dt className="text-neutral-900 dark:text-neutral-50">{label}</dt>
+      <dd className="text-right font-medium text-neutral-900 dark:text-neutral-100">{value}</dd>
     </div>
   )
 }
@@ -183,7 +183,7 @@ export function CopyTraderModal({
         <div className="relative w-full rounded-t-2xl border border-neutral-200/65 bg-white px-6 py-8 text-center shadow-2xl dark:border-neutral-800/55 dark:bg-neutral-950 sm:max-w-md sm:rounded-2xl">
           <button
             type="button"
-            className="absolute right-4 top-4 rounded-lg p-2 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800"
+            className="absolute right-4 top-4 rounded-lg p-2 text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:text-neutral-50 dark:hover:bg-neutral-800"
             aria-label={c.close}
             onClick={onClose}
           >
@@ -194,10 +194,10 @@ export function CopyTraderModal({
           </span>
           <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.12em] text-green-500 dark:text-teal-300">{c.previewLabel}</p>
           <h2 id="copy-trader-success-title" className="mt-1 text-xl font-semibold text-neutral-900 dark:text-neutral-50">{c.successTitle}</h2>
-          <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-neutral-500 dark:text-neutral-400">
+          <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-neutral-900 dark:text-neutral-50">
             {interpolate(c.successBody, { trader: trader.displayName })}
           </p>
-          <div className="mt-5 flex items-center justify-center gap-2 rounded-xl bg-neutral-50 px-4 py-3 text-sm font-medium text-neutral-800 ring-1 ring-neutral-200/70 dark:bg-neutral-900 dark:text-neutral-100 dark:ring-neutral-800">
+          <div className="mt-5 flex items-center justify-center gap-2 rounded-xl bg-neutral-50 px-4 py-3 text-sm font-medium text-neutral-900 ring-1 ring-neutral-200/70 dark:bg-neutral-900 dark:text-neutral-100 dark:ring-neutral-800">
             <span>{trader.displayName}</span>
             <ArrowRight className="h-4 w-4 shrink-0 text-green-400 dark:text-green-400" aria-hidden />
             <span>{accountRouteLabel(selectedBroker)}</span>
@@ -228,17 +228,17 @@ export function CopyTraderModal({
                 {c.previewLabel}
               </span>
             </div>
-            <p className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">{c.subtitle}</p>
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-500 dark:text-neutral-400">
+            <p className="mt-0.5 text-sm text-neutral-900 dark:text-neutral-50">{c.subtitle}</p>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-900 dark:text-neutral-50">
               <span>@{trader.username}</span>
-              <span>{copy.roi} <strong className="font-semibold text-neutral-700 dark:text-neutral-200">{trader.roi.toFixed(1)}%</strong></span>
-              <span>{copy.maxDrawdown} <strong className="font-semibold text-neutral-700 dark:text-neutral-200">{trader.maxDrawdown.toFixed(1)}%</strong></span>
-              <span>{copy.winRate} <strong className="font-semibold text-neutral-700 dark:text-neutral-200">{trader.winRate.toFixed(1)}%</strong></span>
+              <span>{copy.roi} <strong className="font-semibold text-neutral-900 dark:text-neutral-50">{trader.roi.toFixed(1)}%</strong></span>
+              <span>{copy.maxDrawdown} <strong className="font-semibold text-neutral-900 dark:text-neutral-50">{trader.maxDrawdown.toFixed(1)}%</strong></span>
+              <span>{copy.winRate} <strong className="font-semibold text-neutral-900 dark:text-neutral-50">{trader.winRate.toFixed(1)}%</strong></span>
             </div>
           </div>
           <button
             type="button"
-            className="shrink-0 rounded-lg p-2 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800"
+            className="shrink-0 rounded-lg p-2 text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:text-neutral-50 dark:hover:bg-neutral-800"
             aria-label={c.close}
             onClick={onClose}
           >
@@ -252,11 +252,11 @@ export function CopyTraderModal({
               <section aria-labelledby="copy-destination-heading">
                 <h3 id="copy-destination-heading" className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{c.destinationAccount}</h3>
                 {loading ? (
-                  <p className="mt-3 text-sm text-neutral-500 dark:text-neutral-400">{c.loadingAccounts}</p>
+                  <p className="mt-3 text-sm text-neutral-900 dark:text-neutral-50">{c.loadingAccounts}</p>
                 ) : brokers.length === 0 ? (
                   <div className="mt-2 rounded-xl border border-dashed border-neutral-300 px-4 py-3 dark:border-neutral-700">
-                    <p className="text-sm font-semibold text-neutral-800 dark:text-neutral-100">{c.noAccountsTitle}</p>
-                    <p className="mt-1 text-xs leading-5 text-neutral-500 dark:text-neutral-400">{c.noAccountsBody}</p>
+                    <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{c.noAccountsTitle}</p>
+                    <p className="mt-1 text-xs leading-5 text-neutral-900 dark:text-neutral-50">{c.noAccountsBody}</p>
                     <Button type="button" size="sm" className="mt-3" onClick={onConnectBroker}>{c.connectBroker}</Button>
                   </div>
                 ) : (
@@ -280,7 +280,7 @@ export function CopyTraderModal({
                           <AccountLogo platform={broker.platform} />
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">{getBrokerDisplayLabel(broker)}</span>
-                            <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-neutral-500 dark:text-neutral-400">
+                            <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-neutral-900 dark:text-neutral-50">
                               {broker.broker_name?.trim() ? <span>{broker.broker_name.trim()}</span> : null}
                               <span>{broker.platform.toUpperCase()}</span>
                               {login ? <span>{c.login} {login}</span> : null}
@@ -293,9 +293,9 @@ export function CopyTraderModal({
                   </div>
                 )}
                 {selectedBroker && (selectedBroker.last_balance != null || selectedBroker.last_equity != null) ? (
-                  <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 px-1 text-xs text-neutral-500 dark:text-neutral-400">
-                    {selectedBroker.last_balance != null ? <div><dt className="inline">{c.balance}: </dt><dd className="inline font-medium text-neutral-700 dark:text-neutral-200">{accountBalanceLabel}</dd></div> : null}
-                    {selectedBroker.last_equity != null ? <div><dt className="inline">{c.equity}: </dt><dd className="inline font-medium text-neutral-700 dark:text-neutral-200">{formatMoney(selectedBroker.last_equity)}</dd></div> : null}
+                  <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 px-1 text-xs text-neutral-900 dark:text-neutral-50">
+                    {selectedBroker.last_balance != null ? <div><dt className="inline">{c.balance}: </dt><dd className="inline font-medium text-neutral-900 dark:text-neutral-50">{accountBalanceLabel}</dd></div> : null}
+                    {selectedBroker.last_equity != null ? <div><dt className="inline">{c.equity}: </dt><dd className="inline font-medium text-neutral-900 dark:text-neutral-50">{formatMoney(selectedBroker.last_equity)}</dd></div> : null}
                   </dl>
                 ) : null}
               </section>
@@ -321,12 +321,12 @@ export function CopyTraderModal({
                       onClick={() => setRiskMode(mode)}
                     >
                       <span className="block text-sm font-medium text-neutral-900 dark:text-neutral-50">{label}</span>
-                      <span className="mt-0.5 block text-xs leading-4 text-neutral-500 dark:text-neutral-400">{description}</span>
+                      <span className="mt-0.5 block text-xs leading-4 text-neutral-900 dark:text-neutral-50">{description}</span>
                     </button>
                   ))}
                 </div>
                 {riskMode === 'fixed_lot' ? (
-                  <label className="mt-3 flex items-center gap-3 text-sm text-neutral-700 dark:text-neutral-200">
+                  <label className="mt-3 flex items-center gap-3 text-sm text-neutral-900 dark:text-neutral-50">
                     <span>{c.fixedLot}</span>
                     <input
                       type="number"
@@ -336,7 +336,7 @@ export function CopyTraderModal({
                       onChange={event => setFixedLot(Number(event.target.value))}
                       className="w-24 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm tabular-nums text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50"
                     />
-                    <span className="text-xs text-neutral-500">{c.lots}</span>
+                    <span className="text-xs text-neutral-900 dark:text-neutral-50">{c.lots}</span>
                   </label>
                 ) : null}
                 {riskMode === 'risk_multiplier' ? (
@@ -349,7 +349,7 @@ export function CopyTraderModal({
                           'rounded-lg border px-2 py-2 text-xs font-semibold tabular-nums',
                           multiplier === value
                             ? 'border-green-400 bg-teal-50 text-green-500 dark:bg-teal-950/30 dark:text-teal-300'
-                            : 'border-neutral-200 text-neutral-600 dark:border-neutral-800 dark:text-neutral-300',
+                            : 'border-neutral-200 text-neutral-900 dark:border-neutral-800 dark:text-neutral-50',
                         )}
                         onClick={() => setMultiplier(value)}
                       >
@@ -386,7 +386,7 @@ export function CopyTraderModal({
               {previewTrade ? (
                 <div className="mt-4">
                   <div className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-950">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-neutral-400">{c.traderAction}</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-neutral-900 dark:text-neutral-50">{c.traderAction}</p>
                     <div className="mt-1 flex items-center justify-between gap-3">
                       <p className="flex items-center gap-2 text-base font-semibold text-neutral-900 dark:text-neutral-50">
                         <span>{previewTrade.symbol}</span>
@@ -396,7 +396,7 @@ export function CopyTraderModal({
                       </p>
                       <p className={clsx('text-xs font-semibold', previewTrade.side === 'buy' ? 'text-green-500 dark:text-teal-300' : 'text-red-600 dark:text-red-400')}>{c.traderSize}: {previewTrade.previewLot.toFixed(2)}</p>
                     </div>
-                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-500 dark:text-neutral-400">
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-900 dark:text-neutral-50">
                       <span>{c.stopLoss} {previewTrade.previewStopLoss ?? 'N/A'}</span>
                       <span>{c.takeProfit} {previewTrade.previewTakeProfit ?? 'N/A'}</span>
                     </div>
@@ -410,7 +410,7 @@ export function CopyTraderModal({
                           <AccountLogo platform={selectedBroker.platform} />
                           <div className="min-w-0">
                             <p className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">{accountRouteLabel(selectedBroker)}</p>
-                            {resolveAccountLogin(selectedBroker) ? <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">{c.login} {resolveAccountLogin(selectedBroker)}</p> : null}
+                            {resolveAccountLogin(selectedBroker) ? <p className="truncate text-xs text-neutral-900 dark:text-neutral-50">{c.login} {resolveAccountLogin(selectedBroker)}</p> : null}
                           </div>
                         </div>
                         <dl className="mt-4 space-y-2 border-t border-neutral-100 pt-3 dark:border-neutral-800">
@@ -421,11 +421,11 @@ export function CopyTraderModal({
                         </dl>
                       </>
                     ) : (
-                      <p className="mt-3 text-sm text-neutral-500 dark:text-neutral-400">{c.noAccountsBody}</p>
+                      <p className="mt-3 text-sm text-neutral-900 dark:text-neutral-50">{c.noAccountsBody}</p>
                     )}
                   </div>
                   {selectedBroker ? (
-                    <div className="mt-3 flex items-center justify-center gap-2 text-xs font-medium text-neutral-500 dark:text-neutral-400">
+                    <div className="mt-3 flex items-center justify-center gap-2 text-xs font-medium text-neutral-900 dark:text-neutral-50">
                       <span className="truncate">{trader.displayName}</span>
                       <ArrowRight className="h-3.5 w-3.5 shrink-0 text-green-400 dark:text-green-400" aria-hidden />
                       <span className="truncate">{accountRouteLabel(selectedBroker)}</span>
@@ -433,7 +433,7 @@ export function CopyTraderModal({
                   ) : null}
                 </div>
               ) : (
-                <p className="mt-4 text-sm text-neutral-500 dark:text-neutral-400">{c.noOpenTrade}</p>
+                <p className="mt-4 text-sm text-neutral-900 dark:text-neutral-50">{c.noOpenTrade}</p>
               )}
             </section>
           </div>

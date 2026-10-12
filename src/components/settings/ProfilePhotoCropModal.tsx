@@ -151,7 +151,7 @@ export function ProfilePhotoCropModal({
             onClick={onClose}
             disabled={busy}
             aria-label={cancelLabel}
-            className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 disabled:opacity-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+            className="rounded-lg p-1.5 text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 hover:text-neutral-900 disabled:opacity-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-50"
           >
             <X className="h-4 w-4" />
           </button>
@@ -204,7 +204,7 @@ export function ProfilePhotoCropModal({
         </div>
 
         <label className="mt-4 block">
-          <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{zoomLabel}</span>
+          <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50">{zoomLabel}</span>
           <input
             type="range"
             min={1}

@@ -234,9 +234,9 @@ export function AssistantLauncher({
             onVisibleChange(false)
           }}
           className={clsx(
-            'absolute -end-1.5 -top-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 shadow-sm',
-            'transition hover:bg-neutral-100 hover:text-neutral-800 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2 focus:ring-offset-white',
-            'dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800 dark:focus:ring-offset-neutral-950',
+            'absolute -end-1.5 -top-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-900 dark:text-neutral-50 shadow-sm',
+            'transition hover:bg-neutral-100 hover:text-neutral-900 dark:hover:text-neutral-50 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2 focus:ring-offset-white',
+            'dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50 dark:hover:bg-neutral-800 dark:focus:ring-offset-neutral-950',
           )}
         >
           <X className="h-3 w-3" aria-hidden />
@@ -279,7 +279,7 @@ export function AssistantLauncher({
           <span className="block truncate text-sm font-semibold text-neutral-900 dark:text-neutral-100">
             {a.title}
           </span>
-          <span className="mt-0.5 block text-xs leading-5 text-neutral-500 dark:text-neutral-400">
+          <span className="mt-0.5 block text-xs leading-5 text-neutral-900 dark:text-neutral-50">
             How can I help with your trades today?
           </span>
         </span>
@@ -294,9 +294,9 @@ export function AssistantLauncher({
           onMinimizedChange(true)
         }}
         className={clsx(
-          'absolute end-10 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-neutral-400',
-          'transition hover:bg-neutral-100 hover:text-neutral-700 focus:outline-none focus:ring-2 focus:ring-green-400',
-          'dark:hover:bg-neutral-800 dark:hover:text-neutral-200',
+          'absolute end-10 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-neutral-900 dark:text-neutral-50',
+          'transition hover:bg-neutral-100 hover:text-neutral-900 dark:hover:text-neutral-50 focus:outline-none focus:ring-2 focus:ring-green-400',
+          'dark:hover:bg-neutral-800 dark:hover:text-neutral-50',
         )}
       >
         <Minus className="h-4 w-4" aria-hidden />
@@ -311,9 +311,9 @@ export function AssistantLauncher({
           onVisibleChange(false)
         }}
         className={clsx(
-          'absolute end-2.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-neutral-400',
-          'transition hover:bg-neutral-100 hover:text-neutral-700 focus:outline-none focus:ring-2 focus:ring-green-400',
-          'dark:hover:bg-neutral-800 dark:hover:text-neutral-200',
+          'absolute end-2.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-neutral-900 dark:text-neutral-50',
+          'transition hover:bg-neutral-100 hover:text-neutral-900 dark:hover:text-neutral-50 focus:outline-none focus:ring-2 focus:ring-green-400',
+          'dark:hover:bg-neutral-800 dark:hover:text-neutral-50',
         )}
       >
         <X className="h-4 w-4" aria-hidden />

@@ -14,7 +14,7 @@
   --tsc-border: #e2e8f0;
   --tsc-border-subtle: #f1f5f9;
   --tsc-text: #0f172a;
-  --tsc-text-muted: #64748b;
+  --tsc-text-muted: #0f172a;
 }
 
 html.dark {
@@ -25,7 +25,7 @@ html.dark {
   --tsc-border: #334155;
   --tsc-border-subtle: #1e293b;
   --tsc-text: #f8fafc;
-  --tsc-text-muted: #94a3b8;
+  --tsc-text-muted: #f8fafc;
 }
 
 html {
@@ -109,7 +109,7 @@ html.app-viewport-lock #root {
   }
 
   .tsc-page-subtext {
-    @apply text-neutral-500 dark:text-neutral-400;
+    @apply text-neutral-900 dark:text-neutral-50;
   }
 
   .marketing-card {
@@ -196,7 +196,7 @@ html.app-viewport-lock #root {
   }
 
   .marketing-faq-answer {
-    @apply border-t border-neutral-100 px-5 pb-5 pt-0 text-sm leading-relaxed text-neutral-600 dark:border-neutral-800 dark:text-neutral-400 sm:px-6 sm:pb-6;
+    @apply border-t border-neutral-100 px-5 pb-5 pt-0 text-sm leading-relaxed text-neutral-900 dark:border-neutral-800 dark:text-neutral-50 sm:px-6 sm:pb-6;
   }
 
   .marketing-faq-item[open] .marketing-faq-answer {
@@ -355,7 +355,7 @@ html.app-viewport-lock #root {
   }
 
   .hero-product-url {
-    @apply mx-auto flex min-w-0 max-w-[min(100%,14rem)] flex-1 items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2.5 py-0.5 text-[10px] font-medium text-neutral-500 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400 sm:text-[11px];
+    @apply mx-auto flex min-w-0 max-w-[min(100%,14rem)] flex-1 items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2.5 py-0.5 text-[10px] font-medium text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-50 sm:text-[11px];
   }
 
   .hero-product-screen {

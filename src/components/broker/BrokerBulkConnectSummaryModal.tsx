@@ -80,7 +80,7 @@ export function BrokerBulkConnectSummaryModal({
               >
                 {copy.summaryTitle}
               </h2>
-              <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed">
+              <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-50 leading-relaxed">
                 {body}
               </p>
             </div>
@@ -88,7 +88,7 @@ export function BrokerBulkConnectSummaryModal({
               type="button"
               onClick={onDismiss}
               aria-label={copy.dismiss}
-              className="shrink-0 rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+              className="shrink-0 rounded-lg p-2 text-neutral-900 dark:text-neutral-50 transition-colors hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-neutral-50"
             >
               <X className="h-4 w-4" />
             </button>
@@ -96,10 +96,10 @@ export function BrokerBulkConnectSummaryModal({
 
           {failedRows.length > 0 ? (
             <div className="mt-4 rounded-xl border border-neutral-100 bg-neutral-50 px-3 py-3 dark:border-neutral-800 dark:bg-neutral-800/60">
-              <p className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
+              <p className="text-xs font-medium text-neutral-900 dark:text-neutral-50">
                 {copy.summaryFailedTitle}
               </p>
-              <ul className="mt-2 space-y-1.5 text-xs text-neutral-600 dark:text-neutral-400">
+              <ul className="mt-2 space-y-1.5 text-xs text-neutral-900 dark:text-neutral-50">
                 {failedRows.map(row => (
                   <li key={row.index} className="truncate">
                     {row.row.account_number.trim() || '—'}
