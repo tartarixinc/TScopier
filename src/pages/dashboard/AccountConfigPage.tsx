@@ -2998,7 +2998,7 @@ export function AccountConfigPage() {
                       <button
                         type="button"
                         onClick={() => { void openConfigureModal(broker) }}
-                        className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs font-medium text-teal-800 transition-colors hover:bg-teal-100 dark:border-teal-900 dark:bg-teal-950/50 dark:text-teal-200 dark:hover:bg-teal-950"
+                        className="rounded-lg border border-green-400 bg-green-400 px-3 py-1.5 text-xs font-medium text-neutral-950 transition-colors hover:bg-green-500 dark:border-green-400 dark:bg-green-400 dark:text-neutral-950 dark:hover:bg-green-500"
                       >
                         {bl.configure}
                       </button>
