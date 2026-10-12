@@ -455,6 +455,9 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
           totalPlannedLegCount: basketTotalPlannedLegs,
           immediateLegCount: refreshImmediateLegCount,
           tpLots: manual.tp_lots,
+          currentLegTps: familyTrades.map(tr => tr.tp),
+          bundleReladder: sameSignalRefresh === true,
+          isBuy: direction !== 'sell',
         })
     if (manual.trade_style !== 'multi' && singleBrokerTp != null) {
       perLegTargets = perLegTargets.map(target => ({ ...target, takeprofit: singleBrokerTp }))
@@ -549,6 +552,7 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
             parallelLegs: true,
             orderCommentsEnabled: manual.order_comments_enabled !== false,
             explicitChannelTargets: true,
+            bundleIdentity: manual.range_trading !== true,
           })
           for (const id of modifyPass.modifiedTradeIds) modifiedTradeIds.add(id)
           summary = modifyPass.summary
@@ -642,6 +646,7 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
             parallelLegs: true,
             orderCommentsEnabled: manual.order_comments_enabled !== false,
             explicitChannelTargets: effectiveSlIsExplicitMgmt,
+            bundleIdentity: manual.range_trading !== true,
           }).catch(err =>
             console.warn(
               `[tradeExecutor] v2 merge TP distribute failed signal=${signal.id} broker=${broker.id}:`,
@@ -669,6 +674,9 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
           totalPlannedLegCount: basketTotalPlannedLegs,
           immediateLegCount: refreshImmediateLegCount,
           tpLots: manual.tp_lots,
+          currentLegTps: familyTrades.map(tr => tr.tp),
+          bundleReladder: false,
+          isBuy: direction !== 'sell',
         })
         if (manual.trade_style !== 'multi' && singleBrokerTp != null) {
           for (let i = 0; i < refreshedTargets.length; i++) {
@@ -720,6 +728,7 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
         liveMgmtFast,
         orderCommentsEnabled: manual.order_comments_enabled !== false,
         explicitChannelTargets: effectiveSlIsExplicitMgmt,
+        bundleIdentity: manual.range_trading !== true,
       })
       for (const id of pass.modifiedTradeIds) modifiedTradeIds.add(id)
       summary = pass.summary
@@ -989,6 +998,7 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
         nImmCwe,
         overrideTp,
         lastError: partialMsg,
+        bundleIdentity: manual.range_trading !== true && manual.trade_style === 'multi',
       })
     } else {
       const { data: existingJob } = await ctx.supabase

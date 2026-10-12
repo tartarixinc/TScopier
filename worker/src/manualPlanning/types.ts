@@ -19,6 +19,8 @@ export interface ParsedSignal {
   lot_size: number | null
   open_tp?: boolean
   partial_close_fraction?: number | null
+  /** Referenced TP level on a "CLOSE TPn" message (1-based); null when absent. */
+  close_tp_index?: number | null
   raw_instruction?: string
   /** Explicit channel intent to open a new trade (not modify existing). */
   re_enter?: boolean
