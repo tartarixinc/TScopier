@@ -70,7 +70,7 @@ Generated on the VPS by `docs/nginx-setup/setup.sh` and saved as `/root/.mtapi_a
 |-------|--------|
 | Railway worker env | `mtapiProvider` sets `Authorization: Bearer …` |
 | Supabase Edge secrets | `mtapiClient.ts` uses `MTAPI_PROXY_KEY` \|\| `MTAPI_API_KEY` |
-| nginx config | `auth_request` / `if` / `proxy_set_header` compares Bearer value |
+| nginx config | `map $http_authorization $auth_ok` compares the Bearer value before proxying |
 
 **If wrong/missing on Edge or Worker:** nginx returns **401/403** on every MTAPI call → trades, connect, summary all fail at the proxy (not a TLS issue).
 

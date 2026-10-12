@@ -95,6 +95,27 @@ curl -s https://mtapi.tscopier.ai:9443/health       # expect: Healthy
 
 ---
 
+## Step 3b — Stop nginx forwarding the credentials (MT4 header echo)
+
+The MT4 bridge appends the request headers it receives to its own "client not
+found" body, which echoes our two perimeter secrets back to the caller. Stage 6
+blanks them at nginx, one location at a time, with a gate and an automatic
+rollback per stage:
+
+```bash
+bash deploy/mt4-bridge/01-copy-files.sh
+ssh root@13.140.44.122 'bash /root/mt4-deploy/06-strip-auth-headers.sh apply canary'
+python3 deploy/mt4-bridge/verify.py quick && python3 deploy/mt4-bridge/verify.py signin
+ssh root@13.140.44.122 'bash /root/mt4-deploy/06-strip-auth-headers.sh apply mt4'
+# … then 'apply mt5' and 'apply tunnel'
+```
+
+`06-strip-auth-headers.sh check` is the ongoing probe: it re-runs the echo gate
+without changing anything. It reads `/root/.mtapi_api_key` and
+`/root/.mtapi_internal_token`, so run it as root.
+
+---
+
 ## Step 4 — Tell the application where MT4 lives
 
 The application already prefers a dedicated MT4 address when one is present.

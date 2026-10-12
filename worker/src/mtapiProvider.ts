@@ -8,14 +8,22 @@ import { ingestMtHistoryRows, type MtHistoryProfile } from './mtTradeFields'
 import { auditOrderClose } from './orderCloseAudit'
 import { createConcurrencyGate } from './perAccountConcurrency'
 import { createBrokerGateway, type BrokerGateway, type BrokerPriority } from './brokerGateway'
+import { redactBridgeSecrets } from './mtapiRedaction'
 
 type FetchLike = typeof fetch
 type RecoveryHandler = (sessionId: string) => Promise<string | null>
 
 export class MtapiApiError extends Error {
   constructor(message: string, readonly status: number, readonly code?: string) {
-    super(message)
+    // Single choke point: every MtapiApiError built in this runtime passes
+    // through here, so the MT4 bridge's echoed credentials cannot reach a log,
+    // the database or a customer's browser through a path we forgot to patch.
+    super(redactBridgeSecrets(message))
     this.name = 'MtapiApiError'
+    // `code` is redacted as well because `errorDetails` promotes a bare-string
+    // `error` body field into it, and `mtapiFailureSummary()` forwards an
+    // unmatched code verbatim into `broker_accounts.connection_error`.
+    if (this.code != null) this.code = redactBridgeSecrets(this.code)
   }
 }
 

@@ -6,10 +6,19 @@
  * Session id is passed as `?id=` (same protocol as the worker bridge).
  */
 
+import { redactBridgeSecrets } from "./mtapiRedaction.ts"
+
 export class MtapiApiError extends Error {
   constructor(message: string, readonly status: number, readonly code?: string) {
-    super(message)
+    // Single choke point: the `mtapi-broker` handler returns this message to
+    // the caller, so without redaction the MT4 bridge's echoed credentials
+    // would land in the customer's browser.
+    super(redactBridgeSecrets(message))
     this.name = "MtapiApiError"
+    // `code` is redacted as well because `errorDetails` promotes a bare-string
+    // `error` body field into it, and `mtapiFailureSummary()` forwards an
+    // unmatched code verbatim into `broker_accounts.connection_error`.
+    if (this.code != null) this.code = redactBridgeSecrets(this.code)
   }
 }
 
