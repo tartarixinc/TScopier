@@ -15,7 +15,8 @@ export const landingSv: LandingTranslations = {
     menuClose: 'Stäng menyn',
   },
   hero: {
-    headline: 'Trading-signaler. Kopieras automatiskt.',
+    headline: 'En enhetlig kopieringsplattform för',
+    headlinePhrases: ['Handelssignaler', 'Social trading', 'Kontospegling'],
     subheadline:
       'Automatisera dina affärer från Telegram, WhatsApp, Discord, TradingView eller ett masterkonto till 8+ mäklarplattformar på under 50 ms. Ingen VPS krävs.',
     socialProof: 'Rankad #1 molnbaserad Telegram-signalkopierare',

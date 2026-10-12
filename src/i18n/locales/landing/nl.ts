@@ -15,7 +15,8 @@ export const landingNl: LandingTranslations = {
     menuClose: 'Menu sluiten',
   },
   hero: {
-    headline: 'Trading-signalen. Automatisch gekopieerd.',
+    headline: 'Eén uniform kopieerplatform voor',
+    headlinePhrases: ['Handelssignalen', 'Social trading', 'Account mirroring'],
     subheadline:
       'Automatiseer je trades vanuit Telegram, WhatsApp, Discord, TradingView of een masteraccount naar 8+ brokerplatformen in minder dan 50 ms. Geen VPS nodig.',
     socialProof: 'Beoordeeld als #1 cloud Telegram-signaalkopieerder',
