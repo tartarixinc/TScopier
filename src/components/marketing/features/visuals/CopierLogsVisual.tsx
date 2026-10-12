@@ -62,7 +62,7 @@ export function CopierLogsVisual() {
               key={`${row.time}-${row.type}-${index}`}
               className={clsx(COPIER_LOG_GRID, 'px-4 py-3 sm:px-5')}
             >
-              <span className="inline-flex w-fit items-center rounded-md bg-teal-50 px-2 py-0.5 text-xs font-medium text-green-500 dark:bg-teal-950/60 dark:text-teal-300">
+              <span className="inline-flex w-fit items-center rounded-md bg-green-100 px-2 py-0.5 text-xs font-medium text-neutral-950 dark:bg-green-100 dark:text-neutral-950">
                 {t.copierLogs.statusExecuted}
               </span>
               <span className="min-w-0 truncate text-sm font-medium text-neutral-900 dark:text-neutral-50">

@@ -1102,7 +1102,7 @@ function PnlCalendar({
                 quiet
                   ? 'border-neutral-100 text-neutral-900 dark:text-neutral-50 hover:border-neutral-300 dark:border-neutral-800 dark:hover:border-neutral-600'
                   : up
-                    ? 'border-teal-100 bg-teal-50 text-teal-800 hover:border-teal-300 dark:border-teal-900 dark:bg-teal-950/40 dark:text-teal-200'
+                    ? 'border-green-200 bg-green-100 text-green-800 hover:border-green-400 dark:border-green-800 dark:bg-green-400/15 dark:text-green-200'
                     : 'border-red-100 bg-red-50 text-red-700 hover:border-red-300 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200',
               )}
             >

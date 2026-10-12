@@ -109,7 +109,7 @@ function statusLabel(status: string, copy: AssistantTradesCardCopy): string {
 function statusStyles(status: string): string {
   switch (status) {
     case 'executed':
-      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+      return 'bg-green-100 text-neutral-950 dark:bg-green-100 dark:text-neutral-950'
     case 'failed':
     case 'error':
       return 'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300'

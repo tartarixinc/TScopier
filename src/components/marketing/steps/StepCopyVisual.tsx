@@ -58,7 +58,7 @@ export function StepCopyVisual() {
           <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
             {v.logRows.map((row) => (
               <div key={`${row.time}-${row.type}`} className={clsx(LOG_GRID, 'px-3 py-2 sm:px-4')}>
-                <span className="inline-flex w-fit rounded-md bg-teal-50 px-1.5 py-0.5 text-[10px] font-medium text-green-500 dark:bg-teal-950/60 dark:text-teal-300">
+                <span className="inline-flex w-fit rounded-md bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-950 dark:bg-green-100 dark:text-neutral-950">
                   {t.copierLogs.statusExecuted}
                 </span>
                 <span className="truncate text-xs font-medium text-neutral-900 dark:text-neutral-50">

@@ -14,7 +14,7 @@ export const lossBadgeOutlineClass =
 
 export const lossIconWrapClass = 'bg-error-50 text-[#737373] dark:bg-error-950/40'
 
-export const profitTextClass = 'text-green-400 dark:text-green-400'
+export const profitTextClass = 'text-green-500 dark:text-green-400'
 
 export type PnlSignTone = 'good' | 'bad' | 'neutral'
 

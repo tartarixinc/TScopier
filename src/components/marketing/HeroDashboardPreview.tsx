@@ -338,7 +338,7 @@ function HeroChannelProfitChart() {
 function copierStatusClass(status: LandingHeroCopierLogRow['status']): string {
   switch (status) {
     case 'executed':
-      return 'text-green-500 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60'
+      return 'bg-green-100 text-neutral-950 dark:bg-green-100 dark:text-neutral-950'
     case 'parsed':
       return 'text-green-500 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60'
     case 'skipped':

@@ -981,7 +981,7 @@ export function DashboardPage() {
   const dashboardGreeting = greetingParts ? (
     <>
       {greetingParts[0]}
-      <span className="text-green-400 dark:text-green-400">{greetingName}</span>
+      <span className="text-green-500 dark:text-green-400">{greetingName}</span>
       {greetingParts[1] ?? ''}
     </>
   ) : (
@@ -2827,7 +2827,7 @@ function LogRow({ signal, channelName, symbol, sourceKind }: { signal: Signal; c
   const action = parsed?.action as string | undefined
 
   const statusConfig: Record<string, { color: string; label: string }> = {
-    executed: { color: 'text-green-500 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60', label: t.copierLogs.statusExecuted },
+    executed: { color: 'bg-green-100 text-neutral-950 dark:bg-green-100 dark:text-neutral-950', label: t.copierLogs.statusExecuted },
     skipped:  { color: 'text-warning-800 bg-warning-50 dark:!text-amber-100 dark:!bg-amber-900', label: t.copierLogs.statusSkipped },
     failed:   { color: 'text-error-800 bg-error-50 dark:text-error-300 dark:bg-error-950/70', label: t.copierLogs.statusFailed },
     pending:  { color: 'text-neutral-900 bg-neutral-100 dark:text-neutral-50 dark:bg-neutral-800', label: t.copierLogs.statusPending },
@@ -2852,7 +2852,7 @@ function LogRow({ signal, channelName, symbol, sourceKind }: { signal: Signal; c
       <span className="min-w-0 text-sm font-medium text-neutral-900 dark:text-neutral-50 truncate" title={symbol}>{symbol}</span>
       <span
         className={`min-w-0 text-xs font-medium uppercase truncate ${
-          isBuy ? 'text-green-400' : action === 'sell' ? 'text-error-600' : 'text-neutral-900 dark:text-neutral-50'
+          isBuy ? 'text-green-500 dark:text-green-400' : action === 'sell' ? 'text-error-600' : 'text-neutral-900 dark:text-neutral-50'
         }`}
         title={typeLabel}
       >
@@ -3001,7 +3001,7 @@ function LinkedAccountRow({
   const winRate = performance?.winRate ?? null
   const maxDd = performance?.maxDrawdownPct ?? null
   const winRateColor =
-    winRate == null ? 'text-neutral-900 dark:text-neutral-50' : winRate >= 50 ? 'text-green-400' : 'text-neutral-900 dark:text-neutral-50'
+    winRate == null ? 'text-neutral-900 dark:text-neutral-50' : winRate >= 50 ? 'text-green-500 dark:text-green-400' : 'text-neutral-900 dark:text-neutral-50'
   const ddColor =
     maxDd == null ? 'text-neutral-900 dark:text-neutral-50' : lossTextClass
 

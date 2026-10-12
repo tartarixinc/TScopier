@@ -54,10 +54,10 @@ type DetailStatusVariant = 'success' | 'warning' | 'error' | 'neutral' | 'primar
 function detailStatusFor(
   status: string,
   copierLogs: ReturnType<typeof useT>['copierLogs'],
-): { variant: DetailStatusVariant; label: string } {
+): { variant: DetailStatusVariant; label: string; className?: string } {
   switch (status) {
     case 'executed':
-      return { variant: 'success', label: copierLogs.statusExecuted }
+      return { variant: 'success', label: copierLogs.statusExecuted, className: 'bg-green-100 text-neutral-950 dark:bg-green-100 dark:text-neutral-950' }
     case 'skipped':
       return { variant: 'warning', label: copierLogs.statusSkipped }
     case 'failed':

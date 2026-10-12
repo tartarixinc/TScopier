@@ -41,7 +41,7 @@ export function CopierLogDetailModal({
   channelName: string
   sourceKind?: SignalSourceKind | null
   symbol: string
-  status: { variant: StatusVariant; label: string }
+  status: { variant: StatusVariant; label: string; className?: string }
   onClose: () => void
   onRetry?: () => void
   isRetrying?: boolean
@@ -186,7 +186,7 @@ export function CopierLogDetailModal({
         <div className="p-5 space-y-5">
           <section className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 p-4 space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant={status.variant} size="sm">{status.label}</Badge>
+              <Badge variant={status.variant} size="sm" className={status.className}>{status.label}</Badge>
               {action ? (
                 <span className={clsx(
                   'text-xs font-semibold uppercase',

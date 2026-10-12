@@ -64,7 +64,7 @@ function StatusValue({ children, tone }: { children: string; tone: Tone }) {
     <span
       className={clsx(
         'font-medium tabular-nums',
-        tone === 'ok' && 'text-green-400 dark:text-green-400',
+        tone === 'ok' && 'text-green-500 dark:text-green-400',
         tone === 'warn' && 'text-amber-600 dark:text-amber-400',
         tone === 'bad' && 'text-rose-600 dark:text-rose-400',
         tone === 'muted' && 'text-neutral-900 dark:text-neutral-50',

@@ -87,7 +87,7 @@ export function HeroSection() {
       <div className="marketing-hero-grid" aria-hidden />
       <div className="relative z-[1] mx-auto max-w-6xl px-5 pb-4 pt-6 sm:px-8 sm:pt-8 sm:pb-8 lg:max-w-7xl lg:pt-10">
         <div className="mx-auto max-w-3xl text-center">
-          <h1 className="text-5xl font-bold tracking-tighter text-neutral-900 dark:text-neutral-50 sm:text-5xl xl:text-[3.5rem] xl:leading-[1.08]">
+          <h1 className="text-5xl font-bold tracking-tighter text-neutral-900 dark:text-neutral-50 sm:text-5xl xl:text-[4.0rem] xl:leading-[1.08]">
             {l.hero.headline}
             {l.hero.headlinePhrases && l.hero.headlinePhrases.length > 0 ? (
               <RotatingHeroPhrase phrases={l.hero.headlinePhrases} />

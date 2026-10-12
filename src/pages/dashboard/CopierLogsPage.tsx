@@ -67,7 +67,7 @@ function useCopierLogDisplay(
   channelSourceKinds: Record<string, SignalSourceKind>,
   symbolContext: CopierSymbolContext,
   batchSignals: Signal[],
-  statusConfig: Record<string, { variant: StatusVariant; label: string }>,
+  statusConfig: Record<string, { variant: StatusVariant; label: string; className?: string }>,
   copierLogs: ReturnType<typeof useT>['copierLogs'],
 ) {
   const parsed = signal.parsed_data as Record<string, unknown> | null
@@ -112,7 +112,7 @@ function CopierLogCard({
   channelSourceKinds: Record<string, SignalSourceKind>
   symbolContext: CopierSymbolContext
   batchSignals: Signal[]
-  statusConfig: Record<string, { variant: StatusVariant; label: string }>
+  statusConfig: Record<string, { variant: StatusVariant; label: string; className?: string }>
   labels: { colReason: string; viewDetails: string }
   copierLogs: ReturnType<typeof useT>['copierLogs']
   isRetrying: boolean
@@ -153,7 +153,7 @@ function CopierLogCard({
           </p>
         </div>
         <div className="flex flex-col items-end gap-1.5 shrink-0">
-          <Badge variant={status.variant} size="sm">{status.label}</Badge>
+          <Badge variant={status.variant} size="sm" className={status.className}>{status.label}</Badge>
           <span className="text-xs text-neutral-900 dark:text-neutral-50 whitespace-nowrap">{timeLabel}</span>
         </div>
       </div>
@@ -219,7 +219,7 @@ function CopierLogRow({
   channelSourceKinds: Record<string, SignalSourceKind>
   symbolContext: CopierSymbolContext
   batchSignals: Signal[]
-  statusConfig: Record<string, { variant: StatusVariant; label: string }>
+  statusConfig: Record<string, { variant: StatusVariant; label: string; className?: string }>
   copierLogs: ReturnType<typeof useT>['copierLogs']
   isRetrying: boolean
   onRetry?: () => void
@@ -251,7 +251,7 @@ function CopierLogRow({
       tabIndex={0}
       aria-label={viewDetailsLabel}
     >
-      <Badge variant={status.variant} size="sm">{status.label}</Badge>
+      <Badge variant={status.variant} size="sm" className={status.className}>{status.label}</Badge>
       <span className="text-xs text-neutral-900 dark:text-neutral-50 truncate underline decoration-dotted underline-offset-2" title={reasonShort}>
         {reasonShort}
       </span>
@@ -403,9 +403,9 @@ export function CopierLogsPage() {
     [t],
   )
 
-  const statusConfig: Record<string, { variant: StatusVariant; label: string }> = useMemo(
+  const statusConfig: Record<string, { variant: StatusVariant; label: string; className?: string }> = useMemo(
     () => ({
-      executed: { variant: 'success', label: t.copierLogs.statusExecuted },
+      executed: { variant: 'success', label: t.copierLogs.statusExecuted, className: 'bg-green-100 text-neutral-950 dark:bg-green-100 dark:text-neutral-950' },
       skipped: { variant: 'warning', label: t.copierLogs.statusSkipped },
       failed: { variant: 'error', label: t.copierLogs.statusFailed },
       pending: { variant: 'neutral', label: t.copierLogs.statusPending },

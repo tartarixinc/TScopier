@@ -213,7 +213,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
         disabled
           ? 'cursor-pointer font-medium text-neutral-900 opacity-45 hover:bg-neutral-50 hover:text-neutral-900 hover:opacity-80 dark:text-neutral-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-50'
           : isActive
-            ? 'bg-teal-50 text-teal-800 font-semibold dark:bg-teal-950/60 dark:text-green-400'
+            ? 'bg-green-400 text-neutral-950 font-semibold dark:bg-green-400 dark:text-neutral-950'
             : 'text-neutral-900 font-medium hover:bg-neutral-50 hover:text-neutral-900 dark:text-neutral-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
       )
 
@@ -242,7 +242,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
           <Icon
             className={clsx(
               'w-4 h-4',
-              isActive ? 'text-green-400 dark:text-green-400' : '',
+              isActive ? 'text-neutral-950' : '',
             )}
           />
           {showOpenIndicator && opts.collapsed ? (
