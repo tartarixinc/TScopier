@@ -7,6 +7,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { FxsocketBrokerClient, OrderSendArgs } from './fxsocketClient'
 import type { MergeModifySummary, PerLegStopTarget } from './multiTradeMerge'
 import { expandPerLegTargetsToCount } from './manualPlanning/tpBucketDistribution'
+import { bundleSteadyLegTps } from './manualPlanning/tpBundleIdentity'
+import { isTpBundleEnabled } from './manualPlanning/tpBundleRollout'
 import type { ManualTpLot } from './manualPlanning/types'
 import { resolveChosenTakeProfit } from './manualPlanning/partialTpSchedule'
 import { filterPlausibleInstrumentPrices } from './tradableSymbol'
@@ -323,6 +325,12 @@ export async function runBasketLegModifies(args: {
   parallelLegs?: boolean
   /** Range-basket TP rebalance — tag per-leg logs for UI suppression. */
   internalRebalance?: boolean
+  /**
+   * Bundled multi basket (non-range): when TP_BUNDLE_ENABLED and the passed
+   * targets are shorter than the open legs, rebuild positionally from each
+   * leg's own TP instead of a count-weighted expansion (D3).
+   */
+  bundleIdentity?: boolean
   /** When set, internal rebalance must not revert legs to anchor SL below this value. */
   effectiveStoploss?: number
   /** When false, refresh OrderSend comments are left empty. */
@@ -357,15 +365,38 @@ export async function runBasketLegModifies(args: {
       isBuy: direction === 'buy',
     })
     : 0
-  const perLegTargets = expandPerLegTargetsToCount({
-    targets: rawTargets,
-    openLegCount: familyTrades.length,
-    finalTps: parsedTps.length
+  let perLegTargets: PerLegStopTarget[]
+  if (
+    args.bundleIdentity === true
+    && isTpBundleEnabled()
+    && rawTargets.length < familyTrades.length
+  ) {
+    // Bundled basket with short/lost targets: steady state — legs keep their
+    // own TP, naked legs backfill positionally from the ladder (never
+    // count-weighted, which would collapse the ladder onto TP1/TP2) (D3).
+    const sl = rawTargets[0]?.stoploss ?? 0
+    const ladder = parsedTps.length
       ? parsedTps
-      : rawTargets.map(t => t.takeprofit).filter(tp => tp > 0),
-    tpLots,
-    chosenTp,
-  }) as PerLegStopTarget[]
+      : rawTargets.map(t => t.takeprofit).filter(tp => typeof tp === 'number' && tp > 0)
+    const tps = bundleSteadyLegTps({
+      currentTps: familyTrades.map(tr => tr.tp),
+      ladder,
+    })
+    perLegTargets = familyTrades.map((_, i) => ({
+      stoploss: sl,
+      takeprofit: tps[i] ?? 0,
+    }))
+  } else {
+    perLegTargets = expandPerLegTargetsToCount({
+      targets: rawTargets,
+      openLegCount: familyTrades.length,
+      finalTps: parsedTps.length
+        ? parsedTps
+        : rawTargets.map(t => t.takeprofit).filter(tp => tp > 0),
+      tpLots,
+      chosenTp,
+    }) as PerLegStopTarget[]
+  }
 
   const summary: BasketLegModifySummary = {
     openLegs: familyTrades.length,
@@ -1021,6 +1052,11 @@ export async function upsertBasketReconcileJob(
     nImmCwe: number
     overrideTp: number | null
     lastError: string | null
+    /**
+     * Bundled multi basket (flag on): seed short per-leg targets from each
+     * leg's own TP (steady state) instead of a count-weighted expansion (D3).
+     */
+    bundleIdentity?: boolean
   },
 ): Promise<string | null> {
   const maxAttempts = Math.min(
@@ -1028,12 +1064,31 @@ export async function upsertBasketReconcileJob(
     Math.max(6, Number(process.env.BASKET_RECONCILE_MAX_ATTEMPTS ?? 48)),
   )
   const parsedTps = (args.signalTps ?? []).filter(t => typeof t === 'number' && Number.isFinite(t) && t > 0)
+  let baseTargets = args.perLegTargets
+  if (
+    args.bundleIdentity === true
+    && isTpBundleEnabled()
+    && baseTargets.length < args.familyTrades.length
+  ) {
+    const ladder = parsedTps.length
+      ? parsedTps
+      : baseTargets.map(t => t.takeprofit).filter(tp => typeof tp === 'number' && tp > 0)
+    const sl = baseTargets[0]?.stoploss ?? 0
+    const tps = bundleSteadyLegTps({
+      currentTps: args.familyTrades.map(tr => tr.tp),
+      ladder,
+    })
+    baseTargets = args.familyTrades.map((_, i) => ({
+      stoploss: sl,
+      takeprofit: tps[i] ?? 0,
+    }))
+  }
   const storedTargets = expandPerLegTargetsToCount({
-    targets: args.perLegTargets,
-    openLegCount: Math.max(args.familyTrades.length, args.perLegTargets.length),
+    targets: baseTargets,
+    openLegCount: Math.max(args.familyTrades.length, baseTargets.length),
     finalTps: parsedTps.length
       ? parsedTps
-      : args.perLegTargets.map(t => t.takeprofit).filter(tp => tp > 0),
+      : baseTargets.map(t => t.takeprofit).filter(tp => tp > 0),
     tpLots: args.tpLots,
   })
 

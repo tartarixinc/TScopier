@@ -384,6 +384,7 @@ export class BasketSlTpReconcileMonitor {
       skipAlreadySynced: true,
       parallelLegs: true,
       internalRebalance: manual.range_trading === true,
+      bundleIdentity: manual.range_trading !== true,
       effectiveStoploss: effectiveStoploss > 0 ? effectiveStoploss : undefined,
       orderCommentsEnabled: manual.order_comments_enabled !== false,
       // Explicit latest instruction (Manage Signals, basket target, or channel
