@@ -1455,6 +1455,7 @@ broker: {
     whatsappDisconnect: 'Disconnect',
     whatsappQrHelp: 'Open WhatsApp, go to Linked devices, and scan this code.',
     whatsappListenerMissing: 'The WhatsApp listener is not configured yet.',
+    whatsappListenerUnavailable: 'The WhatsApp listener is not running. Start it, then try again.',
     whatsappAdd: 'Add',
     whatsappRefresh: 'Refresh groups',
   },

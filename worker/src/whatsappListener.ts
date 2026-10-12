@@ -40,6 +40,16 @@ type AuthBucket = Record<string, Record<string, unknown>>
 const PORT = Math.max(1, Number(process.env.WHATSAPP_LISTENER_PORT ?? 8091))
 const sessions = new Map<string, LiveSession>()
 
+// Baileys rejects socket queries from its own timers. Those must not exit this process,
+// or the browser can no longer reach the listener.
+process.on('unhandledRejection', reason => {
+  const detail = reason instanceof Error ? reason.stack ?? reason.message : String(reason)
+  console.warn(`[whatsapp] kept running after an unhandled rejection:\n${detail}`)
+})
+process.on('uncaughtException', error => {
+  console.warn(`[whatsapp] kept running after an uncaught exception:\n${error.stack ?? error.message}`)
+})
+
 function requireEnv(name: string): string {
   const value = String(process.env[name] ?? '').trim()
   if (!value) throw new Error(`${name} is required`)

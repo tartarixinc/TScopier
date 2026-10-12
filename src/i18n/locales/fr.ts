@@ -1409,6 +1409,7 @@ export const fr: Translations = {
     whatsappDisconnect: 'Déconnecter',
     whatsappQrHelp: 'Ouvrez WhatsApp, allez dans Appareils connectés et scannez ce code.',
     whatsappListenerMissing: 'L’écoute WhatsApp n’est pas encore configurée.',
+    whatsappListenerUnavailable: 'L’écoute WhatsApp n’est pas démarrée. Lancez-la, puis réessayez.',
     whatsappAdd: 'Ajouter',
     whatsappRefresh: 'Actualiser les groupes',
   },

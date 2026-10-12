@@ -1693,6 +1693,7 @@ export interface ChannelsPageTranslations {
   whatsappDisconnect: string
   whatsappQrHelp: string
   whatsappListenerMissing: string
+  whatsappListenerUnavailable: string
   whatsappAdd: string
   whatsappRefresh: string
 }

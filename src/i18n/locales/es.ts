@@ -1409,6 +1409,7 @@ export const es: Translations = {
     whatsappDisconnect: 'Desconectar',
     whatsappQrHelp: 'Abre WhatsApp, entra en Dispositivos vinculados y escanea este código.',
     whatsappListenerMissing: 'El receptor de WhatsApp aún no está configurado.',
+    whatsappListenerUnavailable: 'El receptor de WhatsApp no está en ejecución. Inícialo y vuelve a intentarlo.',
     whatsappAdd: 'Añadir',
     whatsappRefresh: 'Actualizar grupos',
   },

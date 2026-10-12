@@ -36,6 +36,12 @@ import { Button } from '../ui/Button'
 import { Toggle } from '../ui/Toggle'
 import { Badge } from '../ui/Badge'
 
+function describeListenerError(error: string, missing: string, unavailable: string): string {
+  if (error === 'listener_missing') return missing
+  if (error === 'listener_unavailable' || error === 'listener_failed') return unavailable
+  return error
+}
+
 type SelectedGroup = {
   id: string
   group_jid: string
@@ -98,9 +104,11 @@ export function WhatsAppSourcePanel({
 
   const refreshGroups = useCallback(async () => {
     const result = await fetchWhatsAppGroups(supabase)
-    if (result.error && result.error !== 'not_connected') setError(result.error)
+    if (result.error && result.error !== 'not_connected') {
+      setError(describeListenerError(result.error, copy.whatsappListenerMissing, copy.whatsappListenerUnavailable))
+    }
     else setAvailable(result.groups)
-  }, [])
+  }, [copy.whatsappListenerMissing, copy.whatsappListenerUnavailable])
 
   useEffect(() => {
     void loadSelected()
@@ -147,7 +155,7 @@ export function WhatsAppSourcePanel({
         setSessionStatus('qr')
         return
       }
-      setError(result.error === 'listener_missing' ? copy.whatsappListenerMissing : result.error)
+      setError(describeListenerError(result.error, copy.whatsappListenerMissing, copy.whatsappListenerUnavailable))
       return
     }
     setQr(result.qr)
@@ -157,7 +165,9 @@ export function WhatsAppSourcePanel({
   const disconnect = async () => {
     setError('')
     const result = await logoutWhatsApp(supabase)
-    if (result.error) setError(result.error)
+    if (result.error) {
+      setError(describeListenerError(result.error, copy.whatsappListenerMissing, copy.whatsappListenerUnavailable))
+    }
     setQr(null)
     setSessionStatus('disconnected')
     setAvailable([])
