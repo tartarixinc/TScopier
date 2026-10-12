@@ -259,7 +259,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
         </span>
         <span className={clsx(opts.collapsed && 'lg:hidden')}>{label}</span>
         {showOpenIndicator && !opts.collapsed ? (
-          <span className="ms-auto inline-flex shrink-0 items-center rounded-md border border-teal-200/80 bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums leading-none text-teal-800 dark:border-teal-800/80 dark:bg-teal-950/50 dark:text-teal-300">
+          <span className="ms-auto inline-flex shrink-0 items-center rounded-md border border-green-200 bg-green-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums leading-none text-neutral-950 dark:border-green-200 dark:bg-green-100 dark:text-neutral-950">
             {openTradesTag}
           </span>
         ) : null}
