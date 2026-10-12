@@ -9,7 +9,7 @@ import { useT } from '../../context/LocaleContext'
 const TYPE_STYLES: Record<string, string> = {
   feature: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400',
   fix: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400',
-  improvement: 'bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-400',
+  improvement: 'bg-teal-50 text-green-500 dark:bg-teal-950/40 dark:text-green-400',
 }
 
 function getSeenUpdates(): Set<string> {
@@ -144,7 +144,7 @@ export function UpdatesAnnouncementModal() {
           ref={closeButtonRef}
           type="button"
           onClick={dismiss}
-          className="absolute right-3 top-3 rounded-lg p-1.5 text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 dark:hover:text-neutral-300 transition-colors"
+          className="absolute right-3 top-3 rounded-lg p-1.5 text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 hover:bg-neutral-100 dark:hover:bg-neutral-800 dark:hover:text-neutral-50 transition-colors"
           aria-label="Close"
         >
           <X className="h-4 w-4" />
@@ -152,7 +152,7 @@ export function UpdatesAnnouncementModal() {
 
         <div className="px-6 py-8 text-center">
           <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-teal-50 dark:bg-teal-950/40">
-            <Sparkles className="h-7 w-7 text-teal-600 dark:text-teal-400" />
+            <Sparkles className="h-7 w-7 text-green-400 dark:text-green-400" />
           </div>
 
           <h2
@@ -167,12 +167,12 @@ export function UpdatesAnnouncementModal() {
               <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${TYPE_STYLES[current.type]}`}>
                 {typeLabel(current.type, t)}
               </span>
-              <span className="text-xs text-neutral-400 dark:text-neutral-500">{current.date}</span>
+              <span className="text-xs text-neutral-900 dark:text-neutral-50">{current.date}</span>
             </div>
             <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
               {current.title}
             </h3>
-            <p className="mt-1.5 text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">
+            <p className="mt-1.5 text-sm leading-relaxed text-neutral-900 dark:text-neutral-50">
               {current.description}
             </p>
           </div>
@@ -184,7 +184,7 @@ export function UpdatesAnnouncementModal() {
             <button
               type="button"
               onClick={dismiss}
-              className="text-sm font-medium text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
+              className="text-sm font-medium text-neutral-900 hover:text-neutral-900 dark:text-neutral-50 dark:hover:text-neutral-50"
             >
               {t.nav.updatesAnnouncement.dismiss}
             </button>

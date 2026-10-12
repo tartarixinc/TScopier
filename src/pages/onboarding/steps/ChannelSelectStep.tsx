@@ -145,7 +145,7 @@ export function ChannelSelectStep({ onDone }: Props) {
     <Card>
       <div className="mb-5">
         <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">Select signal channels</h2>
-        <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
+        <p className="text-sm text-neutral-900 dark:text-neutral-50 mt-1">
           Choose which Telegram channels to monitor for trade signals. You can change this later.
         </p>
       </div>
@@ -159,7 +159,7 @@ export function ChannelSelectStep({ onDone }: Props) {
           ))}
         </div>
       ) : channels.length === 0 ? (
-        <div className="text-center py-8 text-neutral-400">
+        <div className="text-center py-8 text-neutral-900 dark:text-neutral-50">
           <Radio className="w-8 h-8 mx-auto mb-2 opacity-50" />
           <p className="text-sm">No channels found in your Telegram account.</p>
           <p className="text-xs mt-1">Join a signal channel in Telegram first, then come back.</p>
@@ -180,14 +180,14 @@ export function ChannelSelectStep({ onDone }: Props) {
                 }`}
               >
                 <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border transition-colors ${
-                  isSelected ? 'bg-teal-600 border-teal-600' : 'border-neutral-300'
+                  isSelected ? 'bg-green-400 border-green-400' : 'border-neutral-300'
                 }`}>
-                  {isSelected && <Check className="w-3 h-3 text-white" />}
+                  {isSelected && <Check className="w-3 h-3 text-neutral-950" />}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50 truncate">{channel.title}</p>
                   {channel.username && (
-                    <p className="text-xs text-neutral-400">@{channel.username}</p>
+                    <p className="text-xs text-neutral-900 dark:text-neutral-50">@{channel.username}</p>
                   )}
                 </div>
                 {channel.members_count > 0 && (
@@ -202,7 +202,7 @@ export function ChannelSelectStep({ onDone }: Props) {
       )}
 
       <div className="flex items-center justify-between pt-2">
-        <span className="text-sm text-neutral-500 dark:text-neutral-400">
+        <span className="text-sm text-neutral-900 dark:text-neutral-50">
           {selected.size > 0 ? `${selected.size} selected` : 'Select channels to monitor'}
         </span>
         <Button

@@ -463,6 +463,15 @@ Deno.serve(async (req: Request) => {
     // shape as fxsocket-broker's broker_status so the health modal is provider-agnostic.
     if (action === "broker_status") {
       const connected = row.mtapi_status === "connected" || row.connection_status === "connected"
+      if (connected && row.connection_status !== "connected") {
+        await supabase
+          .from("broker_accounts")
+          .update({ connection_status: "connected", connection_error: null })
+          .eq("id", accountRowId)
+          .eq("user_id", userId)
+        row.connection_status = "connected"
+        row.connection_error = null
+      }
       const status = {
         status: connected ? "ready" : "disconnected",
         serverTime: row.last_synced_at ?? null,

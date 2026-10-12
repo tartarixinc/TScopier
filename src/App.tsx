@@ -26,6 +26,9 @@ const AppPricingPage = lazy(() =>
 const AccountConfigPage = lazy(() =>
   import('./pages/dashboard/AccountConfigPage').then(m => ({ default: m.AccountConfigPage })),
 )
+const CtraderCallbackPage = lazy(() =>
+  import('./pages/dashboard/CtraderCallbackPage').then(m => ({ default: m.CtraderCallbackPage })),
+)
 const ConfigurationsPage = lazy(() =>
   import('./pages/dashboard/ConfigurationsPage').then(m => ({ default: m.ConfigurationsPage })),
 )
@@ -87,6 +90,9 @@ const UpdatesPage = lazy(() =>
 // Support pages — same chunk, separate route entries
 const AffiliateProgramPage = lazy(() =>
   import('./pages/dashboard/SupportMembershipPages').then(m => ({ default: m.AffiliateProgramPage })),
+)
+const WalletPage = lazy(() =>
+  import('./pages/dashboard/SupportMembershipPages').then(m => ({ default: m.WalletPage })),
 )
 const BillingPage = lazy(() =>
   import('./pages/dashboard/SupportMembershipPages').then(m => ({ default: m.BillingPage })),
@@ -157,6 +163,7 @@ export default function App() {
             <Route path="/welcome" element={<Navigate to="/dashboard" replace />} />
             <Route element={<AppShell />}>
             <Route path="/dashboard/*" element={<DashboardRouteAnchor />} />
+            <Route path="/brokers/ctrader/callback" element={<LazyPage><CtraderCallbackPage /></LazyPage>} />
             <Route path="/brokers" element={<LazyPage><AccountConfigPage /></LazyPage>} />
             <Route path="/mirror-trading" element={<LazyPage><MirrorTradingPage /></LazyPage>} />
             <Route path="/social-trading/:traderId" element={<LazyPage><SocialTraderActivityPage /></LazyPage>} />
@@ -185,6 +192,7 @@ export default function App() {
             <Route path="/feature-request" element={<LazyPage><FeatureRequestPage /></LazyPage>} />
             <Route path="/partner-with-us" element={<LazyPage><PartnerWithUsPage /></LazyPage>} />
             <Route path="/affiliate-program" element={<LazyPage><AffiliateProgramPage /></LazyPage>} />
+            <Route path="/wallet" element={<LazyPage><WalletPage /></LazyPage>} />
             <Route path="/billing" element={<LazyPage><BillingPage /></LazyPage>} />
             <Route path="/subscriptions" element={<Navigate to="/billing" replace />} />
             <Route path="/performance" element={<LazyPage><PerformancePage /></LazyPage>} />

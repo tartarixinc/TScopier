@@ -36,6 +36,12 @@ import { Button } from '../ui/Button'
 import { Toggle } from '../ui/Toggle'
 import { Badge } from '../ui/Badge'
 
+function describeListenerError(error: string, missing: string, unavailable: string): string {
+  if (error === 'listener_missing') return missing
+  if (error === 'listener_unavailable' || error === 'listener_failed') return unavailable
+  return error
+}
+
 type SelectedGroup = {
   id: string
   group_jid: string
@@ -98,9 +104,11 @@ export function WhatsAppSourcePanel({
 
   const refreshGroups = useCallback(async () => {
     const result = await fetchWhatsAppGroups(supabase)
-    if (result.error && result.error !== 'not_connected') setError(result.error)
+    if (result.error && result.error !== 'not_connected') {
+      setError(describeListenerError(result.error, copy.whatsappListenerMissing, copy.whatsappListenerUnavailable))
+    }
     else setAvailable(result.groups)
-  }, [])
+  }, [copy.whatsappListenerMissing, copy.whatsappListenerUnavailable])
 
   useEffect(() => {
     void loadSelected()
@@ -147,7 +155,7 @@ export function WhatsAppSourcePanel({
         setSessionStatus('qr')
         return
       }
-      setError(result.error === 'listener_missing' ? copy.whatsappListenerMissing : result.error)
+      setError(describeListenerError(result.error, copy.whatsappListenerMissing, copy.whatsappListenerUnavailable))
       return
     }
     setQr(result.qr)
@@ -157,7 +165,9 @@ export function WhatsAppSourcePanel({
   const disconnect = async () => {
     setError('')
     const result = await logoutWhatsApp(supabase)
-    if (result.error) setError(result.error)
+    if (result.error) {
+      setError(describeListenerError(result.error, copy.whatsappListenerMissing, copy.whatsappListenerUnavailable))
+    }
     setQr(null)
     setSessionStatus('disconnected')
     setAvailable([])
@@ -183,7 +193,7 @@ export function WhatsAppSourcePanel({
   }
 
   if (loading && sessionStatus === null) {
-    return <Card><p className="py-8 text-center text-sm text-neutral-500 dark:text-neutral-400">{t.common.loading}</p></Card>
+    return <Card><p className="py-8 text-center text-sm text-neutral-900 dark:text-neutral-50">{t.common.loading}</p></Card>
   }
 
   if (sessionStatus !== 'connected') {
@@ -196,7 +206,7 @@ export function WhatsAppSourcePanel({
               <img src="/whatsapp-icon.png" alt="" className="h-10 w-10 rounded-full object-cover" loading="lazy" aria-hidden />
             </div>
             <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">{copy.whatsappHeroTitle}</h2>
-            <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{copy.whatsappHeroSubtitle}</p>
+            <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-50">{copy.whatsappHeroSubtitle}</p>
           </div>
         </div>
         <div className="mx-auto max-w-md px-5 py-5 sm:px-6 sm:py-6">
@@ -205,15 +215,15 @@ export function WhatsAppSourcePanel({
               <div className="rounded-xl bg-white p-3">
                 <QRCodeSVG value={qr} size={196} />
               </div>
-              <p className="text-center text-sm text-neutral-600 dark:text-neutral-300">{copy.whatsappQrHelp}</p>
+              <p className="text-center text-sm text-neutral-900 dark:text-neutral-50">{copy.whatsappQrHelp}</p>
             </div>
           ) : sessionStatus === 'qr' ? (
-            <p className="mb-5 text-center text-sm text-neutral-600 dark:text-neutral-300">{t.common.loading}</p>
+            <p className="mb-5 text-center text-sm text-neutral-900 dark:text-neutral-50">{t.common.loading}</p>
           ) : (
             <ul className="mb-5 space-y-2.5">
               {steps.map((line, index) => (
-                <li key={line} className="flex items-start gap-2.5 text-sm text-neutral-600 dark:text-neutral-300">
-                  <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-semibold text-primary-700 dark:bg-primary-900/50 dark:text-primary-300">
+                <li key={line} className="flex items-start gap-2.5 text-sm text-neutral-900 dark:text-neutral-50">
+                  <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-semibold text-green-500 dark:bg-primary-900/50 dark:text-primary-300">
                     {index + 1}
                   </span>
                   {line}
@@ -237,7 +247,7 @@ export function WhatsAppSourcePanel({
         <div className="flex items-center justify-between gap-3 border-b border-neutral-100 px-4 py-3 dark:border-neutral-800">
           <div>
             <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{copy.whatsappListTitle}</h2>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">{interpolate(ce.configuredCount, { count: String(groups.length) })}</p>
+            <p className="text-xs text-neutral-900 dark:text-neutral-50">{interpolate(ce.configuredCount, { count: String(groups.length) })}</p>
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -259,7 +269,7 @@ export function WhatsAppSourcePanel({
         </div>
         {error ? <p className="px-4 pt-3 text-sm text-red-600 dark:text-red-400">{error}</p> : null}
         {groups.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-neutral-500 dark:text-neutral-400">{copy.whatsappEmptyGroups}</p>
+          <p className="px-4 py-6 text-sm text-neutral-900 dark:text-neutral-50">{copy.whatsappEmptyGroups}</p>
         ) : (
           <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
             {groups.map(group => (
@@ -330,7 +340,7 @@ export function WhatsAppSourcePanel({
           <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{copy.whatsappPickGroups}</h2>
         </div>
         {unselected.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-neutral-500 dark:text-neutral-400">{copy.whatsappNoGroups}</p>
+          <p className="px-4 py-6 text-sm text-neutral-900 dark:text-neutral-50">{copy.whatsappNoGroups}</p>
         ) : (
           <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
             {unselected.map(group => (
@@ -410,7 +420,7 @@ function WhatsAppGroupRow({
             type="button"
             onClick={onDelete}
             disabled={deleting}
-            className="rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-error-50 hover:text-error-600 disabled:opacity-50"
+            className="rounded-lg p-1.5 text-neutral-900 dark:text-neutral-50 transition-colors hover:bg-error-50 hover:text-error-600 disabled:opacity-50"
             aria-label={interpolate(ce.removeAria, { label: group.name })}
           >
             <Trash2 className="h-4 w-4" />
@@ -418,7 +428,7 @@ function WhatsAppGroupRow({
         </div>
       </div>
       <div className="space-y-2.5 border-t border-neutral-100 bg-neutral-50 px-4 py-2.5 dark:border-neutral-800 dark:bg-neutral-800/60">
-        <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">{ce.connectedBrokers}</p>
+        <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50">{ce.connectedBrokers}</p>
         {connected.length > 0 ? (
           <div className="flex flex-wrap items-center gap-1.5">
             {connected.map(broker => {
@@ -429,7 +439,7 @@ function WhatsAppGroupRow({
                   <button
                     type="button"
                     onClick={() => onDisconnect(broker.id)}
-                    className="-mr-0.5 ml-0.5 rounded-full p-0.5 text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-neutral-700 dark:hover:bg-neutral-700 dark:hover:text-neutral-100"
+                    className="-mr-0.5 ml-0.5 rounded-full p-0.5 text-neutral-900 dark:text-neutral-50 transition-colors hover:bg-neutral-200 hover:text-neutral-900 dark:hover:bg-neutral-700 dark:hover:text-neutral-100"
                     aria-label={interpolate(ce.removeBrokerConnectionAria, { broker: label, channel: group.name })}
                   >
                     <X className="h-3 w-3" />
@@ -441,7 +451,7 @@ function WhatsAppGroupRow({
               <button
                 type="button"
                 onClick={onToggleMenu}
-                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 text-neutral-500 transition-colors hover:bg-white hover:text-neutral-800 dark:border-neutral-700 dark:hover:bg-neutral-900 dark:hover:text-neutral-100"
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 text-neutral-900 dark:text-neutral-50 transition-colors hover:bg-white hover:text-neutral-900 dark:border-neutral-700 dark:hover:bg-neutral-900 dark:hover:text-neutral-100"
                 aria-label={interpolate(ce.addBrokerConnectionAria, { channel: group.name })}
               >
                 <Plus className="h-3.5 w-3.5" />
@@ -470,7 +480,7 @@ function WhatsAppGroupRow({
         ) : (
           <Link
             to="/brokers"
-            className="inline-flex items-center rounded-lg border border-dashed border-neutral-300 px-3 py-1.5 text-xs font-medium text-primary-600 transition-colors hover:bg-white dark:border-neutral-600 dark:hover:bg-neutral-900"
+            className="inline-flex items-center rounded-lg border border-dashed border-neutral-300 px-3 py-1.5 text-xs font-medium text-green-400 transition-colors hover:bg-white dark:border-neutral-600 dark:hover:bg-neutral-900"
           >
             {ce.connectToBroker}
           </Link>
@@ -495,20 +505,20 @@ function BrokerMenu({
   return (
     <div className="absolute left-0 top-full z-30 mt-1 min-w-[12rem] rounded-lg border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
       {brokers.length === 0 ? (
-        <p className="px-3 py-2 text-xs text-neutral-500 dark:text-neutral-400">{ce.connectedBrokers}</p>
+        <p className="px-3 py-2 text-xs text-neutral-900 dark:text-neutral-50">{ce.connectedBrokers}</p>
       ) : brokers.map(broker => (
         <button
           key={broker.id}
           type="button"
           disabled={connectingBrokerId === broker.id}
           onClick={() => onConnect(broker.id)}
-          className="w-full px-3 py-2 text-left text-sm text-neutral-800 hover:bg-neutral-50 disabled:opacity-50 dark:text-neutral-100 dark:hover:bg-neutral-800"
+          className="w-full px-3 py-2 text-left text-sm text-neutral-900 hover:bg-neutral-50 disabled:opacity-50 dark:text-neutral-100 dark:hover:bg-neutral-800"
         >
           {getBrokerDisplayLabel(broker)}
         </button>
       ))}
       <div className="mt-1 border-t border-neutral-100 pt-1 dark:border-neutral-800">
-        <Link to="/brokers" className="block px-3 py-2 text-xs text-primary-600 hover:bg-neutral-50 dark:hover:bg-neutral-800" onClick={onClose}>
+        <Link to="/brokers" className="block px-3 py-2 text-xs text-green-400 hover:bg-neutral-50 dark:hover:bg-neutral-800" onClick={onClose}>
           {ce.connectBrokerInConfig}
         </Link>
       </div>

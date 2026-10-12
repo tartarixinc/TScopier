@@ -155,6 +155,7 @@ export const tradingJa: TradingPagesBundleTranslations = {
     whatsappDisconnect: '切断',
     whatsappQrHelp: 'WhatsAppを開き、リンク済みデバイスでこのコードをスキャンしてください。',
     whatsappListenerMissing: 'WhatsAppリスナーはまだ設定されていません。',
+    whatsappListenerUnavailable: 'WhatsAppリスナーが起動していません。起動してからもう一度お試しください。',
     whatsappAdd: '追加',
     whatsappRefresh: 'グループを更新',
   },

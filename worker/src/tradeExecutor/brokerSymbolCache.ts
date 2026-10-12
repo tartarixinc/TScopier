@@ -7,7 +7,7 @@ import {
 } from '../fxsocketClient'
 import { writeBrokerConnectionStatus } from '../brokerConnectionStatus'
 import { writeBrokerTerminalUnhealthy } from '../brokerTerminalHealth'
-import { applySymbolMapping, brokerSessionUuid, isMtUuid, parseSymbolToTradeList } from './helpers'
+import { applySymbolMapping, brokerSessionUuid, parseSymbolToTradeList } from './helpers'
 import { isDerivSyntheticSymbol, resolveDerivCanonicalToBrokerSymbol } from '../derivSymbols'
 import {
   clearLegacySymbolDecorationIfPresent,
@@ -373,7 +373,7 @@ export async function symbolCacheKeepaliveTick(ctx: TradeExecutorContext, ): Pro
         if (sepIdx < 0) return
         const uuid = key.slice(0, sepIdx)
         const symbol = key.slice(sepIdx + 1)
-        if (!isMtUuid(uuid) || !symbol) return
+        if (!uuid || uuid.includes('|') || !symbol) return
         const api = ctx.apiForUuid(uuid)
         if (!api) return
         try {

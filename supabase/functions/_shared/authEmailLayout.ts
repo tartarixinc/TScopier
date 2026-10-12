@@ -18,7 +18,7 @@ export function buildAuthEmailHtml(args: {
 
   const logoBlock = args.logoUrl
     ? `<img src="${args.logoUrl}" alt="UniCopier" width="148" height="36" style="display:block;margin:0 0 20px 0;height:36px;width:auto;max-width:180px;border:0;" />`
-    : `<p style="margin:0 0 8px 0;font-size:12px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#0d9488;">UniCopier</p>`
+    : `<p style="margin:0 0 8px 0;font-size:12px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#4ade80;">UniCopier</p>`
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -27,7 +27,7 @@ export function buildAuthEmailHtml(args: {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${args.title}</title>
 </head>
-<body style="margin:0;padding:0;background-color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+<body style="margin:0;padding:0;background-color:#f4f4f5;font-family:'SF Pro','SF Pro Text','SF Pro Display',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5;padding:40px 20px;">
     <tr>
       <td align="center">
@@ -51,8 +51,8 @@ export function buildAuthEmailHtml(args: {
             <td style="padding:0 40px 40px 40px;">
               <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
                 <tr>
-                  <td style="border-radius:8px;background-color:#0d9488;">
-                    <a href="${args.buttonUrl}" target="_blank" style="display:inline-block;padding:12px 32px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">
+                  <td style="border-radius:8px;background-color:#4ade80;">
+                    <a href="${args.buttonUrl}" target="_blank" style="display:inline-block;padding:12px 32px;font-size:14px;font-weight:600;color:#052e16;text-decoration:none;border-radius:8px;">
                       ${args.buttonLabel}
                     </a>
                   </td>

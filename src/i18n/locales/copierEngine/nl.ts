@@ -3,6 +3,10 @@ import type { CopierEngineBundleTranslations } from './types'
 export const copierEngineNl: CopierEngineBundleTranslations = {
   copierEnginePage: {
     connectTelegram: 'Telegram verbinden',
+    newSignalSource: 'Nieuwe signaalbron',
+    chooseSignalSource: 'Kies een signaalbron',
+    noSignalSourcesTitle: 'Nog geen signaalbronnen',
+    noSignalSourcesBody: 'Voeg een signaalbron toe om te beginnen met kopiëren.',
     telegramNotConnectedTitle: 'Telegram is niet verbonden.',
     telegramNotConnectedBody: 'Verbind Telegram hier om je kanaallijst te laden en beheren.',
     tgConnectHeroTitle: 'Koppel je Telegram-account',

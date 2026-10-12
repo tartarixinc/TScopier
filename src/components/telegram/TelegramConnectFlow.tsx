@@ -176,7 +176,7 @@ export function TelegramConnectFlow({
             <img src="/Telegram.svg" alt="" className="w-8 h-8 object-contain" loading="lazy" aria-hidden />
           </div>
           <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">{title}</h2>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">{subtitle}</p>
+          <p className="text-sm text-neutral-900 dark:text-neutral-50 mt-1">{subtitle}</p>
         </div>
 
         {showSteps && (
@@ -191,9 +191,9 @@ export function TelegramConnectFlow({
                     <span
                       className={clsx(
                         'w-9 h-9 rounded-full flex items-center justify-center border-2 transition-colors',
-                        done && 'bg-teal-600 border-teal-600 text-white',
-                        current && !done && 'bg-white dark:bg-neutral-800 border-teal-600 text-teal-600',
-                        !done && !current && 'bg-neutral-100 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-400',
+                        done && 'bg-green-400 border-green-400 text-neutral-950',
+                        current && !done && 'bg-white dark:bg-neutral-800 border-green-400 text-green-400',
+                        !done && !current && 'bg-neutral-100 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-50',
                       )}
                     >
                       {done ? <Check className="w-4 h-4" strokeWidth={2.5} /> : <Icon className="w-4 h-4" />}
@@ -201,7 +201,7 @@ export function TelegramConnectFlow({
                     <span
                       className={clsx(
                         'text-[10px] sm:text-xs font-medium truncate max-w-[4.5rem] sm:max-w-none text-center',
-                        current ? 'text-teal-700 dark:text-teal-400' : done ? 'text-neutral-600 dark:text-neutral-300' : 'text-neutral-400',
+                        current ? 'text-green-500 dark:text-green-400' : done ? 'text-neutral-900 dark:text-neutral-50' : 'text-neutral-900 dark:text-neutral-50',
                       )}
                     >
                       {stepLabels[i]}
@@ -211,7 +211,7 @@ export function TelegramConnectFlow({
                     <div
                       className={clsx(
                         'h-0.5 flex-1 mx-1 sm:mx-2 mb-5 rounded-full transition-colors',
-                        i < activeStep ? 'bg-teal-500' : 'bg-neutral-200 dark:bg-neutral-700',
+                        i < activeStep ? 'bg-green-400' : 'bg-neutral-200 dark:bg-neutral-700',
                       )}
                       aria-hidden
                     />
@@ -227,8 +227,8 @@ export function TelegramConnectFlow({
         {stage === 'idle' && (
           <ul className="space-y-2.5 mb-5">
             {howItWorks.map((line, i) => (
-              <li key={i} className="flex items-start gap-2.5 text-sm text-neutral-600 dark:text-neutral-300">
-                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300 text-xs font-semibold flex items-center justify-center mt-0.5">
+              <li key={i} className="flex items-start gap-2.5 text-sm text-neutral-900 dark:text-neutral-50">
+                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary-100 dark:bg-primary-900/50 text-green-500 dark:text-primary-300 text-xs font-semibold flex items-center justify-center mt-0.5">
                   {i + 1}
                 </span>
                 {line}
@@ -262,11 +262,11 @@ export function TelegramConnectFlow({
                 className={clsx(
                   'rounded-xl border-2 p-4 text-left transition-colors',
                   authMethod === 'phone'
-                    ? 'border-teal-600 bg-teal-50 dark:bg-teal-950/30'
+                    ? 'border-green-400 bg-teal-50 dark:bg-teal-950/30'
                     : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300',
                 )}
               >
-                <Smartphone className="w-5 h-5 mb-2 text-teal-600" />
+                <Smartphone className="w-5 h-5 mb-2 text-green-400" />
                 <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{ce.tgConnectMethodPhone}</p>
               </button>
               <button
@@ -275,11 +275,11 @@ export function TelegramConnectFlow({
                 className={clsx(
                   'rounded-xl border-2 p-4 text-left transition-colors',
                   authMethod === 'qr'
-                    ? 'border-teal-600 bg-teal-50 dark:bg-teal-950/30'
+                    ? 'border-green-400 bg-teal-50 dark:bg-teal-950/30'
                     : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300',
                 )}
               >
-                <QrCode className="w-5 h-5 mb-2 text-teal-600" />
+                <QrCode className="w-5 h-5 mb-2 text-green-400" />
                 <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{ce.tgConnectMethodQr}</p>
               </button>
             </div>
@@ -391,15 +391,15 @@ export function TelegramConnectFlow({
                   <QRCodeSVG value={qrUrl} size={200} level="M" includeMargin />
                 ) : (
                   <div className="w-[200px] h-[200px] flex items-center justify-center">
-                    <Loader2 className="w-8 h-8 animate-spin text-teal-600" />
+                    <Loader2 className="w-8 h-8 animate-spin text-green-400" />
                   </div>
                 )}
               </div>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 text-center leading-relaxed max-w-xs">
+              <p className="text-xs text-neutral-900 dark:text-neutral-50 text-center leading-relaxed max-w-xs">
                 {ce.tgConnectQrInstructions}
               </p>
               {qrWaiting && (
-                <p className="text-sm text-teal-700 dark:text-teal-400 flex items-center gap-2">
+                <p className="text-sm text-green-500 dark:text-green-400 flex items-center gap-2">
                   <Loader2 className="w-4 h-4 animate-spin" />
                   {ce.tgConnectQrWaiting}
                 </p>
@@ -415,11 +415,11 @@ export function TelegramConnectFlow({
           <form onSubmit={authMethod === 'qr' ? onVerifyQrPassword : onVerifyCode} className="space-y-4">
             {authMethod === 'phone' && (
               <div className="rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/50 px-4 py-3">
-                <p className="text-xs text-neutral-500 dark:text-neutral-400">{ce.verificationCode}</p>
+                <p className="text-xs text-neutral-900 dark:text-neutral-50">{ce.verificationCode}</p>
                 <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50 mt-0.5 font-mono tracking-wide">
                   {code || '—'}
                 </p>
-                <p className="text-xs text-neutral-400 mt-1">{codeHint}</p>
+                <p className="text-xs text-neutral-900 dark:text-neutral-50 mt-1">{codeHint}</p>
               </div>
             )}
             <Input

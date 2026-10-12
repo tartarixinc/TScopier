@@ -18,7 +18,7 @@ export function VerifyEmailLayout() {
       </main>
 
       <footer className="shrink-0 px-6 pb-8 text-center">
-        <p className="text-xs text-neutral-400 dark:text-neutral-500">© {year} Tartarix Inc.</p>
+        <p className="text-xs text-neutral-900 dark:text-neutral-50">© {year} Tartarix Inc.</p>
       </footer>
     </div>
   )

@@ -97,7 +97,7 @@ export function SubscriptionReminderModal() {
         <button
           type="button"
           onClick={close}
-          className="absolute right-3 top-3 rounded-lg p-1.5 text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 dark:hover:text-neutral-200 dark:hover:bg-neutral-800 transition-colors"
+          className="absolute right-3 top-3 rounded-lg p-1.5 text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 hover:bg-neutral-100 dark:hover:text-neutral-50 dark:hover:bg-neutral-800 transition-colors"
           aria-label="Close"
         >
           <X className="h-5 w-5" />
@@ -114,7 +114,7 @@ export function SubscriptionReminderModal() {
           >
             No active subscription
           </h2>
-          <p className="mt-3 text-sm text-neutral-500 dark:text-neutral-400">
+          <p className="mt-3 text-sm text-neutral-900 dark:text-neutral-50">
             Copying signals requires an active subscription.
           </p>
 

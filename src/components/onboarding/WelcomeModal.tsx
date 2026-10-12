@@ -75,7 +75,7 @@ export function WelcomeModal() {
       >
         <div className="px-6 py-8 text-center">
           <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-teal-50 dark:bg-teal-950/40">
-            <CheckCircle2 className="h-8 w-8 text-teal-600 dark:text-teal-400" />
+            <CheckCircle2 className="h-8 w-8 text-green-400 dark:text-green-400" />
           </div>
 
           <h2
@@ -84,12 +84,12 @@ export function WelcomeModal() {
           >
             {welcomeT.title}
           </h2>
-          <p className="mt-3 text-sm text-neutral-500 dark:text-neutral-400">{welcomeT.subtitle}</p>
+          <p className="mt-3 text-sm text-neutral-900 dark:text-neutral-50">{welcomeT.subtitle}</p>
 
-          <ul className="mt-6 space-y-2.5 text-left text-sm text-neutral-600 dark:text-neutral-400">
+          <ul className="mt-6 space-y-2.5 text-left text-sm text-neutral-900 dark:text-neutral-50">
             {welcomeT.steps.map(step => (
               <li key={step} className="flex items-start gap-2.5">
-                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400" aria-hidden />
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-400 dark:text-green-400" aria-hidden />
                 <span>{step}</span>
               </li>
             ))}
@@ -113,7 +113,7 @@ export function WelcomeModal() {
             type="button"
             onClick={() => void exploreDashboard()}
             disabled={saving}
-            className="mt-4 text-sm font-medium text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 disabled:opacity-50"
+            className="mt-4 text-sm font-medium text-neutral-900 hover:text-neutral-900 dark:text-neutral-50 dark:hover:text-neutral-50 disabled:opacity-50"
           >
             {welcomeT.exploreDashboard}
           </button>

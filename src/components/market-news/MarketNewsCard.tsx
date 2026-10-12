@@ -24,10 +24,10 @@ export function MarketNewsCard({ article, readArticle }: MarketNewsCardProps) {
         iconClassName="h-8 w-8"
       />
       <div className="flex flex-1 flex-col p-4">
-        <div className="mb-2 flex items-center justify-between gap-2 text-xs text-neutral-500 dark:text-neutral-400">
+        <div className="mb-2 flex items-center justify-between gap-2 text-xs text-neutral-900 dark:text-neutral-50">
           <span className="flex min-w-0 items-center gap-2 truncate">
             {pairLabel ? (
-              <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 font-semibold tabular-nums text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
+              <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 font-semibold tabular-nums text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50">
                 {pairLabel}
               </span>
             ) : null}
@@ -39,12 +39,12 @@ export function MarketNewsCard({ article, readArticle }: MarketNewsCardProps) {
           {headline}
         </h3>
         {summary ? (
-          <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-neutral-600 dark:text-neutral-400">
+          <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-neutral-900 dark:text-neutral-50">
             {summary}
           </p>
         ) : null}
         {article.url ? (
-          <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-teal-600 dark:text-teal-400">
+          <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-green-400 dark:text-green-400">
             {readArticle}
             <ExternalLink className="h-3.5 w-3.5" />
           </span>

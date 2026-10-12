@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useSearchParams } from 'react-router-dom'
 import clsx from 'clsx'
 import { Radio, Trash2, RefreshCw, CircleAlert as AlertCircle, ChevronDown, Plus, X } from 'lucide-react'
@@ -59,7 +60,45 @@ import {
   fetchListenerLeaseStatus,
   type ListenerLeaseSnapshot,
 } from '../../lib/listenerLeaseStatus'
+import { subscribeDiscordSourcesChanged } from '../../lib/discordSource'
+import { SIGNAL_SOURCE_MARKS, type SignalSourceKind } from '../../lib/signalSourceMark'
+import {
+  SIGNAL_SOURCE_ORDER,
+  appendSignalSource,
+  connectedSignalSources,
+  mergeAddedSignalSourceOrder,
+  signalSourceTabOrder,
+} from '../../lib/signalSourceTabs'
+import { subscribeTradingViewWebhooksChanged } from '../../lib/tradingViewWebhook'
+import { subscribeWhatsAppSourcesChanged } from '../../lib/whatsappSource'
 import type { BrokerAccount, TelegramChannel } from '../../types/database'
+
+type AddedSignalSource = SignalSourceKind
+
+const ADDED_SIGNAL_SOURCES_KEY = 'tscopier.signalSources.added'
+
+function isAddedSignalSource(value: unknown): value is AddedSignalSource {
+  return value === 'telegram' || value === 'whatsapp' || value === 'discord' || value === 'tradingview'
+}
+
+function readAddedSignalSources(userId: string): AddedSignalSource[] {
+  try {
+    const raw = localStorage.getItem(`${ADDED_SIGNAL_SOURCES_KEY}:${userId}`)
+    const parsed = raw ? JSON.parse(raw) : []
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter(isAddedSignalSource)
+  } catch {
+    return []
+  }
+}
+
+function writeAddedSignalSources(userId: string, sources: AddedSignalSource[]) {
+  try {
+    localStorage.setItem(`${ADDED_SIGNAL_SOURCES_KEY}:${userId}`, JSON.stringify(sources))
+  } catch {
+    /* ignore */
+  }
+}
 
 function getTelegramAvatarUrl(username?: string): string | null {
   if (!username) return null
@@ -81,7 +120,7 @@ function TgChannelAvatar({ title, username }: { title: string; username?: string
   const avatarUrl = getTelegramAvatarUrl(username)
 
   return (
-    <div className="w-8 h-8 rounded-lg bg-primary-50 text-primary-600 flex items-center justify-center flex-shrink-0 overflow-hidden">
+    <div className="w-8 h-8 rounded-lg bg-primary-50 text-green-400 flex items-center justify-center flex-shrink-0 overflow-hidden">
       {avatarUrl && !imageFailed ? (
         <img
           src={avatarUrl}
@@ -122,9 +161,17 @@ export function CopierEnginePage() {
   const pw = t.pricing.paywall
   const [channels, setChannels] = useState<TelegramChannel[]>([])
   const [searchParams] = useSearchParams()
-  const [source, setSource] = useState<'telegram' | 'discord' | 'tradingview' | 'whatsapp'>(
-    searchParams.get('guild_id') ? 'discord' : 'telegram',
+  const guildFromInvite = searchParams.get('guild_id')
+  const [source, setSource] = useState<AddedSignalSource | null>(guildFromInvite ? 'discord' : null)
+  const [settingUpSource, setSettingUpSource] = useState<AddedSignalSource | null>(
+    guildFromInvite ? 'discord' : null,
   )
+  const [pickedSources, setPickedSources] = useState<AddedSignalSource[]>(() => (
+    user?.id ? readAddedSignalSources(user.id) : []
+  ))
+  const [connectedSources, setConnectedSources] = useState<AddedSignalSource[]>([])
+  const [sourcesReady, setSourcesReady] = useState(false)
+  const [sourcePickerOpen, setSourcePickerOpen] = useState(false)
   const [connectMenuChannelId, setConnectMenuChannelId] = useState<string | null>(null)
   const [connectingBrokerId, setConnectingBrokerId] = useState<string | null>(null)
   const [connectingAllChannelId, setConnectingAllChannelId] = useState<string | null>(null)
@@ -244,9 +291,12 @@ export function CopierEnginePage() {
   }, [user?.id, hasTgSession, refreshListenerLease])
 
   const loadData = async (opts?: { skipTgFetch?: boolean; backgroundTgFetch?: boolean; forceTgFetch?: boolean }) => {
-    const [channelsRes, sessionRes] = await Promise.all([
+    const [channelsRes, sessionRes, discordInstalls, whatsappSession, tradingViewHooks] = await Promise.all([
       supabase.from('telegram_channels').select('*').eq('user_id', user!.id).order('created_at', { ascending: false }),
       supabase.from('telegram_sessions').select('id').eq('user_id', user!.id).maybeSingle(),
+      supabase.from('discord_installations').select('id', { count: 'exact', head: true }).eq('user_id', user!.id),
+      supabase.from('whatsapp_sessions').select('status').eq('user_id', user!.id).maybeSingle(),
+      supabase.from('tradingview_webhooks').select('id', { count: 'exact', head: true }).eq('user_id', user!.id),
     ])
     const allChannelRows = (channelsRes.data ?? []) as TelegramChannel[]
     const channelRows = allChannelRows.filter(row => !row.source_kind || row.source_kind === 'telegram')
@@ -261,6 +311,14 @@ export function CopierEnginePage() {
     const hasSession = !!sessionRes.data
     setHasTgSession(hasSession)
     if (user?.id) setCachedTgSession(user.id, hasSession)
+    const whatsappRow = whatsappSession.data as { status?: string } | null
+    setConnectedSources(connectedSignalSources({
+      hasTelegramSession: hasSession,
+      discordInstallations: discordInstalls.error ? 0 : (discordInstalls.count ?? 0),
+      whatsappStatus: whatsappSession.error ? null : (whatsappRow?.status ?? null),
+      tradingViewWebhooks: tradingViewHooks.error ? 0 : (tradingViewHooks.count ?? 0),
+    }))
+    setSourcesReady(true)
     setTgStage(prev =>
       prev === 'phone' || prev === 'code' || prev === 'twoFa' || prev === 'qr' || prev === 'method'
         ? prev
@@ -283,6 +341,22 @@ export function CopierEnginePage() {
     }
   }
 
+  const loadDataRef = useRef(loadData)
+  loadDataRef.current = loadData
+
+  useEffect(() => {
+    if (!user?.id) return
+    const refresh = () => { void loadDataRef.current({ skipTgFetch: true }) }
+    const stopWhatsApp = subscribeWhatsAppSourcesChanged(refresh)
+    const stopDiscord = subscribeDiscordSourcesChanged(refresh)
+    const stopTradingView = subscribeTradingViewWebhooksChanged(refresh)
+    return () => {
+      stopWhatsApp()
+      stopDiscord()
+      stopTradingView()
+    }
+  }, [user?.id])
+
   /** Remove Telegram session only (manual disconnect). Keeps configured channels. */
   const clearTelegramConnection = useCallback(async (nextStage: 'idle' | 'phone') => {
     if (!user?.id) return
@@ -292,6 +366,7 @@ export function CopierEnginePage() {
       await supabase.from('telegram_sessions').delete().eq('user_id', user.id)
     }
     setHasTgSession(false)
+    setConnectedSources(prev => prev.filter(kind => kind !== 'telegram'))
     setTgChannels([])
     setTgChannelSearch('')
     if (user.id) {
@@ -314,11 +389,13 @@ export function CopierEnginePage() {
   const handleTelegramSessionInvalid = useCallback(async () => {
     if (!user?.id) return
     setHasTgSession(false)
+    setConnectedSources(prev => prev.filter(kind => kind !== 'telegram'))
     setTgChannels([])
     setTgChannelSearch('')
     invalidateTgChannelsCache(user.id)
     invalidateTgSessionCache(user.id)
     setTgError(ce.telegramSessionExpired)
+    setSettingUpSource('telegram')
     const { data: channelRows } = await supabase
       .from('telegram_channels')
       .select('*')
@@ -884,6 +961,58 @@ export function CopierEnginePage() {
     }
   }
 
+  const visibleSources = useMemo(
+    () => signalSourceTabOrder(pickedSources, connectedSources),
+    [pickedSources, connectedSources],
+  )
+
+  useEffect(() => {
+    if (!user?.id || !sourcesReady) return
+    setPickedSources(prev => {
+      const next = mergeAddedSignalSourceOrder(
+        readAddedSignalSources(user.id),
+        prev,
+        connectedSources,
+        guildFromInvite ? 'discord' : null,
+      )
+      const unchanged = next.length === prev.length && next.every((kind, index) => kind === prev[index])
+      if (!unchanged) writeAddedSignalSources(user.id, next)
+      return unchanged ? prev : next
+    })
+  }, [connectedSources, guildFromInvite, sourcesReady, user?.id])
+
+  useEffect(() => {
+    if (!sourcesReady) return
+    if (settingUpSource && connectedSources.includes(settingUpSource)) setSettingUpSource(null)
+  }, [connectedSources, settingUpSource, sourcesReady])
+
+  useEffect(() => {
+    if (!sourcesReady) return
+    if (source && (visibleSources.includes(source) || source === settingUpSource)) return
+    setSource(visibleSources[0] ?? null)
+  }, [settingUpSource, source, sourcesReady, visibleSources])
+
+  const addSignalSource = (kind: AddedSignalSource) => {
+    if (user?.id) {
+      setPickedSources(prev => {
+        const next = appendSignalSource(prev, kind)
+        if (next !== prev) writeAddedSignalSources(user.id, next)
+        return next
+      })
+    }
+    if (!connectedSources.includes(kind)) setSettingUpSource(kind)
+    else setSettingUpSource(null)
+    setSource(kind)
+    setSourcePickerOpen(false)
+  }
+
+  const sourceTabLabel = (kind: AddedSignalSource) => {
+    if (kind === 'telegram') return t.channelsPage.tabTelegram
+    if (kind === 'whatsapp') return t.channelsPage.tabWhatsApp
+    if (kind === 'discord') return t.channelsPage.tabDiscord
+    return t.channelsPage.tabTradingView
+  }
+
   const showListenerLeaseWarning =
     hasTgSession
     && hasActiveSubscription
@@ -895,33 +1024,73 @@ export function CopierEnginePage() {
       <PageHeader
         title={t.pages.copierEngine.title}
         actions={
-          source === 'telegram' && hasTgSession ? (
-            <Button variant="secondary" size="sm" onClick={() => void fetchTgChannels({ force: true })} loading={loadingTg}>
-              <RefreshCw className="w-3.5 h-3.5" />
-              {t.common.refresh}
+          <div className="flex flex-wrap items-center gap-2">
+            {source === 'telegram' && hasTgSession ? (
+              <Button variant="secondary" size="sm" onClick={() => void fetchTgChannels({ force: true })} loading={loadingTg}>
+                <RefreshCw className="w-3.5 h-3.5" />
+                {t.common.refresh}
+              </Button>
+            ) : null}
+            <Button size="sm" onClick={() => setSourcePickerOpen(true)}>
+              <Plus className="w-3.5 h-3.5" />
+              {ce.newSignalSource}
             </Button>
-          ) : undefined
+          </div>
         }
       />
 
+      {!sourcesReady ? (
+        <div className="h-40 animate-pulse rounded-xl border border-neutral-100 bg-white dark:border-neutral-800 dark:bg-neutral-950" />
+      ) : visibleSources.length === 0 && !settingUpSource ? (
+        <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-6 py-16 text-center dark:border-neutral-800 dark:bg-neutral-950">
+          <div className="mb-4 flex items-center justify-center gap-3">
+            {SIGNAL_SOURCE_ORDER.map(kind => (
+              <img
+                key={kind}
+                src={SIGNAL_SOURCE_MARKS[kind].iconSrc}
+                alt=""
+                aria-hidden
+                className={clsx(
+                  'h-8 w-8',
+                  kind === 'telegram' ? 'object-contain' : 'rounded-full object-cover',
+                )}
+              />
+            ))}
+          </div>
+          <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{ce.noSignalSourcesTitle}</p>
+          <p className="mx-auto mt-1 max-w-sm text-xs text-neutral-900 dark:text-neutral-50">{ce.noSignalSourcesBody}</p>
+          <Button className="mt-5" onClick={() => setSourcePickerOpen(true)}>
+            <Plus className="w-4 h-4" />
+            {ce.newSignalSource}
+          </Button>
+        </div>
+      ) : (
+      <>
+      {visibleSources.length > 0 ? (
       <nav className="flex gap-6 overflow-x-auto border-b border-neutral-200 dark:border-neutral-800" aria-label={t.pages.copierEngine.title}>
-        <SourceTab active={source === 'telegram'} onClick={() => setSource('telegram')}>
-          <img src="/Telegram.svg" alt="" aria-hidden className="h-4 w-4 shrink-0 object-contain" />
-          {t.channelsPage.tabTelegram}
-        </SourceTab>
-        <SourceTab active={source === 'discord'} onClick={() => setSource('discord')}>
-          <img src="/discord-logo.png" alt="" aria-hidden className="h-4 w-4 shrink-0 rounded-full object-cover" />
-          {t.channelsPage.tabDiscord}
-        </SourceTab>
-        <SourceTab active={source === 'whatsapp'} onClick={() => setSource('whatsapp')}>
-          <img src="/whatsapp-icon.png" alt="" aria-hidden className="h-4 w-4 shrink-0 rounded-full object-cover" />
-          {t.channelsPage.tabWhatsApp}
-        </SourceTab>
-        <SourceTab active={source === 'tradingview'} onClick={() => setSource('tradingview')}>
-          <img src="/tradingview-logo.png" alt="" aria-hidden className="h-4 w-4 shrink-0 rounded-full object-cover" />
-          {t.channelsPage.tabTradingView}
-        </SourceTab>
+        {visibleSources.map(kind => (
+          <SourceTab
+            key={kind}
+            active={source === kind}
+            onClick={() => {
+              setSettingUpSource(null)
+              setSource(kind)
+            }}
+          >
+            <img
+              src={SIGNAL_SOURCE_MARKS[kind].iconSrc}
+              alt=""
+              aria-hidden
+              className={clsx(
+                'h-4 w-4 shrink-0',
+                kind === 'telegram' ? 'object-contain' : 'rounded-full object-cover',
+              )}
+            />
+            {sourceTabLabel(kind)}
+          </SourceTab>
+        ))}
       </nav>
+      ) : null}
 
       {source === 'tradingview' ? (
         <TradingViewSourcePanel brokers={brokers} replaceBroker={replaceBroker} />
@@ -929,7 +1098,7 @@ export function CopierEnginePage() {
         <DiscordSourcePanel brokers={brokers} replaceBroker={replaceBroker} />
       ) : source === 'whatsapp' ? (
         <WhatsAppSourcePanel brokers={brokers} replaceBroker={replaceBroker} />
-      ) : (
+      ) : source === 'telegram' ? (
       <>
 
       {showListenerLeaseWarning && (
@@ -1008,7 +1177,7 @@ export function CopierEnginePage() {
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 truncate">{ce.yourTelegramChannels}</p>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400">{ce.telegramConnectedHint}</p>
+                <p className="text-xs text-neutral-900 dark:text-neutral-50">{ce.telegramConnectedHint}</p>
               </div>
               <span className="flex-shrink-0 hidden sm:inline-flex gap-1.5">
                 <Badge variant="primary" size="sm">{ce.connected}</Badge>
@@ -1031,7 +1200,7 @@ export function CopierEnginePage() {
                 variant="ghost"
                 size="sm"
                 onClick={() => setTgChannelsCollapsed(prev => !prev)}
-                className="text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:bg-neutral-800 hover:text-neutral-700 dark:text-neutral-300"
+                className="text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 dark:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-50 dark:text-neutral-50"
               >
                 <ChevronDown className={`w-3.5 h-3.5 transition-transform ${tgChannelsCollapsed ? '-rotate-90' : 'rotate-0'}`} />
                 {tgChannelsCollapsed ? ce.expand : ce.collapse}
@@ -1041,7 +1210,7 @@ export function CopierEnginePage() {
                 {ce.disconnect}
               </Button>
             {tgChannels.length > 0 && (
-              <span className="text-xs text-neutral-400">
+              <span className="text-xs text-neutral-900 dark:text-neutral-50">
                 {interpolate(ce.channelsFound, { count: String(tgChannels.length) })}
               </span>
             )}
@@ -1073,7 +1242,7 @@ export function CopierEnginePage() {
           ) : error ? (
             <div className="px-4 py-8 text-center">
               <AlertCircle className="w-8 h-8 mx-auto mb-2 text-error-300" />
-              <p className="text-sm text-neutral-700 dark:text-neutral-300 font-medium">{error}</p>
+              <p className="text-sm text-neutral-900 dark:text-neutral-50 font-medium">{error}</p>
               <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
                 <Button size="sm" variant="secondary" onClick={() => void fetchTgChannels({ force: true })} loading={loadingTg}>
                   <RefreshCw className="w-3.5 h-3.5" />
@@ -1086,13 +1255,13 @@ export function CopierEnginePage() {
             </div>
           ) : tgChannels.length === 0 ? (
             <div className="px-4 py-8 text-center">
-              <Radio className="w-8 h-8 mx-auto mb-2 text-neutral-200" />
-              <p className="text-sm text-neutral-400">{ce.noTgChannelsTitle}</p>
-              <p className="text-xs text-neutral-300 mt-0.5">{ce.noTgChannelsSubtitle}</p>
+              <Radio className="w-8 h-8 mx-auto mb-2 text-neutral-900 dark:text-neutral-50" />
+              <p className="text-sm text-neutral-900 dark:text-neutral-50">{ce.noTgChannelsTitle}</p>
+              <p className="text-xs text-neutral-900 dark:text-neutral-50 mt-0.5">{ce.noTgChannelsSubtitle}</p>
             </div>
           ) : filteredTgChannels.length === 0 ? (
             <div className="px-4 py-8 text-center">
-              <p className="text-sm text-neutral-400">{ce.noChannelSearchResults}</p>
+              <p className="text-sm text-neutral-900 dark:text-neutral-50">{ce.noChannelSearchResults}</p>
             </div>
           ) : (
             <div className="divide-y divide-neutral-100 dark:divide-neutral-800 max-h-72 overflow-y-auto">
@@ -1103,10 +1272,10 @@ export function CopierEnginePage() {
                     <TgChannelAvatar title={ch.title} username={ch.username} />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50 truncate">{ch.title}</p>
-                      {ch.username && <p className="text-xs text-neutral-400">@{ch.username}</p>}
+                      {ch.username && <p className="text-xs text-neutral-900 dark:text-neutral-50">@{ch.username}</p>}
                     </div>
                     {ch.members_count > 0 && (
-                      <span className="text-xs text-neutral-400 flex-shrink-0">
+                      <span className="text-xs text-neutral-900 dark:text-neutral-50 flex-shrink-0">
                         {interpolate(ce.members, { count: ch.members_count.toLocaleString() })}
                       </span>
                     )}
@@ -1114,8 +1283,8 @@ export function CopierEnginePage() {
                       onClick={() => addFromTg(ch)}
                       className={`px-3 py-1 text-xs font-medium rounded-lg border transition-colors flex-shrink-0 ${
                         alreadyAdded
-                          ? 'border-neutral-200/65 dark:border-neutral-800/55 text-neutral-400 cursor-default'
-                          : 'border-primary-500 text-primary-600 hover:bg-primary-50'
+                          ? 'border-neutral-200/65 dark:border-neutral-800/55 text-neutral-900 dark:text-neutral-50 cursor-default'
+                          : 'border-green-400 text-green-400 hover:bg-primary-50'
                       }`}
                       disabled={alreadyAdded}
                     >
@@ -1136,9 +1305,9 @@ export function CopierEnginePage() {
         </div>
       ) : channels.length === 0 ? (
         <div className="bg-white dark:bg-neutral-950 rounded-xl border border-dashed border-neutral-200/65 dark:border-neutral-800/55 py-10 text-center">
-          <Radio className="w-8 h-8 mx-auto mb-2 text-neutral-200" />
-          <p className="text-sm font-medium text-neutral-400">{ce.configuredEmptyTitle}</p>
-          <p className="text-xs text-neutral-300 mt-0.5 max-w-sm mx-auto">
+          <Radio className="w-8 h-8 mx-auto mb-2 text-neutral-900 dark:text-neutral-50" />
+          <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{ce.configuredEmptyTitle}</p>
+          <p className="text-xs text-neutral-900 dark:text-neutral-50 mt-0.5 max-w-sm mx-auto">
             {!hasTgSession ? ce.configuredEmptyConnectHint : ce.configuredEmptySubtitle}
           </p>
         </div>
@@ -1146,7 +1315,7 @@ export function CopierEnginePage() {
         <Card padding="none">
           <div className="px-4 py-2.5 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
             <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{ce.activeChannels}</p>
-            <span className="text-xs text-neutral-400">
+            <span className="text-xs text-neutral-900 dark:text-neutral-50">
               {interpolate(ce.configuredCount, { count: String(channels.length) })}
             </span>
           </div>
@@ -1175,8 +1344,117 @@ export function CopierEnginePage() {
         </Card>
       )}
       </>
+      ) : null}
+      </>
       )}
+
+      <NewSignalSourceModal
+        open={sourcePickerOpen}
+        added={visibleSources}
+        title={ce.newSignalSource}
+        hint={ce.chooseSignalSource}
+        addedLabel={ce.added}
+        closeLabel={ce.keywordsClose}
+        onClose={() => setSourcePickerOpen(false)}
+        onSelect={addSignalSource}
+        labelFor={sourceTabLabel}
+      />
     </PageShell>
+  )
+}
+
+function NewSignalSourceModal({
+  open,
+  added,
+  title,
+  hint,
+  addedLabel,
+  closeLabel,
+  onClose,
+  onSelect,
+  labelFor,
+}: {
+  open: boolean
+  added: AddedSignalSource[]
+  title: string
+  hint: string
+  addedLabel: string
+  closeLabel: string
+  onClose: () => void
+  onSelect: (kind: AddedSignalSource) => void
+  labelFor: (kind: AddedSignalSource) => string
+}) {
+  useEffect(() => {
+    if (!open) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, onClose])
+
+  if (!open || typeof document === 'undefined') return null
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="new-signal-source-title"
+        className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-5 shadow-xl dark:border-neutral-800 dark:bg-neutral-950"
+        onClick={event => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 id="new-signal-source-title" className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
+              {title}
+            </h2>
+            <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-50">{hint}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={closeLabel}
+            className="rounded-lg p-1.5 text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-neutral-50"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="mt-4 space-y-2">
+          {SIGNAL_SOURCE_ORDER.map(kind => {
+            const alreadyAdded = added.includes(kind)
+            return (
+              <button
+                key={kind}
+                type="button"
+                onClick={() => onSelect(kind)}
+                className="flex w-full items-center gap-3 rounded-xl border border-neutral-200 px-3 py-3 text-left transition-colors hover:border-green-400 hover:bg-teal-50/60 dark:border-neutral-800 dark:hover:border-green-400 dark:hover:bg-teal-950/30"
+              >
+                <img
+                  src={SIGNAL_SOURCE_MARKS[kind].iconSrc}
+                  alt=""
+                  aria-hidden
+                  className={clsx(
+                    'h-8 w-8 shrink-0',
+                    kind === 'telegram' ? 'object-contain' : 'rounded-full object-cover',
+                  )}
+                />
+                <span className="min-w-0 flex-1 text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                  {labelFor(kind)}
+                </span>
+                {alreadyAdded ? (
+                  <span className="text-xs font-medium text-green-500 dark:text-teal-300">{addedLabel}</span>
+                ) : null}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -1197,7 +1475,7 @@ function SourceTab({
         '-mb-px inline-flex shrink-0 items-center gap-2 border-b-2 pb-3 text-sm font-medium',
         active
           ? 'border-neutral-900 text-neutral-900 dark:border-neutral-50 dark:text-neutral-50'
-          : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200',
+          : 'border-transparent text-neutral-900 hover:text-neutral-900 dark:text-neutral-50 dark:hover:text-neutral-50',
       )}
     >
       {children}
@@ -1266,9 +1544,9 @@ function ChannelRow({
           {!identityValid && (
             <p className="mt-1 text-xs text-warning-800 dark:text-amber-200">{ce.invalidChannelIdentity}</p>
           )}
-          {username && <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">@{username}</p>}
+          {username && <p className="mt-0.5 text-xs text-neutral-900 dark:text-neutral-50">@{username}</p>}
           {isNumericTelegramChatId(channel.channel_id) && (
-            <p className="mt-0.5 text-xs text-neutral-400 dark:text-neutral-500 font-mono">
+            <p className="mt-0.5 text-xs text-neutral-900 dark:text-neutral-50 font-mono">
               {interpolate(ce.channelTelegramId, { id: channel.channel_id })}
             </p>
           )}
@@ -1278,7 +1556,7 @@ function ChannelRow({
           <button
             type="button"
             onClick={onDelete}
-            className="rounded-lg p-1.5 text-neutral-400 hover:bg-error-50 hover:text-error-600 transition-colors"
+            className="rounded-lg p-1.5 text-neutral-900 dark:text-neutral-50 hover:bg-error-50 hover:text-error-600 transition-colors"
             aria-label={interpolate(ce.removeAria, { label: channel.display_name })}
           >
             <Trash2 className="w-4 h-4" />
@@ -1287,7 +1565,7 @@ function ChannelRow({
       </div>
       <div className="border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/60 px-4 py-2.5 space-y-2.5">
         <div>
-          <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-400 mb-1.5">{ce.connectedBrokers}</p>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50 mb-1.5">{ce.connectedBrokers}</p>
           {connectedBrokers.length > 0 ? (
             <div className="flex flex-wrap items-center gap-1.5">
               {connectedBrokers.map(broker => {
@@ -1301,7 +1579,7 @@ function ChannelRow({
                       type="button"
                       onClick={() => onDisconnectBroker(broker.id)}
                       disabled={isDisconnecting}
-                      className="ml-0.5 -mr-0.5 rounded-full p-0.5 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-700 dark:hover:bg-neutral-700 dark:hover:text-neutral-100 disabled:opacity-50 transition-colors"
+                      className="ml-0.5 -mr-0.5 rounded-full p-0.5 text-neutral-900 dark:text-neutral-50 hover:bg-neutral-200 hover:text-neutral-900 dark:hover:bg-neutral-700 dark:hover:text-neutral-100 disabled:opacity-50 transition-colors"
                       aria-label={interpolate(ce.removeBrokerConnectionAria, {
                         broker: label,
                         channel: channel.display_name,
@@ -1317,7 +1595,7 @@ function ChannelRow({
                   <button
                     type="button"
                     onClick={onToggleConnectMenu}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 dark:border-neutral-700 text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-100 hover:bg-white dark:hover:bg-neutral-900 transition-colors"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-100 hover:bg-white dark:hover:bg-neutral-900 transition-colors"
                     aria-label={interpolate(ce.addBrokerConnectionAria, { channel: channel.display_name })}
                   >
                     <Plus className="w-3.5 h-3.5" />
@@ -1325,9 +1603,9 @@ function ChannelRow({
                   {connectMenuOpen && (
                     <div className="absolute left-0 top-full z-30 mt-1 min-w-[12rem] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg py-1">
                       {!hasAnyBrokers ? (
-                        <p className="px-3 py-2 text-xs text-neutral-500 dark:text-neutral-400">{ce.noBrokersYet}</p>
+                        <p className="px-3 py-2 text-xs text-neutral-900 dark:text-neutral-50">{ce.noBrokersYet}</p>
                       ) : availableBrokers.length === 0 ? (
-                        <p className="px-3 py-2 text-xs text-neutral-500 dark:text-neutral-400">{ce.connectedBrokers}</p>
+                        <p className="px-3 py-2 text-xs text-neutral-900 dark:text-neutral-50">{ce.connectedBrokers}</p>
                       ) : (
                         availableBrokers.map(broker => (
                           <button
@@ -1335,7 +1613,7 @@ function ChannelRow({
                             type="button"
                             disabled={connectingBrokerId === broker.id}
                             onClick={() => onConnectBroker(broker.id)}
-                            className="w-full px-3 py-2 text-left text-sm text-neutral-800 dark:text-neutral-100 hover:bg-neutral-50 dark:hover:bg-neutral-800 disabled:opacity-50"
+                            className="w-full px-3 py-2 text-left text-sm text-neutral-900 dark:text-neutral-100 hover:bg-neutral-50 dark:hover:bg-neutral-800 disabled:opacity-50"
                           >
                             {getBrokerDisplayLabel(broker)}
                           </button>
@@ -1344,7 +1622,7 @@ function ChannelRow({
                       <div className="border-t border-neutral-100 dark:border-neutral-800 mt-1 pt-1">
                         <Link
                           to="/brokers"
-                          className="block px-3 py-2 text-xs text-primary-600 hover:bg-neutral-50 dark:hover:bg-neutral-800"
+                          className="block px-3 py-2 text-xs text-green-400 hover:bg-neutral-50 dark:hover:bg-neutral-800"
                           onClick={onCloseConnectMenu}
                         >
                           {ce.connectBrokerInConfig}
@@ -1389,7 +1667,7 @@ function ChannelRow({
                       type="button"
                       disabled={connectingBrokerId === broker.id}
                       onClick={() => onConnectBroker(broker.id)}
-                      className="w-full px-3 py-2 text-left text-sm text-neutral-800 dark:text-neutral-100 hover:bg-neutral-50 dark:hover:bg-neutral-800 disabled:opacity-50"
+                      className="w-full px-3 py-2 text-left text-sm text-neutral-900 dark:text-neutral-100 hover:bg-neutral-50 dark:hover:bg-neutral-800 disabled:opacity-50"
                     >
                       {getBrokerDisplayLabel(broker)}
                     </button>
@@ -1401,7 +1679,7 @@ function ChannelRow({
           ) : (
             <Link
               to="/brokers"
-              className="inline-flex items-center rounded-lg border border-dashed border-neutral-300 dark:border-neutral-600 px-3 py-1.5 text-xs font-medium text-primary-600 hover:bg-white dark:hover:bg-neutral-900 transition-colors"
+              className="inline-flex items-center rounded-lg border border-dashed border-neutral-300 dark:border-neutral-600 px-3 py-1.5 text-xs font-medium text-green-400 hover:bg-white dark:hover:bg-neutral-900 transition-colors"
             >
               {ce.connectToBroker}
             </Link>

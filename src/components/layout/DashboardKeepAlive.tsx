@@ -1,5 +1,5 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
-import { Route, Routes, useLocation } from 'react-router-dom'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { Route, Routes, useLocation, type Location } from 'react-router-dom'
 import { DashboardRouteSkeleton } from '../dashboard/DashboardMetricsSkeleton'
 import { useNeedsWelcome } from '../../hooks/useNeedsWelcome'
 
@@ -17,6 +17,8 @@ export function DashboardKeepAlive() {
   const onDashboard = location.pathname === '/dashboard'
     || location.pathname.startsWith('/dashboard/broker/')
   const [mounted, setMounted] = useState(onDashboard)
+  const dashboardLocationRef = useRef<Location | null>(onDashboard ? location : null)
+  if (onDashboard) dashboardLocationRef.current = location
 
   useEffect(() => {
     if (onDashboard) setMounted(true)
@@ -24,10 +26,14 @@ export function DashboardKeepAlive() {
 
   if (deferAppBootstrap || !mounted) return null
 
+  // Keep matching /dashboard after the user leaves so DashboardPage stays
+  // mounted. A live <Routes> match unmounts it, and the next visit reloads.
+  const routeLocation = onDashboard ? location : dashboardLocationRef.current ?? location
+
   return (
     <div className={onDashboard ? 'min-h-full' : 'hidden'} aria-hidden={!onDashboard}>
       <Suspense fallback={onDashboard ? <DashboardRouteSkeleton /> : null}>
-        <Routes>
+        <Routes location={routeLocation}>
           <Route path="/dashboard/*" element={<DashboardPage />}>
             <Route path="broker/:brokerId" element={<BrokerStatsOverlay />} />
           </Route>

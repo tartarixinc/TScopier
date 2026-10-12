@@ -25,8 +25,8 @@ function FooterNavLink({ link }: { link: FooterLink }) {
   const className = clsx(
     'text-sm transition-colors',
     link.highlight
-      ? 'font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300'
-      : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100',
+      ? 'font-medium text-green-400 hover:text-green-500 dark:text-green-400 dark:hover:text-teal-300'
+      : 'text-neutral-900 hover:text-neutral-900 dark:text-neutral-50 dark:hover:text-neutral-100',
   )
 
   if (link.href.startsWith('/') && !link.external) {
@@ -57,7 +57,7 @@ function FooterNavColumn({
 }) {
   return (
     <div>
-      <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+      <p className="text-xs font-semibold uppercase tracking-wider text-neutral-900 dark:text-neutral-50">
         {title}
       </p>
       <ul className="mt-4 space-y-2.5">
@@ -114,7 +114,7 @@ export function MarketingFooter() {
               <h2 className="text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-3xl">
                 {f.cta.title}
               </h2>
-              <p className="mt-3 text-base leading-relaxed text-neutral-600 dark:text-neutral-400">
+              <p className="mt-3 text-base leading-relaxed text-neutral-900 dark:text-neutral-50">
                 {f.cta.subtitle}
               </p>
             </div>
@@ -122,14 +122,14 @@ export function MarketingFooter() {
               <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
                 <a
                   href={appUrl('/signup')}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-teal-600 bg-teal-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:border-teal-700 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-950"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-green-400 bg-green-400 px-5 py-2.5 text-sm font-medium text-neutral-950 transition-colors hover:border-green-500 hover:bg-green-500 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2 dark:focus:ring-offset-neutral-950"
                 >
                   {f.cta.primary}
                   <ArrowRight className="h-4 w-4" aria-hidden />
                 </a>
                 <a
                   href={appUrl('/login')}
-                  className="inline-flex items-center justify-center rounded-xl border border-neutral-200 bg-white px-5 py-2.5 text-sm font-medium text-neutral-800 transition-colors hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800"
+                  className="inline-flex items-center justify-center rounded-xl border border-neutral-200 bg-white px-5 py-2.5 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800"
                 >
                   {f.cta.secondary}
                 </a>
@@ -137,7 +137,7 @@ export function MarketingFooter() {
               <MarketingPricingHint
                 basic={pricingSnippet.basic}
                 advanced={pricingSnippet.advanced}
-                className="mt-3 text-center text-xs leading-relaxed text-neutral-500 sm:text-right dark:text-neutral-400"
+                className="mt-3 text-center text-xs leading-relaxed text-neutral-900 sm:text-right dark:text-neutral-50"
               />
             </div>
           </div>
@@ -151,10 +151,10 @@ export function MarketingFooter() {
               <Link to="/" className="inline-flex" aria-label="UniCopier home">
                 <TscopierLogo className="h-7 w-auto" />
               </Link>
-              <p className="mt-4 max-w-xs text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">
+              <p className="mt-4 max-w-xs text-sm leading-relaxed text-neutral-900 dark:text-neutral-50">
                 {f.tagline}
               </p>
-              <p className="mt-6 text-xs font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+              <p className="mt-6 text-xs font-semibold uppercase tracking-wider text-neutral-900 dark:text-neutral-50">
                 {f.platforms}
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -186,8 +186,8 @@ export function MarketingFooter() {
       <div className="marketing-footer-bottom">
         <div className="mx-auto flex max-w-6xl flex-col gap-4 px-5 py-6 sm:px-8 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-col gap-2 sm:gap-1">
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">{copyright}</p>
-            <p className="max-w-2xl text-[11px] leading-relaxed text-neutral-400 dark:text-neutral-500">
+            <p className="text-xs text-neutral-900 dark:text-neutral-50">{copyright}</p>
+            <p className="max-w-2xl text-[11px] leading-relaxed text-neutral-900 dark:text-neutral-50">
               {f.disclaimer}
             </p>
           </div>

@@ -155,6 +155,7 @@ export const tradingRu: TradingPagesBundleTranslations = {
     whatsappDisconnect: 'Отключить',
     whatsappQrHelp: 'Откройте WhatsApp, перейдите в Связанные устройства и отсканируйте этот код.',
     whatsappListenerMissing: 'Слушатель WhatsApp ещё не настроен.',
+    whatsappListenerUnavailable: 'Слушатель WhatsApp не запущен. Запустите его и попробуйте снова.',
     whatsappAdd: 'Добавить',
     whatsappRefresh: 'Обновить группы',
   },

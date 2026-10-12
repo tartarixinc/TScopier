@@ -41,7 +41,7 @@ export function CopierLogDetailModal({
   channelName: string
   sourceKind?: SignalSourceKind | null
   symbol: string
-  status: { variant: StatusVariant; label: string }
+  status: { variant: StatusVariant; label: string; className?: string }
   onClose: () => void
   onRetry?: () => void
   isRetrying?: boolean
@@ -168,14 +168,14 @@ export function CopierLogDetailModal({
             <h2 id="copier-log-detail-title" className="text-lg font-semibold text-neutral-900 dark:text-neutral-50 truncate">
               {dm.title}
             </h2>
-            <p className="flex min-w-0 items-center gap-1.5 text-xs text-neutral-400">
+            <p className="flex min-w-0 items-center gap-1.5 text-xs text-neutral-900 dark:text-neutral-50">
               <SignalSourceLogo kind={sourceKind} className="h-4 w-4 shrink-0" />
               <span className="truncate">{symbol} · {channelName}</span>
             </p>
           </div>
           <button
             type="button"
-            className="p-2 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+            className="p-2 rounded-lg text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
             aria-label={dm.close}
             onClick={onClose}
           >
@@ -186,11 +186,11 @@ export function CopierLogDetailModal({
         <div className="p-5 space-y-5">
           <section className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 p-4 space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant={status.variant} size="sm">{status.label}</Badge>
+              <Badge variant={status.variant} size="sm" className={status.className}>{status.label}</Badge>
               {action ? (
                 <span className={clsx(
                   'text-xs font-semibold uppercase',
-                  action === 'buy' ? 'text-primary-600' : action === 'sell' ? 'text-error-600' : 'text-neutral-500',
+                  action === 'buy' ? 'text-green-400' : action === 'sell' ? 'text-error-600' : 'text-neutral-900 dark:text-neutral-50',
                 )}>
                   {actionLabel}
                 </span>
@@ -201,14 +201,14 @@ export function CopierLogDetailModal({
               <>
                 <DetailRow label={dm.reason} value={structuredFailure?.title ?? reasonShort} emphasize />
                 {structuredFailure ? (
-                  <p className="text-sm text-neutral-600 dark:text-neutral-300 leading-relaxed">
-                    <span className="font-medium text-neutral-700 dark:text-neutral-200">{dm.whatHappened}: </span>
+                  <p className="text-sm text-neutral-900 dark:text-neutral-50 leading-relaxed">
+                    <span className="font-medium text-neutral-900 dark:text-neutral-50">{dm.whatHappened}: </span>
                     {structuredFailure.explanation}
                     {structuredFailure.recommendedAction ? ` ${structuredFailure.recommendedAction}` : ''}
                   </p>
                 ) : reasonDetail ? (
-                  <p className="text-sm text-neutral-600 dark:text-neutral-300 leading-relaxed">
-                    <span className="font-medium text-neutral-700 dark:text-neutral-200">{dm.whatHappened}: </span>
+                  <p className="text-sm text-neutral-900 dark:text-neutral-50 leading-relaxed">
+                    <span className="font-medium text-neutral-900 dark:text-neutral-50">{dm.whatHappened}: </span>
                     {reasonDetail}
                   </p>
                 ) : null}
@@ -220,7 +220,7 @@ export function CopierLogDetailModal({
             <button
               type="button"
               onClick={askAssistantExplainSignal}
-              className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline underline-offset-2"
+              className="text-xs font-semibold text-green-500 dark:text-teal-300 hover:underline underline-offset-2"
             >
               {dm.explainWithAi}
             </button>
@@ -228,7 +228,7 @@ export function CopierLogDetailModal({
 
           {(levels.entry || levels.sl || levels.tp) ? (
             <section className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 p-4 space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{dm.levels}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-50">{dm.levels}</p>
               {levels.entry ? <DetailRow label={dm.entry} value={levels.entry} /> : null}
               {levels.sl ? <DetailRow label={dm.stopLoss} value={levels.sl} /> : null}
               {levels.tp ? <DetailRow label={dm.takeProfit} value={levels.tp} /> : null}
@@ -236,16 +236,16 @@ export function CopierLogDetailModal({
           ) : null}
 
           <section className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 p-4 space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{dm.signalMessage}</p>
-            <pre className="text-sm text-neutral-700 dark:text-neutral-200 whitespace-pre-wrap font-sans leading-relaxed">
+            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-50">{dm.signalMessage}</p>
+            <pre className="text-sm text-neutral-900 dark:text-neutral-50 whitespace-pre-wrap font-sans leading-relaxed">
               {rawMessage}
             </pre>
           </section>
 
           <section className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 p-4 space-y-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{dm.timeline}</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-50">{dm.timeline}</p>
             {timelineLoading ? (
-              <p className="text-sm text-neutral-500 inline-flex items-center gap-2">
+              <p className="text-sm text-neutral-900 dark:text-neutral-50 inline-flex items-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin" />
                 {dm.loadingTimeline}
               </p>
@@ -260,7 +260,7 @@ export function CopierLogDetailModal({
                       row.status === 'skipped' && 'text-warning-700 dark:text-warning-300',
                     )}
                   >
-                    <span className="text-xs text-neutral-400 whitespace-nowrap tabular-nums shrink-0 pt-0.5">
+                    <span className="text-xs text-neutral-900 dark:text-neutral-50 whitespace-nowrap tabular-nums shrink-0 pt-0.5">
                       {new Date(row.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                     </span>
                     <span className="min-w-0 break-words">
@@ -270,7 +270,7 @@ export function CopierLogDetailModal({
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-neutral-500">{dm.noTimeline}</p>
+              <p className="text-sm text-neutral-900 dark:text-neutral-50">{dm.noTimeline}</p>
             )}
           </section>
 
@@ -305,11 +305,11 @@ function DetailRow({
 }) {
   return (
     <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-3 sm:items-start">
-      <span className="text-xs font-medium text-neutral-500 shrink-0 sm:w-28">{label}</span>
+      <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50 shrink-0 sm:w-28">{label}</span>
       <span className={clsx(
-        'text-sm text-neutral-800 dark:text-neutral-100 min-w-0 break-words',
+        'text-sm text-neutral-900 dark:text-neutral-100 min-w-0 break-words',
         emphasize && 'font-medium',
-        mono && 'font-mono text-xs text-neutral-500',
+        mono && 'font-mono text-xs text-neutral-900 dark:text-neutral-50',
       )}>
         {value}
       </span>

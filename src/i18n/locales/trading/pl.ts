@@ -155,6 +155,7 @@ export const tradingPl: TradingPagesBundleTranslations = {
     whatsappDisconnect: 'Rozłącz',
     whatsappQrHelp: 'Otwórz WhatsApp, przejdź do Połączonych urządzeń i zeskanuj ten kod.',
     whatsappListenerMissing: 'Odbiornik WhatsApp nie jest jeszcze skonfigurowany.',
+    whatsappListenerUnavailable: 'Odbiornik WhatsApp nie działa. Uruchom go i spróbuj ponownie.',
     whatsappAdd: 'Dodaj',
     whatsappRefresh: 'Odśwież grupy',
   },

@@ -14,7 +14,7 @@ export function PageHeader({
       <div>
         <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-50">{title}</h1>
         {subtitle ? (
-          <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{subtitle}</p>
+          <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-50">{subtitle}</p>
         ) : null}
       </div>
       {actions ? <div className="shrink-0">{actions}</div> : null}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Globe,
   Lock,
@@ -12,8 +12,12 @@ import { useAuth } from '../../context/AuthContext'
 import { useLocale, useT } from '../../context/LocaleContext'
 import { useUserProfile } from '../../context/UserProfileContext'
 import { updatePassword } from '../../lib/userProfile'
-import { buildCountryOptions } from '../../lib/countryOptions'
+import { uploadProfilePhoto, validateProfilePhoto, validateProfilePhotoSource } from '../../lib/profilePhoto'
+import { ProfilePhotoCropModal } from '../../components/settings/ProfilePhotoCropModal'
+import { UserAvatar } from '../../components/layout/UserAvatar'
 import { buildBaseCurrencyOptions } from '../../lib/baseCurrencies'
+import { countryDisplayName } from '../../lib/countryOptions'
+import { lookupCountryCodeFromIp } from '../../lib/countryFromIp'
 import { TIMEZONE_OPTIONS } from '../../lib/timezoneOptions'
 import { Input } from '../../components/ui/Input'
 import { SearchableSelect } from '../../components/ui/SearchableSelect'
@@ -41,7 +45,7 @@ function SettingsCard({
       <div className="px-5 sm:px-6 py-4 border-b border-neutral-100 dark:border-neutral-800">
         <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">{title}</h2>
         {description ? (
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">{description}</p>
+          <p className="text-sm text-neutral-900 dark:text-neutral-50 mt-0.5">{description}</p>
         ) : null}
       </div>
       <div className="p-5 sm:p-6">{children}</div>
@@ -60,10 +64,6 @@ export function SettingsPage() {
   const { user } = useAuth()
   const { profile, loading, patchProfile, persistProfile } = useUserProfile()
 
-  const countryOptions = useMemo(
-    () => buildCountryOptions(locale, t.settings.placeholders.selectCountry),
-    [locale, t.settings.placeholders.selectCountry],
-  )
   const currencyOptions = useMemo(
     () => buildBaseCurrencyOptions(profile.base_currency),
     [profile.base_currency],
@@ -74,6 +74,10 @@ export function SettingsPage() {
   const [personalSaving, setPersonalSaving] = useState(false)
   const [generalSaving, setGeneralSaving] = useState(false)
   const [passwordSaving, setPasswordSaving] = useState(false)
+  const [photoSaving, setPhotoSaving] = useState(false)
+  const [cropFile, setCropFile] = useState<File | null>(null)
+  const [countryDetecting, setCountryDetecting] = useState(false)
+  const photoInputRef = useRef<HTMLInputElement>(null)
 
   const [personalMsg, setPersonalMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [generalMsg, setGeneralMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -92,6 +96,31 @@ export function SettingsPage() {
     setEmail(user?.email ?? '')
   }, [user?.email])
 
+  const countryRef = useRef(profile.country)
+  countryRef.current = profile.country
+
+  useEffect(() => {
+    if (!user?.id || loading) return
+    let cancelled = false
+    setCountryDetecting(true)
+    void lookupCountryCodeFromIp().then(async code => {
+      if (cancelled) return
+      setCountryDetecting(false)
+      if (!code || code === countryRef.current) return
+      patchProfile({ country: code })
+      try {
+        await persistProfile({ country: code })
+      } catch {
+        /* The field stays locked. A later save still includes the detected country. */
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+    // Run once after the saved profile is loaded. Later edits are not allowed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, loading])
+
   const applyPreference = async (
     patch: Partial<typeof profile>,
     setMsg: (msg: { type: 'success' | 'error'; text: string } | null) => void,
@@ -105,6 +134,56 @@ export function SettingsPage() {
         type: 'error',
         text: e instanceof Error ? e.message : t.settings.saveError,
       })
+    }
+  }
+
+  const handlePickPhoto = (file: File | undefined) => {
+    if (photoInputRef.current) photoInputRef.current.value = ''
+    if (!user || !file) return
+    setPersonalMsg(null)
+    const rejection = validateProfilePhotoSource(file)
+    if (rejection === 'type') {
+      setPersonalMsg({ type: 'error', text: t.settings.photo.invalidType })
+      return
+    }
+    if (rejection === 'size') {
+      setPersonalMsg({ type: 'error', text: t.settings.photo.tooLarge })
+      return
+    }
+    setCropFile(file)
+  }
+
+  const handleChangePhoto = async (file: File) => {
+    if (!user) return
+    setPersonalMsg(null)
+    const rejection = validateProfilePhoto(file)
+    if (rejection === 'type') {
+      setPersonalMsg({ type: 'error', text: t.settings.photo.invalidType })
+      return
+    }
+    if (rejection === 'size') {
+      setPersonalMsg({ type: 'error', text: t.settings.photo.tooLarge })
+      return
+    }
+    setPhotoSaving(true)
+    try {
+      const avatarUrl = await uploadProfilePhoto(user.id, file)
+      patchProfile({ avatar_url: avatarUrl })
+      setCropFile(null)
+      setPersonalMsg({ type: 'success', text: t.settings.saved })
+    } catch (e) {
+      const message = e instanceof Error ? e.message : ''
+      setCropFile(null)
+      setPersonalMsg({
+        type: 'error',
+        text: message === 'invalid_type'
+          ? t.settings.photo.invalidType
+          : message === 'too_large'
+            ? t.settings.photo.tooLarge
+            : t.settings.photo.uploadError,
+      })
+    } finally {
+      setPhotoSaving(false)
     }
   }
 
@@ -170,7 +249,7 @@ export function SettingsPage() {
   if (loading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center p-8">
-        <Loader2 className="h-8 w-8 animate-spin text-teal-600" />
+        <Loader2 className="h-8 w-8 animate-spin text-green-400" />
       </div>
     )
   }
@@ -192,10 +271,10 @@ export function SettingsPage() {
                   'shrink-0 flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors whitespace-nowrap',
                   active
                     ? 'bg-teal-50 text-teal-800 border border-teal-200 dark:bg-teal-950/50 dark:text-teal-200 dark:border-teal-900'
-                    : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 border border-transparent',
+                    : 'text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800 border border-transparent',
                 )}
               >
-                <Icon className={clsx('h-4 w-4', active ? 'text-teal-600 dark:text-teal-400' : 'text-neutral-400')} />
+                <Icon className={clsx('h-4 w-4', active ? 'text-green-400 dark:text-green-400' : 'text-neutral-900 dark:text-neutral-50')} />
                 {label}
               </button>
             )
@@ -219,6 +298,23 @@ export function SettingsPage() {
                   {personalMsg.text}
                 </Alert>
               ) : null}
+              <div className="mb-6 flex items-center gap-4">
+                <UserAvatar user={user} profile={profile} email={user?.email} size="lg" />
+                <div className="min-w-0">
+                  <label className="inline-flex cursor-pointer items-center rounded-lg bg-green-400 px-3 py-1.5 text-sm font-medium text-neutral-950 shadow-sm hover:bg-green-500">
+                    <input
+                      ref={photoInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="sr-only"
+                      disabled={photoSaving}
+                      onChange={event => handlePickPhoto(event.target.files?.[0])}
+                    />
+                    {photoSaving ? t.common.loading : t.settings.photo.change}
+                  </label>
+                  <p className="mt-1.5 text-xs text-neutral-900 dark:text-neutral-50">{t.settings.photo.hint}</p>
+                </div>
+              </div>
               <div className="grid sm:grid-cols-2 gap-4">
                 <Input
                   label={t.settings.fields.firstName}
@@ -244,16 +340,16 @@ export function SettingsPage() {
                   className="opacity-80"
                   hint={t.settings.emailHint}
                 />
-                <SearchableSelect
-                  label={t.settings.fields.country}
-                  value={profile.country}
-                  onChange={country => patchProfile({ country })}
-                  options={countryOptions}
-                  placeholder={t.settings.placeholders.selectCountry}
-                  searchPlaceholder={t.settings.placeholders.searchCountry}
-                  noMatchesLabel={t.settings.placeholders.noMatches}
-                  className="sm:col-span-2"
-                />
+                <div className="sm:col-span-2">
+                  <Input
+                    label={t.settings.fields.country}
+                    value={countryDetecting && !profile.country ? t.settings.countryDetecting : countryDisplayName(profile.country, locale)}
+                    readOnly
+                    disabled
+                    hint={t.settings.countryHint}
+                    className="opacity-80"
+                  />
+                </div>
                 <Input
                   label={t.settings.fields.city}
                   value={profile.city}
@@ -267,14 +363,14 @@ export function SettingsPage() {
                   autoComplete="tel"
                 />
                 <div className="sm:col-span-2">
-                  <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                  <label className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                     {t.settings.fields.address}
                   </label>
                   <textarea
                     value={profile.address}
                     onChange={e => patchProfile({ address: e.target.value })}
                     rows={3}
-                    className="mt-1.5 w-full px-3 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-y min-h-[88px]"
+                    className="mt-1.5 w-full px-3 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-900 dark:placeholder:text-neutral-50 focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent resize-y min-h-[88px]"
                     placeholder={t.settings.placeholders.address}
                   />
                 </div>
@@ -325,7 +421,7 @@ export function SettingsPage() {
                     <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                       {t.settings.fields.notificationSound}
                     </p>
-                    <p className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">
+                    <p className="mt-0.5 text-sm text-neutral-900 dark:text-neutral-50">
                       {t.settings.fields.notificationSoundDescription}
                     </p>
                   </div>
@@ -341,7 +437,7 @@ export function SettingsPage() {
                     <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                       {t.settings.fields.notificationEmail}
                     </p>
-                    <p className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">
+                    <p className="mt-0.5 text-sm text-neutral-900 dark:text-neutral-50">
                       {t.settings.fields.notificationEmailDescription}
                     </p>
                   </div>
@@ -393,6 +489,20 @@ export function SettingsPage() {
           ) : null}
         </div>
       </div>
+      <ProfilePhotoCropModal
+        file={cropFile}
+        saving={photoSaving}
+        title={t.settings.photo.cropTitle}
+        zoomLabel={t.settings.photo.zoom}
+        cancelLabel={t.common.cancel}
+        saveLabel={t.common.save}
+        onClose={() => { if (!photoSaving) setCropFile(null) }}
+        onSave={file => { void handleChangePhoto(file) }}
+        onError={() => {
+          setCropFile(null)
+          setPersonalMsg({ type: 'error', text: t.settings.photo.uploadError })
+        }}
+      />
     </PageShell>
   )
 }

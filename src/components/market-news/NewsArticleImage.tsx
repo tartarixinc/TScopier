@@ -34,7 +34,7 @@ export function NewsArticleImage({ image, alt, className, iconClassName }: NewsA
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-teal-50 to-neutral-100 dark:from-teal-950/40 dark:to-neutral-900">
-          <Newspaper className={clsx('text-teal-600/50 dark:text-teal-400/40', iconClassName ?? 'h-10 w-10')} />
+          <Newspaper className={clsx('text-green-400/50 dark:text-green-400/40', iconClassName ?? 'h-10 w-10')} />
         </div>
       )}
     </div>

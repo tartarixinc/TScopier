@@ -14,7 +14,7 @@
   --tsc-border: #e2e8f0;
   --tsc-border-subtle: #f1f5f9;
   --tsc-text: #0f172a;
-  --tsc-text-muted: #64748b;
+  --tsc-text-muted: #0f172a;
 }
 
 html.dark {
@@ -25,18 +25,17 @@ html.dark {
   --tsc-border: #334155;
   --tsc-border-subtle: #1e293b;
   --tsc-text: #f8fafc;
-  --tsc-text-muted: #94a3b8;
+  --tsc-text-muted: #f8fafc;
 }
 
 html {
   scroll-behavior: smooth;
-  font-family: "Instrument Sans", system-ui, sans-serif;
+  font-family: "SF Pro", "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   font-optical-sizing: auto;
-  font-variation-settings: "wdth" 100;
 }
 
 html[dir="rtl"] {
-  font-family: "Noto Sans Arabic", "Instrument Sans", system-ui, sans-serif;
+  font-family: "SF Pro", "SF Pro Text", "SF Pro Display", "Noto Sans Arabic", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -53,9 +52,8 @@ html.dark body {
 
 body {
   margin: 0;
-  font-family: "Instrument Sans", system-ui, sans-serif;
+  font-family: "SF Pro", "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   font-optical-sizing: auto;
-  font-variation-settings: "wdth" 100;
   background-color: var(--tsc-page);
   color: var(--tsc-text);
   -webkit-font-smoothing: antialiased;
@@ -64,7 +62,7 @@ body {
 
 @layer base {
   input[type='checkbox'] {
-    @apply accent-teal-600;
+    @apply accent-green-400;
   }
 }
 
@@ -109,7 +107,7 @@ html.app-viewport-lock #root {
   }
 
   .tsc-page-subtext {
-    @apply text-neutral-500 dark:text-neutral-400;
+    @apply text-neutral-900 dark:text-neutral-50;
   }
 
   .marketing-card {
@@ -196,7 +194,7 @@ html.app-viewport-lock #root {
   }
 
   .marketing-faq-answer {
-    @apply border-t border-neutral-100 px-5 pb-5 pt-0 text-sm leading-relaxed text-neutral-600 dark:border-neutral-800 dark:text-neutral-400 sm:px-6 sm:pb-6;
+    @apply border-t border-neutral-100 px-5 pb-5 pt-0 text-sm leading-relaxed text-neutral-900 dark:border-neutral-800 dark:text-neutral-50 sm:px-6 sm:pb-6;
   }
 
   .marketing-faq-item[open] .marketing-faq-answer {
@@ -234,54 +232,16 @@ html.app-viewport-lock #root {
     position: absolute;
     inset: 0;
     background:
-      radial-gradient(ellipse 70% 50% at 80% 0%, rgba(45, 212, 191, 0.12), transparent),
-      radial-gradient(ellipse 50% 40% at 0% 100%, rgba(13, 148, 136, 0.08), transparent);
+      radial-gradient(ellipse 70% 50% at 80% 0%, rgba(74, 222, 128, 0.12), transparent),
+      radial-gradient(ellipse 50% 40% at 0% 100%, rgba(74, 222, 128, 0.08), transparent);
   }
 
   html.dark .trustpilot-panel-radial {
-    background: radial-gradient(ellipse 70% 50% at 80% 0%, rgba(45, 212, 191, 0.08), transparent);
+    background: radial-gradient(ellipse 70% 50% at 80% 0%, rgba(74, 222, 128, 0.08), transparent);
   }
 
   .marketing-hero-bg {
     @apply min-h-screen overflow-hidden;
-  }
-
-  .marketing-nav-header {
-    transform: translateY(0);
-    transition:
-      padding 0.35s cubic-bezier(0.4, 0, 0.2, 1),
-      transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .marketing-nav-header--hidden {
-    transform: translateY(calc(-100% - 0.5rem));
-  }
-
-  .marketing-nav-float {
-    @apply relative h-14 rounded-2xl border border-neutral-200/55 bg-white/90 backdrop-blur-md dark:border-neutral-800/50 dark:bg-neutral-900/90;
-    transition:
-      height 0.35s cubic-bezier(0.4, 0, 0.2, 1),
-      background-color 0.35s cubic-bezier(0.4, 0, 0.2, 1),
-      border-color 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .marketing-nav-float--scrolled {
-    @apply h-12;
-  }
-
-  .marketing-nav-mobile {
-    @apply rounded-2xl border border-neutral-200/55 bg-white/90 backdrop-blur-md dark:border-neutral-800/50 dark:bg-neutral-900/90;
-    transition:
-      background-color 0.35s cubic-bezier(0.4, 0, 0.2, 1),
-      border-color 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .marketing-nav-header,
-    .marketing-nav-float,
-    .marketing-nav-mobile {
-      transition: none;
-    }
   }
 
   .marketing-footer {
@@ -324,14 +284,14 @@ html.app-viewport-lock #root {
   .hero-product-glow {
     @apply pointer-events-none absolute -inset-6 -z-10 sm:-inset-10;
     background:
-      radial-gradient(ellipse 70% 55% at 50% 40%, rgba(45, 212, 191, 0.35), transparent 68%),
-      radial-gradient(ellipse 45% 35% at 50% 90%, rgba(13, 148, 136, 0.12), transparent);
+      radial-gradient(ellipse 70% 55% at 50% 40%, rgba(74, 222, 128, 0.35), transparent 68%),
+      radial-gradient(ellipse 45% 35% at 50% 90%, rgba(74, 222, 128, 0.12), transparent);
   }
 
   html.dark .hero-product-glow {
     background:
-      radial-gradient(ellipse 70% 55% at 50% 40%, rgba(45, 212, 191, 0.22), transparent 68%),
-      radial-gradient(ellipse 45% 35% at 50% 90%, rgba(13, 148, 136, 0.08), transparent);
+      radial-gradient(ellipse 70% 55% at 50% 40%, rgba(74, 222, 128, 0.22), transparent 68%),
+      radial-gradient(ellipse 45% 35% at 50% 90%, rgba(74, 222, 128, 0.08), transparent);
   }
 
   .hero-product-frame {
@@ -355,7 +315,7 @@ html.app-viewport-lock #root {
   }
 
   .hero-product-url {
-    @apply mx-auto flex min-w-0 max-w-[min(100%,14rem)] flex-1 items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2.5 py-0.5 text-[10px] font-medium text-neutral-500 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400 sm:text-[11px];
+    @apply mx-auto flex min-w-0 max-w-[min(100%,14rem)] flex-1 items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2.5 py-0.5 text-[10px] font-medium text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-50 sm:text-[11px];
   }
 
   .hero-product-screen {
@@ -368,12 +328,12 @@ html.app-viewport-lock #root {
 
   .hero-product-reflection {
     @apply absolute -bottom-6 left-[8%] right-[8%] h-16 -z-10 rounded-[100%];
-    background: radial-gradient(ellipse 80% 40% at 50% 0%, rgba(45, 212, 191, 0.2), transparent 70%);
+    background: radial-gradient(ellipse 80% 40% at 50% 0%, rgba(74, 222, 128, 0.2), transparent 70%);
     filter: blur(12px);
   }
 
   html.dark .hero-product-reflection {
-    background: radial-gradient(ellipse 80% 40% at 50% 0%, rgba(45, 212, 191, 0.12), transparent 70%);
+    background: radial-gradient(ellipse 80% 40% at 50% 0%, rgba(74, 222, 128, 0.12), transparent 70%);
   }
 
   .marketing-feature-panel {
@@ -415,11 +375,11 @@ html.app-viewport-lock #root {
   }
 
   .marketing-feature-node--telegram {
-    @apply border-teal-200/80 bg-teal-50/50 dark:border-teal-500/30 dark:bg-teal-950/30;
+    @apply border-teal-200/80 bg-teal-50/50 dark:border-green-400/30 dark:bg-teal-950/30;
   }
 
   .marketing-feature-node-label {
-    @apply text-[10px] font-semibold uppercase tracking-wide text-teal-600 dark:text-teal-400;
+    @apply text-[10px] font-semibold uppercase tracking-wide text-green-400 dark:text-green-400;
   }
 
   .marketing-feature-node--broker {
@@ -427,7 +387,7 @@ html.app-viewport-lock #root {
   }
 
   .marketing-feature-hub {
-    @apply inline-flex items-center justify-center rounded-full bg-teal-600 px-5 py-2.5;
+    @apply inline-flex items-center justify-center rounded-full bg-green-400 px-5 py-2.5;
   }
 
   .marketing-feature-flow::before {
@@ -441,7 +401,7 @@ html.app-viewport-lock #root {
   }
 
   .marketing-feature-pulse-ring {
-    @apply pointer-events-none absolute left-1/2 top-1/2 h-48 w-48 -translate-x-1/2 -translate-y-1/2 rounded-full border border-teal-400/30;
+    @apply pointer-events-none absolute left-1/2 top-1/2 h-48 w-48 -translate-x-1/2 -translate-y-1/2 rounded-full border border-green-400/30;
     animation: marketing-pulse-ring 3s ease-out infinite;
   }
 

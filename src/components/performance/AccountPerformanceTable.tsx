@@ -41,7 +41,7 @@ export function AccountPerformanceTable({
   const { formatMoney } = useFormatMoney()
   if (accounts.length === 0) {
     return (
-      <p className="px-4 py-10 text-center text-sm text-neutral-500 dark:text-neutral-400">{labels.empty}</p>
+      <p className="px-4 py-10 text-center text-sm text-neutral-900 dark:text-neutral-50">{labels.empty}</p>
     )
   }
 
@@ -49,7 +49,7 @@ export function AccountPerformanceTable({
     <div className="overflow-x-auto">
       <table className="w-full min-w-[640px] text-start text-sm">
         <thead>
-          <tr className="border-b border-neutral-200/65 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:border-neutral-800/55 dark:text-neutral-400">
+          <tr className="border-b border-neutral-200/65 text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:border-neutral-800/55 dark:text-neutral-50">
             <th className="px-4 py-3">{labels.account}</th>
             <th className="px-4 py-3">{labels.broker}</th>
             <th className="px-4 py-3 text-end">{labels.equity}</th>
@@ -77,11 +77,11 @@ export function AccountPerformanceTable({
               >
                 <td className="px-4 py-3 font-medium text-neutral-900 dark:text-neutral-50">
                   {account.label || 'Unnamed'}
-                  <span className="ml-2 text-[10px] font-semibold uppercase text-teal-600 dark:text-teal-400">
+                  <span className="ml-2 text-[10px] font-semibold uppercase text-green-400 dark:text-green-400">
                     {account.platform}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-neutral-600 dark:text-neutral-400">{broker}</td>
+                <td className="px-4 py-3 text-neutral-900 dark:text-neutral-50">{broker}</td>
                 <td className="px-4 py-3 text-end tabular-nums">{formatMoney(equity)}</td>
                 <td
                   className={`px-4 py-3 text-end font-semibold tabular-nums ${
@@ -101,7 +101,7 @@ export function AccountPerformanceTable({
                 <td className="px-4 py-3 text-end">
                   <Link
                     to="/brokers"
-                    className="text-xs font-semibold text-teal-600 hover:text-teal-700 dark:text-teal-400"
+                    className="text-xs font-semibold text-green-400 hover:text-green-500 dark:text-green-400"
                   >
                     {labels.configure}
                   </Link>

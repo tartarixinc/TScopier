@@ -16,7 +16,7 @@ export function RiskDisclaimerPage() {
           <h1 className="text-3xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-4xl">
             {page.title}
           </h1>
-          <p className="mt-4 text-sm leading-relaxed text-neutral-600 dark:text-neutral-400 sm:text-base">
+          <p className="mt-4 text-sm leading-relaxed text-neutral-900 dark:text-neutral-50 sm:text-base">
             {page.intro}
           </p>
         </header>
@@ -31,7 +31,7 @@ export function RiskDisclaimerPage() {
                 {section.paragraphs.map((paragraph, idx) => (
                   <p
                     key={idx}
-                    className="text-sm leading-relaxed text-neutral-600 dark:text-neutral-400"
+                    className="text-sm leading-relaxed text-neutral-900 dark:text-neutral-50"
                   >
                     {paragraph}
                   </p>
@@ -41,7 +41,7 @@ export function RiskDisclaimerPage() {
           ))}
         </div>
 
-        <p className="mt-10 border-t border-neutral-200/65 pt-8 text-sm leading-relaxed text-neutral-700 dark:border-neutral-800/55 dark:text-neutral-300">
+        <p className="mt-10 border-t border-neutral-200/65 pt-8 text-sm leading-relaxed text-neutral-900 dark:border-neutral-800/55 dark:text-neutral-50">
           {page.closing}
         </p>
       </article>

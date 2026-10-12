@@ -20,11 +20,16 @@ export function brokerSessionId(row: {
   mtapi_session_id?: string | null
   fxsocket_account_id?: string | null
   metaapi_account_id?: string | null
+  ctrader_account_id?: string | null
 }): string {
   const provider = row.provider == null || row.provider === '' ? 'fxsocket' : row.provider
   if (provider === 'mtapi') {
     const mtapi = String(row.mtapi_session_id ?? '').trim()
     return mtapi && !mtapi.includes('|') ? mtapi : ''
+  }
+  if (provider === 'ctrader') {
+    const ctrader = String(row.ctrader_account_id ?? '').trim()
+    return ctrader && !ctrader.includes('|') ? ctrader : ''
   }
   if (provider !== 'fxsocket') return ''
   const fx = String(row.fxsocket_account_id ?? '').trim()
@@ -34,6 +39,10 @@ export function brokerSessionId(row: {
   return ''
 }
 
+function missingCtraderColumn(message: string): boolean {
+  return /ctrader_account_id/i.test(message)
+}
+
 export async function loadPlatformByFxsocketId(
   supabase: SupabaseClient,
   sessionIds: string[],
@@ -41,17 +50,29 @@ export async function loadPlatformByFxsocketId(
   const out: PlatformByFxsocketId = new Map()
   const ids = [...new Set(sessionIds.filter(id => id && !id.includes('|')))]
   if (!ids.length) return out
-  const { data, error } = await supabase
+  const base = 'id,mtapi_session_id,fxsocket_account_id,metaapi_account_id,platform,provider,writer_epoch,provider_transition_state'
+  const idList = ids.join(',')
+  const withCtrader = await supabase
     .from('broker_accounts')
-    .select('id,mtapi_session_id,fxsocket_account_id,metaapi_account_id,platform,provider,writer_epoch,provider_transition_state')
-    .or(`mtapi_session_id.in.(${ids.join(',')}),fxsocket_account_id.in.(${ids.join(',')}),metaapi_account_id.in.(${ids.join(',')})`)
+    .select(`${base},ctrader_account_id`)
+    .or(`mtapi_session_id.in.(${idList}),fxsocket_account_id.in.(${idList}),metaapi_account_id.in.(${idList}),ctrader_account_id.in.(${idList})`)
+  const { data, error } = withCtrader.error && missingCtraderColumn(withCtrader.error.message)
+    ? await supabase
+      .from('broker_accounts')
+      .select(base)
+      .or(`mtapi_session_id.in.(${idList}),fxsocket_account_id.in.(${idList}),metaapi_account_id.in.(${idList})`)
+    : withCtrader
   if (error) {
     console.warn(`[fxApi] broker platform lookup failed: ${error.message}`)
     return out
   }
   for (const row of data ?? []) {
     const id = brokerSessionId(row as {
-      provider?: string; mtapi_session_id?: string; fxsocket_account_id?: string; metaapi_account_id?: string
+      provider?: string
+      mtapi_session_id?: string
+      fxsocket_account_id?: string
+      metaapi_account_id?: string
+      ctrader_account_id?: string
     })
     if (!id) continue
     out.set(id, {
@@ -79,10 +100,14 @@ export async function loadBrokerApiByAccountId(
   const out: BrokerApiByAccountId = new Map()
   const ids = [...new Set(brokerAccountIds.map(id => String(id ?? '').trim()).filter(Boolean))]
   if (!ids.length) return out
-  const { data, error } = await supabase
+  const base = 'id,mtapi_session_id,fxsocket_account_id,metaapi_account_id,platform,provider,writer_epoch,provider_transition_state,manual_settings'
+  const withCtrader = await supabase
     .from('broker_accounts')
-    .select('id,mtapi_session_id,fxsocket_account_id,metaapi_account_id,platform,provider,writer_epoch,provider_transition_state,manual_settings')
+    .select(`${base},ctrader_account_id`)
     .in('id', ids)
+  const { data, error } = withCtrader.error && missingCtraderColumn(withCtrader.error.message)
+    ? await supabase.from('broker_accounts').select(base).in('id', ids)
+    : withCtrader
   if (error) {
     console.warn('[brokerApi] broker authority lookup failed: ' + error.message)
     return out

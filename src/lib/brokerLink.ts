@@ -1,14 +1,17 @@
-export type BrokerProvider = 'fxsocket' | 'mtapi'
+export type BrokerProvider = 'fxsocket' | 'mtapi' | 'ctrader'
 
 type ProviderAwareAccount = {
   fxsocket_account_id?: string | null
   provider?: string | null
   mtapi_session_id?: string | null
+  ctrader_account_id?: string | null
 }
 
 /** Resolve the effective provider for an account (defaults to 'fxsocket'). */
 export function resolveProvider(account: ProviderAwareAccount): BrokerProvider {
-  return account.provider === 'mtapi' ? 'mtapi' : 'fxsocket'
+  if (account.provider === 'mtapi') return 'mtapi'
+  if (account.provider === 'ctrader') return 'ctrader'
+  return 'fxsocket'
 }
 
 /** FxSocket-linked broker account (terminal UUID on broker_accounts). */
@@ -32,9 +35,19 @@ export function hasMtapiBrokerSession(
   return (account.mtapi_session_id ?? '').trim().length > 0
 }
 
-/** Broker has a linked session of any provider (FxSocket or MTAPI). */
+/** Broker has a linked cTrader trading account. */
+export function hasCtraderBroker(
+  account: Pick<ProviderAwareAccount, 'provider' | 'ctrader_account_id'>,
+): boolean {
+  if (account.provider === 'ctrader') return true
+  return (account.ctrader_account_id ?? '').trim().length > 0
+}
+
+/** Broker has a linked session of any provider (FxSocket, MTAPI, or cTrader). */
 export function hasAnyBrokerSession(account: ProviderAwareAccount): boolean {
-  if (resolveProvider(account) === 'mtapi') return hasMtapiBrokerSession(account)
+  const provider = resolveProvider(account)
+  if (provider === 'mtapi') return hasMtapiBrokerSession(account)
+  if (provider === 'ctrader') return hasCtraderBroker(account)
   return hasFxsocketBrokerSession(account)
 }
 
@@ -47,7 +60,8 @@ export function hasAnyBrokerSession(account: ProviderAwareAccount): boolean {
 export function hasLinkedBrokerForUi(
   account: ProviderAwareAccount & { mtapi_status?: string | null },
 ): boolean {
-  if (resolveProvider(account) === 'mtapi') return true
+  const provider = resolveProvider(account)
+  if (provider === 'mtapi' || provider === 'ctrader') return true
   return hasFxsocketBrokerSession(account)
 }
 

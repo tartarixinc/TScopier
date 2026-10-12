@@ -133,7 +133,7 @@ export function PricingPlansSection({ variant = 'marketing' }: PricingPlansSecti
   )
 
   const moneyBack = (
-    <p className="mt-10 text-center text-sm font-medium text-neutral-600 dark:text-neutral-300">
+    <p className="mt-10 text-center text-sm font-medium text-neutral-900 dark:text-neutral-50">
       {pt.moneyBackGuarantee}
     </p>
   )
@@ -164,7 +164,7 @@ export function PricingPlansSection({ variant = 'marketing' }: PricingPlansSecti
       <a
         href={marketingSignupHref(plan)}
         onClick={() => stashPendingPlanSelection(selection)}
-        className="inline-flex w-full items-center justify-center rounded-xl bg-teal-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-teal-700"
+        className="inline-flex w-full items-center justify-center rounded-xl bg-green-400 px-4 py-3 text-sm font-semibold text-neutral-950 transition-colors hover:bg-green-500"
       >
         {label}
       </a>
@@ -177,7 +177,7 @@ export function PricingPlansSection({ variant = 'marketing' }: PricingPlansSecti
         <h1 className="text-3xl font-bold tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-4xl">
           {lp.title}
         </h1>
-        <p className="mt-3 text-base text-neutral-500 dark:text-neutral-400">{lp.subtitle}</p>
+        <p className="mt-3 text-base text-neutral-900 dark:text-neutral-50">{lp.subtitle}</p>
 
         {checkoutError ? (
           <div
@@ -195,8 +195,8 @@ export function PricingPlansSection({ variant = 'marketing' }: PricingPlansSecti
             className={clsx(
               'rounded-full px-5 py-2 text-sm font-medium transition-all',
               !isAnnual
-                ? 'bg-teal-600 text-white shadow-sm'
-                : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100',
+                ? 'bg-green-400 text-neutral-950 shadow-sm'
+                : 'text-neutral-900 hover:text-neutral-900 dark:text-neutral-50 dark:hover:text-neutral-100',
             )}
           >
             {pt.monthly}
@@ -207,8 +207,8 @@ export function PricingPlansSection({ variant = 'marketing' }: PricingPlansSecti
             className={clsx(
               'rounded-full px-5 py-2 text-sm font-medium transition-all',
               isAnnual
-                ? 'bg-teal-600 text-white shadow-sm'
-                : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100',
+                ? 'bg-green-400 text-neutral-950 shadow-sm'
+                : 'text-neutral-900 hover:text-neutral-900 dark:text-neutral-50 dark:hover:text-neutral-100',
             )}
           >
             {pt.annual}
@@ -223,17 +223,17 @@ export function PricingPlansSection({ variant = 'marketing' }: PricingPlansSecti
         <div className="relative rounded-2xl border border-neutral-200/65 bg-white p-8 shadow-sm dark:border-neutral-800/55 dark:bg-neutral-900">
           <div className="mb-6">
             <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">{pt.basic.name}</h2>
-            <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{pt.basic.description}</p>
+            <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-50">{pt.basic.description}</p>
           </div>
 
           <div className="mb-1">
             <span className="text-4xl font-bold text-neutral-900 dark:text-neutral-50">
               {formatMoney(prices.basicMonthly)}
             </span>
-            <span className="text-base text-neutral-500 dark:text-neutral-400">{pt.perMonth}</span>
+            <span className="text-base text-neutral-900 dark:text-neutral-50">{pt.perMonth}</span>
           </div>
           {isAnnual ? (
-            <p className="mb-6 text-xs text-neutral-400 dark:text-neutral-500">
+            <p className="mb-6 text-xs text-neutral-900 dark:text-neutral-50">
               {pt.billedAnnually} {formatMoney(prices.basicAnnualTotal)}
               {pt.perYear}
             </p>
@@ -244,39 +244,39 @@ export function PricingPlansSection({ variant = 'marketing' }: PricingPlansSecti
           {planCta('basic', pt.subscribe)}
 
           <div className="mt-8">
-            <p className="text-xs font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+            <p className="text-xs font-semibold uppercase tracking-wider text-neutral-900 dark:text-neutral-50">
               {pt.features}
             </p>
             <ul className="mt-4 space-y-3">
               {pt.basicFeatures.map((feature) => (
                 <li key={feature} className="flex items-start gap-3">
-                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-teal-500" aria-hidden />
-                  <span className="text-sm text-neutral-700 dark:text-neutral-300">{feature}</span>
+                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-400" aria-hidden />
+                  <span className="text-sm text-neutral-900 dark:text-neutral-50">{feature}</span>
                 </li>
               ))}
             </ul>
           </div>
         </div>
 
-        <div className="relative rounded-2xl border-2 border-teal-500 bg-white p-8 shadow-md dark:bg-neutral-900 lg:-mt-2 lg:mb-2">
-          <div className="absolute -top-3 left-6 inline-flex items-center gap-1 rounded-full bg-teal-500 px-3 py-1 text-xs font-semibold text-white">
+        <div className="relative rounded-2xl border-2 border-green-400 bg-white p-8 shadow-md dark:bg-neutral-900 lg:-mt-2 lg:mb-2">
+          <div className="absolute -top-3 left-6 inline-flex items-center gap-1 rounded-full bg-green-400 px-3 py-1 text-xs font-semibold text-neutral-950">
             <Zap className="h-3 w-3" aria-hidden />
             {pt.popular}
           </div>
 
           <div className="mb-6">
             <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">{pt.advanced.name}</h2>
-            <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{pt.advanced.description}</p>
+            <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-50">{pt.advanced.description}</p>
           </div>
 
           <div className="mb-1">
             <span className="text-4xl font-bold text-neutral-900 dark:text-neutral-50">
               {formatMoney(prices.advancedMonthly)}
             </span>
-            <span className="text-base text-neutral-500 dark:text-neutral-400">{pt.perMonth}</span>
+            <span className="text-base text-neutral-900 dark:text-neutral-50">{pt.perMonth}</span>
           </div>
           {isAnnual ? (
-            <p className="mb-4 text-xs text-neutral-400 dark:text-neutral-500">
+            <p className="mb-4 text-xs text-neutral-900 dark:text-neutral-50">
               {pt.billedAnnually} {formatMoney(prices.advancedAnnualTotal)}
               {pt.perYear}
             </p>
@@ -287,10 +287,10 @@ export function PricingPlansSection({ variant = 'marketing' }: PricingPlansSecti
           <div className="mb-6 rounded-lg border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-700 dark:bg-neutral-800">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0 text-left">
-                <p className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
+                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                   {pt.extraAccountLabel}
                 </p>
-                <p className="text-xs text-neutral-400 dark:text-neutral-500">
+                <p className="text-xs text-neutral-900 dark:text-neutral-50">
                   {isAnnual ? pt.extraAccountUnitAnnual : pt.extraAccountUnit}
                 </p>
               </div>
@@ -299,7 +299,7 @@ export function PricingPlansSection({ variant = 'marketing' }: PricingPlansSecti
                   type="button"
                   onClick={() => setExtraAccounts((v) => Math.max(0, v - 1))}
                   disabled={extraAccounts === 0 || checkoutLoading !== null}
-                  className="flex h-8 w-8 items-center justify-center rounded-md border border-neutral-300 text-neutral-600 transition-colors hover:bg-neutral-100 disabled:opacity-40 dark:border-neutral-600 dark:text-neutral-300 dark:hover:bg-neutral-700"
+                  className="flex h-8 w-8 items-center justify-center rounded-md border border-neutral-300 text-neutral-900 transition-colors hover:bg-neutral-100 disabled:opacity-40 dark:border-neutral-600 dark:text-neutral-50 dark:hover:bg-neutral-700"
                 >
                   −
                 </button>
@@ -318,14 +318,14 @@ export function PricingPlansSection({ variant = 'marketing' }: PricingPlansSecti
                   type="button"
                   onClick={() => setExtraAccounts((v) => Math.min(95, v + 1))}
                   disabled={extraAccounts >= 95 || checkoutLoading !== null}
-                  className="flex h-8 w-8 items-center justify-center rounded-md border border-neutral-300 text-neutral-600 transition-colors hover:bg-neutral-100 disabled:opacity-40 dark:border-neutral-600 dark:text-neutral-300 dark:hover:bg-neutral-700"
+                  className="flex h-8 w-8 items-center justify-center rounded-md border border-neutral-300 text-neutral-900 transition-colors hover:bg-neutral-100 disabled:opacity-40 dark:border-neutral-600 dark:text-neutral-50 dark:hover:bg-neutral-700"
                 >
                   +
                 </button>
               </div>
             </div>
             {extraAccounts > 0 ? (
-              <p className="mt-2 text-left text-xs text-neutral-500 dark:text-neutral-400">
+              <p className="mt-2 text-left text-xs text-neutral-900 dark:text-neutral-50">
                 {interpolate(pt.extraAccountsSummary, {
                   included: String(PRICING_ADVANCED_INCLUDED_ACCOUNTS),
                   extra: String(extraAccounts),
@@ -338,14 +338,14 @@ export function PricingPlansSection({ variant = 'marketing' }: PricingPlansSecti
           {planCta('advanced', isApp ? advancedCheckoutCta : pt.startTrial)}
 
           <div className="mt-8">
-            <p className="text-xs font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+            <p className="text-xs font-semibold uppercase tracking-wider text-neutral-900 dark:text-neutral-50">
               {pt.features}
             </p>
             <ul className="mt-4 space-y-3">
               {pt.advancedFeatures.map((feature) => (
                 <li key={feature} className="flex items-start gap-3">
-                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-teal-500" aria-hidden />
-                  <span className="text-sm text-neutral-700 dark:text-neutral-300">{feature}</span>
+                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-400" aria-hidden />
+                  <span className="text-sm text-neutral-900 dark:text-neutral-50">{feature}</span>
                 </li>
               ))}
             </ul>
@@ -355,7 +355,7 @@ export function PricingPlansSection({ variant = 'marketing' }: PricingPlansSecti
         <div className="relative rounded-2xl border border-neutral-200/65 bg-white p-8 shadow-sm dark:border-neutral-800/55 dark:bg-neutral-900">
           <div className="mb-6">
             <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">{pt.custom.name}</h2>
-            <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{pt.custom.description}</p>
+            <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-50">{pt.custom.description}</p>
           </div>
 
           <div className="mb-6">
@@ -365,7 +365,7 @@ export function PricingPlansSection({ variant = 'marketing' }: PricingPlansSecti
           {isApp && !HELP_LINKS.telegram ? (
             <Link
               to={contactHref}
-              className="inline-flex w-full items-center justify-center rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm font-semibold text-neutral-800 transition-colors hover:bg-neutral-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
+              className="inline-flex w-full items-center justify-center rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm font-semibold text-neutral-900 transition-colors hover:bg-neutral-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
             >
               {pt.contactSales}
             </Link>
@@ -373,21 +373,21 @@ export function PricingPlansSection({ variant = 'marketing' }: PricingPlansSecti
             <a
               href={contactHref}
               {...(HELP_LINKS.telegram ? { target: '_blank', rel: 'noopener noreferrer' } : undefined)}
-              className="inline-flex w-full items-center justify-center rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm font-semibold text-neutral-800 transition-colors hover:bg-neutral-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
+              className="inline-flex w-full items-center justify-center rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm font-semibold text-neutral-900 transition-colors hover:bg-neutral-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
             >
               {pt.contactSales}
             </a>
           )}
 
           <div className="mt-8">
-            <p className="text-xs font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+            <p className="text-xs font-semibold uppercase tracking-wider text-neutral-900 dark:text-neutral-50">
               {pt.features}
             </p>
             <ul className="mt-4 space-y-3">
               {pt.customFeatures.map((feature) => (
                 <li key={feature} className="flex items-start gap-3">
-                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-teal-500" aria-hidden />
-                  <span className="text-sm text-neutral-700 dark:text-neutral-300">{feature}</span>
+                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-400" aria-hidden />
+                  <span className="text-sm text-neutral-900 dark:text-neutral-50">{feature}</span>
                 </li>
               ))}
             </ul>

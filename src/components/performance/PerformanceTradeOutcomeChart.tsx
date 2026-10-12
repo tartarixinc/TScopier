@@ -44,12 +44,12 @@ export function PerformanceTradeOutcomeChart({
     <div className="min-w-0 rounded-2xl border border-neutral-200/65 bg-white p-4 sm:p-5 dark:border-neutral-800/55 dark:bg-neutral-950">
       <div className="mb-4">
         <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{title}</h2>
-        <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">{subtitle}</p>
+        <p className="mt-0.5 text-xs text-neutral-900 dark:text-neutral-50">{subtitle}</p>
       </div>
       {loading ? (
         <div className="h-64 animate-pulse rounded-xl bg-neutral-50 dark:bg-neutral-800/50" />
       ) : empty ? (
-        <div className="flex h-64 items-center justify-center text-sm text-neutral-400 dark:text-neutral-500">
+        <div className="flex h-64 items-center justify-center text-sm text-neutral-900 dark:text-neutral-50">
           {emptyLabel}
         </div>
       ) : (
@@ -86,7 +86,7 @@ export function PerformanceTradeOutcomeChart({
               <Bar
                 dataKey="profit"
                 name={profitLabel}
-                fill="#0d9488"
+                fill="#4ade80"
                 activeBar={{ fill: colors.barActive.profit, stroke: colors.barActive.profit }}
                 radius={[4, 4, 0, 0]}
                 maxBarSize={28}

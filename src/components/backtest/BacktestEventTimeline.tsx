@@ -23,7 +23,7 @@ export function BacktestEventTimeline({ trade, labels: labelsProp }: BacktestEve
 
   if (events.length === 0) {
     return (
-      <p className="text-sm text-neutral-500 py-4 text-center">
+      <p className="text-sm text-neutral-900 dark:text-neutral-50 py-4 text-center">
         {bt.noEvents}
       </p>
     )
@@ -31,7 +31,7 @@ export function BacktestEventTimeline({ trade, labels: labelsProp }: BacktestEve
 
   return (
     <div>
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400 mb-4">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-900 dark:text-neutral-50 mb-4">
         {bt.eventTimeline}
       </p>
       <ol className="relative border-l border-neutral-200 dark:border-neutral-700 ml-2 space-y-5">
@@ -43,18 +43,18 @@ export function BacktestEventTimeline({ trade, labels: labelsProp }: BacktestEve
               <span
                 className={clsx(
                   'absolute -left-[7px] mt-1.5 h-3 w-3 rounded-full ring-4 ring-white dark:ring-neutral-900',
-                  isSl ? lossBarClass : isBe ? 'bg-amber-500' : 'bg-teal-500',
+                  isSl ? lossBarClass : isBe ? 'bg-amber-500' : 'bg-green-400',
                 )}
               />
               <p
                 className={clsx(
                   'text-sm font-semibold',
-                  isSl ? lossTextClass : isBe ? 'text-amber-700' : 'text-teal-700 dark:text-teal-400',
+                  isSl ? lossTextClass : isBe ? 'text-amber-700' : 'text-green-500 dark:text-green-400',
                 )}
               >
                 {ev.label} → {formatEntryPrice(ev.price)}
               </p>
-              <p className="text-xs text-neutral-500 mt-0.5 tabular-nums">
+              <p className="text-xs text-neutral-900 dark:text-neutral-50 mt-0.5 tabular-nums">
                 {formatEventTimestamp(ev.at)}
               </p>
             </li>

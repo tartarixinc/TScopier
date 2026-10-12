@@ -25,7 +25,7 @@ export function ManualBrokerOverrideWarningNotice({
           {warning.title}
         </p>
       </div>
-      <p className="text-sm text-neutral-700 dark:text-neutral-300">{warning.body}</p>
+      <p className="text-sm text-neutral-900 dark:text-neutral-50">{warning.body}</p>
       <button
         type="button"
         onClick={onManageSignal}

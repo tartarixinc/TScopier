@@ -55,8 +55,8 @@ function metricClass(card: LandingBentoCard, featured: boolean): string {
     if (card.metricVariant === 'amber') return 'text-amber-300'
     return 'text-white'
   }
-  if (card.metricVariant === 'teal') return 'text-teal-700 dark:text-teal-400'
-  return 'text-neutral-800 dark:text-neutral-100'
+  if (card.metricVariant === 'teal') return 'text-green-500 dark:text-green-400'
+  return 'text-neutral-900 dark:text-neutral-100'
 }
 
 function BentoCard({
@@ -81,7 +81,7 @@ function BentoCard({
       <p
         className={clsx(
           'relative z-10 text-xs font-semibold tracking-tight',
-          featured ? 'text-teal-100' : 'text-neutral-700 dark:text-neutral-300',
+          featured ? 'text-teal-100' : 'text-neutral-900 dark:text-neutral-50',
         )}
       >
         {card.label}
@@ -97,7 +97,7 @@ function BentoCard({
       <p
         className={clsx(
           'relative z-10 mt-auto pt-2 text-xs leading-relaxed sm:text-sm',
-          featured ? 'text-teal-50/90' : 'text-neutral-600 dark:text-neutral-400',
+          featured ? 'text-teal-50/90' : 'text-neutral-900 dark:text-neutral-50',
         )}
       >
         {card.description}
@@ -105,7 +105,7 @@ function BentoCard({
       <Icon
         className={clsx(
           'marketing-bento-watermark',
-          featured ? 'text-white' : 'text-neutral-900 dark:text-white',
+          featured ? 'text-white' : 'text-neutral-900 dark:text-neutral-50 dark:text-white',
         )}
         strokeWidth={1.25}
         aria-hidden
@@ -120,13 +120,13 @@ export function WhyChooseSection() {
 
   return (
     <section className="mx-auto max-w-6xl px-5 py-16 sm:px-8 sm:py-24">
-      <p className="mb-6 text-center text-sm text-neutral-600 dark:text-neutral-400 sm:mb-8 sm:text-base">
+      <p className="mb-6 text-center text-sm text-neutral-900 dark:text-neutral-50 sm:mb-8 sm:text-base">
         {l.statsCaption}
       </p>
       <MarketingStatsBar stats={l.stats} />
 
       <div className="mx-auto max-w-3xl text-center">
-        <p className="text-xs font-semibold uppercase tracking-wider text-teal-600 dark:text-teal-400">
+        <p className="text-xs font-semibold uppercase tracking-wider text-green-400 dark:text-green-400">
           {l.eyebrow}
         </p>
         <h2 className="mt-3 text-3xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-4xl lg:text-[2.5rem] lg:leading-tight">

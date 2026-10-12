@@ -98,9 +98,19 @@ async function persistBrokerMtStatus(
   status: FxsocketMtStatus,
 ) {
   const healthy = isFxsocketMtStatusHealthy(status)
+  const patch: Record<string, unknown> = {
+    ...terminalHealthRowPatch(status),
+  }
+  if (healthy) {
+    patch.connection_status = "connected"
+    patch.fxsocket_status = "connected"
+    patch.connection_error = null
+    patch.connection_error_kind = null
+    patch.connection_error_message = null
+  }
   const { data: updated, error } = await supabase
     .from("broker_accounts")
-    .update(terminalHealthRowPatch(status))
+    .update(patch)
     .eq("id", accountRowId)
     .eq("user_id", userId)
     .select("*")

@@ -27,13 +27,13 @@ export function FeatureShowcasePanel({
       >
         <div className="marketing-feature-visual min-h-[280px] sm:min-h-[320px]">{visual}</div>
         <div className="flex flex-col justify-center">
-          <p className="text-xs font-semibold uppercase tracking-wider text-teal-600 dark:text-teal-400">
+          <p className="text-xs font-semibold uppercase tracking-wider text-green-400 dark:text-green-400">
             {eyebrow}
           </p>
           <h3 className="mt-3 text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-3xl">
             {title}
           </h3>
-          <p className="mt-4 text-base leading-relaxed text-neutral-600 dark:text-neutral-400">
+          <p className="mt-4 text-base leading-relaxed text-neutral-900 dark:text-neutral-50">
             {description}
           </p>
         </div>

@@ -32,9 +32,9 @@ export function PricingPurchaseToast({ message, timeAgo, flag, visible, reduceMo
           {flag}
         </span>
         <div className="min-w-0">
-          <p className="text-sm leading-snug text-neutral-800 dark:text-neutral-100">{message}</p>
+          <p className="text-sm leading-snug text-neutral-900 dark:text-neutral-100">{message}</p>
           {timeAgo ? (
-            <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">{timeAgo}</p>
+            <p className="mt-1 text-xs text-neutral-900 dark:text-neutral-50">{timeAgo}</p>
           ) : null}
         </div>
       </div>

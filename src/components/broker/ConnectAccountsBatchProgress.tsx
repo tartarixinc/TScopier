@@ -18,15 +18,15 @@ function statusLabel(status: BulkConnectRowStatus, copy: AccountConfigBulkConnec
 
 function StatusIcon({ status }: { status: BulkConnectRowStatus }) {
   if (status === 'linking') {
-    return <Loader2 className="h-4 w-4 shrink-0 animate-spin text-teal-600 dark:text-teal-400" />
+    return <Loader2 className="h-4 w-4 shrink-0 animate-spin text-green-400 dark:text-green-400" />
   }
   if (status === 'linked') {
-    return <CheckCircle2 className="h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400" />
+    return <CheckCircle2 className="h-4 w-4 shrink-0 text-green-400 dark:text-green-400" />
   }
   if (status === 'failed') {
     return <XCircle className="h-4 w-4 shrink-0 text-error-500" />
   }
-  return <Circle className="h-4 w-4 shrink-0 text-neutral-300 dark:text-neutral-600" />
+  return <Circle className="h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50" />
 }
 
 type ConnectAccountsBatchProgressProps = {
@@ -66,14 +66,14 @@ export function ConnectAccountsBatchProgress({
                 <p className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-50">
                   {entry.row.label.trim() || login}
                 </p>
-                <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">
+                <p className="truncate text-xs text-neutral-900 dark:text-neutral-50">
                   {entry.row.platform} · {login}{server ? ` · ${server}` : ''}
                 </p>
                 {entry.error ? (
                   <p className="mt-1 text-xs text-error-600 dark:text-error-400">{entry.error}</p>
                 ) : null}
               </div>
-              <span className="shrink-0 text-xs text-neutral-500 dark:text-neutral-400">
+              <span className="shrink-0 text-xs text-neutral-900 dark:text-neutral-50">
                 {statusLabel(entry.status, copy)}
               </span>
             </li>

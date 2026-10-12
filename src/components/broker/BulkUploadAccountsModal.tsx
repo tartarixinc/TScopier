@@ -188,14 +188,14 @@ export function BulkUploadAccountsModal({ open, onClose, onBatchComplete }: Bulk
               >
                 {bc.title}
               </h2>
-              <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{bc.securityNote}</p>
+              <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-50">{bc.securityNote}</p>
             </div>
             <button
               type="button"
               onClick={handleClose}
               disabled={connecting}
               aria-label={t.common.cancel}
-              className="shrink-0 rounded-xl p-3 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 disabled:opacity-40 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+              className="shrink-0 rounded-xl p-3 text-neutral-900 dark:text-neutral-50 transition-colors hover:bg-neutral-100 hover:text-neutral-900 disabled:opacity-40 dark:hover:bg-neutral-800 dark:hover:text-neutral-50"
             >
               <X className="h-6 w-6" />
             </button>
@@ -236,11 +236,11 @@ export function BulkUploadAccountsModal({ open, onClose, onBatchComplete }: Bulk
               className={clsx(
                 'rounded-2xl border-2 border-dashed px-4 py-8 text-center transition-colors',
                 dragOver
-                  ? 'border-teal-500 bg-teal-50/50 dark:bg-teal-950/20'
+                  ? 'border-green-400 bg-teal-50/50 dark:bg-teal-950/20'
                   : 'border-neutral-200 dark:border-neutral-700',
               )}
             >
-              <p className="text-sm text-neutral-600 dark:text-neutral-400">{bc.uploadHint}</p>
+              <p className="text-sm text-neutral-900 dark:text-neutral-50">{bc.uploadHint}</p>
             </div>
 
             {parseErrors.length > 0 ? (
@@ -258,7 +258,7 @@ export function BulkUploadAccountsModal({ open, onClose, onBatchComplete }: Bulk
                 <p className="mb-2 text-sm font-medium text-neutral-900 dark:text-neutral-50">{bc.previewTitle}</p>
                 <div className="overflow-x-auto rounded-xl border border-neutral-100 dark:border-neutral-800">
                   <table className="min-w-full text-left text-sm">
-                    <thead className="bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500 dark:bg-neutral-800/60 dark:text-neutral-400">
+                    <thead className="bg-neutral-50 text-xs uppercase tracking-wide text-neutral-900 dark:bg-neutral-800/60 dark:text-neutral-50">
                       <tr>
                         <th className="px-3 py-2">{bc.colLabel}</th>
                         <th className="px-3 py-2">{bc.colPlatform}</th>

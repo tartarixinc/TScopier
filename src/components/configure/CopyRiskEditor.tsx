@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { CopyRiskTranslations } from '../../i18n/locales/copyRiskLabels'
 import {
   applyCopyRiskPreset,
@@ -26,7 +26,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <label className="grid gap-1 text-xs text-neutral-500 dark:text-neutral-400 sm:grid-cols-[minmax(0,1fr)_11rem] sm:items-center sm:gap-3">
+    <label className="grid gap-1 text-xs text-neutral-900 dark:text-neutral-50 sm:grid-cols-[minmax(0,1fr)_11rem] sm:items-center sm:gap-3">
       <span>{label}</span>
       {children}
     </label>
@@ -67,10 +67,27 @@ function NumberField({
   onCommit: (value: number | null) => void
 }) {
   const revision = useContext(RevisionContext)
+  const focused = useRef(false)
+  const valueRef = useRef(value)
+  valueRef.current = value
   const [text, setText] = useState(value == null ? '' : String(value))
   useEffect(() => {
-    setText(value == null ? '' : String(value))
-  }, [value, revision])
+    if (!focused.current) setText(value == null ? '' : String(value))
+  }, [value])
+  useEffect(() => {
+    const current = valueRef.current
+    setText(current == null ? '' : String(current))
+  }, [revision])
+
+  const commitText = (raw: string) => {
+    const trimmed = raw.trim()
+    if (!trimmed) {
+      if (allowEmpty) onCommit(null)
+      return
+    }
+    const next = Number(trimmed)
+    if (Number.isFinite(next) && next >= 0) onCommit(next)
+  }
 
   return (
     <Row label={label}>
@@ -78,8 +95,13 @@ function NumberField({
         className={fieldClass}
         inputMode="decimal"
         value={text}
-        onChange={event => setText(event.target.value)}
+        onFocus={() => { focused.current = true }}
+        onChange={event => {
+          setText(event.target.value)
+          commitText(event.target.value)
+        }}
         onBlur={() => {
+          focused.current = false
           const trimmed = text.trim()
           if (!trimmed) {
             if (allowEmpty) onCommit(null)
@@ -111,7 +133,7 @@ function ToggleField({ label, checked, onLabel, offLabel, onChange }: {
         type="button"
         aria-pressed={checked}
         onClick={() => onChange(!checked)}
-        className="justify-self-start rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-medium text-neutral-800 dark:border-neutral-700 dark:text-neutral-100"
+        className="justify-self-start rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-medium text-neutral-900 dark:border-neutral-700 dark:text-neutral-100"
       >
         {checked ? onLabel : offLabel}
       </button>
@@ -192,6 +214,7 @@ export function CopyRiskEditor({
   labels,
   saveError,
   currency,
+  omitSizing = false,
   onChange,
 }: {
   settings: CopyRiskSettings
@@ -199,6 +222,8 @@ export function CopyRiskEditor({
   saveError: string | null
   /** Follower account currency, used on cash drawdown. */
   currency?: string | null
+  /** The slave setup modal shows lot sizing as its own method cards. */
+  omitSizing?: boolean
   onChange: (next: CopyRiskSettings) => void
 }) {
   const [pending, setPending] = useState<(() => void) | null>(null)
@@ -256,7 +281,7 @@ export function CopyRiskEditor({
   return (
     <RevisionContext.Provider value={revision}>
     <div className="space-y-3">
-      <p className="text-xs text-neutral-500 dark:text-neutral-400">{labels.emptyLimit}</p>
+      <p className="text-xs text-neutral-900 dark:text-neutral-50">{labels.emptyLimit}</p>
       {saveError ? (
         <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">{saveError}</p>
       ) : null}
@@ -284,7 +309,7 @@ export function CopyRiskEditor({
         onChange={applyPreset}
       />
 
-      <Section title={labels.sections.sizing}>
+      {omitSizing ? null : <Section title={labels.sections.sizing}>
         <SelectField
           label={labels.sections.sizing}
           value={sizing.mode}
@@ -315,7 +340,7 @@ export function CopyRiskEditor({
             <NumberField label={labels.sizing.referencePips} value={sizing.stop_distance_reference_pips} onCommit={value => value != null && value > 0 && patch({ ...settings, sizing: { ...sizing, stop_distance_reference_pips: value } })} />
           </>
         ) : null}
-      </Section>
+      </Section>}
 
       <Section title={labels.sections.protection}>
         <SelectField
@@ -518,7 +543,7 @@ export function CopyRiskEditor({
           ]}
           onChange={value => patch({ ...settings, filters: { ...settings.filters, direction: value as CopyRiskSettings['filters']['direction'] } })}
         />
-        <div className="flex flex-wrap gap-3 text-sm text-neutral-700 dark:text-neutral-200">
+        <div className="flex flex-wrap gap-3 text-sm text-neutral-900 dark:text-neutral-50">
           {(['market', 'limit', 'stop'] as CopyOrderType[]).map(orderType => (
             <label key={orderType} className="inline-flex items-center gap-2">
               <input
@@ -577,7 +602,7 @@ export function CopyRiskEditor({
         <ToggleField label={labels.advanced.autoReduce} checked={settings.advanced.auto_reduce} onLabel={labels.on} offLabel={labels.off} onChange={value => patch({ ...settings, advanced: { ...settings.advanced, auto_reduce: value } })} />
         <NumberField label={labels.advanced.budget} value={settings.advanced.account_risk_budget} allowEmpty onCommit={value => commit(looserMax(settings.advanced.account_risk_budget, value), () => patch({ ...settings, advanced: { ...settings.advanced, account_risk_budget: value } }))} />
         <div className="space-y-2">
-          <div className="text-xs font-medium text-neutral-700 dark:text-neutral-200">{labels.advanced.drawdownStep}</div>
+          <div className="text-xs font-medium text-neutral-900 dark:text-neutral-50">{labels.advanced.drawdownStep}</div>
           {settings.advanced.drawdown_steps.map((step, index) => (
             <div key={`${step.drawdown_percent}-${index}`} className="grid grid-cols-[1fr_1fr_auto] gap-2">
               <input className={fieldClass} aria-label={labels.advanced.stepDrawdown} defaultValue={step.drawdown_percent} inputMode="decimal" onBlur={event => {
@@ -610,7 +635,7 @@ export function CopyRiskEditor({
           ))}
           <button
             type="button"
-            className="text-xs font-medium text-teal-700 dark:text-teal-300"
+            className="text-xs font-medium text-green-500 dark:text-teal-300"
             onClick={() => patch({
               ...settings,
               advanced: {

@@ -16,10 +16,10 @@ function formatValue(n: number | null, unit: string): string {
 }
 
 function valueTone(actual: number | null, forecast: number | null): string {
-  if (actual == null || forecast == null) return 'text-neutral-700 dark:text-neutral-300'
+  if (actual == null || forecast == null) return 'text-neutral-900 dark:text-neutral-50'
   if (actual > forecast) return 'text-emerald-600 dark:text-emerald-400'
   if (actual < forecast) return 'text-error-600 dark:text-error-400'
-  return 'text-neutral-700 dark:text-neutral-300'
+  return 'text-neutral-900 dark:text-neutral-50'
 }
 
 export function EconomicEventRow({ event, timeLabel, impactLabel, labels }: EconomicEventRowProps) {
@@ -30,7 +30,7 @@ export function EconomicEventRow({ event, timeLabel, impactLabel, labels }: Econ
       </div>
       <div className="min-w-0">
         <div className="mb-1 flex flex-wrap items-center gap-2">
-          <span className="text-xs font-bold text-neutral-500 dark:text-neutral-400">
+          <span className="text-xs font-bold text-neutral-900 dark:text-neutral-50">
             {event.currency || event.country}
           </span>
           <ImpactBadge impact={event.impact} label={impactLabel} />
@@ -39,20 +39,20 @@ export function EconomicEventRow({ event, timeLabel, impactLabel, labels }: Econ
       </div>
       <div className="grid grid-cols-3 gap-2 text-right text-xs sm:min-w-[12rem]">
         <div>
-          <p className="text-neutral-400 dark:text-neutral-500">{labels.actual}</p>
+          <p className="text-neutral-900 dark:text-neutral-50">{labels.actual}</p>
           <p className={clsx('font-semibold tabular-nums', valueTone(event.actual, event.forecast))}>
             {formatValue(event.actual, event.unit)}
           </p>
         </div>
         <div>
-          <p className="text-neutral-400 dark:text-neutral-500">{labels.forecast}</p>
-          <p className="font-medium tabular-nums text-neutral-700 dark:text-neutral-300">
+          <p className="text-neutral-900 dark:text-neutral-50">{labels.forecast}</p>
+          <p className="font-medium tabular-nums text-neutral-900 dark:text-neutral-50">
             {formatValue(event.forecast, event.unit)}
           </p>
         </div>
         <div>
-          <p className="text-neutral-400 dark:text-neutral-500">{labels.previous}</p>
-          <p className="font-medium tabular-nums text-neutral-600 dark:text-neutral-400">
+          <p className="text-neutral-900 dark:text-neutral-50">{labels.previous}</p>
+          <p className="font-medium tabular-nums text-neutral-900 dark:text-neutral-50">
             {formatValue(event.previous, event.unit)}
           </p>
         </div>

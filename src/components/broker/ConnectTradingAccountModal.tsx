@@ -6,6 +6,7 @@ import { interpolate } from '../../i18n/interpolate'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
 import { useSubscription } from '../../context/SubscriptionContext'
 import { fxsocketBroker } from '../../lib/fxsocketBroker'
+import { startCtraderConnect } from '../../lib/ctraderBroker'
 import {
   emptyConnectTradingAccountForm,
   type ConnectTradingAccountForm,
@@ -151,7 +152,29 @@ export function ConnectTradingAccountModal({
     setRows(prev => prev.map(row => ({ ...row, platform })))
   }, [])
 
+  const startCtrader = async () => {
+    setError('')
+    if (!hasActiveSubscription) {
+      setError(pw.subscriptionRequired)
+      return
+    }
+    if (!isAdmin && activeBrokerCount >= limits.maxBrokerAccounts) {
+      setError(interpolate(pw.brokerLimit, { limit: String(limits.maxBrokerAccounts) }))
+      return
+    }
+    setSaving(true)
+    try {
+      const { authorizeUrl } = await startCtraderConnect()
+      window.location.assign(authorizeUrl)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : cf.ctraderNotConfigured
+      setError(message)
+      setSaving(false)
+    }
+  }
+
   const connectSingle = async (row: ConnectTradingAccountForm) => {
+    if (row.platform === 'cTrader') return
     const login = row.account_number.trim()
     const server = row.broker_server.trim()
     const platform = row.platform
@@ -179,6 +202,10 @@ export function ConnectTradingAccountModal({
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
+    if (rows[0]?.platform === 'cTrader') {
+      await startCtrader()
+      return
+    }
     setError('')
 
     if (!hasActiveSubscription) {
@@ -250,6 +277,7 @@ export function ConnectTradingAccountModal({
   if (!open) return null
 
   const selectedPlatform = rows[0]?.platform ?? 'MT5'
+  const ctraderSelected = selectedPlatform === 'cTrader'
   const title = interpolate(cf.title, { platform: selectedPlatform })
   const validCount = countValidRows(rows)
   const isMulti = rows.length > 1 || validCount > 1
@@ -295,21 +323,23 @@ export function ConnectTradingAccountModal({
                 </h2>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setBulkUploadOpen(true)}
-                  disabled={saving}
-                >
-                  {cf.uploadAccountsButton}
-                </Button>
+                {ctraderSelected ? null : (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setBulkUploadOpen(true)}
+                    disabled={saving}
+                  >
+                    {cf.uploadAccountsButton}
+                  </Button>
+                )}
                 <button
                   type="button"
                   onClick={handleClose}
                   disabled={saving}
                   aria-label={t.common.cancel}
-                  className="rounded-xl p-3 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 disabled:opacity-40 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+                  className="rounded-xl p-3 text-neutral-900 dark:text-neutral-50 transition-colors hover:bg-neutral-100 hover:text-neutral-900 disabled:opacity-40 dark:hover:bg-neutral-800 dark:hover:text-neutral-50"
                 >
                   <X className="h-6 w-6" />
                 </button>
@@ -324,11 +354,11 @@ export function ConnectTradingAccountModal({
 
             <form onSubmit={handleSubmit} className={clsx('space-y-4', saving && 'pointer-events-none opacity-60')}>
               <div className="space-y-2">
-                <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                   {cf.platformLabel}
                 </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {(['MT5', 'MT4'] as const).map(option => (
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {(['MT5', 'MT4', 'cTrader'] as const).map(option => (
                     <button
                       key={option}
                       type="button"
@@ -337,17 +367,31 @@ export function ConnectTradingAccountModal({
                       className={clsx(
                         'rounded-xl border px-3 py-2.5 text-left text-sm transition-colors',
                         selectedPlatform === option
-                          ? 'border-teal-500 bg-teal-50 text-teal-900 dark:border-teal-400 dark:bg-teal-950/40 dark:text-teal-100'
-                          : 'border-neutral-200/65 bg-white text-neutral-700 hover:border-neutral-300 dark:border-neutral-800/55 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:border-neutral-700',
+                          ? 'border-green-400 bg-teal-50 text-teal-900 dark:border-green-400 dark:bg-teal-950/40 dark:text-teal-100'
+                          : 'border-neutral-200/65 bg-white text-neutral-900 hover:border-neutral-300 dark:border-neutral-800/55 dark:bg-neutral-900 dark:text-neutral-50 dark:hover:border-neutral-700',
                       )}
                     >
-                      {option === 'MT5' ? cf.platformMt5 : cf.platformMt4}
+                      {option === 'MT5' ? cf.platformMt5 : option === 'MT4' ? cf.platformMt4 : cf.platformCtrader}
                     </button>
                   ))}
                 </div>
               </div>
 
-              {serverPlatformMismatch ? (
+              {ctraderSelected ? (
+                <div className="space-y-4 rounded-2xl border border-neutral-100 p-4 dark:border-neutral-800">
+                  <p className="text-sm text-neutral-900 dark:text-neutral-50">{cf.ctraderConnectHint}</p>
+                  <div className="flex gap-2">
+                    <Button type="button" size="sm" loading={saving} onClick={() => void startCtrader()}>
+                      {cf.ctraderConnectButton}
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={handleClose} disabled={saving}>
+                      {t.common.cancel}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              {serverPlatformMismatch && !ctraderSelected ? (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
                   <p>
                     {serverPlatformMismatch === 'MT4'
@@ -357,20 +401,20 @@ export function ConnectTradingAccountModal({
                   <button
                     type="button"
                     onClick={() => setPlatform(serverPlatformMismatch)}
-                    className="mt-2 font-medium text-teal-700 underline underline-offset-2 hover:text-teal-800 dark:text-teal-300 dark:hover:text-teal-200"
+                    className="mt-2 font-medium text-green-500 underline underline-offset-2 hover:text-teal-800 dark:text-teal-300 dark:hover:text-teal-200"
                   >
                     {serverPlatformMismatch === 'MT4' ? cf.platformMt4 : cf.platformMt5}
                   </button>
                 </div>
               ) : null}
 
-              {rows.map((row, index) => (
+              {ctraderSelected ? null : rows.map((row, index) => (
                 <div
                   key={index}
                   className="space-y-3 rounded-2xl border border-neutral-100 p-4 dark:border-neutral-800"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                    <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                       {interpolate(cf.accountRowTitle, { index: String(index + 1) })}
                     </p>
                     {rows.length > 1 ? (
@@ -378,7 +422,7 @@ export function ConnectTradingAccountModal({
                         type="button"
                         onClick={() => removeRow(index)}
                         aria-label={cf.removeRowAria}
-                        className="rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-error-600 dark:hover:bg-neutral-800"
+                        className="rounded-lg p-1.5 text-neutral-900 dark:text-neutral-50 transition-colors hover:bg-neutral-100 hover:text-error-600 dark:hover:bg-neutral-800"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -413,28 +457,32 @@ export function ConnectTradingAccountModal({
                   <MtCompanyServerPicker
                     value={row.broker_server}
                     onChange={next => setRowField(index, 'broker_server', next)}
-                    platform={selectedPlatform}
+                    platform={selectedPlatform === 'MT4' ? 'MT4' : 'MT5'}
                     hint={index === 0 ? cf.brokerServerHint : undefined}
                     required
                   />
                 </div>
               ))}
 
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="secondary" size="sm" onClick={addRow} disabled={saving}>
-                  <Plus className="mr-1.5 h-4 w-4" />
-                  {cf.addMoreButton}
-                </Button>
-              </div>
+              {ctraderSelected ? null : (
+                <>
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" variant="secondary" size="sm" onClick={addRow} disabled={saving}>
+                      <Plus className="mr-1.5 h-4 w-4" />
+                      {cf.addMoreButton}
+                    </Button>
+                  </div>
 
-              <div className="flex gap-2 pt-2">
-                <Button type="submit" loading={saving} size="sm" disabled={validCount === 0}>
-                  {submitLabel}
-                </Button>
-                <Button type="button" variant="ghost" size="sm" onClick={handleClose} disabled={saving}>
-                  {t.common.cancel}
-                </Button>
-              </div>
+                  <div className="flex gap-2 pt-2">
+                    <Button type="submit" loading={saving} size="sm" disabled={validCount === 0}>
+                      {submitLabel}
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={handleClose} disabled={saving}>
+                      {t.common.cancel}
+                    </Button>
+                  </div>
+                </>
+              )}
             </form>
 
             {saving && batchRows.length > 0 ? (
@@ -447,12 +495,12 @@ export function ConnectTradingAccountModal({
                 role="status"
                 aria-live="polite"
               >
-                <Loader2 className="h-10 w-10 animate-spin text-teal-600 dark:text-teal-400" />
+                <Loader2 className="h-10 w-10 animate-spin text-green-400 dark:text-green-400" />
                 <div>
                   <p className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
                     {cf.connectingTitle}
                   </p>
-                  <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+                  <p className="mt-2 text-sm text-neutral-900 dark:text-neutral-50">
                     {connectStepMessage}
                   </p>
                 </div>

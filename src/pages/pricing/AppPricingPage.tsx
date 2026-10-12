@@ -18,7 +18,7 @@ export function AppPricingPage() {
         <button
           type="button"
           onClick={() => navigate('/dashboard', { replace: true })}
-          className="text-sm font-medium text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 transition-colors"
+          className="text-sm font-medium text-neutral-900 hover:text-neutral-900 dark:text-neutral-50 dark:hover:text-neutral-50 transition-colors"
         >
           Not now
         </button>

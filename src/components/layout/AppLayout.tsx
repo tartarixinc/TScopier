@@ -151,6 +151,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
         items: [
           { to: '/billing', label: t.nav.userMenu.subscriptionBilling },
           { to: '/affiliate-program', label: t.nav.userMenu.affiliateProgram },
+          { to: '/wallet', label: t.nav.userMenu.wallet },
         ],
       },
     ],
@@ -210,10 +211,10 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
         'flex items-center px-3 py-2.5 rounded-xl text-sm transition-colors min-h-[20px]',
         isCollapsed ? 'justify-center' : 'gap-2',
         disabled
-          ? 'cursor-pointer font-medium text-neutral-400 opacity-45 hover:bg-neutral-50 hover:text-neutral-600 hover:opacity-80 dark:text-neutral-500 dark:hover:bg-neutral-800 dark:hover:text-neutral-300'
+          ? 'cursor-pointer font-medium text-neutral-900 opacity-45 hover:bg-neutral-50 hover:text-neutral-900 hover:opacity-80 dark:text-neutral-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-50'
           : isActive
-            ? 'bg-teal-50 text-teal-800 font-semibold dark:bg-teal-950/60 dark:text-teal-400'
-            : 'text-neutral-800 font-medium hover:bg-neutral-50 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
+            ? 'bg-green-400 text-neutral-950 font-semibold dark:bg-green-400 dark:text-neutral-950'
+            : 'text-neutral-900 font-medium hover:bg-neutral-50 hover:text-neutral-900 dark:text-neutral-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
       )
 
   const renderNavItemContent = (
@@ -241,11 +242,11 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
           <Icon
             className={clsx(
               'w-4 h-4',
-              isActive ? 'text-teal-600 dark:text-teal-400' : '',
+              isActive ? 'text-neutral-950' : '',
             )}
           />
           {showOpenIndicator && opts.collapsed ? (
-            <span className="absolute -end-2.5 -top-1.5 min-w-[1rem] rounded-full bg-teal-600 px-1 text-center text-[9px] font-semibold leading-4 text-white tabular-nums">
+            <span className="absolute -end-2.5 -top-1.5 min-w-[1rem] rounded-full bg-green-400 px-1 text-center text-[9px] font-semibold leading-4 text-neutral-950 tabular-nums">
               {openTradeCount}
             </span>
           ) : null}
@@ -258,7 +259,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
         </span>
         <span className={clsx(opts.collapsed && 'lg:hidden')}>{label}</span>
         {showOpenIndicator && !opts.collapsed ? (
-          <span className="ms-auto inline-flex shrink-0 items-center rounded-md border border-teal-200/80 bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums leading-none text-teal-800 dark:border-teal-800/80 dark:bg-teal-950/50 dark:text-teal-300">
+          <span className="ms-auto inline-flex shrink-0 items-center rounded-md border border-green-200 bg-green-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums leading-none text-neutral-950 dark:border-green-200 dark:bg-green-100 dark:text-neutral-950">
             {openTradesTag}
           </span>
         ) : null}
@@ -281,7 +282,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
         <div key={section.label}>
           <p
             className={clsx(
-              'px-3 text-[10px] font-semibold text-neutral-400 dark:text-neutral-500 tracking-widest mb-1.5',
+              'px-3 text-[10px] font-semibold text-neutral-900 dark:text-neutral-50 tracking-widest mb-1.5',
               opts.collapsed && 'hidden',
             )}
           >
@@ -407,7 +408,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
           </div>
           <button
             type="button"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800 lg:hidden"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-neutral-900 hover:bg-neutral-100 dark:text-neutral-50 dark:hover:bg-neutral-800 lg:hidden"
             aria-label={t.nav.closeMenu}
             onClick={() => setMobileNavOpen(false)}
           >
@@ -440,7 +441,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
           <button
             type="button"
             onClick={() => setMobileNavOpen(true)}
-            className="shrink-0 p-1.5 rounded-lg text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800 transition-colors sm:p-2 lg:hidden"
+            className="shrink-0 p-1.5 rounded-lg text-neutral-900 hover:bg-neutral-100 dark:text-neutral-50 dark:hover:bg-neutral-800 transition-colors sm:p-2 lg:hidden"
             aria-label={t.nav.openMenu}
           >
             <Menu className="w-5 h-5" />
@@ -450,7 +451,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
             type="button"
             onClick={() => setIsSidebarCollapsed(prev => !prev)}
             title={isSidebarCollapsed ? t.nav.expandSidebar : t.nav.collapseSidebar}
-            className="hidden lg:block p-1.5 rounded-lg text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+            className="hidden lg:block p-1.5 rounded-lg text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
           >
             {isSidebarCollapsed ? <DirectionalIcon icon={PanelLeftOpen} className="w-5 h-5" /> : <DirectionalIcon icon={PanelLeftClose} className="w-5 h-5" />}
           </button>
@@ -464,7 +465,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
               <button
                 type="button"
                 onClick={() => openUpgrade('advanced')}
-                className="hidden sm:inline-flex items-center rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700 transition-colors hover:bg-teal-100 dark:border-teal-800 dark:bg-teal-950/40 dark:text-teal-300 dark:hover:bg-teal-950/60"
+                className="hidden sm:inline-flex items-center rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold text-green-500 transition-colors hover:bg-teal-100 dark:border-teal-800 dark:bg-teal-950/40 dark:text-teal-300 dark:hover:bg-teal-950/60"
               >
                 {subscribeCta}
               </button>
@@ -476,8 +477,8 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
               aria-label={t.nav.assistant.ariaLabel}
               title={t.nav.assistant.title}
               className={clsx(
-                'inline-flex h-9 w-9 items-center justify-center rounded-lg text-teal-700 transition-colors sm:h-10 sm:w-10',
-                'hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 focus:ring-offset-white',
+                'inline-flex h-9 w-9 items-center justify-center rounded-lg text-green-500 transition-colors sm:h-10 sm:w-10',
+                'hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2 focus:ring-offset-white',
                 'dark:text-teal-300 dark:hover:bg-teal-950/50 dark:focus:ring-offset-neutral-900',
               )}
             >
@@ -524,11 +525,11 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
                 <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 leading-tight truncate max-w-[8rem]">
                   {displayName}
                 </p>
-                <p className="text-xs text-neutral-400 leading-tight">{planName || t.nav.planFree}</p>
+                <p className="text-xs text-neutral-900 dark:text-neutral-50 leading-tight">{planName || t.nav.planFree}</p>
               </div>
                 <ChevronDown
                   className={clsx(
-                    'hidden md:block w-3.5 h-3.5 text-neutral-400 shrink-0 transition-transform',
+                    'hidden md:block w-3.5 h-3.5 text-neutral-900 dark:text-neutral-50 shrink-0 transition-transform',
                     userMenuOpen && 'rotate-180',
                   )}
                 />

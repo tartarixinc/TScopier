@@ -4,24 +4,30 @@ import { hasFxsocketBrokerSession, resolveProvider } from './brokerLink'
 type BrokerAccountLike = Pick<BrokerAccount, 'fxsocket_status' | 'connection_status'> & {
   provider?: string | null
   mtapi_status?: string | null
+  terminal_connected?: boolean | null
+  trade_allowed?: boolean | null
+  live_terminal_health_phase?: 'healthy' | 'unhealthy' | 'checking' | 'paused' | null
 }
 
-/** Prefer worker-marked connection_status=error over a stale provider status=connected. */
+/** Prefer a known-good terminal or provider session over a stale pending flag. */
 export function brokerEffectiveConnectionStatus(
   account: BrokerAccountLike,
 ): string | null {
   if (account.connection_status === 'error') {
     return 'error'
   }
-  if (account.connection_status === 'pending' || account.connection_status === 'recovering') {
-    return account.connection_status
+  if (account.connection_status === 'recovering') {
+    return 'recovering'
   }
+  if (account.live_terminal_health_phase === 'healthy') return 'connected'
+  if (account.terminal_connected === true && account.trade_allowed === true) return 'connected'
 
   const provider = resolveProvider(account)
-  if (provider === 'mtapi') {
-    return account.mtapi_status ?? account.connection_status ?? null
-  }
-  return account.fxsocket_status ?? account.connection_status ?? null
+  const providerStatus = provider === 'mtapi' ? account.mtapi_status : account.fxsocket_status
+  if (providerStatus === 'connected') return 'connected'
+
+  if (account.connection_status === 'pending') return 'pending'
+  return providerStatus ?? account.connection_status ?? null
 }
 
 export function isBrokerSessionHealthy(
@@ -78,12 +84,10 @@ type BrokerConnectionStatusLabels = {
 function brokerConnectionDisplayPhase(
   account: BrokerAccountLike,
 ): 'connected' | 'connecting' | 'recovering' | 'disconnected' {
-  if (account.connection_status === 'pending') return 'connecting'
-  if (account.connection_status === 'recovering') return 'recovering'
-
   const status = brokerEffectiveConnectionStatus(account)
   if (status === 'connected') return 'connected'
-  if (status === 'connecting') return 'recovering'
+  if (status === 'pending') return 'connecting'
+  if (status === 'recovering' || status === 'connecting') return 'recovering'
   return 'disconnected'
 }
 

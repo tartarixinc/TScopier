@@ -138,11 +138,11 @@ export function AuthPage() {
       <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-3xl">
         {loginT.heading}
       </h1>
-      <p className="mt-2 mb-8 text-sm text-neutral-500 dark:text-neutral-400">
+      <p className="mt-2 mb-8 text-sm text-neutral-900 dark:text-neutral-50">
         {loginT.noAccount}{' '}
         <a
           href="/signup"
-          className="font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
+          className="font-medium text-green-400 hover:text-green-500 dark:text-green-400 dark:hover:text-teal-300"
         >
           {loginT.signUpLink}
         </a>
@@ -160,9 +160,9 @@ export function AuthPage() {
         onClick={handleGoogleSignIn}
         disabled={googleLoading || loading}
         className={clsx(
-          'flex w-full items-center justify-center gap-3 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-neutral-700 transition-colors',
+          'flex w-full items-center justify-center gap-3 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-neutral-900 dark:text-neutral-50 transition-colors',
           'hover:bg-neutral-50 active:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60',
-          'dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-750 dark:active:bg-neutral-700',
+          'dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-50 dark:hover:bg-neutral-750 dark:active:bg-neutral-700',
         )}
       >
         <GoogleIcon className="h-5 w-5" />
@@ -174,7 +174,7 @@ export function AuthPage() {
           <div className="w-full border-t border-neutral-200 dark:border-neutral-700" />
         </div>
         <div className="relative flex justify-center text-xs">
-          <span className="bg-white px-3 text-neutral-400 dark:bg-neutral-950 dark:text-neutral-500">
+          <span className="bg-white px-3 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-50">
             {auth.oauth.orDivider}
           </span>
         </div>
@@ -204,7 +204,7 @@ export function AuthPage() {
         <div className="-mt-1 flex justify-end">
           <Link
             to="/forgot-password"
-            className="text-sm font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
+            className="text-sm font-medium text-green-400 hover:text-green-500 dark:text-green-400 dark:hover:text-teal-300"
           >
             {loginT.forgotPassword}
           </Link>

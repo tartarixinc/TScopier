@@ -15,7 +15,7 @@ export const chromeNl: AppChromeTranslations = {
     items: {
       dashboard: 'Dashboard',
       configuration: 'Configuraties',
-      brokers: 'Brokers',
+      brokers: 'Handelsconfiguratie',
       mirrorTrading: 'Spiegelaccount',
       socialTrading: 'Sociaal handelen',
       trades: 'Trades',
@@ -89,6 +89,7 @@ export const chromeNl: AppChromeTranslations = {
       profileSettings: 'Profiel en instellingen',
       subscriptionBilling: 'Abonnement en facturatie',
       affiliateProgram: 'Affiliateprogramma',
+      wallet: 'Wallet',
       rateUs: 'Beoordeel ons',
       signOut: 'Afmelden',
     },
@@ -254,7 +255,7 @@ export const chromeNl: AppChromeTranslations = {
   },
   pages: {
     accountConfiguration: {
-      title: 'Brokers',
+      title: 'Handelsconfiguratie',
       description: 'Verbind MetaTrader-accounts en stel in hoe elk account signalen kopieert.',
     },
     brokers: {
@@ -292,6 +293,10 @@ export const chromeNl: AppChromeTranslations = {
     affiliateProgram: {
       title: 'Affiliateprogramma',
       description: 'Nodig traders uit en verdien levenslang 10% commissie op betaalde abonnementen.',
+    },
+    wallet: {
+      title: 'Wallet',
+      description: 'Bekijk saldo en betalingsgeschiedenis voor kopieerabonnementen.',
     },
     billing: {
       title: 'Facturatie',

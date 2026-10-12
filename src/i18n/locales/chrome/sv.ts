@@ -15,7 +15,7 @@ export const chromeSv: AppChromeTranslations = {
     items: {
       dashboard: 'Översikt',
       configuration: 'Konfigurationer',
-      brokers: 'Mäklare',
+      brokers: 'Handelskonfiguration',
       mirrorTrading: 'Spegelkonto',
       socialTrading: 'Social handel',
       trades: 'Affärer',
@@ -89,6 +89,7 @@ export const chromeSv: AppChromeTranslations = {
       profileSettings: 'Profil och inställningar',
       subscriptionBilling: 'Prenumeration och fakturering',
       affiliateProgram: 'Affiliateprogram',
+      wallet: 'Plånbok',
       rateUs: 'Betygsätt oss',
       signOut: 'Logga ut',
     },
@@ -254,7 +255,7 @@ export const chromeSv: AppChromeTranslations = {
   },
   pages: {
     accountConfiguration: {
-      title: 'Mäklare',
+      title: 'Handelskonfiguration',
       description: 'Anslut MetaTrader-konton och finjustera hur varje konto kopierar signaler.',
     },
     brokers: {
@@ -292,6 +293,10 @@ export const chromeSv: AppChromeTranslations = {
     affiliateProgram: {
       title: 'Affiliateprogram',
       description: 'Bjud in traders och tjäna 10% livstidsprovision på betalda prenumerationer.',
+    },
+    wallet: {
+      title: 'Plånbok',
+      description: 'Se saldo och betalningshistorik för kopieringsprenumerationer.',
     },
     billing: {
       title: 'Fakturering',

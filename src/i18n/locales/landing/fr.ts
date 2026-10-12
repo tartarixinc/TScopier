@@ -15,10 +15,10 @@ export const landingFr: LandingTranslations = {
     menuClose: 'Fermer le menu',
   },
   hero: {
-    headline: 'La plateforme de copie n°1 pour',
-    headlinePhrases: ['Signaux Telegram', 'Trading social', 'Miroir de comptes'],
+    headline: 'Une plateforme de copie unifiée pour',
+    headlinePhrases: ['Signaux de trading', 'Trading social', 'Miroir de comptes'],
     subheadline:
-      'Automatisez vos trades depuis Telegram, Discord, TradingView ou un compte maître vers plus de 8 plateformes de courtage en moins de 50 ms. Aucun VPS requis.',
+      'Automatisez vos trades depuis Telegram, WhatsApp, Discord, TradingView ou un compte maître vers plus de 8 plateformes de courtage en moins de 50 ms. Aucun VPS requis.',
     socialProof: 'Classé n°1 des copieurs de signaux Telegram cloud',
     primaryCta: 'Commencez votre essai gratuit de 5 jours',
     secondaryCta: 'Se connecter',

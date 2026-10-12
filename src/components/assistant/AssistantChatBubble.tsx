@@ -24,7 +24,7 @@ export function AssistantChatBubble({
     >
       {!isUser ? (
         <div
-          className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-teal-500 to-teal-700 text-white shadow-sm shadow-teal-600/25"
+          className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-green-400 to-green-500 text-neutral-950 shadow-sm shadow-green-400/25"
           aria-hidden
         >
           <Sparkles className="h-3.5 w-3.5" />
@@ -41,8 +41,8 @@ export function AssistantChatBubble({
           className={clsx(
             'overflow-hidden px-3.5 py-2.5 shadow-sm',
             isUser
-              ? 'rounded-2xl rounded-ee-md bg-teal-600 text-white shadow-teal-700/15'
-              : 'rounded-2xl rounded-es-md border border-neutral-200/60 bg-white text-neutral-800 shadow-neutral-900/5 dark:border-neutral-800/55 dark:bg-neutral-950 dark:text-neutral-100',
+              ? 'rounded-2xl rounded-ee-md bg-green-400 text-neutral-950 shadow-green-500/15'
+              : 'rounded-2xl rounded-es-md border border-neutral-200/60 bg-white text-neutral-900 shadow-neutral-900/5 dark:border-neutral-800/55 dark:bg-neutral-950 dark:text-neutral-100',
           )}
         >
           {images.length > 0 ? (
@@ -83,7 +83,7 @@ export function AssistantTypingIndicator({ label }: { label: string }) {
   return (
     <div className="animate-assistant-msg-in flex items-start gap-2.5">
       <div
-        className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-teal-500 to-teal-700 text-white shadow-sm shadow-teal-600/25"
+        className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-green-400 to-green-500 text-neutral-950 shadow-sm shadow-green-400/25"
         aria-hidden
       >
         <Sparkles className="h-3.5 w-3.5" />

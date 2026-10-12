@@ -92,7 +92,7 @@ export function AffiliatePayoutsPage() {
             type="button"
             onClick={() => void markAllPaid()}
             disabled={rows.length === 0 || saving}
-            className="inline-flex items-center rounded-lg bg-teal-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center rounded-lg bg-green-400 px-3 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-green-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Mark all pending as paid
           </button>
@@ -119,7 +119,7 @@ export function AffiliatePayoutsPage() {
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead>
-              <tr className="border-b border-neutral-100 text-left text-xs font-medium uppercase tracking-wide text-neutral-400 dark:border-neutral-800">
+              <tr className="border-b border-neutral-100 text-left text-xs font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50 dark:border-neutral-800">
                 <th className="px-4 py-3 sm:px-5">Affiliate</th>
                 <th className="px-4 py-3 sm:px-5">Referred user</th>
                 <th className="px-4 py-3 sm:px-5">Invoice</th>
@@ -142,26 +142,26 @@ export function AffiliatePayoutsPage() {
                 <tr key={row.id} className="hover:bg-neutral-50/80 dark:hover:bg-neutral-800/30">
                   <td className="px-4 py-3 sm:px-5">
                     <p className="font-medium text-neutral-900 dark:text-neutral-100">{row.affiliate_name}</p>
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400">{row.affiliate_user_id}</p>
+                    <p className="text-xs text-neutral-900 dark:text-neutral-50">{row.affiliate_user_id}</p>
                   </td>
                   <td className="px-4 py-3 sm:px-5">
                     <p className="font-medium text-neutral-900 dark:text-neutral-100">{row.referred_name}</p>
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400">{row.referred_user_id}</p>
+                    <p className="text-xs text-neutral-900 dark:text-neutral-50">{row.referred_user_id}</p>
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs text-neutral-600 dark:text-neutral-300 sm:px-5">
+                  <td className="px-4 py-3 font-mono text-xs text-neutral-900 dark:text-neutral-50 sm:px-5">
                     {row.stripe_invoice_id}
                   </td>
-                  <td className="px-4 py-3 text-neutral-600 dark:text-neutral-300 sm:px-5">
+                  <td className="px-4 py-3 text-neutral-900 dark:text-neutral-50 sm:px-5">
                     {formatMoney(row.commission_cents, row.currency)}
                   </td>
-                  <td className="px-4 py-3 text-neutral-600 dark:text-neutral-300 sm:px-5">
+                  <td className="px-4 py-3 text-neutral-900 dark:text-neutral-50 sm:px-5">
                     {new Date(row.created_at).toLocaleString()}
                   </td>
                 </tr>
               ))}
               {!loading && rows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-neutral-500 dark:text-neutral-400 sm:px-5">
+                  <td colSpan={5} className="px-4 py-6 text-center text-neutral-900 dark:text-neutral-50 sm:px-5">
                     No pending affiliate commissions.
                   </td>
                 </tr>

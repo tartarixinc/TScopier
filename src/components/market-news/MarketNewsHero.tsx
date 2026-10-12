@@ -28,26 +28,26 @@ export function MarketNewsHero({ article, forexBadge, readArticle }: MarketNewsH
         />
         <div className="flex flex-col justify-center p-6 lg:p-8">
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-teal-700 dark:bg-teal-950/60 dark:text-teal-300">
+            <span className="rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-green-500 dark:bg-teal-950/60 dark:text-teal-300">
               {forexBadge}
             </span>
             {pairLabel ? (
-              <span className="rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
+              <span className="rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50">
                 {pairLabel}
               </span>
             ) : null}
             {article.source ? (
-              <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
+              <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50">
                 {article.source}
               </span>
             ) : null}
-            <span className="text-xs text-neutral-400 dark:text-neutral-500">{timeLabel}</span>
+            <span className="text-xs text-neutral-900 dark:text-neutral-50">{timeLabel}</span>
           </div>
           <h2 className="text-xl font-bold leading-snug text-neutral-900 dark:text-neutral-50 lg:text-2xl">
             {headline}
           </h2>
           {summary ? (
-            <p className="mt-3 line-clamp-4 text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">
+            <p className="mt-3 line-clamp-4 text-sm leading-relaxed text-neutral-900 dark:text-neutral-50">
               {summary}
             </p>
           ) : null}
@@ -56,7 +56,7 @@ export function MarketNewsHero({ article, forexBadge, readArticle }: MarketNewsH
               href={article.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
+              className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-green-400 hover:text-green-500 dark:text-green-400 dark:hover:text-teal-300"
             >
               {readArticle}
               <ExternalLink className="h-4 w-4" />

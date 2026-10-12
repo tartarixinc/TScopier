@@ -65,12 +65,12 @@ export function UpgradePrompt({
 
   if (variant === 'compact') {
     return (
-      <p className={clsx('text-xs text-neutral-500 dark:text-neutral-400', className)}>
+      <p className={clsx('text-xs text-neutral-900 dark:text-neutral-50', className)}>
         {reason}{' '}
         <button
           type="button"
           onClick={() => openUpgrade('advanced')}
-          className="font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400"
+          className="font-medium text-green-400 hover:text-green-500 dark:text-green-400"
         >
           {upgradeCta}
         </button>
@@ -87,12 +87,12 @@ export function UpgradePrompt({
     >
       <div className="min-w-0">
         <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{heading}</p>
-        <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">{reason}</p>
+        <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-50">{reason}</p>
         <div className="mt-3 flex flex-wrap gap-2">
           {manageBilling ? (
             <Link
               to="/billing"
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 shadow-sm transition-all hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm font-medium text-neutral-900 shadow-sm transition-all hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-50 dark:hover:bg-neutral-700"
             >
               {pw.manageBilling}
             </Link>

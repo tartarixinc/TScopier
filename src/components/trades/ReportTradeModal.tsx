@@ -102,13 +102,13 @@ export function ReportTradeModal({ trade, userId, onClose }: ReportTradeModalPro
         <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-5 py-4 border-b border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900">
           <div className="min-w-0">
             <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50 truncate">{tr.reportTitle}</h2>
-            <p className="text-xs text-neutral-400 tabular-nums truncate">
+            <p className="text-xs text-neutral-900 dark:text-neutral-50 tabular-nums truncate">
               {trade.symbol || '—'} · #{trade.ticket}
             </p>
           </div>
           <button
             type="button"
-            className="p-2 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+            className="p-2 rounded-lg text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
             aria-label={tr.close}
             onClick={onClose}
           >
@@ -127,10 +127,10 @@ export function ReportTradeModal({ trade, userId, onClose }: ReportTradeModalPro
             </div>
           ) : (
             <>
-              <p className="text-sm text-neutral-500 dark:text-neutral-400">{tr.reportSubtitle}</p>
+              <p className="text-sm text-neutral-900 dark:text-neutral-50">{tr.reportSubtitle}</p>
 
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-2">{tr.reportCategory}</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-50 mb-2">{tr.reportCategory}</p>
                 <div className="flex flex-wrap gap-1.5">
                   {REPORT_CATEGORIES.map(key => (
                     <button
@@ -140,8 +140,8 @@ export function ReportTradeModal({ trade, userId, onClose }: ReportTradeModalPro
                       className={clsx(
                         'text-xs font-medium px-3 py-1.5 rounded-full border transition-colors',
                         category === key
-                          ? 'border-teal-500 bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300 dark:border-teal-700'
-                          : 'border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                          ? 'border-green-400 bg-teal-50 text-green-500 dark:bg-teal-950/40 dark:text-teal-300 dark:border-green-500'
+                          : 'border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800',
                       )}
                     >
                       {categoryLabel(key)}
@@ -151,13 +151,13 @@ export function ReportTradeModal({ trade, userId, onClose }: ReportTradeModalPro
               </div>
 
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-2">{tr.reportReason}</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-50 mb-2">{tr.reportReason}</p>
                 <textarea
                   value={reason}
                   onChange={e => setReason(e.target.value)}
                   placeholder={tr.reportReasonPlaceholder}
                   rows={4}
-                  className="w-full text-sm bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2.5 text-neutral-900 dark:text-neutral-50 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-teal-500/60 resize-none"
+                  className="w-full text-sm bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2.5 text-neutral-900 dark:text-neutral-50 placeholder:text-neutral-900 dark:placeholder:text-neutral-50 focus:outline-none focus:ring-2 focus:ring-green-400/60 resize-none"
                 />
               </div>
 

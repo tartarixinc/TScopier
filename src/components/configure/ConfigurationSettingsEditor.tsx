@@ -24,7 +24,7 @@ function finiteNumber(value: unknown, fallback = 0): number {
 function SettingRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-4 border-b border-neutral-100 py-2 last:border-b-0 dark:border-neutral-800">
-      <span className="min-w-0 text-sm text-neutral-500 dark:text-neutral-400">{label}</span>
+      <span className="min-w-0 text-sm text-neutral-900 dark:text-neutral-50">{label}</span>
       <div className="flex shrink-0 items-center justify-end gap-2">{children}</div>
     </div>
   )
@@ -88,7 +88,7 @@ function Choice({
         onClick={() => setOpen(current => !current)}
       >
         {options[index]?.label ?? value}
-        <ChevronDown className={`h-3.5 w-3.5 text-neutral-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`h-3.5 w-3.5 text-neutral-900 dark:text-neutral-50 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && menuBox ? createPortal(
         <div
@@ -107,8 +107,8 @@ function Choice({
                 aria-selected={selected}
                 className={`block w-full px-3 py-1.5 text-start text-sm ${
                   selected
-                    ? 'font-medium text-teal-700 dark:text-teal-300'
-                    : 'text-neutral-700 hover:bg-neutral-50 dark:text-neutral-200 dark:hover:bg-neutral-900'
+                    ? 'font-medium text-green-500 dark:text-teal-300'
+                    : 'text-neutral-900 hover:bg-neutral-50 dark:text-neutral-50 dark:hover:bg-neutral-900'
                 }`}
                 onClick={() => {
                   onChange(option.value)
@@ -214,7 +214,7 @@ function TextField({
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section>
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
         {title}
       </h3>
       <div className="mt-1">{children}</div>
@@ -745,7 +745,7 @@ export function ConfigurationSettingsEditor({
                   className={`text-xs font-medium ${
                     selected
                       ? 'text-neutral-900 dark:text-neutral-50'
-                      : 'text-neutral-400 dark:text-neutral-500'
+                      : 'text-neutral-900 dark:text-neutral-50'
                   }`}
                   onClick={() => {
                     const current = new Set(settings.trade_days ?? [])
@@ -817,7 +817,7 @@ function LimitRules({
         </div>
       )) : null}
       {enabled ? (
-        <button type="button" className="py-2 text-sm font-medium text-teal-700 dark:text-teal-300" onClick={onAdd}>
+        <button type="button" className="py-2 text-sm font-medium text-green-500 dark:text-teal-300" onClick={onAdd}>
           {addLabel}
         </button>
       ) : null}

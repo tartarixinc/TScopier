@@ -17,6 +17,15 @@ describe('resolveUserAvatarUrl', () => {
     expect(resolveUserAvatarUrl(null)).toBeNull()
   })
 
+  it('prefers an uploaded profile photo over the sign-in photo', () => {
+    const user = {
+      user_metadata: { avatar_url: 'https://example.com/oauth.jpg' },
+    } as User
+    expect(resolveUserAvatarUrl(user, { avatar_url: 'https://example.com/profile.jpg' })).toBe(
+      'https://example.com/profile.jpg',
+    )
+  })
+
   it('reads avatar_url from user metadata', () => {
     const user = {
       user_metadata: { avatar_url: 'https://example.com/a.jpg' },

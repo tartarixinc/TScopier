@@ -177,7 +177,7 @@ Deno.serve(async (req: Request) => {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Signal review required</title>
 </head>
-<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;background-color:#ffffff;">
+<body style="margin:0;padding:0;font-family:'SF Pro','SF Pro Text','SF Pro Display',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;background-color:#ffffff;">
   <div style="max-width:480px;margin:0 auto;padding:32px 24px;">
     <p style="margin:0 0 16px 0;font-size:15px;line-height:1.5;color:#171717;">Hi ${esc(greetName)},</p>
     <p style="margin:0 0 16px 0;font-size:15px;line-height:1.5;color:#171717;">A signal needs your review before it can be sent to your broker.</p>
@@ -185,7 +185,7 @@ Deno.serve(async (req: Request) => {
     ${levelsHtml}
     ${messageBlock}
     <p style="margin:0 0 24px 0;font-size:14px;line-height:1.5;color:#404040;">Your approval window is <strong>2 minutes</strong> from when the signal was received. After that, the signal is skipped automatically.</p>
-    <p style="margin:0 0 24px 0;"><a href="${esc(reviewUrl)}" style="font-size:14px;font-weight:600;color:#0d9488;text-decoration:none;">Review signal &rarr;</a></p>
+    <p style="margin:0 0 24px 0;"><a href="${esc(reviewUrl)}" style="font-size:14px;font-weight:600;color:#4ade80;text-decoration:none;">Review signal &rarr;</a></p>
     <p style="margin:0;font-size:13px;line-height:1.5;color:#a3a3a3;">You can turn off these emails in Settings &rarr; Notifications.</p>
   </div>
 </body>

@@ -15,9 +15,10 @@ export const landingRu: LandingTranslations = {
     menuClose: 'Закрыть меню',
   },
   hero: {
-    headline: 'Сигналы Telegram. Копируются автоматически.',
+    headline: 'Единая платформа копирования для',
+    headlinePhrases: ['Торговых сигналов', 'Социального трейдинга', 'Зеркалирования счетов'],
     subheadline:
-      'Автоматизируйте сделки из Telegram, Discord, TradingView или мастер-счёта на 8+ брокерских платформ менее чем за 50 мс. VPS не требуется.',
+      'Автоматизируйте сделки из Telegram, WhatsApp, Discord, TradingView или мастер-счёта на 8+ брокерских платформ менее чем за 50 мс. VPS не требуется.',
     socialProof: 'Рейтинг №1 облачный копировщик сигналов Telegram',
     primaryCta: 'Начните 5-дневный бесплатный пробный период',
     secondaryCta: 'Войти',

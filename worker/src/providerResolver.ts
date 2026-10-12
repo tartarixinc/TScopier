@@ -3,6 +3,7 @@ import type { FxsocketBrokerClient } from './fxsocketClient'
 import type { BrokerProvider, BrokerProviderName } from './brokerProvider'
 import { createFxsocketProvider, type FxsocketProvider } from './fxsocketProvider'
 import { getMtapiProvider, type MtapiProvider } from './mtapiProvider'
+import { getCtraderProvider, type CtraderProvider } from './ctraderProvider'
 import {
   type BrokerWriteAuthority,
   brokerWriteAuthorityStoreRegistered,
@@ -13,6 +14,7 @@ export type ResolvedBrokerProvider = BrokerProvider & FxsocketBrokerClient
 
 let fxsocketProvider: FxsocketProvider | null | undefined
 let mtapiProvider: MtapiProvider | null | undefined
+let ctraderProvider: CtraderProvider | null | undefined
 
 function getFxsocketProvider(): FxsocketProvider | null {
   if (fxsocketProvider === undefined) fxsocketProvider = createFxsocketProvider()
@@ -22,6 +24,11 @@ function getFxsocketProvider(): FxsocketProvider | null {
 function resolveMtapiProvider(): MtapiProvider | null {
   if (mtapiProvider === undefined) mtapiProvider = getMtapiProvider()
   return mtapiProvider
+}
+
+function resolveCtraderProvider(): CtraderProvider | null {
+  if (ctraderProvider === undefined) ctraderProvider = getCtraderProvider()
+  return ctraderProvider
 }
 
 export function apiForBrokerAccount(
@@ -37,6 +44,9 @@ export function apiForBrokerAccount(
   if (value === 'fxsocket') resolved = getFxsocketProvider() as ResolvedBrokerProvider | null
   if (value === 'mtapi') {
     resolved = resolveMtapiProvider() as unknown as ResolvedBrokerProvider | null
+  }
+  if (value === 'ctrader') {
+    resolved = resolveCtraderProvider() as unknown as ResolvedBrokerProvider | null
   }
   if (!resolved) return null
   if (!brokerWriteAuthorityStoreRegistered()) return resolved
@@ -65,13 +75,14 @@ export function apiForBrokerAccount(
 export function inferProvider(row: { provider?: string | null }): BrokerProviderName | null {
   if (row.provider == null || row.provider === '') return 'fxsocket'
   const explicit = String(row.provider).trim()
-  if (explicit === 'fxsocket' || explicit === 'mtapi') return explicit
+  if (explicit === 'fxsocket' || explicit === 'mtapi' || explicit === 'ctrader') return explicit
   return null
 }
 
 export function resetProviderResolverForTests(): void {
   fxsocketProvider = undefined
   mtapiProvider = undefined
+  ctraderProvider = undefined
 }
 
 export function setFxsocketProviderForTests(provider: FxsocketProvider | null): void {
@@ -80,4 +91,8 @@ export function setFxsocketProviderForTests(provider: FxsocketProvider | null): 
 
 export function setMtapiProviderForResolverTests(provider: MtapiProvider | null): void {
   mtapiProvider = provider
+}
+
+export function setCtraderProviderForResolverTests(provider: CtraderProvider | null): void {
+  ctraderProvider = provider
 }

@@ -155,6 +155,7 @@ export const tradingNl: TradingPagesBundleTranslations = {
     whatsappDisconnect: 'Ontkoppelen',
     whatsappQrHelp: 'Open WhatsApp, ga naar Gekoppelde apparaten en scan deze code.',
     whatsappListenerMissing: 'De WhatsApp-listener is nog niet ingesteld.',
+    whatsappListenerUnavailable: 'De WhatsApp-listener draait niet. Start hem en probeer het opnieuw.',
     whatsappAdd: 'Toevoegen',
     whatsappRefresh: 'Groepen vernieuwen',
   },

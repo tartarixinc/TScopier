@@ -111,7 +111,7 @@ export function CloseSignalTradesConfirmModal({
               >
                 {title}
               </h2>
-              <p className="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed">
+              <p className="mt-1.5 text-sm text-neutral-900 dark:text-neutral-50 leading-relaxed">
                 {body}
               </p>
             </div>
@@ -120,7 +120,7 @@ export function CloseSignalTradesConfirmModal({
           <div className="mt-4 rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50/80 dark:bg-neutral-800/40 divide-y divide-neutral-200/80 dark:divide-neutral-700/80">
             {detailRows.map(row => (
               <div key={row.label} className="flex items-center justify-between gap-3 px-3.5 py-2.5">
-                <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{row.label}</span>
+                <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50">{row.label}</span>
                 <span
                   className={clsx(
                     'text-sm font-semibold tabular-nums text-right truncate max-w-[60%]',
@@ -133,7 +133,7 @@ export function CloseSignalTradesConfirmModal({
             ))}
           </div>
 
-          <p className="mt-3 text-xs text-neutral-400 dark:text-neutral-500 leading-relaxed">
+          <p className="mt-3 text-xs text-neutral-900 dark:text-neutral-50 leading-relaxed">
             {bs.closeConfirmWarning}
           </p>
         </div>
