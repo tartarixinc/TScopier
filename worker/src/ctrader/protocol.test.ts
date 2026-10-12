@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import {
   ctraderAuthorizeUrl,
   ctraderSocketUrl,
+  ctraderSpotPrice,
   ctraderVolumeToLots,
   lotsToCtraderVolume,
   mapCtraderOrder,
@@ -17,6 +18,11 @@ test('cTrader volume converts lots through the symbol lot size', () => {
   assert.equal(lotsToCtraderVolume(0.01, 10_000_000), 100_000)
   assert.equal(ctraderVolumeToLots(1_000_000, 10_000_000), 0.1)
   assert.throws(() => lotsToCtraderVolume(0, 10_000_000), /greater than zero/)
+})
+
+test('cTrader spot quotes use a fixed 1/100000 scale', () => {
+  assert.equal(ctraderSpotPrice(265012000), 2650.12)
+  assert.equal(ctraderSpotPrice(123456), 1.23456)
 })
 
 test('cTrader prices are scaled by symbol digits', () => {

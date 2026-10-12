@@ -91,6 +91,26 @@ describe('managementClose', () => {
     assert.match(result.reason ?? '', /reconciliation required/)
   })
 
+  it('an authoritative cTrader close confirms when the book is empty', async () => {
+    const api = mockApi({
+      orderClose: async () => ({ ticket: 12345, state: 'position_closed' }),
+      openedOrders: async () => {
+        return [{ ticket: 12345, type: 0 }]
+      },
+    })
+    let calls = 0
+    api.openedOrders = async () => {
+      calls += 1
+      return calls === 1 ? [{ ticket: 12345, type: 0 }] : []
+    }
+    const result = await closeWithVerification(api, 'uuid', 12345, {
+      liveFast: true,
+      maxAttempts: 1,
+    })
+    assert.equal(result.confirmed, true)
+    assert.equal(result.reconciliationRequired, undefined)
+  })
+
   it('an empty post-close snapshot is not proof of closure', async () => {
     let openedCalls = 0
     const api = mockApi({

@@ -107,6 +107,13 @@ export function ctraderVolumeToLots(volume: number, lotSize: number): number {
   return volume / lotSize
 }
 
+/** Live spot quotes use 1/100000 of a price unit, for every symbol. */
+export const CTRADER_SPOT_PRICE_SCALE = 100_000
+
+export function ctraderSpotPrice(relative: number): number {
+  return relative / CTRADER_SPOT_PRICE_SCALE
+}
+
 export function priceToRelative(price: number, digits: number): number {
   const scale = 10 ** (Number.isFinite(digits) ? digits : 5)
   return Math.round(price * scale)

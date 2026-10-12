@@ -25,9 +25,8 @@ import {
   mapCtraderOrder,
   moneyFromCents,
   operationFromCtrader,
-  priceToRelative,
+  ctraderSpotPrice,
   readCtraderTokenResponse,
-  relativeToPrice,
 } from './ctrader/protocol'
 import { CtraderSession, openCtraderWebSocket, type CtraderSocket } from './ctrader/session'
 
@@ -79,6 +78,10 @@ function asArray(value: unknown): Record<string, unknown>[] {
 
 function firstRecord(value: unknown): Record<string, unknown> | undefined {
   return asArray(value)[0]
+}
+
+function positivePrice(value: number | undefined): number | undefined {
+  return value != null && value > 0 ? value : undefined
 }
 
 function accountNumber(id: string): number {
@@ -190,12 +193,12 @@ export class CtraderProvider implements BrokerProvider {
       volume,
       comment: args.comment ?? '',
     }
-    this.writeProtection(payload, symbol.digits, args.stoploss, args.takeprofit)
+    this.writeProtection(payload, args.stoploss, args.takeprofit)
     if (mapped.orderType === CTRADER_ORDER_TYPE.LIMIT || mapped.orderType === CTRADER_ORDER_TYPE.STOP_LIMIT) {
-      payload.limitPrice = this.requirePrice(args.price, symbol.digits)
+      payload.limitPrice = this.requirePrice(args.price)
     }
     if (mapped.orderType === CTRADER_ORDER_TYPE.STOP || mapped.orderType === CTRADER_ORDER_TYPE.STOP_LIMIT) {
-      payload.stopPrice = this.requirePrice(args.price, symbol.digits)
+      payload.stopPrice = this.requirePrice(args.price)
     }
     const execution = await live.session.request(
       CTRADER_PAYLOAD.NEW_ORDER_REQ,
@@ -208,13 +211,12 @@ export class CtraderProvider implements BrokerProvider {
   async orderModify(id: string, args: OrderModifyArgs): Promise<OrderResult> {
     const live = await this.live(id)
     const found = await this.findTicket(live, id, args.ticket)
-    const digits = found.symbol?.digits ?? 5
     if (found.kind === 'position') {
       const payload: Record<string, unknown> = {
         ctidTraderAccountId: accountNumber(id),
         positionId: args.ticket,
       }
-      this.writeProtection(payload, digits, args.stoploss, args.takeprofit)
+      this.writeProtection(payload, args.stoploss, args.takeprofit)
       const execution = await live.session.request(
         CTRADER_PAYLOAD.AMEND_POSITION_SLTP_REQ,
         payload,
@@ -226,11 +228,11 @@ export class CtraderProvider implements BrokerProvider {
       ctidTraderAccountId: accountNumber(id),
       orderId: args.ticket,
     }
-    this.writeProtection(payload, digits, args.stoploss, args.takeprofit)
+    this.writeProtection(payload, args.stoploss, args.takeprofit)
     if (args.price != null && Number(args.price) > 0) {
-      const relative = priceToRelative(Number(args.price), digits)
-      payload.limitPrice = relative
-      payload.stopPrice = relative
+      const price = Number(args.price)
+      payload.limitPrice = price
+      payload.stopPrice = price
     }
     const execution = await live.session.request(
       CTRADER_PAYLOAD.AMEND_ORDER_REQ,
@@ -249,7 +251,7 @@ export class CtraderProvider implements BrokerProvider {
         { ctidTraderAccountId: accountNumber(id), orderId: args.ticket },
         [CTRADER_PAYLOAD.EXECUTION_EVENT],
       )
-      return this.resultFromExecution(execution, found.symbol, undefined, args.ticket)
+      return { ...this.resultFromExecution(execution, found.symbol, undefined, args.ticket), state: 'position_closed' }
     }
     const lotSize = found.symbol?.lotSize
     const volume = args.lots != null && args.lots > 0 && lotSize
@@ -265,7 +267,7 @@ export class CtraderProvider implements BrokerProvider {
       },
       [CTRADER_PAYLOAD.EXECUTION_EVENT],
     )
-    return this.resultFromExecution(execution, found.symbol, undefined, args.ticket)
+    return { ...this.resultFromExecution(execution, found.symbol, undefined, args.ticket), state: 'position_closed' }
   }
 
   async openedOrders(id: string): Promise<unknown[]> {
@@ -365,8 +367,8 @@ export class CtraderProvider implements BrokerProvider {
     if (bid == null || ask == null) throw new Error('cTrader quote is missing prices')
     return {
       symbol: info.name,
-      bid: relativeToPrice(bid, info.digits),
-      ask: relativeToPrice(ask, info.digits),
+      bid: ctraderSpotPrice(bid),
+      ask: ctraderSpotPrice(ask),
     }
   }
 
@@ -569,7 +571,7 @@ export class CtraderProvider implements BrokerProvider {
       return {
         kind: 'position',
         volume: finite(trade.volume ?? position.volume),
-        symbol: live.symbolsById.get(finite(trade.symbolId) ?? -1),
+        symbol: await this.symbolForTrade(live, id, finite(trade.symbolId)),
       }
     }
     for (const order of asArray(snapshot.order)) {
@@ -578,27 +580,33 @@ export class CtraderProvider implements BrokerProvider {
       return {
         kind: 'order',
         volume: finite(trade.volume ?? order.volume),
-        symbol: live.symbolsById.get(finite(trade.symbolId) ?? -1),
+        symbol: await this.symbolForTrade(live, id, finite(trade.symbolId)),
       }
     }
     throw new Error(`cTrader order ${ticket} was not found`)
   }
 
+  /** SL, TP, and pending prices are absolute doubles. Spot quotes are the scaled ones. */
   private writeProtection(
     payload: Record<string, unknown>,
-    digits: number,
     stopLoss: number | null | undefined,
     takeProfit: number | null | undefined,
   ): void {
-    if (stopLoss != null && Number(stopLoss) > 0) payload.stopLoss = priceToRelative(Number(stopLoss), digits)
-    if (takeProfit != null && Number(takeProfit) > 0) payload.takeProfit = priceToRelative(Number(takeProfit), digits)
+    if (stopLoss != null && Number(stopLoss) > 0) payload.stopLoss = Number(stopLoss)
+    if (takeProfit != null && Number(takeProfit) > 0) payload.takeProfit = Number(takeProfit)
   }
 
-  private requirePrice(price: number | null | undefined, digits: number): number {
+  private requirePrice(price: number | null | undefined): number {
     if (price == null || !Number.isFinite(Number(price)) || Number(price) <= 0) {
       throw new Error('cTrader pending order is missing a price')
     }
-    return priceToRelative(Number(price), digits)
+    return Number(price)
+  }
+
+  private async symbolForTrade(live: LiveSession, id: string, symbolId: number | undefined): Promise<SymbolInfo | undefined> {
+    const listed = live.symbolsById.get(symbolId ?? -1)
+    if (!listed?.name || listed.lotSize) return listed
+    return this.symbolInfo(live, id, listed.name)
   }
 
   private resultFromExecution(
@@ -614,7 +622,6 @@ export class CtraderProvider implements BrokerProvider {
     const position = asRecord(payload.position)
     const order = asRecord(payload.order)
     const trade = asRecord(position.tradeData ?? order.tradeData)
-    const digits = symbol?.digits ?? 5
     const lotSize = symbol?.lotSize ?? 0
     const ticket = finite(position.positionId ?? order.orderId) ?? fallbackTicket ?? 0
     if (!ticket) throw new Error('cTrader did not return an order id')
@@ -626,9 +633,9 @@ export class CtraderProvider implements BrokerProvider {
       ticket,
       positionTicket: finite(position.positionId),
       orderTicket: finite(order.orderId),
-      openPrice: openPrice == null ? undefined : relativeToPrice(openPrice, digits),
-      stopLoss: stopLoss == null ? undefined : relativeToPrice(stopLoss, digits),
-      takeProfit: takeProfit == null ? undefined : relativeToPrice(takeProfit, digits),
+      openPrice: positivePrice(openPrice),
+      stopLoss: positivePrice(stopLoss),
+      takeProfit: positivePrice(takeProfit),
       lots: volume == null ? undefined : ctraderVolumeToLots(volume, lotSize),
       symbol: symbol?.name,
       comment: trade.comment == null ? comment : String(trade.comment),
@@ -638,7 +645,6 @@ export class CtraderProvider implements BrokerProvider {
   private positionRow(live: LiveSession, position: Record<string, unknown>): Record<string, unknown> {
     const trade = asRecord(position.tradeData)
     const symbol = live.symbolsById.get(finite(trade.symbolId) ?? -1)
-    const digits = symbol?.digits ?? 5
     const ticket = finite(position.positionId) ?? 0
     const volume = finite(trade.volume) ?? 0
     const openPrice = finite(position.price)
@@ -651,9 +657,9 @@ export class CtraderProvider implements BrokerProvider {
       operation: operationFromCtrader(CTRADER_ORDER_TYPE.MARKET, finite(trade.tradeSide) ?? 1),
       lots: ctraderVolumeToLots(volume, symbol?.lotSize ?? 0),
       volume: ctraderVolumeToLots(volume, symbol?.lotSize ?? 0),
-      openPrice: openPrice == null ? undefined : relativeToPrice(openPrice, digits),
-      stopLoss: stopLoss == null ? undefined : relativeToPrice(stopLoss, digits),
-      takeProfit: takeProfit == null ? undefined : relativeToPrice(takeProfit, digits),
+      openPrice: positivePrice(openPrice),
+      stopLoss: positivePrice(stopLoss),
+      takeProfit: positivePrice(takeProfit),
       comment: trade.comment == null ? '' : String(trade.comment),
     }
   }
@@ -661,7 +667,6 @@ export class CtraderProvider implements BrokerProvider {
   private pendingRow(live: LiveSession, order: Record<string, unknown>): Record<string, unknown> {
     const trade = asRecord(order.tradeData)
     const symbol = live.symbolsById.get(finite(trade.symbolId) ?? -1)
-    const digits = symbol?.digits ?? 5
     const ticket = finite(order.orderId) ?? 0
     const volume = finite(trade.volume) ?? 0
     const price = finite(order.limitPrice ?? order.stopPrice)
@@ -672,7 +677,7 @@ export class CtraderProvider implements BrokerProvider {
       operation: operationFromCtrader(finite(order.orderType) ?? CTRADER_ORDER_TYPE.LIMIT, finite(trade.tradeSide) ?? 1),
       lots: ctraderVolumeToLots(volume, symbol?.lotSize ?? 0),
       volume: ctraderVolumeToLots(volume, symbol?.lotSize ?? 0),
-      openPrice: price == null ? undefined : relativeToPrice(price, digits),
+      openPrice: positivePrice(price),
       comment: trade.comment == null ? '' : String(trade.comment),
       state: 'Placed',
     }
@@ -690,7 +695,7 @@ export class CtraderProvider implements BrokerProvider {
       symbol: symbol?.name ?? '',
       operation: operationFromCtrader(CTRADER_ORDER_TYPE.MARKET, finite(deal.tradeSide) ?? 1),
       lots: ctraderVolumeToLots(volume, symbol?.lotSize ?? 0),
-      openPrice: price == null ? undefined : relativeToPrice(price, symbol?.digits ?? 5),
+      openPrice: positivePrice(price),
       profit: moneyFromCents(close.grossProfit),
       swap: moneyFromCents(close.swap),
       commission: moneyFromCents(close.commission),
