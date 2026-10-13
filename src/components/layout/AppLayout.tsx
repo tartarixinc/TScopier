@@ -23,6 +23,7 @@ import { useOpenTradeCount } from '../../hooks/useHasOpenTrades'
 import { interpolate } from '../../i18n/interpolate'
 import { useHasHighImpactNewsToday } from '../../hooks/useHasHighImpactNewsToday'
 import { useNeedsWelcome } from '../../hooks/useNeedsWelcome'
+import { CopierLogToasts } from '../dashboard/CopierLogToasts'
 
 type NavItem = {
   to: string
@@ -555,6 +556,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
           {!deferAppBootstrap && !onDashboardRoute && <Outlet />}
         </main>
       </div>
+      {!deferAppBootstrap ? <CopierLogToasts userId={user?.id} /> : null}
     </div>
   )
 }

@@ -1,18 +1,29 @@
 import { useCallback, useEffect, useState } from 'react'
+import { selectBrokerAccountColumns } from '../lib/brokerAccountSelect'
 import { fetchTradesAcrossProviders } from '../lib/fxsocketBroker'
 import { supabase } from '../lib/supabase'
 import { openTradeCountInCache } from '../lib/tradesSessionCache'
+import { filterMtTradesSinceConnect } from '../lib/tradesSinceConnect'
+import type { BrokerAccount } from '../types/database'
 import { whenRealtimeReady } from '../lib/whenRealtimeReady'
 
 const REFRESH_MS = 60_000
 const REALTIME_DEBOUNCE_MS = 450
 
-async function fetchOpenTradeCount(): Promise<number> {
+async function fetchOpenTradeCount(userId: string): Promise<number> {
+  const brokerRes = await selectBrokerAccountColumns(columns =>
+    supabase.from('broker_accounts').select(columns).eq('user_id', userId),
+  )
+  if (brokerRes.error) throw brokerRes.error
+  const accounts = (brokerRes.data ?? []) as unknown as BrokerAccount[]
   const res = await fetchTradesAcrossProviders({
     scope: 'open',
     historyProfile: 'trades',
+    accounts,
   })
-  return (res.trades ?? []).filter(t => t.status === 'open').length
+  return filterMtTradesSinceConnect(res.trades ?? [], accounts)
+    .filter(trade => trade.status === 'open')
+    .length
 }
 
 /** Sidebar count — broker truth (same source as the Trades page), not stale DB rows. */
@@ -29,7 +40,7 @@ export function useOpenTradeCount(userId: string | undefined): number {
     if (cached != null) setOpenCount(cached)
 
     try {
-      setOpenCount(await fetchOpenTradeCount())
+      setOpenCount(await fetchOpenTradeCount(userId))
     } catch (e) {
       console.warn('[openTrades] broker check failed', e instanceof Error ? e.message : e)
       if (cached != null) setOpenCount(cached)
