@@ -52,6 +52,7 @@ export const CTRADER_REJECTED_EXECUTION = new Set([7, 8])
 
 const CTRADER_PAYLOAD_BY_NAME: Record<string, number> = {
   HEARTBEAT_EVENT: CTRADER_PAYLOAD.HEARTBEAT,
+  PROTO_HEARTBEAT_EVENT: CTRADER_PAYLOAD.HEARTBEAT,
   PROTO_OA_APPLICATION_AUTH_RES: CTRADER_PAYLOAD.APPLICATION_AUTH_RES,
   PROTO_OA_ACCOUNT_AUTH_RES: CTRADER_PAYLOAD.ACCOUNT_AUTH_RES,
   PROTO_OA_SYMBOLS_LIST_RES: CTRADER_PAYLOAD.SYMBOLS_LIST_RES,
@@ -79,21 +80,37 @@ const CTRADER_EXECUTION_BY_NAME: Record<string, number> = {
   ORDER_PARTIAL_FILL: 11,
 }
 
-/** Numeric payload type, including the string enum names the JSON API sometimes sends. */
+function canonEnum(value: unknown): string {
+  return String(value ?? '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+}
+
+function lookupEnum(table: Record<string, number>, value: unknown): number | undefined {
+  const key = canonEnum(value)
+  if (!key) return undefined
+  for (const [name, id] of Object.entries(table)) {
+    if (canonEnum(name) === key) return id
+  }
+  return undefined
+}
+
+/** Numeric payload type, including ProtoOAExecutionEvent-style names. */
 export function ctraderPayloadType(value: unknown): number {
-  const numeric = Number(value)
-  if (Number.isFinite(numeric) && numeric > 0) return numeric
-  return CTRADER_PAYLOAD_BY_NAME[String(value ?? '').trim().toUpperCase()] ?? Number.NaN
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value
+  if (typeof value === 'string' && /^\d+$/.test(value.trim())) {
+    const numeric = Number(value)
+    if (numeric > 0) return numeric
+  }
+  return lookupEnum(CTRADER_PAYLOAD_BY_NAME, value) ?? Number.NaN
 }
 
 /** Numeric execution type, including ORDER_FILLED-style names. */
 export function ctraderExecutionType(value: unknown): number | undefined {
-  if (typeof value === 'string') {
-    const named = CTRADER_EXECUTION_BY_NAME[value.trim().toUpperCase()]
-    if (named != null) return named
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && /^\d+$/.test(value.trim())) {
+    const numeric = Number(value)
+    if (Number.isFinite(numeric)) return numeric
   }
-  const numeric = Number(value)
-  return Number.isFinite(numeric) ? numeric : undefined
+  return lookupEnum(CTRADER_EXECUTION_BY_NAME, value)
 }
 
 export const CTRADER_FULL_ACCESS = 0

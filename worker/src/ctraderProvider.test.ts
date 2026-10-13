@@ -230,6 +230,49 @@ test('cTrader market open accepts a fill that only includes the deal', async () 
   assert.equal(result.lots, 0.1)
 })
 
+test('cTrader market open reads the position when the fill event never arrives', async () => {
+  const { provider } = providerFor([
+    ...authSteps,
+    {
+      request: CTRADER_PAYLOAD.SYMBOLS_LIST_REQ,
+      responseType: CTRADER_PAYLOAD.SYMBOLS_LIST_RES,
+      payload: { symbol: [{ symbolId: 41, symbolName: 'XAUUSD' }] },
+    },
+    {
+      request: CTRADER_PAYLOAD.SYMBOL_BY_ID_REQ,
+      responseType: CTRADER_PAYLOAD.SYMBOL_BY_ID_RES,
+      payload: { symbol: { symbolId: 41, digits: 2, lotSize: 10_000 } },
+    },
+    {
+      request: CTRADER_PAYLOAD.NEW_ORDER_REQ,
+      responseType: CTRADER_PAYLOAD.EXECUTION_EVENT,
+      payload: { executionType: 'ORDER_ACCEPTED', order: { orderId: 555 } },
+    },
+    {
+      request: CTRADER_PAYLOAD.RECONCILE_REQ,
+      responseType: CTRADER_PAYLOAD.RECONCILE_RES,
+      payload: {
+        position: [{
+          positionId: 44753770,
+          price: 4170.48,
+          tradeData: { symbolId: 41, volume: 1_000, tradeSide: 1, comment: 'TScopier:Signaltest:tp1' },
+        }],
+      },
+    },
+  ])
+  const started = Date.now()
+  const result = await provider.orderSend('4242', {
+    symbol: 'XAUUSD',
+    operation: 'Buy',
+    volume: 0.1,
+    comment: 'TScopier:Signaltest:tp1',
+  })
+  assert.ok(Date.now() - started < 5_000)
+  assert.equal(result.ticket, 44753770)
+  assert.equal(result.openPrice, 4170.48)
+  assert.equal(result.lots, 0.1)
+})
+
 test('cTrader market open waits for the fill after the accepted event', async () => {
   const { provider } = providerFor([
     ...authSteps,

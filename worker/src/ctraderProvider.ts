@@ -30,7 +30,7 @@ import {
   ctraderSpotPrice,
   readCtraderTokenResponse,
 } from './ctrader/protocol'
-import { CtraderSession, openCtraderWebSocket, type CtraderSocket } from './ctrader/session'
+import { CtraderRequestTimeout, CtraderSession, openCtraderWebSocket, type CtraderSocket } from './ctrader/session'
 
 export interface CtraderCredential {
   accountId: string
@@ -97,6 +97,15 @@ function accountNumber(id: string): number {
 function finite(value: unknown): number | undefined {
   const number = Number(value)
   return Number.isFinite(number) ? number : undefined
+}
+
+function hintedPositionId(hint: Record<string, unknown> | undefined): number | undefined {
+  if (!hint) return undefined
+  const position = firstRecord(hint.position)
+  const order = firstRecord(hint.order)
+  const deal = firstRecord(hint.deal)
+  const id = finite(position?.positionId ?? deal?.positionId ?? order?.positionId ?? order?.orderId)
+  return id != null && id > 0 ? id : undefined
 }
 
 export class CtraderProvider implements BrokerProvider {
@@ -214,8 +223,8 @@ export class CtraderProvider implements BrokerProvider {
       )
       return this.resultFromExecution(execution, symbol, args.comment)
     } catch (error) {
-      if (!market || !(error instanceof Error) || !/timed out/i.test(error.message)) throw error
-      const recovered = await this.recoverMarketFill(live, id, symbol, args.comment)
+      if (!market || !(error instanceof CtraderRequestTimeout)) throw error
+      const recovered = await this.recoverMarketFill(live, id, symbol, args.comment, error.lastPayload)
       if (!recovered) throw error
       return recovered
     }
@@ -374,7 +383,7 @@ export class CtraderProvider implements BrokerProvider {
       CTRADER_PAYLOAD.SUBSCRIBE_SPOTS_REQ,
       { ctidTraderAccountId: accountNumber(id), symbolId: [info.symbolId] },
       [CTRADER_PAYLOAD.SPOT_EVENT],
-      20_000,
+      5_000,
       payload => finite(payload.bid) != null && finite(payload.ask) != null,
     )
     const bid = finite(spot.bid)
@@ -630,20 +639,50 @@ export class CtraderProvider implements BrokerProvider {
     id: string,
     symbol: SymbolInfo,
     comment: string | undefined,
+    hint?: Record<string, unknown>,
   ): Promise<OrderResult | null> {
     const wanted = String(comment ?? '').trim()
-    if (!wanted) return null
-    const snapshot = await this.reconcile(live, id)
-    let match: Record<string, unknown> | null = null
+    const hintedId = hintedPositionId(hint)
+    if (!wanted && hintedId == null) return null
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const snapshot = await live.session.request(
+          CTRADER_PAYLOAD.RECONCILE_REQ,
+          { ctidTraderAccountId: accountNumber(id) },
+          [CTRADER_PAYLOAD.RECONCILE_RES],
+          3_000,
+        )
+        const match = this.matchRecoveredPosition(snapshot, symbol, wanted, hintedId)
+        if (match) return this.resultFromExecution({ executionType: 3, position: match }, symbol, comment)
+      } catch {
+        // The book can be a moment behind the accepted event.
+      }
+      if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 200))
+    }
+    return null
+  }
+
+  private matchRecoveredPosition(
+    snapshot: Record<string, unknown>,
+    symbol: SymbolInfo,
+    comment: string,
+    hintedId: number | undefined,
+  ): Record<string, unknown> | null {
+    let byComment: Record<string, unknown> | null = null
+    let byId: Record<string, unknown> | null = null
     for (const position of asArray(snapshot.position)) {
       const trade = asRecord(position.tradeData)
-      if (String(trade.comment ?? '').trim() !== wanted) continue
-      if (finite(trade.symbolId) !== symbol.symbolId) continue
       const ticket = finite(position.positionId) ?? 0
-      if (!match || ticket > (finite(match.positionId) ?? 0)) match = position
+      if (ticket <= 0) continue
+      const text = String(trade.comment ?? position.comment ?? trade.label ?? position.label ?? '').trim()
+      const symbolId = finite(trade.symbolId)
+      const sameSymbol = symbolId == null || symbolId === symbol.symbolId
+      if (comment && text === comment && sameSymbol) {
+        if (!byComment || ticket > (finite(byComment.positionId) ?? 0)) byComment = position
+      }
+      if (hintedId != null && ticket === hintedId && sameSymbol && !byId) byId = position
     }
-    if (!match) return null
-    return this.resultFromExecution({ executionType: 3, position: match }, symbol, comment)
+    return byComment ?? byId
   }
 
   private resultFromExecution(

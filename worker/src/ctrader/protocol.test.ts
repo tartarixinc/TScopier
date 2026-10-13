@@ -2,7 +2,9 @@ import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import {
   ctraderAuthorizeUrl,
+  ctraderExecutionType,
   ctraderMarketFillReady,
+  ctraderPayloadType,
   ctraderSocketUrl,
   ctraderSpotPrice,
   ctraderVolumeToLots,
@@ -34,6 +36,8 @@ test('cTrader market fill ignores an accepted event that has no position', () =>
   }), true)
   assert.equal(ctraderMarketFillReady({ executionType: 7 }), true)
   assert.equal(ctraderMarketFillReady({ executionType: 'ORDER_REJECTED' }), true)
+  assert.equal(ctraderPayloadType('ProtoOAExecutionEvent'), 2126)
+  assert.equal(ctraderExecutionType('OrderFilled'), 3)
 })
 
 test('cTrader spot quotes use a fixed 1/100000 scale', () => {
