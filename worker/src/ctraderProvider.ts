@@ -18,6 +18,7 @@ import {
   CTRADER_PAYLOAD,
   CTRADER_REJECTED_EXECUTION,
   ctraderErrorMessage,
+  ctraderExecutionType,
   ctraderMarketFillReady,
   ctraderSocketUrl,
   ctraderTokenUrl,
@@ -203,14 +204,21 @@ export class CtraderProvider implements BrokerProvider {
     }
     const market = mapped.orderType === CTRADER_ORDER_TYPE.MARKET
       || mapped.orderType === CTRADER_ORDER_TYPE.MARKET_RANGE
-    const execution = await live.session.request(
-      CTRADER_PAYLOAD.NEW_ORDER_REQ,
-      payload,
-      [CTRADER_PAYLOAD.EXECUTION_EVENT],
-      20_000,
-      market ? ctraderMarketFillReady : undefined,
-    )
-    return this.resultFromExecution(execution, symbol, args.comment)
+    try {
+      const execution = await live.session.request(
+        CTRADER_PAYLOAD.NEW_ORDER_REQ,
+        payload,
+        [CTRADER_PAYLOAD.EXECUTION_EVENT],
+        20_000,
+        market ? ctraderMarketFillReady : undefined,
+      )
+      return this.resultFromExecution(execution, symbol, args.comment)
+    } catch (error) {
+      if (!market || !(error instanceof Error) || !/timed out/i.test(error.message)) throw error
+      const recovered = await this.recoverMarketFill(live, id, symbol, args.comment)
+      if (!recovered) throw error
+      return recovered
+    }
   }
 
   async orderModify(id: string, args: OrderModifyArgs): Promise<OrderResult> {
@@ -616,29 +624,52 @@ export class CtraderProvider implements BrokerProvider {
     return this.symbolInfo(live, id, listed.name)
   }
 
+  /** The order can fill while the execution event never matches. Read that position back. */
+  private async recoverMarketFill(
+    live: LiveSession,
+    id: string,
+    symbol: SymbolInfo,
+    comment: string | undefined,
+  ): Promise<OrderResult | null> {
+    const wanted = String(comment ?? '').trim()
+    if (!wanted) return null
+    const snapshot = await this.reconcile(live, id)
+    let match: Record<string, unknown> | null = null
+    for (const position of asArray(snapshot.position)) {
+      const trade = asRecord(position.tradeData)
+      if (String(trade.comment ?? '').trim() !== wanted) continue
+      if (finite(trade.symbolId) !== symbol.symbolId) continue
+      const ticket = finite(position.positionId) ?? 0
+      if (!match || ticket > (finite(match.positionId) ?? 0)) match = position
+    }
+    if (!match) return null
+    return this.resultFromExecution({ executionType: 3, position: match }, symbol, comment)
+  }
+
   private resultFromExecution(
     payload: Record<string, unknown>,
     symbol: SymbolInfo | undefined,
     comment: string | undefined,
     fallbackTicket?: number,
   ): OrderResult {
-    const executionType = finite(payload.executionType)
+    const executionType = ctraderExecutionType(payload.executionType)
     if (executionType != null && CTRADER_REJECTED_EXECUTION.has(executionType)) {
       throw new Error(ctraderErrorMessage(payload))
     }
-    const position = asRecord(payload.position)
-    const order = asRecord(payload.order)
-    const trade = asRecord(position.tradeData ?? order.tradeData)
+    const position = firstRecord(payload.position) ?? {}
+    const order = firstRecord(payload.order) ?? {}
+    const deal = firstRecord(payload.deal) ?? {}
+    const trade = asRecord(position.tradeData ?? order.tradeData ?? deal)
     const lotSize = symbol?.lotSize ?? 0
-    const ticket = finite(position.positionId ?? order.orderId) ?? fallbackTicket ?? 0
+    const ticket = finite(position.positionId ?? deal.positionId ?? order.orderId) ?? fallbackTicket ?? 0
     if (!ticket) throw new Error('cTrader did not return an order id')
-    const volume = finite(trade.volume)
-    const openPrice = finite(position.price ?? order.executionPrice ?? order.limitPrice)
+    const volume = finite(trade.volume ?? deal.filledVolume ?? deal.volume)
+    const openPrice = finite(position.price ?? deal.executionPrice ?? order.executionPrice ?? order.limitPrice)
     const stopLoss = finite(position.stopLoss ?? order.stopLoss)
     const takeProfit = finite(position.takeProfit ?? order.takeProfit)
     return {
       ticket,
-      positionTicket: finite(position.positionId),
+      positionTicket: finite(position.positionId ?? deal.positionId),
       orderTicket: finite(order.orderId),
       openPrice: positivePrice(openPrice),
       stopLoss: positivePrice(stopLoss),

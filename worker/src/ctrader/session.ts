@@ -1,4 +1,4 @@
-import { CTRADER_PAYLOAD, ctraderErrorMessage } from './protocol'
+import { CTRADER_PAYLOAD, ctraderErrorMessage, ctraderPayloadType } from './protocol'
 
 export interface CtraderSocket {
   send(data: string): void
@@ -77,7 +77,7 @@ export class CtraderSession {
     } catch {
       return
     }
-    const payloadType = Number(msg.payloadType)
+    const payloadType = ctraderPayloadType(msg.payloadType)
     const payload = msg.payload && typeof msg.payload === 'object' ? msg.payload : {}
     const clientMsgId = String(msg.clientMsgId ?? payload.clientMsgId ?? '')
     const failure = payloadType === CTRADER_PAYLOAD.ERROR_RES

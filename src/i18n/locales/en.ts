@@ -1500,6 +1500,9 @@ broker: {
     whatsappListenerUnavailable: 'The WhatsApp listener is not running. Start it, then try again.',
     whatsappAdd: 'Add',
     whatsappRefresh: 'Refresh groups',
+    whatsappConnectedHint: 'Add groups below to start copying signals',
+    whatsappSearchPlaceholder: 'Search groups…',
+    whatsappActiveGroups: 'Active groups',
   },
   popularChannelsPage: {
     title: 'Popular Channels',

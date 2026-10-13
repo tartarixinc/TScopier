@@ -158,6 +158,9 @@ export const tradingPl: TradingPagesBundleTranslations = {
     whatsappListenerUnavailable: 'Odbiornik WhatsApp nie działa. Uruchom go i spróbuj ponownie.',
     whatsappAdd: 'Dodaj',
     whatsappRefresh: 'Odśwież grupy',
+    whatsappConnectedHint: 'Dodaj grupy poniżej, aby zacząć kopiować sygnały',
+    whatsappSearchPlaceholder: 'Szukaj grup…',
+    whatsappActiveGroups: 'Aktywne grupy',
   },
   popularChannelsPage: {
     title: 'Popular Channels',

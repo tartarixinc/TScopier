@@ -158,6 +158,9 @@ export const tradingRu: TradingPagesBundleTranslations = {
     whatsappListenerUnavailable: 'Слушатель WhatsApp не запущен. Запустите его и попробуйте снова.',
     whatsappAdd: 'Добавить',
     whatsappRefresh: 'Обновить группы',
+    whatsappConnectedHint: 'Добавьте группы ниже, чтобы начать копировать сигналы',
+    whatsappSearchPlaceholder: 'Поиск групп…',
+    whatsappActiveGroups: 'Активные группы',
   },
   popularChannelsPage: {
     title: 'Popular Channels',

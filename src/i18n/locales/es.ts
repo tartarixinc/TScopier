@@ -1454,6 +1454,9 @@ export const es: Translations = {
     whatsappListenerUnavailable: 'El receptor de WhatsApp no está en ejecución. Inícialo y vuelve a intentarlo.',
     whatsappAdd: 'Añadir',
     whatsappRefresh: 'Actualizar grupos',
+    whatsappConnectedHint: 'Añade grupos abajo para empezar a copiar señales',
+    whatsappSearchPlaceholder: 'Buscar grupos…',
+    whatsappActiveGroups: 'Grupos activos',
   },
   popularChannelsPage: {
     title: 'Canales populares',

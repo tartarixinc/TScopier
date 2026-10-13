@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import clsx from 'clsx'
-import { Plus, RefreshCw, Trash2, X } from 'lucide-react'
+import { ChevronDown, Plus, Radio, RefreshCw, Trash2, X } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
@@ -35,6 +35,7 @@ import { Card } from '../ui/Card'
 import { Button } from '../ui/Button'
 import { Toggle } from '../ui/Toggle'
 import { Badge } from '../ui/Badge'
+import { Input } from '../ui/Input'
 
 function describeListenerError(error: string, missing: string, unavailable: string): string {
   if (error === 'listener_missing') return missing
@@ -50,7 +51,7 @@ type SelectedGroup = {
   is_active: boolean
 }
 
-type AvailableGroup = { group_jid: string; name: string }
+type AvailableGroup = { group_jid: string; name: string; participants?: number }
 
 export function WhatsAppSourcePanel({
   brokers,
@@ -76,6 +77,9 @@ export function WhatsAppSourcePanel({
   const [connectingBrokerId, setConnectingBrokerId] = useState<string | null>(null)
   const [connectingAllId, setConnectingAllId] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [collapsed, setCollapsed] = useState(false)
+  const [search, setSearch] = useState('')
+  const [browseLoading, setBrowseLoading] = useState(false)
 
   const loadSelected = useCallback(async () => {
     if (!user?.id) {
@@ -117,7 +121,8 @@ export function WhatsAppSourcePanel({
 
   useEffect(() => {
     if (sessionStatus !== 'connected') return
-    void refreshGroups()
+    setBrowseLoading(true)
+    void refreshGroups().finally(() => setBrowseLoading(false))
   }, [refreshGroups, sessionStatus])
 
   useEffect(() => {
@@ -133,7 +138,11 @@ export function WhatsAppSourcePanel({
   }, [sessionStatus])
 
   const selectedJids = useMemo(() => new Set(groups.map(group => group.group_jid)), [groups])
-  const unselected = available.filter(group => !selectedJids.has(group.group_jid))
+  const browseGroups = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    if (!query) return available
+    return available.filter(group => group.name.toLowerCase().includes(query))
+  }, [available, search])
 
   const connect = async () => {
     if (!whatsappListenerBaseUrl()) {
@@ -242,36 +251,140 @@ export function WhatsAppSourcePanel({
   }
 
   return (
-    <div className="space-y-4">
-      <Card padding="none">
-        <div className="flex items-center justify-between gap-3 border-b border-neutral-100 px-4 py-3 dark:border-neutral-800">
-          <div>
-            <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{copy.whatsappListTitle}</h2>
-            <p className="text-xs text-neutral-900 dark:text-neutral-50">{interpolate(ce.configuredCount, { count: String(groups.length) })}</p>
+    <div className="space-y-3">
+      <Card className="mb-3" padding="none">
+        <div className="flex items-center justify-between gap-2 border-b border-neutral-100 bg-gradient-to-r from-[#25D366]/10 to-transparent px-4 py-2.5 dark:border-neutral-800 dark:from-[#25D366]/15">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-neutral-100 bg-white shadow-sm dark:border-neutral-700 dark:bg-neutral-800">
+              <img src="/whatsapp-icon.png" alt="" className="h-[18px] w-[18px] rounded-full object-cover" loading="lazy" aria-hidden />
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">{copy.whatsappListTitle}</p>
+              <p className="text-xs text-neutral-900 dark:text-neutral-50">{copy.whatsappConnectedHint}</p>
+            </div>
+            <span className="hidden flex-shrink-0 sm:inline-flex">
+              <Badge variant="primary" size="sm">{ce.connected}</Badge>
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <Button
-              variant="secondary"
+              variant="ghost"
+              size="sm"
+              onClick={() => setCollapsed(prev => !prev)}
+              className="text-neutral-900 hover:bg-neutral-100 hover:text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50 dark:hover:text-neutral-50"
+            >
+              <ChevronDown className={clsx('h-3.5 w-3.5 transition-transform', collapsed ? '-rotate-90' : 'rotate-0')} />
+              {collapsed ? ce.expand : ce.collapse}
+            </Button>
+            <Button
+              variant="ghost"
               size="sm"
               loading={refreshing}
               onClick={() => {
                 setRefreshing(true)
                 void refreshGroups().finally(() => setRefreshing(false))
               }}
+              className="text-neutral-900 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-50"
             >
               <RefreshCw className="h-3.5 w-3.5" />
               {copy.whatsappRefresh}
             </Button>
-            <Button variant="secondary" size="sm" onClick={() => void disconnect()}>
+            <Button variant="ghost" size="sm" onClick={() => void disconnect()} className="text-error-600 hover:bg-error-50 hover:text-error-700">
               {copy.whatsappDisconnect}
             </Button>
+            {available.length > 0 ? (
+              <span className="text-xs text-neutral-900 dark:text-neutral-50">
+                {interpolate(ce.channelsFound, { count: String(available.length) })}
+              </span>
+            ) : null}
           </div>
         </div>
+        {!collapsed && available.length > 0 ? (
+          <div className="border-b border-neutral-100 px-4 py-2 dark:border-neutral-800">
+            <Input
+              type="search"
+              placeholder={copy.whatsappSearchPlaceholder}
+              value={search}
+              onChange={event => setSearch(event.target.value)}
+              aria-label={copy.whatsappSearchPlaceholder}
+            />
+          </div>
+        ) : null}
         {error ? <p className="px-4 pt-3 text-sm text-red-600 dark:text-red-400">{error}</p> : null}
-        {groups.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-neutral-900 dark:text-neutral-50">{copy.whatsappEmptyGroups}</p>
+        {!collapsed && (browseLoading && available.length === 0 ? (
+          <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
+            {[...Array(4)].map((_, index) => (
+              <div key={index} className="flex items-center gap-3 px-4 py-2.5">
+                <div className="h-8 w-8 flex-shrink-0 animate-pulse rounded-lg bg-neutral-100 dark:bg-neutral-800" />
+                <div className="flex-1 space-y-1.5">
+                  <div className="h-3 w-48 animate-pulse rounded bg-neutral-100 dark:bg-neutral-800" />
+                  <div className="h-2.5 w-24 animate-pulse rounded bg-neutral-100 dark:bg-neutral-800" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : available.length === 0 ? (
+          <div className="px-4 py-8 text-center">
+            <Radio className="mx-auto mb-2 h-8 w-8 text-neutral-900 dark:text-neutral-50" />
+            <p className="text-sm text-neutral-900 dark:text-neutral-50">{copy.whatsappNoGroups}</p>
+          </div>
+        ) : browseGroups.length === 0 ? (
+          <div className="px-4 py-8 text-center">
+            <p className="text-sm text-neutral-900 dark:text-neutral-50">{ce.noChannelSearchResults}</p>
+          </div>
         ) : (
-          <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
+          <div className="max-h-72 divide-y divide-neutral-100 overflow-y-auto dark:divide-neutral-800">
+            {browseGroups.map(group => {
+              const alreadyAdded = selectedJids.has(group.group_jid)
+              const members = group.participants ?? 0
+              return (
+                <div key={group.group_jid} className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
+                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-primary-50 text-green-400">
+                    <img src="/whatsapp-icon.png" alt="" className="h-5 w-5 rounded-full object-cover" loading="lazy" aria-hidden />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-50">{group.name}</p>
+                  </div>
+                  {members > 0 ? (
+                    <span className="flex-shrink-0 text-xs text-neutral-900 dark:text-neutral-50">
+                      {interpolate(ce.members, { count: members.toLocaleString() })}
+                    </span>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => void addGroup(group)}
+                    disabled={alreadyAdded || busyId === group.group_jid}
+                    className={clsx(
+                      'flex-shrink-0 rounded-lg border px-3 py-1 text-xs font-medium transition-colors',
+                      alreadyAdded
+                        ? 'cursor-default border-neutral-200/65 text-neutral-900 dark:border-neutral-800/55 dark:text-neutral-50'
+                        : 'border-green-400 text-green-400 hover:bg-primary-50',
+                    )}
+                  >
+                    {alreadyAdded ? ce.added : copy.whatsappAdd}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        ))}
+      </Card>
+
+      {groups.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-neutral-200/65 bg-white py-10 text-center dark:border-neutral-800/55 dark:bg-neutral-950">
+          <Radio className="mx-auto mb-2 h-8 w-8 text-neutral-900 dark:text-neutral-50" />
+          <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{copy.whatsappEmptyGroups}</p>
+          <p className="mx-auto mt-0.5 max-w-sm text-xs text-neutral-900 dark:text-neutral-50">{copy.whatsappConnectedHint}</p>
+        </div>
+      ) : (
+        <Card padding="none">
+          <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-2.5 dark:border-neutral-800">
+            <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{copy.whatsappActiveGroups}</p>
+            <span className="text-xs text-neutral-900 dark:text-neutral-50">
+              {interpolate(ce.configuredCount, { count: String(groups.length) })}
+            </span>
+          </div>
+          <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
             {groups.map(group => (
               <WhatsAppGroupRow
                 key={group.id}
@@ -331,30 +444,9 @@ export function WhatsAppSourcePanel({
                 }}
               />
             ))}
-          </ul>
-        )}
-      </Card>
-
-      <Card padding="none">
-        <div className="border-b border-neutral-100 px-4 py-3 dark:border-neutral-800">
-          <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{copy.whatsappPickGroups}</h2>
-        </div>
-        {unselected.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-neutral-900 dark:text-neutral-50">{copy.whatsappNoGroups}</p>
-        ) : (
-          <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
-            {unselected.map(group => (
-              <li key={group.group_jid} className="flex items-center gap-3 px-4 py-3">
-                <img src="/whatsapp-icon.png" alt="" aria-hidden className="h-8 w-8 shrink-0 rounded-full object-cover" />
-                <p className="min-w-0 flex-1 truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">{group.name}</p>
-                <Button size="sm" variant="secondary" loading={busyId === group.group_jid} onClick={() => void addGroup(group)}>
-                  {copy.whatsappAdd}
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+          </div>
+        </Card>
+      )}
     </div>
   )
 }
@@ -407,7 +499,9 @@ function WhatsAppGroupRow({
   return (
     <li className={clsx(menuOpen && 'relative z-20')}>
       <div className="flex items-center gap-3 px-4 py-3">
-        <img src="/whatsapp-icon.png" alt="" aria-hidden className="h-8 w-8 shrink-0 rounded-full object-cover" />
+        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-primary-50 text-green-400">
+          <img src="/whatsapp-icon.png" alt="" aria-hidden className="h-5 w-5 rounded-full object-cover" loading="lazy" />
+        </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">{group.name}</h3>
