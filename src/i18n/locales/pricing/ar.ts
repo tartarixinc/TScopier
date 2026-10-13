@@ -134,6 +134,9 @@ export const pricingAr: PricingBundleTranslations = {
       statusPastDue: 'متأخر',
       trialEnds: 'انتهاء التجربة',
       choosePlan: 'ابدأ تجربتك المجانية لمدة 5 أيام',
+      cancelSubscriptionFailed: 'Could not cancel your subscription. Please try again.',
+      cancelSubscriptionHint: 'Your subscription will remain active until the end of the current billing period.',
+      cancelSubscription: 'Cancel subscription',
     },
     checkoutFailed: 'تعذر بدء الدفع. حاول مرة أخرى.',
     paywall: {

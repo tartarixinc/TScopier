@@ -134,6 +134,9 @@ export const pricingJa: PricingBundleTranslations = {
       statusPastDue: '支払い遅延',
       trialEnds: 'トライアル終了',
       choosePlan: '5日間の無料トライアルを始める',
+      cancelSubscriptionFailed: 'Could not cancel your subscription. Please try again.',
+      cancelSubscriptionHint: 'Your subscription will remain active until the end of the current billing period.',
+      cancelSubscription: 'Cancel subscription',
     },
     checkoutFailed: 'チェックアウトを開始できませんでした。もう一度お試しください。',
     paywall: {

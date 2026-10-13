@@ -134,6 +134,9 @@ export const pricingPl: PricingBundleTranslations = {
       statusPastDue: 'Zaległa',
       trialEnds: 'Koniec okresu próbnego',
       choosePlan: 'Rozpocznij 5-dniowy bezpłatny okres próbny',
+      cancelSubscriptionFailed: 'Could not cancel your subscription. Please try again.',
+      cancelSubscriptionHint: 'Your subscription will remain active until the end of the current billing period.',
+      cancelSubscription: 'Cancel subscription',
     },
     checkoutFailed: 'Nie udało się rozpocząć płatności. Spróbuj ponownie.',
     paywall: {
