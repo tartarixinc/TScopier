@@ -103,6 +103,7 @@ const monitors: Array<{ stop: () => void }> = []
 const monitorLoops: MonitorLoopHandle[] = []
 let stopLogRetention: (() => void) | null = null
 let stopWorkWake: (() => void) | null = null
+let stopTradeLivenessTick: (() => void) | null = null
 
 function trackMonitor(m: { stop: () => void; getLoopHandle?: () => MonitorLoopHandle | null; getLoopHandles?: () => MonitorLoopHandle[] }) {
   monitors.push(m)
@@ -226,6 +227,27 @@ async function main() {
     const sweepHandle = tradeExecutor.getSweepLoopHandle()
     if (sweepHandle) monitorLoops.push(sweepHandle)
     startTradeMonitors(tradeExecutor)
+    // Trade-worker liveness: every trade worker bumps target 'worker_trade'
+    // through the same compare-and-set RPC the bridge probe uses. The
+    // alert-evaluator fires trade_workers_offline when this row stops
+    // updating. Listeners are covered by worker_session_leases; trade workers
+    // hold no leases (verified on staging), so this row is their heartbeat.
+    const livenessTick = () => {
+      supabase.rpc('record_probe_result', {
+        p_target: 'worker_trade',
+        p_state: 'up',
+        p_latency_ms: 0,
+        p_detail: workerConfig.instanceId,
+      }).then(res => {
+        if (res.error) console.warn('[worker] trade liveness tick failed code=' + res.error.message)
+      }, () => {
+        console.warn('[worker] trade liveness tick failed code=UNAVAILABLE')
+      })
+    }
+    livenessTick()
+    const livenessTimer = setInterval(livenessTick, 60_000)
+    livenessTimer.unref?.()
+    stopTradeLivenessTick = () => clearInterval(livenessTimer)
     if (monitorLoops.length > 0 && !stopWorkWake) {
       stopWorkWake = subscribeMonitorWorkWake(supabase, monitorLoops)
     }
@@ -337,6 +359,7 @@ async function main() {
     stopWorkerHeartbeatCheckIns()
     await authService?.shutdown()
     stopWorkWake?.()
+    stopTradeLivenessTick?.()
     stopLogRetention?.()
     setQueueMetricsProvider(null)
     await signalQueueConsumers?.stop()

@@ -86,3 +86,6 @@ verify_jwt = true
 
 [functions.provider-transition]
 verify_jwt = false
+
+[functions.alert-evaluator]
+verify_jwt = false
