@@ -25,7 +25,7 @@ import { Toggle } from '../../components/ui/Toggle'
 import { Button } from '../../components/ui/Button'
 import { InfoTooltip } from '../../components/ui/InfoTooltip'
 import { fxsocketBroker, type MtTrade } from '../../lib/fxsocketBroker'
-import { isFxsocketLinkedBroker, countLinkedBrokerSessionsForUi, hasLinkedBrokerForUi, resolveProvider } from '../../lib/brokerLink'
+import { isFxsocketLinkedBroker, countLinkedBrokerSessionsForUi, hasLinkedBrokerForUi, resolveProvider, type BrokerProvider } from '../../lib/brokerLink'
 import { equityWithFloatingPnl, resolveBrokerTotalBalance } from '../../lib/effectiveBrokerBalance'
 import { useFxsocketStream } from '../../hooks/useFxsocketStream'
 import {
@@ -2042,6 +2042,7 @@ export function DashboardPage() {
           cursors[group] += 1
           if ((throttleUntilById[account.id] ?? 0) > now) continue
           const provider = resolveProvider(account)
+          const rawProvider: BrokerProvider = provider
           const lastWs = lastWsTickRef.current[account.id] ?? 0
           if (provider !== 'mtapi' && provider !== 'ctrader' && now - lastWs < 2500) continue
           try {
@@ -2079,7 +2080,7 @@ export function DashboardPage() {
                   if (refreshed.account) replaceBroker(refreshed.account)
                   return refreshed.pending ? undefined : refreshed.summary
                 })()
-              : (await fxsocketBroker.liveSnapshot(account.id, provider === 'ctrader' ? 'ctrader' : undefined)).summary
+              : (await fxsocketBroker.liveSnapshot(account.id, rawProvider === 'ctrader' ? 'ctrader' : undefined)).summary
             if (cancelled || !summary) return
             const snap = parseFxsocketAccountStreamData(summary as Record<string, unknown>)
             const summaryOpenTrades = typeof summary.open_trades === 'number' && Number.isFinite(summary.open_trades)
@@ -2087,7 +2088,7 @@ export function DashboardPage() {
               : undefined
             const openTrades = summaryOpenTrades ?? linkedBalancesRef.current[account.id]?.open_trades ?? 0
             let openPnl = resolveFxsocketFloatingOpenPnl(snap, openTrades)
-            if (provider === 'ctrader' && (openPnl == null || openPnl === 0) && openTrades > 0) {
+            if (rawProvider === 'ctrader' && (openPnl == null || openPnl === 0) && openTrades > 0) {
               const fromBook = snapshotFromPositionBook(positionBooksRef.current[account.id] ?? new Map()).openPnl
               if (fromBook) openPnl = fromBook
             }
