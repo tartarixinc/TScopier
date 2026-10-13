@@ -30,7 +30,7 @@ type BaileysSocket = {
   ev: {
     on: (event: string, handler: (payload: never) => void) => void
   }
-  groupFetchAllParticipating: () => Promise<Record<string, { id?: string; subject?: string }>>
+  groupFetchAllParticipating: () => Promise<Record<string, { id?: string; subject?: string; participants?: unknown[] }>>
   logout: () => Promise<void>
   end: (error: Error | undefined) => void
 }
@@ -353,7 +353,7 @@ async function forgetAuth(supabase: SupabaseClient, userId: string): Promise<voi
   await supabase.from('whatsapp_auth').delete().eq('user_id', userId)
 }
 
-async function listGroups(live: LiveSession): Promise<Array<{ group_jid: string; name: string }>> {
+async function listGroups(live: LiveSession): Promise<LiveSession['groups']> {
   if (!live.sock || live.status !== 'connected') return live.groups
   const participating = await live.sock.groupFetchAllParticipating()
   live.groups = Object.values(participating)
