@@ -237,7 +237,7 @@ export function ConnectTradingAccountModal({
       try {
         const ready = await connectSingle(row)
         reset()
-        if (onSuccess) onSuccess(ready)
+        if (ready && onSuccess) onSuccess(ready)
         else onClose()
       } catch (err) {
         const message = err instanceof Error ? err.message : cf.connectFailed
