@@ -293,6 +293,7 @@ export interface AccountSummary {
   profit?: number
   credit?: number
   type?: string
+  open_trades?: number
 }
 
 export interface BrokerSearchResult {

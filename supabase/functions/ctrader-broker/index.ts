@@ -16,6 +16,7 @@ import {
   ctraderAppFromEnv,
   ctraderAuthorizeUrl,
   ctraderAccountTrades,
+  ctraderLiveBook,
   ctraderOpenedOrders,
   ctraderQuote,
   ctraderStatusFromTrader,
@@ -447,20 +448,20 @@ Deno.serve(async (req: Request) => {
 
     if (action === "live_snapshot") {
       const tokens = await tokensForRow(supabase, row as Record<string, unknown>)
-      const trader = await ctraderTrader({
+      const book = await ctraderLiveBook({
         app: app!,
         environment: tokens.environment,
         accountId: String(row.ctrader_account_id ?? ""),
         accessToken: tokens.accessToken,
       })
-      const snapshot = ctraderStatusFromTrader(trader, tokens.environment)
       return Response.json({
         ok: true,
         summary: {
-          balance: snapshot.balance,
-          equity: snapshot.equity,
-          profit: snapshot.profit,
-          currency: snapshot.currency,
+          balance: book.balance,
+          equity: book.equity,
+          profit: book.profit,
+          currency: book.currency,
+          open_trades: book.openTrades,
           synced: true,
         },
       }, { headers: corsHeaders })

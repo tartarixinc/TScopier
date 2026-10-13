@@ -2021,85 +2021,149 @@ export function DashboardPage() {
     if (accounts.length === 0) return
 
     let cancelled = false
-    let cursor = 0
-    // MTAPI AccountSummary shares the trade session. A few-second poll trips
-    // "too many requests" and the copier then fails every order. Keep MTAPI
-    // refreshes infrequent; FxSocket still polls faster because it has a stream.
-    const hasMtapi = accounts.some(account => {
-      const provider = resolveProvider(account)
-      return provider === 'mtapi' || provider === 'ctrader'
-    })
-    const pollIntervalMs = hasMtapi
-      ? 45_000
-      : Math.min(15_000, Math.max(4_000, 2_000 * Math.ceil(accounts.length / 2)))
     const throttleUntilById: Record<string, number> = {}
+    const cursors = { mtapi: 0, ctrader: 0, fxsocket: 0 }
+    const inflight = { mtapi: false, ctrader: false, fxsocket: false }
 
-    const pollLiveSnapshots = async () => {
-      if (cancelled || accounts.length === 0) return
-      const now = Date.now()
-      // Probe at most one quiet account per tick to avoid burst throttling.
-      for (let attempt = 0; attempt < accounts.length; attempt++) {
-        const account = accounts[cursor % accounts.length]!
-        cursor += 1
-        if ((throttleUntilById[account.id] ?? 0) > now) continue
+    const pollGroup = async (group: 'mtapi' | 'ctrader' | 'fxsocket') => {
+      if (cancelled || inflight[group]) return
+      const groupAccounts = accounts.filter(account => {
         const provider = resolveProvider(account)
-        const lastWs = lastWsTickRef.current[account.id] ?? 0
-        if (provider !== 'mtapi' && now - lastWs < 2500) continue
-        try {
-          const summary = provider === 'mtapi'
-            ? await (async () => {
-                const refreshed = await fxsocketBroker.refreshSummary(account.id, 'mtapi')
-                if (refreshed.account) replaceBroker(refreshed.account)
-                return refreshed.pending ? undefined : refreshed.summary
-              })()
-            : (await fxsocketBroker.liveSnapshot(account.id, provider === 'ctrader' ? 'ctrader' : undefined)).summary
-          if (cancelled || !summary) return
-          const snap = parseFxsocketAccountStreamData(summary as Record<string, unknown>)
-          const openTrades = linkedBalancesRef.current[account.id]?.open_trades ?? 0
-          let openPnl = resolveFxsocketFloatingOpenPnl(snap, openTrades)
-          if (provider === 'ctrader' && (openPnl == null || openPnl === 0) && openTrades > 0) {
-            const fromBook = snapshotFromPositionBook(positionBooksRef.current[account.id] ?? new Map()).openPnl
-            if (fromBook) openPnl = fromBook
-          }
-          const nextBalances = applyFxsocketAccountStreamUpdate(
-            account.id,
-            openPnl != null ? { ...snap, openPnl } : snap,
-            linkedBalancesRef.current,
-          )
-          linkedBalancesRef.current = nextBalances
-          if (openPnl != null) {
-            liveBrokerStateRef.current[account.id] = {
-              ...liveBrokerStateRef.current[account.id],
-              open_pnl: openPnl,
+        if (group === 'fxsocket') return provider !== 'mtapi' && provider !== 'ctrader'
+        return provider === group
+      })
+      if (groupAccounts.length === 0) return
+      inflight[group] = true
+      const now = Date.now()
+      try {
+        // Probe at most one quiet account per tick to avoid burst throttling.
+        for (let attempt = 0; attempt < groupAccounts.length; attempt++) {
+          const account = groupAccounts[cursors[group] % groupAccounts.length]!
+          cursors[group] += 1
+          if ((throttleUntilById[account.id] ?? 0) > now) continue
+          const provider = resolveProvider(account)
+          const lastWs = lastWsTickRef.current[account.id] ?? 0
+          if (provider !== 'mtapi' && provider !== 'ctrader' && now - lastWs < 2500) continue
+          try {
+            if (provider === 'ctrader') {
+              const { trades } = await fxsocketBroker.trades({
+                brokerId: account.id,
+                scope: 'open',
+                historyProfile: 'dashboard',
+                provider: 'ctrader',
+              })
+              if (cancelled) return
+              const rows = trades.filter(trade => trade.status !== 'closed')
+              let marked = 0
+              let priced = 0
+              for (const trade of rows) {
+                const profit = Number(trade.profit)
+                if (!Number.isFinite(profit)) continue
+                marked += profit
+                priced += 1
+              }
+              const openPnl = rows.length === 0
+                ? 0
+                : priced > 0
+                  ? Math.round(marked * 100) / 100
+                  : undefined
+              applyBrokerLiveSnapshot(account.id, {
+                open_trades: rows.length,
+                ...(openPnl != null ? { open_pnl: openPnl } : {}),
+              })
+              return
+            }
+            const summary = provider === 'mtapi'
+              ? await (async () => {
+                  const refreshed = await fxsocketBroker.refreshSummary(account.id, 'mtapi')
+                  if (refreshed.account) replaceBroker(refreshed.account)
+                  return refreshed.pending ? undefined : refreshed.summary
+                })()
+              : (await fxsocketBroker.liveSnapshot(account.id, provider === 'ctrader' ? 'ctrader' : undefined)).summary
+            if (cancelled || !summary) return
+            const snap = parseFxsocketAccountStreamData(summary as Record<string, unknown>)
+            const summaryOpenTrades = typeof summary.open_trades === 'number' && Number.isFinite(summary.open_trades)
+              ? summary.open_trades
+              : undefined
+            const openTrades = summaryOpenTrades ?? linkedBalancesRef.current[account.id]?.open_trades ?? 0
+            let openPnl = resolveFxsocketFloatingOpenPnl(snap, openTrades)
+            if (provider === 'ctrader' && (openPnl == null || openPnl === 0) && openTrades > 0) {
+              const fromBook = snapshotFromPositionBook(positionBooksRef.current[account.id] ?? new Map()).openPnl
+              if (fromBook) openPnl = fromBook
+            }
+            const nextBalances = applyFxsocketAccountStreamUpdate(
+              account.id,
+              openPnl != null ? { ...snap, openPnl } : snap,
+              linkedBalancesRef.current,
+            )
+            linkedBalancesRef.current = nextBalances
+            if (summaryOpenTrades != null || openPnl != null) {
+              const current = linkedBalancesRef.current[account.id] ?? {}
+              linkedBalancesRef.current = {
+                ...linkedBalancesRef.current,
+                [account.id]: {
+                  ...current,
+                  ...(summaryOpenTrades != null ? { open_trades: summaryOpenTrades } : {}),
+                },
+              }
+              liveBrokerStateRef.current[account.id] = {
+                ...liveBrokerStateRef.current[account.id],
+                ...(summaryOpenTrades != null ? { open_trades: summaryOpenTrades } : {}),
+                ...(openPnl != null ? { open_pnl: openPnl } : {}),
+              }
+            }
+            flushLiveBrokerMetrics()
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err)
+            if (/throttl|rate limit|too many requests|expected available in/i.test(msg)) {
+              const m = msg.match(/expected available in\s+(\d+)\s*seconds?/i)
+              const sec = m ? Number(m[1]) : 8
+              const floorMs = provider === 'mtapi' ? 90_000 : 4_000
+              throttleUntilById[account.id] = Date.now() + Math.min(180_000, Math.max(floorMs, (Number.isFinite(sec) ? sec : 8) * 1000 + 500))
             }
           }
-          flushLiveBrokerMetrics()
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err)
-          if (/throttl|rate limit|too many requests|expected available in/i.test(msg)) {
-            const m = msg.match(/expected available in\s+(\d+)\s*seconds?/i)
-            const sec = m ? Number(m[1]) : 8
-            const floorMs = provider === 'mtapi' ? 90_000 : 4_000
-            throttleUntilById[account.id] = Date.now() + Math.min(180_000, Math.max(floorMs, (Number.isFinite(sec) ? sec : 8) * 1000 + 500))
-          }
+          return
         }
-        return
+      } finally {
+        inflight[group] = false
       }
     }
 
-    const intervalId = window.setInterval(() => {
-      void pollLiveSnapshots()
-    }, pollIntervalMs)
-    // Let the page's own broker reads finish before the first MTAPI summary,
-    // so opening the dashboard does not collide with an order burst.
-    const startId = window.setTimeout(() => {
-      void pollLiveSnapshots()
-    }, hasMtapi ? 15_000 : 0)
+    const timers: number[] = []
+    const schedule = (group: 'mtapi' | 'ctrader' | 'fxsocket', intervalMs: number, startDelayMs: number) => {
+      if (!accounts.some(account => {
+        const provider = resolveProvider(account)
+        if (group === 'fxsocket') return provider !== 'mtapi' && provider !== 'ctrader'
+        return provider === group
+      })) return
+      timers.push(window.setInterval(() => {
+        void pollGroup(group)
+      }, intervalMs))
+      timers.push(window.setTimeout(() => {
+        void pollGroup(group)
+      }, startDelayMs))
+    }
+
+    // MTAPI AccountSummary shares the trade session. A few-second poll trips
+    // "too many requests" and the copier then fails every order.
+    schedule('mtapi', 45_000, 15_000)
+    // cTrader Open PnL is marked from spots on each snapshot, so it can tick
+    // without sharing the MTAPI session limit.
+    schedule('ctrader', 4_000, 800)
+    const fxCount = accounts.filter(account => {
+      const provider = resolveProvider(account)
+      return provider !== 'mtapi' && provider !== 'ctrader'
+    }).length
+    if (fxCount > 0) {
+      schedule('fxsocket', Math.min(15_000, Math.max(4_000, 2_000 * Math.ceil(fxCount / 2))), 0)
+    }
 
     return () => {
       cancelled = true
-      window.clearTimeout(startId)
-      window.clearInterval(intervalId)
+      for (const timer of timers) {
+        window.clearTimeout(timer)
+        window.clearInterval(timer)
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the poll interval is keyed on account identity only; field-level account changes arrive through the realtime handlers and must not restart the interval
   }, [linkedAccountIdsKey])

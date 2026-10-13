@@ -560,6 +560,7 @@ async function collectSpots(
   session: CtraderSocketSession,
   accountId: number,
   symbolIds: number[],
+  waitMs = 2500,
 ): Promise<Map<number, { bid: number; ask: number }>> {
   const spots = new Map<number, { bid: number; ask: number }>()
   if (!symbolIds.length) return spots
@@ -577,7 +578,7 @@ async function collectSpots(
       ctidTraderAccountId: accountId,
       symbolId: symbolIds,
     }, [SUBSCRIBE_SPOTS_RES, SPOT_EVENT])
-    const deadline = Date.now() + 2500
+    const deadline = Date.now() + waitMs
     while (spots.size < wanted.size && Date.now() < deadline) {
       await new Promise(resolve => setTimeout(resolve, 50))
     }
@@ -585,6 +586,70 @@ async function collectSpots(
     stop()
   }
   return spots
+}
+
+/** Trader balance plus open positions marked to the latest spot. */
+export async function ctraderLiveBook(args: {
+  app: CtraderApp
+  environment: CtraderEnvironment
+  accountId: string
+  accessToken: string
+}): Promise<{
+  balance: number | undefined
+  equity: number | undefined
+  profit: number | undefined
+  currency: string | undefined
+  openTrades: number
+}> {
+  const { socket, session } = await openSession(args.environment, args.app)
+  try {
+    const accountId = Number(args.accountId)
+    await session.request(ACCOUNT_AUTH_REQ, {
+      ctidTraderAccountId: accountId,
+      accessToken: args.accessToken,
+    }, [ACCOUNT_AUTH_RES])
+    const traderPayload = await session.request(TRADER_REQ, {
+      ctidTraderAccountId: accountId,
+    }, [TRADER_RES])
+    const status = ctraderStatusFromTrader(asRecord(traderPayload.trader), args.environment)
+    const snapshot = await session.request(RECONCILE_REQ, {
+      ctidTraderAccountId: accountId,
+    }, [RECONCILE_RES])
+    const positions = asArray(snapshot.position)
+    const symbolIds = [...new Set(positions.map(position => {
+      const trade = asRecord(position.tradeData)
+      return finite(trade.symbolId)
+    }).filter((id): id is number => id != null))]
+    const spots = await collectSpots(session, accountId, symbolIds, 800)
+    let marked = 0
+    let priced = 0
+    for (const position of positions) {
+      const trade = asRecord(position.tradeData)
+      const symbolId = finite(trade.symbolId)
+      const leg = floatingProfit(position, symbolId == null ? undefined : spots.get(symbolId))
+      if (leg == null) continue
+      marked += leg
+      priced += 1
+    }
+    const profit = positions.length === 0
+      ? 0
+      : priced > 0
+        ? Math.round(marked * 100) / 100
+        : status.profit
+    const balance = status.balance
+    const equity = balance != null && profit != null
+      ? Math.round((balance + profit) * 100) / 100
+      : status.equity
+    return {
+      balance,
+      equity,
+      profit,
+      currency: status.currency,
+      openTrades: positions.length,
+    }
+  } finally {
+    socket.close()
+  }
 }
 
 export type CtraderTradeRow = {
