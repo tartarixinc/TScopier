@@ -23,11 +23,17 @@ test('cTrader volume converts lots through the symbol lot size', () => {
 
 test('cTrader market fill ignores an accepted event that has no position', () => {
   assert.equal(ctraderMarketFillReady({ executionType: 2, order: { orderId: 555 } }), false)
+  assert.equal(ctraderMarketFillReady({ executionType: 'ORDER_ACCEPTED', order: { orderId: 555 } }), false)
   assert.equal(ctraderMarketFillReady({
     executionType: 3,
     position: { positionId: 44753770, price: 4170.48, tradeData: { volume: 1000 } },
   }), true)
+  assert.equal(ctraderMarketFillReady({
+    executionType: 'ORDER_FILLED',
+    deal: { positionId: 44753770, executionPrice: 4170.48, filledVolume: 1000 },
+  }), true)
   assert.equal(ctraderMarketFillReady({ executionType: 7 }), true)
+  assert.equal(ctraderMarketFillReady({ executionType: 'ORDER_REJECTED' }), true)
 })
 
 test('cTrader spot quotes use a fixed 1/100000 scale', () => {

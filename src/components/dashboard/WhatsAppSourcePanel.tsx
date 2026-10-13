@@ -138,8 +138,11 @@ export function WhatsAppSourcePanel({
   }, [sessionStatus])
 
   const selectedJids = useMemo(() => new Set(groups.map(group => group.group_jid)), [groups])
-  const query = search.trim().toLowerCase()
-  const browseGroups = available.filter(group => !query || group.name.toLowerCase().includes(query))
+  const browseGroups = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    if (!query) return available
+    return available.filter(group => group.name.toLowerCase().includes(query))
+  }, [available, search])
 
   const connect = async () => {
     if (!whatsappListenerBaseUrl()) {

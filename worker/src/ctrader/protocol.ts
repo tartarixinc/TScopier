@@ -50,6 +50,52 @@ export const CTRADER_TRADE_SIDE = {
 /** ProtoOAExecutionType values that mean the order did not land. */
 export const CTRADER_REJECTED_EXECUTION = new Set([7, 8])
 
+const CTRADER_PAYLOAD_BY_NAME: Record<string, number> = {
+  HEARTBEAT_EVENT: CTRADER_PAYLOAD.HEARTBEAT,
+  PROTO_OA_APPLICATION_AUTH_RES: CTRADER_PAYLOAD.APPLICATION_AUTH_RES,
+  PROTO_OA_ACCOUNT_AUTH_RES: CTRADER_PAYLOAD.ACCOUNT_AUTH_RES,
+  PROTO_OA_SYMBOLS_LIST_RES: CTRADER_PAYLOAD.SYMBOLS_LIST_RES,
+  PROTO_OA_SYMBOL_BY_ID_RES: CTRADER_PAYLOAD.SYMBOL_BY_ID_RES,
+  PROTO_OA_TRADER_RES: CTRADER_PAYLOAD.TRADER_RES,
+  PROTO_OA_RECONCILE_RES: CTRADER_PAYLOAD.RECONCILE_RES,
+  PROTO_OA_EXECUTION_EVENT: CTRADER_PAYLOAD.EXECUTION_EVENT,
+  PROTO_OA_SUBSCRIBE_SPOTS_RES: CTRADER_PAYLOAD.SUBSCRIBE_SPOTS_RES,
+  PROTO_OA_SPOT_EVENT: CTRADER_PAYLOAD.SPOT_EVENT,
+  PROTO_OA_ORDER_ERROR_EVENT: CTRADER_PAYLOAD.ORDER_ERROR_EVENT,
+  PROTO_OA_DEAL_LIST_RES: CTRADER_PAYLOAD.DEAL_LIST_RES,
+  PROTO_OA_ERROR_RES: CTRADER_PAYLOAD.ERROR_RES,
+  PROTO_OA_GET_ACCOUNTS_BY_ACCESS_TOKEN_RES: CTRADER_PAYLOAD.GET_ACCOUNTS_BY_ACCESS_TOKEN_RES,
+}
+
+const CTRADER_EXECUTION_BY_NAME: Record<string, number> = {
+  ORDER_ACCEPTED: 2,
+  ORDER_FILLED: 3,
+  ORDER_REPLACED: 4,
+  ORDER_CANCELLED: 5,
+  ORDER_CANCELED: 5,
+  ORDER_EXPIRED: 6,
+  ORDER_REJECTED: 7,
+  ORDER_CANCEL_REJECTED: 8,
+  ORDER_PARTIAL_FILL: 11,
+}
+
+/** Numeric payload type, including the string enum names the JSON API sometimes sends. */
+export function ctraderPayloadType(value: unknown): number {
+  const numeric = Number(value)
+  if (Number.isFinite(numeric) && numeric > 0) return numeric
+  return CTRADER_PAYLOAD_BY_NAME[String(value ?? '').trim().toUpperCase()] ?? Number.NaN
+}
+
+/** Numeric execution type, including ORDER_FILLED-style names. */
+export function ctraderExecutionType(value: unknown): number | undefined {
+  if (typeof value === 'string') {
+    const named = CTRADER_EXECUTION_BY_NAME[value.trim().toUpperCase()]
+    if (named != null) return named
+  }
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric : undefined
+}
+
 export const CTRADER_FULL_ACCESS = 0
 
 export function ctraderSocketUrl(environment: string | null | undefined): string {
@@ -112,18 +158,24 @@ export function ctraderVolumeToLots(volume: number, lotSize: number): number {
  * A market execution is usable once the position id, fill price, and volume
  * are present. The earlier accepted event often has only an order id.
  */
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : Array.isArray(value) && value[0] && typeof value[0] === 'object'
+      ? value[0] as Record<string, unknown>
+      : {}
+}
+
 export function ctraderMarketFillReady(payload: Record<string, unknown>): boolean {
-  const executionType = Number(payload.executionType)
+  const executionType = ctraderExecutionType(payload.executionType)
+  if (executionType === 3 || executionType === 11) return true
   if (executionType === 5 || executionType === 6 || executionType === 7 || executionType === 8) return true
-  const position = payload.position && typeof payload.position === 'object'
-    ? payload.position as Record<string, unknown>
-    : {}
-  const trade = position.tradeData && typeof position.tradeData === 'object'
-    ? position.tradeData as Record<string, unknown>
-    : {}
-  const positionId = Number(position.positionId)
-  const price = Number(position.price)
-  const volume = Number(trade.volume ?? position.volume)
+  const position = record(payload.position)
+  const deal = record(payload.deal)
+  const trade = record(position.tradeData)
+  const positionId = Number(position.positionId ?? deal.positionId)
+  const price = Number(position.price ?? deal.executionPrice)
+  const volume = Number(trade.volume ?? position.volume ?? deal.filledVolume ?? deal.volume)
   return Number.isFinite(positionId) && positionId > 0
     && Number.isFinite(price) && price > 0
     && Number.isFinite(volume) && volume > 0
