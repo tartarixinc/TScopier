@@ -62,8 +62,8 @@ export async function fetchWhatsAppStatus(
 
 export async function fetchWhatsAppGroups(
   supabase: SupabaseClient,
-): Promise<{ groups: Array<{ group_jid: string; name: string }>; error: string | null }> {
-  const result = await listenerFetch<{ groups?: Array<{ group_jid: string; name: string }> }>(supabase, '/whatsapp/groups', 'GET')
+): Promise<{ groups: Array<{ group_jid: string; name: string; participants?: number }>; error: string | null }> {
+  const result = await listenerFetch<{ groups?: Array<{ group_jid: string; name: string; participants?: number }> }>(supabase, '/whatsapp/groups', 'GET')
   if (result.error || !result.data) return { groups: [], error: result.error }
   return { groups: result.data.groups ?? [], error: null }
 }

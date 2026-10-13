@@ -1738,6 +1738,9 @@ export interface ChannelsPageTranslations {
   whatsappListenerUnavailable: string
   whatsappAdd: string
   whatsappRefresh: string
+  whatsappConnectedHint: string
+  whatsappSearchPlaceholder: string
+  whatsappActiveGroups: string
 }
 
 export interface BacktestOutcomeLabels {

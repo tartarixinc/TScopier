@@ -1454,6 +1454,9 @@ export const fr: Translations = {
     whatsappListenerUnavailable: 'L’écoute WhatsApp n’est pas démarrée. Lancez-la, puis réessayez.',
     whatsappAdd: 'Ajouter',
     whatsappRefresh: 'Actualiser les groupes',
+    whatsappConnectedHint: 'Ajoutez des groupes ci-dessous pour commencer à copier les signaux',
+    whatsappSearchPlaceholder: 'Rechercher des groupes…',
+    whatsappActiveGroups: 'Groupes actifs',
   },
   popularChannelsPage: {
     title: 'Chaînes populaires',

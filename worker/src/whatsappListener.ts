@@ -18,7 +18,7 @@ type LiveSession = {
   sock: BaileysSocket | null
   qr: string | null
   status: SessionStatus
-  groups: Array<{ group_jid: string; name: string }>
+  groups: Array<{ group_jid: string; name: string; participants?: number }>
   saveCreds: () => Promise<void>
   retireAuth: () => void
   logoutRequested: boolean
@@ -358,7 +358,11 @@ async function listGroups(live: LiveSession): Promise<Array<{ group_jid: string;
   const participating = await live.sock.groupFetchAllParticipating()
   live.groups = Object.values(participating)
     .filter(group => isWhatsAppGroupJid(group.id))
-    .map(group => ({ group_jid: String(group.id), name: group.subject?.trim() || 'WhatsApp group' }))
+    .map(group => ({
+      group_jid: String(group.id),
+      name: group.subject?.trim() || 'WhatsApp group',
+      participants: Array.isArray(group.participants) ? group.participants.length : 0,
+    }))
     .sort((a, b) => a.name.localeCompare(b.name))
   return live.groups
 }

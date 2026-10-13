@@ -158,6 +158,9 @@ export const tradingAr: TradingPagesBundleTranslations = {
     whatsappListenerUnavailable: 'مستمع WhatsApp غير قيد التشغيل. شغّله ثم أعد المحاولة.',
     whatsappAdd: 'إضافة',
     whatsappRefresh: 'تحديث المجموعات',
+    whatsappConnectedHint: 'أضف المجموعات أدناه لبدء نسخ الإشارات',
+    whatsappSearchPlaceholder: 'البحث في المجموعات…',
+    whatsappActiveGroups: 'المجموعات النشطة',
   },
   popularChannelsPage: {
     title: 'Popular Channels',

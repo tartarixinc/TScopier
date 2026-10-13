@@ -158,6 +158,9 @@ export const tradingNl: TradingPagesBundleTranslations = {
     whatsappListenerUnavailable: 'De WhatsApp-listener draait niet. Start hem en probeer het opnieuw.',
     whatsappAdd: 'Toevoegen',
     whatsappRefresh: 'Groepen vernieuwen',
+    whatsappConnectedHint: 'Voeg hieronder groepen toe om signalen te kopiëren',
+    whatsappSearchPlaceholder: 'Groepen zoeken…',
+    whatsappActiveGroups: 'Actieve groepen',
   },
   popularChannelsPage: {
     title: 'Popular Channels',

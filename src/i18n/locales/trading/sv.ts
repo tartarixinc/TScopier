@@ -158,6 +158,9 @@ export const tradingSv: TradingPagesBundleTranslations = {
     whatsappListenerUnavailable: 'WhatsApp-lyssnaren körs inte. Starta den och försök igen.',
     whatsappAdd: 'Lägg till',
     whatsappRefresh: 'Uppdatera grupper',
+    whatsappConnectedHint: 'Lägg till grupper nedan för att börja kopiera signaler',
+    whatsappSearchPlaceholder: 'Sök grupper…',
+    whatsappActiveGroups: 'Aktiva grupper',
   },
   popularChannelsPage: {
     title: 'Popular Channels',
