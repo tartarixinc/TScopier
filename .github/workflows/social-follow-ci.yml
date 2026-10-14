@@ -108,7 +108,7 @@ jobs:
 
       - name: Inspect installed Social Follow security metadata
         run: >-
-          supabase db psql --local -c
+          psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -v ON_ERROR_STOP=1 -c
           "select p.proname, pg_get_userbyid(p.proowner) as owner,
           p.prosecdef, p.proconfig
           from pg_proc p
@@ -120,7 +120,7 @@ jobs:
 
       - name: Inspect RLS policies and effective grants
         run: >-
-          supabase db psql --local -c
+          psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -v ON_ERROR_STOP=1 -c
           "select schemaname, tablename, policyname, cmd, roles
           from pg_policies
           where tablename in ('social_profiles', 'social_follow_relationships')
