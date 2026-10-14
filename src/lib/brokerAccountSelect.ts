@@ -51,6 +51,9 @@ export const BROKER_ACCOUNT_CLIENT_SELECT = [
   'last_activated_at',
   'provider',
   'mtapi_status',
+  'ctrader_account_id',
+  'ctrader_environment',
+  'ctrader_status',
   'linked_account_type',
 ].join(',')
 
@@ -64,11 +67,35 @@ export function missingCopySourceColumn(message: string): boolean {
   return /copy_source/i.test(message) && /schema cache|does not exist/i.test(message)
 }
 
-/** Read broker rows, and retry without `copy_source` when that column is not on this database. */
+export function missingCtraderColumns(message: string): boolean {
+  return /ctrader_(account_id|environment|status)/i.test(message)
+    && /schema cache|does not exist|column/i.test(message)
+}
+
+function columnsAfterSchemaError(columns: string, message: string): string | null {
+  const drop = new Set<string>()
+  if (missingCopySourceColumn(message)) drop.add('copy_source')
+  if (missingCtraderColumns(message)) {
+    drop.add('ctrader_account_id')
+    drop.add('ctrader_environment')
+    drop.add('ctrader_status')
+  }
+  if (drop.size === 0) return null
+  const next = columns.split(',').map(column => column.trim()).filter(column => !drop.has(column)).join(',')
+  return next === columns ? null : next
+}
+
+/** Read broker rows, and retry without columns this database has not received yet. */
 export async function selectBrokerAccountColumns<T>(
   run: (columns: string) => PromiseLike<{ data: T; error: { message: string } | null }>,
 ): Promise<{ data: T; error: { message: string } | null }> {
-  const first = await run(BROKER_ACCOUNT_CLIENT_SELECT)
-  if (!first.error || !missingCopySourceColumn(first.error.message)) return first
-  return run(BROKER_ACCOUNT_CLIENT_SELECT_WITHOUT_COPY_SOURCE)
+  let columns = BROKER_ACCOUNT_CLIENT_SELECT
+  let result = await run(columns)
+  for (let attempt = 0; attempt < 3 && result.error; attempt += 1) {
+    const next = columnsAfterSchemaError(columns, result.error.message)
+    if (!next) break
+    columns = next
+    result = await run(columns)
+  }
+  return result
 }

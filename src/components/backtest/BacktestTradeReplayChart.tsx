@@ -45,11 +45,11 @@ function chartTheme(dark: boolean) {
 
 function candleColors(dark: boolean) {
   return {
-    upColor: dark ? '#14b8a6' : '#0d9488',
+    upColor: '#4ade80',
     downColor: dark ? '#ef4444' : '#dc2626',
-    borderUpColor: dark ? '#0f766e' : '#0f766e',
+    borderUpColor: '#22c55e',
     borderDownColor: dark ? '#b91c1c' : '#b91c1c',
-    wickUpColor: dark ? '#14b8a6' : '#0d9488',
+    wickUpColor: '#4ade80',
     wickDownColor: dark ? '#ef4444' : '#dc2626',
   }
 }
@@ -179,7 +179,7 @@ export function BacktestTradeReplayChart({ trade }: BacktestTradeReplayChartProp
     markers.tps.forEach((tp, i) => {
       series.createPriceLine({
         price: tp,
-        color: dark ? '#2dd4bf' : '#0d9488',
+        color: dark ? '#4ade80' : '#4ade80',
         lineWidth: 1,
         lineStyle: LineStyle.Solid,
         axisLabelVisible: true,
@@ -200,7 +200,7 @@ export function BacktestTradeReplayChart({ trade }: BacktestTradeReplayChartProp
       chartMarkers.push({
         time: markers.exit.time as UTCTimestamp,
         position: 'inBar',
-        color: dark ? '#2dd4bf' : '#0d9488',
+        color: dark ? '#4ade80' : '#4ade80',
         shape: 'circle',
         text: bt.replayExit,
       })
@@ -209,7 +209,7 @@ export function BacktestTradeReplayChart({ trade }: BacktestTradeReplayChartProp
       chartMarkers.push({
         time: Math.floor(ev.ts / 1000) as UTCTimestamp,
         position: 'aboveBar',
-        color: dark ? '#2dd4bf' : '#0d9488',
+        color: dark ? '#4ade80' : '#4ade80',
         shape: 'arrowDown',
         text: pl.tp.replace('{n}', String(ev.index)),
       })
@@ -278,11 +278,11 @@ export function BacktestTradeReplayChart({ trade }: BacktestTradeReplayChartProp
   return (
     <div className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50/80 dark:bg-neutral-900/50 p-4 space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-900 dark:text-neutral-50">
           {bt.replayTitle}
         </p>
         {replay ? (
-          <span className="text-[10px] text-neutral-500 tabular-nums">
+          <span className="text-[10px] text-neutral-900 dark:text-neutral-50 tabular-nums">
             {sourceLabel}
             {' · '}
             {formatDurationMs(replay.tradeDurationMs)}
@@ -291,12 +291,12 @@ export function BacktestTradeReplayChart({ trade }: BacktestTradeReplayChartProp
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center h-52 text-neutral-500 gap-2">
+        <div className="flex items-center justify-center h-52 text-neutral-900 dark:text-neutral-50 gap-2">
           <Loader2 className="w-4 h-4 animate-spin" />
           <span className="text-sm">{bt.replayLoading}</span>
         </div>
       ) : error ? (
-        <p className="text-sm text-neutral-500 text-center py-12">{error}</p>
+        <p className="text-sm text-neutral-900 dark:text-neutral-50 text-center py-12">{error}</p>
       ) : (
         <>
           <div ref={containerRef} className="w-full h-[260px] rounded-lg overflow-hidden" />
@@ -305,7 +305,7 @@ export function BacktestTradeReplayChart({ trade }: BacktestTradeReplayChartProp
             <button
               type="button"
               onClick={togglePlay}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-750"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-50 hover:bg-neutral-50 dark:hover:bg-neutral-750"
             >
               {playing ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
               {playing ? bt.replayPause : bt.replayPlay}
@@ -320,8 +320,8 @@ export function BacktestTradeReplayChart({ trade }: BacktestTradeReplayChartProp
                   className={clsx(
                     'px-2 py-1 rounded text-[10px] font-medium tabular-nums border',
                     speedIdx === i
-                      ? 'bg-teal-50 border-teal-200 text-teal-700 dark:bg-teal-950/40 dark:border-teal-800 dark:text-teal-300'
-                      : 'bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-500',
+                      ? 'bg-teal-50 border-teal-200 text-green-500 dark:bg-teal-950/40 dark:border-teal-800 dark:text-teal-300'
+                      : 'bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-50',
                   )}
                 >
                   {s}x
@@ -339,14 +339,14 @@ export function BacktestTradeReplayChart({ trade }: BacktestTradeReplayChartProp
                   stopPlay()
                   setVisibleCount(Number(e.target.value))
                 }}
-                className="flex-1 min-w-[80px] accent-teal-600"
+                className="flex-1 min-w-[80px] accent-green-400"
                 aria-label={bt.replayScrub}
               />
             ) : null}
           </div>
 
           {replay?.markers.exit ? (
-            <p className="text-[10px] text-neutral-500 tabular-nums">
+            <p className="text-[10px] text-neutral-900 dark:text-neutral-50 tabular-nums">
               {bt.replayExit}: {formatEntryPrice(replay.markers.exit.price)}
             </p>
           ) : null}

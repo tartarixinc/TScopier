@@ -31,7 +31,7 @@ function isAuthThrottleMessage(message: string | null | undefined): boolean {
  * At most one refreshSession at a time; cooldown after each attempt so a burst of
  * edge 401/503s cannot flood `/auth/v1/token?grant_type=refresh_token`.
  */
-async function refreshAuthTokenSingleFlight(): Promise<string | null> {
+export async function refreshAuthTokenSingleFlight(): Promise<string | null> {
   if (refreshInFlight) return refreshInFlight
 
   const now = Date.now()
@@ -132,6 +132,14 @@ interface CallOpts<T> {
   timeoutMs?: number
   /** Edge function name — defaults to fxsocket-broker. Use 'mtapi-broker' for MTAPI accounts. */
   edgeFn?: string
+}
+
+export type BrokerEdgeProvider = 'fxsocket' | 'mtapi' | 'ctrader'
+
+function brokerEdgeFn(provider?: string): string | undefined {
+  if (provider === 'mtapi') return 'mtapi-broker'
+  if (provider === 'ctrader') return 'ctrader-broker'
+  return undefined
 }
 
 function fxsocketFetchError(e: unknown, fallback: string): Error {
@@ -285,6 +293,7 @@ export interface AccountSummary {
   profit?: number
   credit?: number
   type?: string
+  open_trades?: number
 }
 
 export interface BrokerSearchResult {
@@ -332,7 +341,7 @@ export const FXSOCKET_V1_DOCS_URL = 'https://api.fxsocket.com/v1/docs#/'
 
 function fetchBrokerStatusCall(
   accountId: string,
-  provider?: 'fxsocket' | 'mtapi',
+  provider?: BrokerEdgeProvider,
 ): Promise<{
   account: BrokerAccount
   healthy: boolean
@@ -340,7 +349,7 @@ function fetchBrokerStatusCall(
 }> {
   return call({
     body: { action: 'broker_status', account_id: accountId },
-    edgeFn: provider === 'mtapi' ? 'mtapi-broker' : undefined,
+    edgeFn: brokerEdgeFn(provider),
     timeoutMs: 15_000,
     expect: (b) => {
       const row = b as {
@@ -393,7 +402,7 @@ export const fxsocketBroker = {
     server?: string
     platform?: 'MT4' | 'MT5'
     fxsocketAccountId?: string
-    provider?: 'fxsocket' | 'mtapi'
+    provider?: BrokerEdgeProvider
     timeoutMs?: number
   }): Promise<{ account: BrokerAccount; pending?: boolean }> {
     return call({
@@ -406,7 +415,7 @@ export const fxsocketBroker = {
         platform: args.platform ?? 'MT5',
         fxsocket_account_id: args.fxsocketAccountId,
       },
-      edgeFn: args.provider === 'mtapi' ? 'mtapi-broker' : undefined,
+      edgeFn: brokerEdgeFn(args.provider),
       timeoutMs: args.timeoutMs ?? FXSOCKET_CONNECT_TIMEOUT_MS,
       expect: (b) => {
         const row = b as { account?: BrokerAccount; pending?: boolean }
@@ -423,7 +432,7 @@ export const fxsocketBroker = {
     opts?: {
       maxMs?: number
       intervalMs?: number
-      provider?: 'fxsocket' | 'mtapi'
+      provider?: BrokerEdgeProvider
       onProgress?: (result: { account: BrokerAccount; summary?: AccountSummary; pending?: boolean }) => void
     },
   ): Promise<{ account: BrokerAccount; summary?: AccountSummary }> {
@@ -438,7 +447,7 @@ export const fxsocketBroker = {
         try {
           const result = await call({
             body: { action: 'refresh_summary', account_id: accountId },
-            edgeFn: opts?.provider === 'mtapi' ? 'mtapi-broker' : undefined,
+            edgeFn: brokerEdgeFn(opts?.provider),
             expect: (b) => {
               const row = b as { account?: BrokerAccount; summary?: AccountSummary; pending?: boolean }
               const account = row.account
@@ -490,7 +499,7 @@ export const fxsocketBroker = {
     accountId: string
     password: string
     server?: string
-    provider?: 'fxsocket' | 'mtapi'
+    provider?: BrokerEdgeProvider
     timeoutMs?: number
   }): Promise<{ account: BrokerAccount; pending?: boolean }> {
     return call({
@@ -500,7 +509,7 @@ export const fxsocketBroker = {
         password: args.password,
         server: args.server,
       },
-      edgeFn: args.provider === 'mtapi' ? 'mtapi-broker' : undefined,
+      edgeFn: brokerEdgeFn(args.provider),
       timeoutMs: args.timeoutMs ?? FXSOCKET_CONNECT_TIMEOUT_MS,
       expect: (b) => {
         const row = b as { account?: BrokerAccount; pending?: boolean }
@@ -511,22 +520,22 @@ export const fxsocketBroker = {
     })
   },
 
-  delete(accountId: string, provider?: 'fxsocket' | 'mtapi'): Promise<void> {
+  delete(accountId: string, provider?: BrokerEdgeProvider): Promise<void> {
     return call({
       body: { action: 'delete', account_id: accountId },
-      edgeFn: provider === 'mtapi' ? 'mtapi-broker' : undefined,
+      edgeFn: brokerEdgeFn(provider),
       expect: () => undefined,
     })
   },
 
-  refreshSummary(accountId: string, provider?: 'fxsocket' | 'mtapi'): Promise<{
+  refreshSummary(accountId: string, provider?: BrokerEdgeProvider): Promise<{
     account: BrokerAccount
     summary?: AccountSummary
     pending?: boolean
   }> {
     return call({
       body: { action: 'refresh_summary', account_id: accountId },
-      edgeFn: provider === 'mtapi' ? 'mtapi-broker' : undefined,
+      edgeFn: brokerEdgeFn(provider),
       expect: (b) => {
         const row = b as { account?: BrokerAccount; summary?: AccountSummary; pending?: boolean }
         const account = row.account
@@ -542,9 +551,10 @@ export const fxsocketBroker = {
   fetchBrokerStatus: fetchBrokerStatusCall,
 
   /** Lightweight AccountSummary poll — no baseline/history work (for live Open P/L). */
-  liveSnapshot(accountId: string): Promise<{ summary: AccountSummary }> {
+  liveSnapshot(accountId: string, provider?: BrokerEdgeProvider): Promise<{ summary: AccountSummary }> {
     return call({
       body: { action: 'live_snapshot', account_id: accountId },
+      edgeFn: brokerEdgeFn(provider),
       timeoutMs: 12_000,
       expect: (b) => {
         const row = b as { summary?: AccountSummary }
@@ -568,10 +578,10 @@ export const fxsocketBroker = {
     })
   },
 
-  openedOrders(accountId: string, provider?: 'fxsocket' | 'mtapi'): Promise<unknown[]> {
+  openedOrders(accountId: string, provider?: BrokerEdgeProvider): Promise<unknown[]> {
     return call({
       body: { action: 'opened_orders', account_id: accountId },
-      edgeFn: provider === 'mtapi' ? 'mtapi-broker' : undefined,
+      edgeFn: brokerEdgeFn(provider),
       expect: (b) => {
         const orders = (b as { orders?: unknown[] }).orders
         return Array.isArray(orders) ? orders : []
@@ -582,11 +592,11 @@ export const fxsocketBroker = {
   quote(
     accountId: string,
     symbol = 'EURUSD',
-    provider?: 'fxsocket' | 'mtapi',
+    provider?: BrokerEdgeProvider,
   ): Promise<Record<string, unknown>> {
     return call({
       body: { action: 'quote', account_id: accountId, symbol },
-      edgeFn: provider === 'mtapi' ? 'mtapi-broker' : undefined,
+      edgeFn: brokerEdgeFn(provider),
       timeoutMs: 15_000,
       expect: (b) => {
         const quote = (b as { quote?: Record<string, unknown> }).quote
@@ -609,7 +619,7 @@ export const fxsocketBroker = {
     accountId: string
     from: string
     to: string
-    provider?: 'fxsocket' | 'mtapi'
+    provider?: BrokerEdgeProvider
   }): Promise<unknown[]> {
     return call({
       body: {
@@ -618,7 +628,7 @@ export const fxsocketBroker = {
         history_from: args.from,
         history_to: args.to,
       },
-      edgeFn: args.provider === 'mtapi' ? 'mtapi-broker' : undefined,
+      edgeFn: brokerEdgeFn(args.provider),
       timeoutMs: FXSOCKET_EDGE_TIMEOUT_MS,
       expect: (b) => {
         const orders = (b as { orders?: unknown[] }).orders
@@ -631,7 +641,7 @@ export const fxsocketBroker = {
     accountId: string
     from: string
     to: string
-    provider?: 'fxsocket' | 'mtapi'
+    provider?: BrokerEdgeProvider
   }): Promise<unknown[]> {
     return call({
       body: {
@@ -640,7 +650,7 @@ export const fxsocketBroker = {
         history_from: args.from,
         history_to: args.to,
       },
-      edgeFn: args.provider === 'mtapi' ? 'mtapi-broker' : undefined,
+      edgeFn: brokerEdgeFn(args.provider),
       timeoutMs: FXSOCKET_EDGE_TIMEOUT_MS,
       expect: (b) => {
         const positions = (b as { positions?: unknown[] }).positions
@@ -657,7 +667,7 @@ export const fxsocketBroker = {
     historyProfile?: 'dashboard' | 'trades'
     limit?: number
     includeBalanceCashflow?: boolean
-    provider?: 'fxsocket' | 'mtapi'
+    provider?: BrokerEdgeProvider
   } = {}): Promise<{ trades: MtTrade[] }> {
     // ?demo=broker-down simulates a vendor outage at the single choke point
     // every live trade read goes through: the read fails exactly as it would
@@ -677,7 +687,7 @@ export const fxsocketBroker = {
         ...(args.limit != null && args.limit > 0 ? { limit: args.limit } : {}),
         ...(args.includeBalanceCashflow === false ? { include_balance_cashflow: false } : {}),
       },
-      edgeFn: args.provider === 'mtapi' ? 'mtapi-broker' : undefined,
+      edgeFn: brokerEdgeFn(args.provider),
       timeoutMs: FXSOCKET_TRADES_TIMEOUT_MS,
       expect: (b) => b as { trades: MtTrade[] },
     })
@@ -705,7 +715,7 @@ export type TradesFetchArgs = {
 }
 
 function isWrongProviderError(message: string): boolean {
-  return /not an MTAPI account|no FxSocket account linked/i.test(message)
+  return /not an MTAPI account|no FxSocket account linked|not a cTrader account/i.test(message)
 }
 
 /**
@@ -717,17 +727,22 @@ function isWrongProviderError(message: string): boolean {
  */
 export async function fetchTradesAcrossProviders(
   args: TradesFetchArgs & {
-    providers?: Array<'fxsocket' | 'mtapi'>
+    providers?: Array<BrokerEdgeProvider>
     accounts?: ReadonlyArray<{ provider?: string | null; id?: string }>
   } = {},
 ): Promise<{ trades: MtTrade[] }> {
   let providers = args.providers
   if (!providers && args.accounts) {
-    const set = new Set(args.accounts.map(a => resolveProvider(a)))
+    const set = new Set(
+      args.accounts
+        .map(account => resolveProvider(account))
+        .filter((provider): provider is BrokerEdgeProvider =>
+          provider === 'fxsocket' || provider === 'mtapi' || provider === 'ctrader'),
+    )
     // Anchors without a provider field resolve to fxsocket — if nothing was
     // explicitly marked, still query both so MTAPI-only data is not dropped.
     const anyExplicit = args.accounts.some(
-      a => a.provider === 'mtapi' || a.provider === 'fxsocket',
+      a => a.provider === 'mtapi' || a.provider === 'fxsocket' || a.provider === 'ctrader',
     )
     providers = anyExplicit && set.size > 0 ? [...set] : ['fxsocket', 'mtapi']
   }

@@ -32,19 +32,19 @@ export function chartThemeColors(theme: Theme): ChartThemeColors {
     return {
       grid: '#262626',
       axis: '#404040',
-      tick: '#a3a3a3',
+      tick: '#f8fafc',
       tooltipBg: '#0f172a',
       tooltipBorder: '#334155',
       tooltipText: '#f1f5f9',
       cursorFill: 'rgba(51, 65, 85, 0.55)',
       tooltipShadow: '0 4px 12px rgba(0, 0, 0, 0.45)',
       barActive: {
-        profit: '#2dd4bf',
+        profit: '#4ade80',
         loss: LOSS_CHART_COLOR,
         volume: '#94a3b8',
       },
       signedPnl: {
-        profit: '#0d9488',
+        profit: '#4ade80',
         loss: LOSS_CHART_COLOR,
       },
     }
@@ -52,19 +52,19 @@ export function chartThemeColors(theme: Theme): ChartThemeColors {
   return {
     grid: '#f5f5f5',
     axis: '#e5e5e5',
-    tick: '#737373',
+    tick: '#0f172a',
     tooltipBg: '#ffffff',
     tooltipBorder: '#e5e5e5',
     tooltipText: '#171717',
     cursorFill: 'rgba(241, 245, 249, 0.85)',
     tooltipShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
     barActive: {
-      profit: '#14b8a6',
+      profit: '#4ade80',
       loss: LOSS_CHART_COLOR,
       volume: '#737373',
     },
     signedPnl: {
-      profit: '#0d9488',
+      profit: '#4ade80',
       loss: LOSS_CHART_COLOR,
     },
   }

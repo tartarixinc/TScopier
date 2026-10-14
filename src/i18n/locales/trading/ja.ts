@@ -155,8 +155,12 @@ export const tradingJa: TradingPagesBundleTranslations = {
     whatsappDisconnect: '切断',
     whatsappQrHelp: 'WhatsAppを開き、リンク済みデバイスでこのコードをスキャンしてください。',
     whatsappListenerMissing: 'WhatsAppリスナーはまだ設定されていません。',
+    whatsappListenerUnavailable: 'WhatsAppリスナーが起動していません。起動してからもう一度お試しください。',
     whatsappAdd: '追加',
     whatsappRefresh: 'グループを更新',
+    whatsappConnectedHint: '下のグループを追加してシグナルのコピーを開始',
+    whatsappSearchPlaceholder: 'グループを検索…',
+    whatsappActiveGroups: 'アクティブなグループ',
   },
   popularChannelsPage: {
     title: 'Popular Channels',

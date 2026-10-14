@@ -62,16 +62,16 @@ export function ForgotPasswordPage() {
         <AuthBackHome />
         <div className="text-center">
           <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-teal-50 dark:bg-teal-900/20">
-            <Mail className="h-8 w-8 text-teal-600 dark:text-teal-400" />
+            <Mail className="h-8 w-8 text-green-400 dark:text-green-400" />
           </div>
           <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-3xl">
             {t.sentHeading}
           </h1>
-          <p className="mt-3 text-sm text-neutral-500 dark:text-neutral-400">{subtitle}</p>
-          <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">{t.sentHint}</p>
+          <p className="mt-3 text-sm text-neutral-900 dark:text-neutral-50">{subtitle}</p>
+          <p className="mt-2 text-sm text-neutral-900 dark:text-neutral-50">{t.sentHint}</p>
           <Link
             to="/login"
-            className="mt-8 inline-block text-sm font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
+            className="mt-8 inline-block text-sm font-medium text-green-400 hover:text-green-500 dark:text-green-400 dark:hover:text-teal-300"
           >
             {t.backToLogin}
           </Link>
@@ -86,7 +86,7 @@ export function ForgotPasswordPage() {
       <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-3xl">
         {t.heading}
       </h1>
-      <p className="mt-2 mb-8 text-sm text-neutral-500 dark:text-neutral-400">{t.subtitle}</p>
+      <p className="mt-2 mb-8 text-sm text-neutral-900 dark:text-neutral-50">{t.subtitle}</p>
 
       {error ? <Alert variant="error" className="mb-5 py-2.5">{error}</Alert> : null}
 
@@ -121,10 +121,10 @@ export function ForgotPasswordPage() {
         </Button>
       </form>
 
-      <p className="mt-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
+      <p className="mt-6 text-center text-sm text-neutral-900 dark:text-neutral-50">
         <Link
           to="/login"
-          className="font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
+          className="font-medium text-green-400 hover:text-green-500 dark:text-green-400 dark:hover:text-teal-300"
         >
           {t.backToLogin}
         </Link>

@@ -155,8 +155,12 @@ export const tradingAr: TradingPagesBundleTranslations = {
     whatsappDisconnect: 'قطع الاتصال',
     whatsappQrHelp: 'افتح واتساب، اذهب إلى الأجهزة المرتبطة، وامسح هذا الرمز.',
     whatsappListenerMissing: 'مستمع WhatsApp غير مهيأ بعد.',
+    whatsappListenerUnavailable: 'مستمع WhatsApp غير قيد التشغيل. شغّله ثم أعد المحاولة.',
     whatsappAdd: 'إضافة',
     whatsappRefresh: 'تحديث المجموعات',
+    whatsappConnectedHint: 'أضف المجموعات أدناه لبدء نسخ الإشارات',
+    whatsappSearchPlaceholder: 'البحث في المجموعات…',
+    whatsappActiveGroups: 'المجموعات النشطة',
   },
   popularChannelsPage: {
     title: 'Popular Channels',

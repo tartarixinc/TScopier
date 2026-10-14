@@ -102,7 +102,7 @@ export function BrokerConfigurationsModal({
           </h2>
           <button
             type="button"
-            className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+            className="rounded-lg p-2 text-neutral-900 hover:bg-neutral-100 dark:text-neutral-50 dark:hover:bg-neutral-800"
             aria-label={modalCopy.close}
             onClick={onClose}
           >
@@ -118,7 +118,7 @@ export function BrokerConfigurationsModal({
           ) : error ? (
             <p className="text-sm text-error-600 dark:text-error-400">{copy.loadError}</p>
           ) : channelIds.length === 0 ? (
-            <p className="text-sm text-neutral-500 dark:text-neutral-400">{copy.noChannelsLinked}</p>
+            <p className="text-sm text-neutral-900 dark:text-neutral-50">{copy.noChannelsLinked}</p>
           ) : (
             <div className="space-y-6">
               {channelIds.map(channelId => {
@@ -146,7 +146,7 @@ export function BrokerConfigurationsModal({
         <div className="flex justify-end gap-2 border-t border-neutral-100 px-5 py-4 dark:border-neutral-800">
           <button
             type="button"
-            className="rounded-lg px-4 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+            className="rounded-lg px-4 py-2 text-sm font-medium text-neutral-900 hover:bg-neutral-100 dark:text-neutral-50 dark:hover:bg-neutral-800"
             onClick={onClose}
           >
             {modalCopy.close}
@@ -154,7 +154,7 @@ export function BrokerConfigurationsModal({
           {!loading && !error && channelIds.length > 0 ? (
             <button
               type="button"
-              className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
+              className="rounded-lg bg-green-400 px-4 py-2 text-sm font-medium text-neutral-950 hover:bg-green-500"
               onClick={onEdit}
             >
               {copy.edit}
@@ -172,7 +172,7 @@ function ConfigurationSections({ sections }: { sections: ConfigurationDetailSect
     <div className="space-y-4">
       {sections.map(section => (
         <section key={section.id}>
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
             {section.title}
           </h4>
           <dl className="mt-1">
@@ -181,7 +181,7 @@ function ConfigurationSections({ sections }: { sections: ConfigurationDetailSect
                 key={`${section.id}-${row.label}`}
                 className="flex items-baseline justify-between gap-4 border-b border-neutral-100 py-1.5 last:border-b-0 dark:border-neutral-800"
               >
-                <dt className="text-sm text-neutral-500 dark:text-neutral-400">{row.label}</dt>
+                <dt className="text-sm text-neutral-900 dark:text-neutral-50">{row.label}</dt>
                 <dd className="text-end text-sm font-medium text-neutral-900 dark:text-neutral-50">{row.value}</dd>
               </div>
             ))}

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { createPortal } from 'react-dom'
 import { ChevronDown, ChevronUp, OctagonAlert, Pause, Play, Plus, Settings, Trash2, X } from 'lucide-react'
 import clsx from 'clsx'
-import { CopyRiskEditor } from '../../components/configure/CopyRiskEditor'
+import { SlaveConfigureModal } from '../../components/configure/SlaveConfigureModal'
 import { useAuth } from '../../context/AuthContext'
 import { useAddTradingAccount } from '../../context/AddTradingAccountContext'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
@@ -117,7 +117,7 @@ function AccountChooser({
           </h2>
           <button
             type="button"
-            className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+            className="rounded-lg p-2 text-neutral-900 hover:bg-neutral-100 dark:text-neutral-50 dark:hover:bg-neutral-800"
             aria-label={closeLabel}
             onClick={onClose}
           >
@@ -126,7 +126,7 @@ function AccountChooser({
         </div>
         <div className="overflow-y-auto px-5 py-4">
           {brokers.length === 0 ? (
-            <p className="text-sm text-neutral-500 dark:text-neutral-400">{emptyLabel}</p>
+            <p className="text-sm text-neutral-900 dark:text-neutral-50">{emptyLabel}</p>
           ) : (
             <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
               {brokers.map(broker => (
@@ -142,7 +142,7 @@ function AccountChooser({
                         {getBrokerDisplayLabel(broker)}
                       </span>
                       {broker.account_login?.trim() ? (
-                        <span className="block truncate text-xs text-neutral-500 dark:text-neutral-400">
+                        <span className="block truncate text-xs text-neutral-900 dark:text-neutral-50">
                           {loginLabel} {broker.account_login.trim()}
                         </span>
                       ) : null}
@@ -465,14 +465,14 @@ export function MirrorTradingPage() {
       {error ? <Alert variant="error">{error}</Alert> : null}
       {groups.length === 0 ? (
         <Card>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400">{copy.mastersEmpty}</p>
+          <p className="text-sm text-neutral-900 dark:text-neutral-50">{copy.mastersEmpty}</p>
         </Card>
       ) : (
         <Card padding="none" className="overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[960px] text-sm">
               <thead>
-                <tr className="border-b border-neutral-100 text-left text-xs font-medium text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
+                <tr className="border-b border-neutral-100 text-left text-xs font-medium text-neutral-900 dark:border-neutral-800 dark:text-neutral-50">
                   <th className="px-4 py-3">{copy.colAccount}</th>
                   <th className="px-3 py-3">{copy.colCopyFrom}</th>
                   <th className="px-3 py-3">{copy.colRiskType}</th>
@@ -528,11 +528,11 @@ export function MirrorTradingPage() {
               })}
             </table>
           </div>
-          <div className="flex flex-col gap-3 border-t border-neutral-100 px-4 py-3 text-xs text-neutral-500 sm:flex-row sm:items-center sm:justify-between dark:border-neutral-800 dark:text-neutral-400">
+          <div className="flex flex-col gap-3 border-t border-neutral-100 px-4 py-3 text-xs text-neutral-900 sm:flex-row sm:items-center sm:justify-between dark:border-neutral-800 dark:text-neutral-50">
             <div className="flex items-center gap-2">
               <span>{copy.resultPerPage}</span>
               <select
-                className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+                className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50"
                 value={pageSize}
                 onChange={event => {
                   setPageSize(Number(event.target.value))
@@ -551,7 +551,7 @@ export function MirrorTradingPage() {
               <Button type="button" variant="secondary" size="sm" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>
                 {copy.back}
               </Button>
-              <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg bg-teal-600 px-2 font-medium text-white">
+              <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg bg-green-400 px-2 font-medium text-neutral-950">
                 {currentPage}
               </span>
               <Button type="button" variant="secondary" size="sm" disabled={currentPage >= totalPages} onClick={() => setPage(currentPage + 1)}>
@@ -607,15 +607,16 @@ export function MirrorTradingPage() {
         />
       ) : null}
       {configuringSlave && configuringLink ? (
-        <SlaveConfigureDialog
+        <SlaveConfigureModal
           slave={configuringSlave}
           source={configuringSource}
           settings={copyRiskForEditor(configuringLink.manual_settings)}
           labels={t.copyRisk}
-          copyFromLabel={t.configurationsPage.copyFrom}
-          closeLabel={closeLabel}
-          title={copy.configure}
+          setup={copy.setup}
+          loginLabel={copy.login}
+          balanceLabel={copy.balance}
           saveError={configSaveError}
+          closeLabel={closeLabel}
           onChange={next => patchSlaveSettings(configuringSlave.id, manualSettingsFromCopyRisk(next))}
           onClose={() => setConfiguringSlaveId(null)}
         />
@@ -677,7 +678,7 @@ function RowAction({
         disabled && 'cursor-not-allowed opacity-50',
         danger
           ? 'border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:text-red-400 dark:hover:bg-red-950/40'
-          : 'border-neutral-200 text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-900',
+          : 'border-neutral-200 text-neutral-900 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-50 dark:hover:bg-neutral-900',
       )}
     >
       {children}
@@ -722,9 +723,9 @@ function MasterRow({
           </div>
         </div>
       </td>
-      <td className="px-3 py-3 text-neutral-400">—</td>
-      <td className="px-3 py-3 text-neutral-400">—</td>
-      <td className="px-3 py-3 text-neutral-400">—</td>
+      <td className="px-3 py-3 text-neutral-900 dark:text-neutral-50">—</td>
+      <td className="px-3 py-3 text-neutral-900 dark:text-neutral-50">—</td>
+      <td className="px-3 py-3 text-neutral-900 dark:text-neutral-50">—</td>
       <td className="px-3 py-3">
         <Toggle checked={active} onChange={onActiveChange} />
       </td>
@@ -799,17 +800,17 @@ function SlaveRow({
       <td className="border-y border-dashed border-amber-300/80 bg-amber-50/70 px-3 py-3 dark:border-amber-700/50 dark:bg-amber-950/20">
         {source ? (
           <span className="inline-flex items-center gap-1.5">
-            <span className="text-neutral-800 dark:text-neutral-100">{sourceLogin}</span>
+            <span className="text-neutral-900 dark:text-neutral-100">{sourceLogin}</span>
             <Badge variant="primary" size="sm">{source.platform || 'MT5'}</Badge>
           </span>
         ) : (
-          <span className="text-neutral-400">—</span>
+          <span className="text-neutral-900 dark:text-neutral-50">—</span>
         )}
       </td>
-      <td className="border-y border-dashed border-amber-300/80 bg-amber-50/70 px-3 py-3 text-neutral-700 dark:border-amber-700/50 dark:bg-amber-950/20 dark:text-neutral-200">
+      <td className="border-y border-dashed border-amber-300/80 bg-amber-50/70 px-3 py-3 text-neutral-900 dark:border-amber-700/50 dark:bg-amber-950/20 dark:text-neutral-50">
         {risk.type}
       </td>
-      <td className="border-y border-dashed border-amber-300/80 bg-amber-50/70 px-3 py-3 text-neutral-700 dark:border-amber-700/50 dark:bg-amber-950/20 dark:text-neutral-200">
+      <td className="border-y border-dashed border-amber-300/80 bg-amber-50/70 px-3 py-3 text-neutral-900 dark:border-amber-700/50 dark:bg-amber-950/20 dark:text-neutral-50">
         {risk.setting}
       </td>
       <td className="border-y border-dashed border-amber-300/80 bg-amber-50/70 px-3 py-3 dark:border-amber-700/50 dark:bg-amber-950/20">
@@ -839,90 +840,3 @@ function SlaveRow({
   )
 }
 
-function SlaveConfigureDialog({
-  slave,
-  source,
-  settings,
-  labels,
-  copyFromLabel,
-  closeLabel,
-  title,
-  saveError,
-  onChange,
-  onClose,
-}: {
-  slave: BrokerAccount
-  source: BrokerAccount | null
-  settings: ReturnType<typeof copyRiskForEditor>
-  labels: CopyRiskTranslations
-  copyFromLabel: string
-  closeLabel: string
-  title: string
-  saveError: string | null
-  onChange: (next: ReturnType<typeof copyRiskForEditor>) => void
-  onClose: () => void
-}) {
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-6"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="mirror-slave-configure-title"
-    >
-      <button type="button" className="absolute inset-0 bg-neutral-950/55" aria-label={closeLabel} onClick={onClose} />
-      <div className="relative flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl border border-neutral-200/65 bg-white shadow-2xl dark:border-neutral-800/55 dark:bg-neutral-950 sm:max-w-2xl sm:rounded-2xl">
-        <div className="flex items-start justify-between gap-3 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
-          <div className="min-w-0">
-            <h2 id="mirror-slave-configure-title" className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
-              {title}
-            </h2>
-            <p className="mt-2 flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-300">
-              <AccountMark platform={slave.platform} size="sm" />
-              <span className="truncate">{accountTitle(slave)}</span>
-            </p>
-            {source ? (
-              <p className="mt-1 truncate text-xs text-neutral-500 dark:text-neutral-400">
-                {copyFromLabel} {accountTitle(source)}
-              </p>
-            ) : null}
-          </div>
-          <button
-            type="button"
-            className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
-            aria-label={closeLabel}
-            onClick={onClose}
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="overflow-y-auto px-5 py-4">
-          <CopyRiskEditor
-            settings={settings}
-            labels={labels}
-            saveError={saveError}
-            currency={slave.last_currency}
-            onChange={onChange}
-          />
-        </div>
-        <div className="flex justify-end border-t border-neutral-100 px-5 py-4 dark:border-neutral-800">
-          <button
-            type="button"
-            className="rounded-lg px-4 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
-            onClick={onClose}
-          >
-            {closeLabel}
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  )
-}

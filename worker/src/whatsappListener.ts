@@ -18,7 +18,7 @@ type LiveSession = {
   sock: BaileysSocket | null
   qr: string | null
   status: SessionStatus
-  groups: Array<{ group_jid: string; name: string }>
+  groups: Array<{ group_jid: string; name: string; participants?: number }>
   saveCreds: () => Promise<void>
   retireAuth: () => void
   logoutRequested: boolean
@@ -30,7 +30,7 @@ type BaileysSocket = {
   ev: {
     on: (event: string, handler: (payload: never) => void) => void
   }
-  groupFetchAllParticipating: () => Promise<Record<string, { id?: string; subject?: string }>>
+  groupFetchAllParticipating: () => Promise<Record<string, { id?: string; subject?: string; participants?: unknown[] }>>
   logout: () => Promise<void>
   end: (error: Error | undefined) => void
 }
@@ -39,6 +39,16 @@ type AuthBucket = Record<string, Record<string, unknown>>
 
 const PORT = Math.max(1, Number(process.env.WHATSAPP_LISTENER_PORT ?? 8091))
 const sessions = new Map<string, LiveSession>()
+
+// Baileys rejects socket queries from its own timers. Those must not exit this process,
+// or the browser can no longer reach the listener.
+process.on('unhandledRejection', reason => {
+  const detail = reason instanceof Error ? reason.stack ?? reason.message : String(reason)
+  console.warn(`[whatsapp] kept running after an unhandled rejection:\n${detail}`)
+})
+process.on('uncaughtException', error => {
+  console.warn(`[whatsapp] kept running after an uncaught exception:\n${error.stack ?? error.message}`)
+})
 
 function requireEnv(name: string): string {
   const value = String(process.env[name] ?? '').trim()
@@ -343,12 +353,16 @@ async function forgetAuth(supabase: SupabaseClient, userId: string): Promise<voi
   await supabase.from('whatsapp_auth').delete().eq('user_id', userId)
 }
 
-async function listGroups(live: LiveSession): Promise<Array<{ group_jid: string; name: string }>> {
+async function listGroups(live: LiveSession): Promise<LiveSession['groups']> {
   if (!live.sock || live.status !== 'connected') return live.groups
   const participating = await live.sock.groupFetchAllParticipating()
   live.groups = Object.values(participating)
     .filter(group => isWhatsAppGroupJid(group.id))
-    .map(group => ({ group_jid: String(group.id), name: group.subject?.trim() || 'WhatsApp group' }))
+    .map(group => ({
+      group_jid: String(group.id),
+      name: group.subject?.trim() || 'WhatsApp group',
+      participants: Array.isArray(group.participants) ? group.participants.length : 0,
+    }))
     .sort((a, b) => a.name.localeCompare(b.name))
   return live.groups
 }

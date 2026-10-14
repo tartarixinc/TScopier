@@ -1,7 +1,10 @@
-export type TradingPlatform = 'MT4' | 'MT5'
+export type TradingPlatform = 'MT4' | 'MT5' | 'cTrader'
 
 export function normalizeTradingPlatform(value: string | undefined | null): TradingPlatform {
-  return String(value ?? '').trim().toUpperCase() === 'MT4' ? 'MT4' : 'MT5'
+  const normalized = String(value ?? '').trim().toLowerCase()
+  if (normalized === 'mt4') return 'MT4'
+  if (normalized === 'ctrader') return 'cTrader'
+  return 'MT5'
 }
 
 /** Best-effort hint from broker server name (may be wrong for ambiguous names). */

@@ -87,9 +87,9 @@ export const TradeActivityCard = memo(function TradeActivityCard({
   if (variant === 'compact') {
     return (
       <div className="px-5 py-3.5 transition-colors hover:bg-[#F7F8FA] dark:hover:bg-white/[0.03]">
-        <p className="text-sm leading-5 text-neutral-800 dark:text-neutral-100">{activity.message}</p>
+        <p className="text-base font-regular leading-6 text-neutral-900 dark:text-neutral-100">{activity.message}</p>
         <div className="mt-1 flex items-center gap-2">
-          <p className="text-[11px] tabular-nums text-neutral-400">{timeLabel}</p>
+          <p className="text-xs font-regular text-neutral-900 dark:text-neutral-50">{timeLabel}</p>
           <ActivityRouteTag activity={activity} />
         </div>
       </div>
@@ -112,7 +112,7 @@ export const TradeActivityCard = memo(function TradeActivityCard({
               {statusLabel(activity.status, statusLabels)}
             </Badge>
           </div>
-          <p className="text-sm text-neutral-700 dark:text-neutral-200 leading-relaxed">{activity.message}</p>
+          <p className="text-sm text-neutral-900 dark:text-neutral-50 leading-relaxed">{activity.message}</p>
         </div>
         {activity.retryEligible && onRetry ? (
           <Button
@@ -132,18 +132,18 @@ export const TradeActivityCard = memo(function TradeActivityCard({
           </Button>
         ) : null}
       </div>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-400">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-900 dark:text-neutral-50">
         <span>{timeLabel}</span>
         <ActivityRouteTag activity={activity} />
         {activity.symbol ? (
           <>
-            <span aria-hidden className="text-neutral-300 dark:text-neutral-600">·</span>
-            <span className="font-medium text-neutral-500 dark:text-neutral-400">{activity.symbol}</span>
+            <span aria-hidden className="text-neutral-900 dark:text-neutral-50">·</span>
+            <span className="font-medium text-neutral-900 dark:text-neutral-50">{activity.symbol}</span>
           </>
         ) : null}
         {activity.channelName ? (
           <>
-            <span aria-hidden className="text-neutral-300 dark:text-neutral-600">·</span>
+            <span aria-hidden className="text-neutral-900 dark:text-neutral-50">·</span>
             <span className="truncate max-w-[14rem]" title={activity.channelName}>{activity.channelName}</span>
           </>
         ) : null}

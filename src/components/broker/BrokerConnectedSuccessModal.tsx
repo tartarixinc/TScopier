@@ -88,7 +88,7 @@ export function BrokerConnectedSuccessModal({
       >
         <div className="px-5 pt-5 pb-4">
           <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-400">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-teal-50 dark:bg-teal-950/40 text-green-400 dark:text-green-400">
               <CheckCircle2 className="h-5 w-5" aria-hidden />
             </div>
             <div className="min-w-0 flex-1">
@@ -98,7 +98,7 @@ export function BrokerConnectedSuccessModal({
               >
                 {modalTitle}
               </h2>
-              <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed">
+              <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-50 leading-relaxed">
                 {modalBody}
               </p>
             </div>
@@ -106,7 +106,7 @@ export function BrokerConnectedSuccessModal({
               type="button"
               onClick={onDismiss}
               aria-label={copy.dismiss}
-              className="shrink-0 rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+              className="shrink-0 rounded-lg p-2 text-neutral-900 dark:text-neutral-50 transition-colors hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-neutral-50"
             >
               <X className="h-4 w-4" />
             </button>
@@ -120,11 +120,11 @@ export function BrokerConnectedSuccessModal({
             )}
             <div className="min-w-0 flex-1 text-sm">
               <p className="truncate font-medium text-neutral-900 dark:text-neutral-50">{label}</p>
-              <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
+              <p className="mt-0.5 text-xs text-neutral-900 dark:text-neutral-50">
                 {copy.detailLogin}: {broker.account_login || '—'}
                 {broker.broker_server ? (
                   <>
-                    <span className="mx-1.5 text-neutral-300 dark:text-neutral-600" aria-hidden>·</span>
+                    <span className="mx-1.5 text-neutral-900 dark:text-neutral-50" aria-hidden>·</span>
                     {copy.detailServer}: {broker.broker_server}
                   </>
                 ) : null}

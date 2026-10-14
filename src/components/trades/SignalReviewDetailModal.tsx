@@ -157,7 +157,7 @@ export function SignalReviewDetailModal({ signal, onClose }: SignalReviewDetailM
           </div>
           <button
             type="button"
-            className="p-2 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-amber-100/70 dark:hover:bg-amber-900/40 transition-colors"
+            className="p-2 rounded-lg text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50 hover:bg-amber-100/70 dark:hover:bg-amber-900/40 transition-colors"
             aria-label="Close"
             onClick={onClose}
           >
@@ -176,7 +176,7 @@ export function SignalReviewDetailModal({ signal, onClose }: SignalReviewDetailM
             <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
               {channelLabel ?? '—'}
             </p>
-            <p className="text-xs text-neutral-500 tabular-nums">
+            <p className="text-xs text-neutral-900 dark:text-neutral-50 tabular-nums">
               {new Date(signal.created_at).toLocaleString([], {
                 day: '2-digit',
                 month: 'short',
@@ -188,10 +188,10 @@ export function SignalReviewDetailModal({ signal, onClose }: SignalReviewDetailM
           </section>
 
           <section className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
               Telegram message
             </p>
-            <p className="text-sm text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap break-words rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50/80 dark:bg-neutral-800/30 px-4 py-3">
+            <p className="text-sm text-neutral-900 dark:text-neutral-50 whitespace-pre-wrap break-words rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50/80 dark:bg-neutral-800/30 px-4 py-3">
               {messageText}
             </p>
             {signal.raw_image_url ? (
@@ -209,45 +209,45 @@ export function SignalReviewDetailModal({ signal, onClose }: SignalReviewDetailM
           <button
             type="button"
             onClick={askAssistantExplainSignal}
-            className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline underline-offset-2"
+            className="text-xs font-semibold text-green-500 dark:text-teal-300 hover:underline underline-offset-2"
           >
             {t.copierLogs.detailModal?.explainWithAi ?? 'Explain with AI'}
           </button>
 
           {levels ? (
             <section className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+              <p className="text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
                 Parsed levels
               </p>
               <dl className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 divide-y divide-neutral-100 dark:divide-neutral-800">
                 {levels.symbol ? (
                   <div className="flex justify-between gap-3 px-4 py-2.5 text-sm">
-                    <dt className="text-neutral-500 shrink-0">Symbol</dt>
-                    <dd className="text-neutral-800 dark:text-neutral-200 text-right font-medium">{levels.symbol}</dd>
+                    <dt className="text-neutral-900 dark:text-neutral-50 shrink-0">Symbol</dt>
+                    <dd className="text-neutral-900 dark:text-neutral-50 text-right font-medium">{levels.symbol}</dd>
                   </div>
                 ) : null}
                 {levels.action ? (
                   <div className="flex justify-between gap-3 px-4 py-2.5 text-sm">
-                    <dt className="text-neutral-500 shrink-0">Action</dt>
-                    <dd className="text-neutral-800 dark:text-neutral-200 text-right font-medium uppercase">{levels.action}</dd>
+                    <dt className="text-neutral-900 dark:text-neutral-50 shrink-0">Action</dt>
+                    <dd className="text-neutral-900 dark:text-neutral-50 text-right font-medium uppercase">{levels.action}</dd>
                   </div>
                 ) : null}
                 {levels.entry ? (
                   <div className="flex justify-between gap-3 px-4 py-2.5 text-sm">
-                    <dt className="text-neutral-500 shrink-0">Entry</dt>
-                    <dd className="text-neutral-800 dark:text-neutral-200 text-right font-medium tabular-nums">{levels.entry}</dd>
+                    <dt className="text-neutral-900 dark:text-neutral-50 shrink-0">Entry</dt>
+                    <dd className="text-neutral-900 dark:text-neutral-50 text-right font-medium tabular-nums">{levels.entry}</dd>
                   </div>
                 ) : null}
                 {levels.sl ? (
                   <div className="flex justify-between gap-3 px-4 py-2.5 text-sm">
-                    <dt className="text-neutral-500 shrink-0">SL</dt>
-                    <dd className="text-neutral-800 dark:text-neutral-200 text-right font-medium tabular-nums">{levels.sl}</dd>
+                    <dt className="text-neutral-900 dark:text-neutral-50 shrink-0">SL</dt>
+                    <dd className="text-neutral-900 dark:text-neutral-50 text-right font-medium tabular-nums">{levels.sl}</dd>
                   </div>
                 ) : null}
                 {levels.tp ? (
                   <div className="flex justify-between gap-3 px-4 py-2.5 text-sm">
-                    <dt className="text-neutral-500 shrink-0">TP</dt>
-                    <dd className="text-neutral-800 dark:text-neutral-200 text-right font-medium tabular-nums">{levels.tp}</dd>
+                    <dt className="text-neutral-900 dark:text-neutral-50 shrink-0">TP</dt>
+                    <dd className="text-neutral-900 dark:text-neutral-50 text-right font-medium tabular-nums">{levels.tp}</dd>
                   </div>
                 ) : null}
               </dl>
@@ -264,7 +264,7 @@ export function SignalReviewDetailModal({ signal, onClose }: SignalReviewDetailM
             type="button"
             disabled={pendingApprove || expired}
             onClick={() => { void approve(signal.id) }}
-            className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-lg bg-green-400 px-4 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-green-500 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {pendingApprove ? 'Approving…' : 'Approve'}
           </button>
@@ -272,12 +272,12 @@ export function SignalReviewDetailModal({ signal, onClose }: SignalReviewDetailM
             type="button"
             disabled={pendingApprove}
             onClick={() => dismiss(signal.id)}
-            className="rounded-lg border border-neutral-200 px-4 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-100 disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+            className="rounded-lg border border-neutral-200 px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-100 disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-50 dark:hover:bg-neutral-800"
           >
             Dismiss
           </button>
           {pending.length > 1 ? (
-            <p className="ml-auto text-xs text-neutral-400">
+            <p className="ml-auto text-xs text-neutral-900 dark:text-neutral-50">
               {pending.length} awaiting approval
             </p>
           ) : null}

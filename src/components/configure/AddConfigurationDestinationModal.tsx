@@ -49,7 +49,7 @@ export function AddConfigurationDestinationModal({
           </h2>
           <button
             type="button"
-            className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+            className="rounded-lg p-2 text-neutral-900 hover:bg-neutral-100 dark:text-neutral-50 dark:hover:bg-neutral-800"
             aria-label={t.accountConfig.configureModal.close}
             onClick={onClose}
           >
@@ -58,7 +58,7 @@ export function AddConfigurationDestinationModal({
         </div>
         <div className="overflow-y-auto px-5 py-4">
           {brokers.length === 0 ? (
-            <p className="text-sm text-neutral-500 dark:text-neutral-400">{emptyLabel}</p>
+            <p className="text-sm text-neutral-900 dark:text-neutral-50">{emptyLabel}</p>
           ) : (
             <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
               {brokers.map(broker => (
@@ -77,7 +77,7 @@ export function AddConfigurationDestinationModal({
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-medium text-neutral-900 dark:text-neutral-50">{broker.label}</span>
                       {broker.login ? (
-                        <span className="block truncate text-xs text-neutral-500 dark:text-neutral-400">{copy.login} {broker.login}</span>
+                        <span className="block truncate text-xs text-neutral-900 dark:text-neutral-50">{copy.login} {broker.login}</span>
                       ) : null}
                     </span>
                   </button>

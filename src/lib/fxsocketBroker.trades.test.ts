@@ -56,6 +56,17 @@ describe('fetchTradesAcrossProviders', () => {
     expect(tradesSpy.mock.calls[0]?.[0]?.provider).toBe('fxsocket')
   })
 
+  it('calls the cTrader edge when that is the only linked provider', async () => {
+    tradesSpy.mockResolvedValue({ trades: [trade(3, 'ct-b')] })
+    const res = await fetchTradesAcrossProviders({
+      accounts: [{ provider: 'ctrader' }],
+      scope: 'all',
+    })
+    expect(res.trades).toHaveLength(1)
+    expect(tradesSpy).toHaveBeenCalledTimes(1)
+    expect(tradesSpy.mock.calls[0]?.[0]?.provider).toBe('ctrader')
+  })
+
   it('calls a single edge when only one provider is present', async () => {
     tradesSpy.mockResolvedValue({ trades: [trade(1, 'b1')] })
     const res = await fetchTradesAcrossProviders({

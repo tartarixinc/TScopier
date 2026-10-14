@@ -155,8 +155,12 @@ export const tradingPl: TradingPagesBundleTranslations = {
     whatsappDisconnect: 'Rozłącz',
     whatsappQrHelp: 'Otwórz WhatsApp, przejdź do Połączonych urządzeń i zeskanuj ten kod.',
     whatsappListenerMissing: 'Odbiornik WhatsApp nie jest jeszcze skonfigurowany.',
+    whatsappListenerUnavailable: 'Odbiornik WhatsApp nie działa. Uruchom go i spróbuj ponownie.',
     whatsappAdd: 'Dodaj',
     whatsappRefresh: 'Odśwież grupy',
+    whatsappConnectedHint: 'Dodaj grupy poniżej, aby zacząć kopiować sygnały',
+    whatsappSearchPlaceholder: 'Szukaj grup…',
+    whatsappActiveGroups: 'Aktywne grupy',
   },
   popularChannelsPage: {
     title: 'Popular Channels',

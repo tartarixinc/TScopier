@@ -280,8 +280,8 @@ export function ManagementPage() {
                     className={clsx(
                       'shrink-0 px-3 py-2 text-xs rounded-md font-medium transition-colors whitespace-nowrap',
                       filter === f.value
-                        ? 'bg-teal-600 text-white'
-                        : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                        ? 'bg-green-400 text-neutral-950'
+                        : 'text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800',
                     )}
                   >
                     {f.label}
@@ -303,10 +303,10 @@ export function ManagementPage() {
         ) : pageActivities.length === 0 ? (
           <div className="px-4 sm:px-6 py-12 sm:py-20 text-center">
             <div className="w-16 h-16 bg-neutral-100 dark:bg-neutral-800 rounded-2xl mx-auto mb-3 flex items-center justify-center">
-              <RefreshCw className="w-8 h-8 text-neutral-300" />
+              <RefreshCw className="w-8 h-8 text-neutral-900 dark:text-neutral-50" />
             </div>
-            <p className="text-sm font-medium text-neutral-400">{emptyTitle}</p>
-            <p className="text-xs text-neutral-300 mt-1">{t.management.emptySubtitle}</p>
+            <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{emptyTitle}</p>
+            <p className="text-xs text-neutral-900 dark:text-neutral-50 mt-1">{t.management.emptySubtitle}</p>
           </div>
         ) : (
           <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
@@ -326,11 +326,11 @@ export function ManagementPage() {
 
         {!loading && totalCount > 0 ? (
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 sm:px-5 py-3 border-t border-neutral-100 dark:border-neutral-800">
-            <p className="text-xs text-neutral-400">
+            <p className="text-xs text-neutral-900 dark:text-neutral-50">
               {rangeStart}–{rangeEnd} of {totalCount}
             </p>
             <div className="flex flex-wrap items-center gap-2">
-              <label className="flex items-center gap-2 text-xs text-neutral-500">
+              <label className="flex items-center gap-2 text-xs text-neutral-900 dark:text-neutral-50">
                 <span>Rows</span>
                 <select
                   value={pageSize}
@@ -352,7 +352,7 @@ export function ManagementPage() {
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
-                <span className="text-xs text-neutral-500 px-2 tabular-nums">
+                <span className="text-xs text-neutral-900 dark:text-neutral-50 px-2 tabular-nums">
                   {page} / {totalPages}
                 </span>
                 <button

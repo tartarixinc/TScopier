@@ -103,7 +103,7 @@ export function TrustpilotStars({ className, size = 'md', rating = 5 }: Trustpil
 
 export function TrustpilotBadge({ label }: { label: string }) {
   return (
-    <div className="flex items-center justify-center gap-1.5 text-sm font-semibold text-neutral-700 dark:text-neutral-200">
+    <div className="flex items-center justify-center gap-1.5 text-sm font-semibold text-neutral-900 dark:text-neutral-50">
       <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" style={{ color: TRUSTPILOT_GREEN }} aria-hidden>
         <path fill="currentColor" d={STAR_PATH} />
       </svg>

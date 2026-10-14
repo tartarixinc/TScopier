@@ -111,7 +111,7 @@ export function CopierPauseToggle({ className }: CopierPauseToggleProps) {
       >
         <div className="px-5 pt-5 pb-4">
           <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-50">
               <Pause className="h-5 w-5" aria-hidden />
             </div>
             <div className="min-w-0 flex-1">
@@ -121,7 +121,7 @@ export function CopierPauseToggle({ className }: CopierPauseToggleProps) {
               >
                 {cp.confirmTitle}
               </h2>
-              <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed">
+              <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-50 leading-relaxed">
                 {cp.confirmBody}
               </p>
             </div>
@@ -174,8 +174,8 @@ export function CopierPauseToggle({ className }: CopierPauseToggleProps) {
           lockedStopped
             ? clsx('cursor-not-allowed', lossIconWrapClass, lossTextClass)
             : showStopped
-              ? 'text-teal-700 bg-teal-50 hover:bg-teal-100 dark:text-teal-300 dark:bg-teal-950/40 dark:hover:bg-teal-950/60'
-              : 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:text-neutral-50 dark:hover:bg-neutral-800',
+              ? 'text-green-500 bg-teal-50 hover:bg-teal-100 dark:text-teal-300 dark:bg-teal-950/40 dark:hover:bg-teal-950/60'
+              : 'text-neutral-900 hover:text-neutral-900 hover:bg-neutral-100 dark:text-neutral-50 dark:hover:text-neutral-50 dark:hover:bg-neutral-800',
           className,
         )}
       >

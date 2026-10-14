@@ -61,14 +61,14 @@ export function HumanReviewModal() {
             type="button"
             onClick={closeModal}
             aria-label="Close"
-            className="rounded-xl p-2 text-neutral-400 hover:bg-amber-100 dark:hover:bg-amber-900/40"
+            className="rounded-xl p-2 text-neutral-900 dark:text-neutral-50 hover:bg-amber-100 dark:hover:bg-amber-900/40"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
         <div className="p-5">
-          <p className="text-sm text-neutral-600 dark:text-neutral-300">
+          <p className="text-sm text-neutral-900 dark:text-neutral-50">
             A signal from your channel was escalated because the AI wasn't sure about
             it. Review it on the Live Trades page to approve or dismiss it before the
             window closes.
@@ -85,7 +85,7 @@ export function HumanReviewModal() {
             <button
               type="button"
               onClick={closeModal}
-              className="rounded-lg border border-neutral-200 px-4 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+              className="rounded-lg border border-neutral-200 px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-50 dark:hover:bg-neutral-800"
             >
               Not now
             </button>

@@ -172,7 +172,7 @@ export function EconomicCalendarPage() {
         actions={(
           <>
             {lastUpdatedLabel && !loading ? (
-              <span className="text-xs tabular-nums text-neutral-400 dark:text-neutral-500">
+              <span className="text-xs tabular-nums text-neutral-900 dark:text-neutral-50">
                 {lastUpdatedLabel}
               </span>
             ) : null}
@@ -226,12 +226,12 @@ export function EconomicCalendarPage() {
               ))}
             </div>
           ) : events.length === 0 && !error ? (
-            <p className="px-4 py-12 text-center text-sm text-neutral-500 dark:text-neutral-400">{ec.empty}</p>
+            <p className="px-4 py-12 text-center text-sm text-neutral-900 dark:text-neutral-50">{ec.empty}</p>
           ) : (
             <div className="px-4">
               {[...grouped.entries()].map(([day, dayEvents]) => (
                 <section key={day} className="py-2">
-                  <h3 className="sticky top-0 z-10 bg-white/95 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-500 backdrop-blur dark:bg-neutral-900/95 dark:text-neutral-400">
+                  <h3 className="sticky top-0 z-10 bg-white/95 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-900 backdrop-blur dark:bg-neutral-900/95 dark:text-neutral-50">
                     {formatDayHeading(day)}
                   </h3>
                   {dayEvents.map((event) => (
@@ -268,7 +268,7 @@ export function EconomicCalendarPage() {
           href="https://site.financialmodelingprep.com"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-xs text-neutral-400 hover:text-teal-600 dark:hover:text-teal-400"
+          className="text-xs text-neutral-900 dark:text-neutral-50 hover:text-green-400 dark:hover:text-green-400"
         >
           {ec.dataByFmp}
         </a>

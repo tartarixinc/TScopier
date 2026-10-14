@@ -416,17 +416,17 @@ export function Backtest() {
       {step === 'configure' ? (
         <section className="rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 p-6 space-y-6 shadow-sm">
           <div>
-            <p className="text-sm text-neutral-500 mt-1">{bt.configureHint}</p>
+            <p className="text-sm text-neutral-900 dark:text-neutral-50 mt-1">{bt.configureHint}</p>
           </div>
 
           <div>
-            <p className="text-xs font-medium text-neutral-500 mb-2 flex items-center gap-1.5">
+            <p className="text-xs font-medium text-neutral-900 dark:text-neutral-50 mb-2 flex items-center gap-1.5">
               <Radio className="w-3.5 h-3.5" />
               {bt.signalChannel}
             </p>
             <div className="flex flex-wrap gap-2">
               {channels.length === 0 ? (
-                <p className="text-sm text-neutral-400">{bt.noActiveChannels}</p>
+                <p className="text-sm text-neutral-900 dark:text-neutral-50">{bt.noActiveChannels}</p>
               ) : (
                 channels.map(ch => (
                   <button
@@ -440,7 +440,7 @@ export function Backtest() {
                     className={clsx(
                       'px-3 py-2 rounded-xl text-sm border transition-all disabled:opacity-50',
                       selectedChannelId === ch.id
-                        ? 'border-teal-500 bg-teal-500 text-white shadow-sm'
+                        ? 'border-green-400 bg-green-400 text-neutral-950 shadow-sm'
                         : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300',
                     )}
                   >
@@ -453,7 +453,7 @@ export function Backtest() {
 
           <div className="grid grid-cols-2 gap-4">
             <label className="block">
-              <span className="text-xs font-medium text-neutral-500">{bt.from}</span>
+              <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50">{bt.from}</span>
               <input
                 type="date"
                 disabled={isBusy}
@@ -463,7 +463,7 @@ export function Backtest() {
               />
             </label>
             <label className="block">
-              <span className="text-xs font-medium text-neutral-500">{bt.to}</span>
+              <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50">{bt.to}</span>
               <input
                 type="date"
                 disabled={isBusy}
@@ -493,7 +493,7 @@ export function Backtest() {
             <div className="space-y-2">
               <div className="h-2 rounded-full bg-teal-100 dark:bg-teal-900 overflow-hidden">
                 <div
-                  className="h-full bg-teal-500 transition-all duration-500"
+                  className="h-full bg-green-400 transition-all duration-500"
                   style={{ width: `${Math.min(100, Math.max(profileProgress.pct, 4))}%` }}
                 />
               </div>
@@ -507,7 +507,7 @@ export function Backtest() {
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">{bt.readyTitle}</h2>
-              <p className="text-sm text-neutral-500 mt-1">
+              <p className="text-sm text-neutral-900 dark:text-neutral-50 mt-1">
                 {interpolate(bt.readyMeta, {
                   channel: channelName,
                   count: String(profiledSignals.length),
@@ -519,7 +519,7 @@ export function Backtest() {
             <button
               type="button"
               onClick={() => setStep('configure')}
-              className="text-sm text-neutral-500 hover:text-neutral-800 flex items-center gap-1 shrink-0"
+              className="text-sm text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50 flex items-center gap-1 shrink-0"
             >
               <DirectionalIcon icon={ArrowLeft} className="w-4 h-4" />
               {bt.back}
@@ -527,15 +527,15 @@ export function Backtest() {
           </div>
 
           {profileNote ? (
-            <p className="text-sm text-neutral-600 dark:text-neutral-400 rounded-xl bg-neutral-50 dark:bg-neutral-800/50 px-4 py-3">
+            <p className="text-sm text-neutral-900 dark:text-neutral-50 rounded-xl bg-neutral-50 dark:bg-neutral-800/50 px-4 py-3">
               {profileNote}
             </p>
           ) : null}
 
           <div>
-            <p className="text-xs font-medium text-neutral-500 mb-3">{bt.symbolToBacktest}</p>
+            <p className="text-xs font-medium text-neutral-900 dark:text-neutral-50 mb-3">{bt.symbolToBacktest}</p>
             {symbolProfiles.length === 0 ? (
-              <p className="text-sm text-neutral-500 rounded-xl border border-dashed border-neutral-200 dark:border-neutral-700 px-4 py-6 text-center">
+              <p className="text-sm text-neutral-900 dark:text-neutral-50 rounded-xl border border-dashed border-neutral-200 dark:border-neutral-700 px-4 py-6 text-center">
                 {bt.noSymbolsInRange}
               </p>
             ) : (
@@ -551,7 +551,7 @@ export function Backtest() {
                     className={clsx(
                       'px-4 py-2.5 rounded-xl text-sm font-medium border transition-all',
                       selectedSymbol === symbol
-                        ? 'border-teal-500 bg-teal-500 text-white shadow-md shadow-teal-500/20'
+                        ? 'border-green-400 bg-green-400 text-neutral-950 shadow-md shadow-green-400/20'
                         : 'border-neutral-200 dark:border-neutral-700 hover:border-teal-300',
                     )}
                   >
@@ -582,7 +582,7 @@ export function Backtest() {
               {activeRun?.progress_pct != null ? (
                 <div className="h-2 rounded-full bg-teal-100 dark:bg-teal-900 overflow-hidden">
                   <div
-                    className="h-full bg-teal-500 transition-all duration-500"
+                    className="h-full bg-green-400 transition-all duration-500"
                     style={{ width: `${Math.min(100, activeRun.progress_pct)}%` }}
                   />
                 </div>
@@ -602,7 +602,7 @@ export function Backtest() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">{bt.resultsTitle}</h2>
-              <p className="text-sm text-neutral-500 mt-0.5">
+              <p className="text-sm text-neutral-900 dark:text-neutral-50 mt-0.5">
                 {interpolate(bt.resultsSubtitle, {
                   symbol: selectedSymbol ?? '—',
                   channel: channelName,
@@ -619,7 +619,7 @@ export function Backtest() {
                     filename: `backtest-${symbol}-${activeRun?.id?.slice(0, 8) ?? 'results'}.csv`,
                   })
                 }}
-                className="text-sm text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100 flex items-center gap-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 px-2.5 py-1.5 disabled:opacity-40 disabled:pointer-events-none"
+                className="text-sm text-neutral-900 hover:text-neutral-900 dark:text-neutral-50 dark:hover:text-neutral-100 flex items-center gap-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 px-2.5 py-1.5 disabled:opacity-40 disabled:pointer-events-none"
               >
                 <Download className="w-4 h-4" />
                 {bt.exportCsv}
@@ -630,7 +630,7 @@ export function Backtest() {
                   setStep('symbol')
                   clearResults()
                 }}
-                className="text-sm text-neutral-500 hover:text-neutral-800 flex items-center gap-1"
+                className="text-sm text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50 flex items-center gap-1"
               >
                 <DirectionalIcon icon={ArrowLeft} className="w-4 h-4" />
                 {bt.newRun}
@@ -640,7 +640,7 @@ export function Backtest() {
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 p-4 col-span-2 sm:col-span-1">
-              <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">{bt.totalPips}</p>
+              <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50">{bt.totalPips}</p>
               <p className={clsx('text-3xl font-bold tabular-nums mt-1', pipValueTextClass(totalPips))}>
                 {formatPipValue(totalPips)}
               </p>
@@ -648,19 +648,19 @@ export function Backtest() {
             {summary ? (
               <>
                 <div className="rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 p-4">
-                  <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">{bt.winRate}</p>
+                  <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50">{bt.winRate}</p>
                   <p className="text-2xl font-bold mt-1">{(summary.winRate * 100).toFixed(0)}%</p>
                 </div>
                 <div className="rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 p-4">
-                  <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">{bt.winLoss}</p>
+                  <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50">{bt.winLoss}</p>
                   <p className="text-2xl font-bold mt-1 tabular-nums">
                     <span className={profitTextClass}>{summary.wins}</span>
-                    <span className="text-neutral-300 dark:text-neutral-600">/</span>
+                    <span className="text-neutral-900 dark:text-neutral-50">/</span>
                     <span className={lossTextClass}>{summary.losses}</span>
                   </p>
                 </div>
                 <div className="rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 p-4">
-                  <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">{bt.signalsLabel}</p>
+                  <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50">{bt.signalsLabel}</p>
                   <p className="text-2xl font-bold mt-1 tabular-nums">{summary.tradedSignals}</p>
                 </div>
               </>
@@ -669,7 +669,7 @@ export function Backtest() {
 
           <div className="rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 overflow-hidden shadow-sm">
             <div className="px-4 py-3 border-b border-neutral-100 dark:border-neutral-800">
-              <p className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
+              <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                 {signalListLabel}
               </p>
             </div>

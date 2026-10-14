@@ -155,8 +155,12 @@ export const tradingSv: TradingPagesBundleTranslations = {
     whatsappDisconnect: 'Koppla från',
     whatsappQrHelp: 'Öppna WhatsApp, gå till Länkade enheter och skanna den här koden.',
     whatsappListenerMissing: 'WhatsApp-lyssnaren är inte konfigurerad ännu.',
+    whatsappListenerUnavailable: 'WhatsApp-lyssnaren körs inte. Starta den och försök igen.',
     whatsappAdd: 'Lägg till',
     whatsappRefresh: 'Uppdatera grupper',
+    whatsappConnectedHint: 'Lägg till grupper nedan för att börja kopiera signaler',
+    whatsappSearchPlaceholder: 'Sök grupper…',
+    whatsappActiveGroups: 'Aktiva grupper',
   },
   popularChannelsPage: {
     title: 'Popular Channels',

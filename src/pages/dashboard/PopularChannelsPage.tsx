@@ -76,7 +76,7 @@ function CopyButton({ text }: { text: string }) {
     <button
       type="button"
       onClick={handleCopy}
-      className="p-1 rounded text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
+      className="p-1 rounded text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
       title="Copy"
     >
       {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
@@ -181,36 +181,36 @@ export function PopularChannelsPage() {
 
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 pointer-events-none" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-900 dark:text-neutral-50 pointer-events-none" />
           <input
             type="text"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             placeholder="Search channels..."
-            className="w-full pl-9 pr-8 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="w-full pl-9 pr-8 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-900 dark:placeholder:text-neutral-50 focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent"
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => setSearchQuery('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50 transition-colors"
             >
               <X className="w-4 h-4" />
             </button>
           )}
         </div>
         <div className="relative w-44">
-          <ListFilter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 pointer-events-none" />
+          <ListFilter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-900 dark:text-neutral-50 pointer-events-none" />
           <select
             value={sort}
             onChange={e => setSort(e.target.value as SortKey)}
-            className="w-full pl-9 pr-8 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 appearance-none focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent hover:border-neutral-300 dark:hover:border-neutral-600 transition-colors"
+            className="w-full pl-9 pr-8 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 appearance-none focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent hover:border-neutral-300 dark:hover:border-neutral-600 transition-colors"
           >
             {sortOptions.map(o => (
               <option key={o.key} value={o.key}>{o.label}</option>
             ))}
           </select>
-          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 pointer-events-none" />
+          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-900 dark:text-neutral-50 pointer-events-none" />
         </div>
       </div>
 
@@ -226,11 +226,11 @@ export function PopularChannelsPage() {
       ) : filteredAndSorted.length === 0 ? (
         <Card>
           <div className="text-center py-10">
-            <Flame className="w-10 h-10 mx-auto mb-3 text-neutral-200" />
-            <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400">
+            <Flame className="w-10 h-10 mx-auto mb-3 text-neutral-900 dark:text-neutral-50" />
+            <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
               {searchQuery ? 'No channels match your search' : p.emptyTitle}
             </p>
-            <p className="text-xs text-neutral-400 mt-1">
+            <p className="text-xs text-neutral-900 dark:text-neutral-50 mt-1">
               {searchQuery ? 'Try a different name or username' : p.emptySubtitle}
             </p>
           </div>
@@ -248,11 +248,11 @@ export function PopularChannelsPage() {
                   onClick={() => setExpandedId(expanded ? null : ch.id)}
                   className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors"
                 >
-                  <span className="w-6 text-xs font-semibold text-neutral-300 dark:text-neutral-600 text-center shrink-0">
+                  <span className="w-6 text-xs font-semibold text-neutral-900 dark:text-neutral-50 text-center shrink-0">
                     #{idx + 1}
                   </span>
                   <div className="w-9 h-9 bg-primary-50 rounded-lg flex items-center justify-center shrink-0">
-                    <Radio className="w-4 h-4 text-primary-600" />
+                    <Radio className="w-4 h-4 text-green-400" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50 truncate">
@@ -260,26 +260,26 @@ export function PopularChannelsPage() {
                     </p>
                     <div className="flex items-center gap-2 mt-0.5">
                       {ch.channel_username && (
-                        <p className="text-xs text-neutral-400">@{highlightText(ch.channel_username, searchQuery)}</p>
+                        <p className="text-xs text-neutral-900 dark:text-neutral-50">@{highlightText(ch.channel_username, searchQuery)}</p>
                       )}
-                      <span className="text-neutral-300 dark:text-neutral-600">·</span>
+                      <span className="text-neutral-900 dark:text-neutral-50">·</span>
                       <div className="flex items-center gap-1">
                         <span
                           className={`w-1.5 h-1.5 rounded-full ${
                             status.live ? 'bg-green-500' : 'bg-neutral-300 dark:bg-neutral-600'
                           }`}
                         />
-                        <span className="text-xs text-neutral-400">{status.label}</span>
+                        <span className="text-xs text-neutral-900 dark:text-neutral-50">{status.label}</span>
                       </div>
                     </div>
                   </div>
-                  <span className="text-xs text-neutral-500 dark:text-neutral-400 font-medium shrink-0">
+                  <span className="text-xs text-neutral-900 dark:text-neutral-50 font-medium shrink-0">
                     {formatSubscribers(ch.subscriber_count)} subscribers
                   </span>
                   {expanded ? (
-                    <ChevronUp className="w-4 h-4 text-neutral-400 shrink-0" />
+                    <ChevronUp className="w-4 h-4 text-neutral-900 dark:text-neutral-50 shrink-0" />
                   ) : (
-                    <ChevronDown className="w-4 h-4 text-neutral-400 shrink-0" />
+                    <ChevronDown className="w-4 h-4 text-neutral-900 dark:text-neutral-50 shrink-0" />
                   )}
                 </button>
 
@@ -293,44 +293,44 @@ export function PopularChannelsPage() {
                     </div>
                     <div className="grid grid-cols-2 gap-y-3 gap-x-6 text-sm">
                       <div>
-                        <span className="text-xs text-neutral-400">Username</span>
+                        <span className="text-xs text-neutral-900 dark:text-neutral-50">Username</span>
                         <div className="flex items-center gap-1">
-                          <p className="text-sm text-neutral-700 dark:text-neutral-300 font-mono truncate">
+                          <p className="text-sm text-neutral-900 dark:text-neutral-50 font-mono truncate">
                             @{highlightText(ch.channel_username ?? '', searchQuery)}
                           </p>
                           <CopyButton text={`@${ch.channel_username}`} />
                         </div>
                       </div>
                       <div>
-                        <span className="text-xs text-neutral-400">Channel ID</span>
+                        <span className="text-xs text-neutral-900 dark:text-neutral-50">Channel ID</span>
                         <div className="flex items-center gap-1">
-                          <p className="text-sm text-neutral-700 dark:text-neutral-300 font-mono truncate">
+                          <p className="text-sm text-neutral-900 dark:text-neutral-50 font-mono truncate">
                             {ch.telegram_chat_id}
                           </p>
                           <CopyButton text={ch.telegram_chat_id} />
                         </div>
                       </div>
                       <div>
-                        <span className="text-xs text-neutral-400">Subscribers</span>
-                        <p className="text-sm text-neutral-700 dark:text-neutral-300">
+                        <span className="text-xs text-neutral-900 dark:text-neutral-50">Subscribers</span>
+                        <p className="text-sm text-neutral-900 dark:text-neutral-50">
                           {ch.subscriber_count.toLocaleString()}
                         </p>
                       </div>
                       <div>
-                        <span className="text-xs text-neutral-400">Signals generated</span>
-                        <p className="text-sm text-neutral-700 dark:text-neutral-300">
+                        <span className="text-xs text-neutral-900 dark:text-neutral-50">Signals generated</span>
+                        <p className="text-sm text-neutral-900 dark:text-neutral-50">
                           {signalCount.toLocaleString()}
                         </p>
                       </div>
                       <div>
-                        <span className="text-xs text-neutral-400">First seen</span>
-                        <p className="text-sm text-neutral-700 dark:text-neutral-300">
+                        <span className="text-xs text-neutral-900 dark:text-neutral-50">First seen</span>
+                        <p className="text-sm text-neutral-900 dark:text-neutral-50">
                           {new Date(ch.first_seen_at).toLocaleDateString()}
                         </p>
                       </div>
                       <div>
-                        <span className="text-xs text-neutral-400">Last activity</span>
-                        <p className="text-sm text-neutral-700 dark:text-neutral-300">
+                        <span className="text-xs text-neutral-900 dark:text-neutral-50">Last activity</span>
+                        <p className="text-sm text-neutral-900 dark:text-neutral-50">
                           {ch.last_live_at
                             ? new Date(ch.last_live_at).toLocaleString()
                             : lastSignalAt.get(ch.id)

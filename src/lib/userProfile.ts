@@ -22,6 +22,7 @@ export interface UserProfile {
   notification_sound_enabled?: boolean
   notification_email_enabled?: boolean
   copier_paused?: boolean
+  avatar_url?: string | null
   created_at?: string
   updated_at?: string
 }
@@ -42,6 +43,7 @@ export const EMPTY_USER_PROFILE: Omit<UserProfile, 'user_id'> = {
   notification_sound_enabled: true,
   notification_email_enabled: true,
   copier_paused: false,
+  avatar_url: null,
 }
 
 /** Admin bypass: DB flag (with timed expiry) or Supabase Auth app_metadata (matches edge subscriptionAccess). */
@@ -75,6 +77,7 @@ export async function saveUserProfile(
     subscription_status: _subscriptionStatus,
     referred_by_user_id: _referredByUserId,
     email_verified_at: _emailVerifiedAt,
+    avatar_url: _avatarUrl,
     ...safePatch
   } = patch
   const { error } = await supabase
@@ -94,6 +97,7 @@ export async function updateUserProfileFields(
     subscription_status: _subscriptionStatus,
     referred_by_user_id: _referredByUserId,
     email_verified_at: _emailVerifiedAt,
+    avatar_url: _avatarUrl,
     ...safePatch
   } = patch
   const { error } = await supabase

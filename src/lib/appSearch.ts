@@ -47,6 +47,7 @@ export function buildAppSearchPages(t: Translations): AppSearchPageDef[] {
     { path: '/feature-request', title: t.nav.items.featureRequest, sectionLabel: t.nav.sections.feedback, subtitle: p.featureRequest.description },
     { path: '/partner-with-us', title: t.nav.items.partnerWithUs, sectionLabel: t.nav.sections.growth, subtitle: p.partnerWithUs.description },
     { path: '/affiliate-program', title: t.nav.userMenu.affiliateProgram, sectionLabel: t.nav.sections.membership, subtitle: p.affiliateProgram.description },
+    { path: '/wallet', title: t.nav.userMenu.wallet, sectionLabel: t.nav.sections.membership, subtitle: p.wallet.description, keywords: ['wallet', 'balance', 'payments'] },
     { path: '/billing', title: t.nav.userMenu.subscriptionBilling, sectionLabel: t.nav.sections.membership, subtitle: p.billing.description },
     { path: '/subscriptions', title: t.nav.items.subscriptions, sectionLabel: t.nav.sections.membership, subtitle: p.subscriptions.description },
     { path: '/portfolio', title: p.portfolio.title, sectionLabel: t.nav.sections.general, subtitle: p.portfolio.description },

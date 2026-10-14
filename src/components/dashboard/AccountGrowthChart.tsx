@@ -35,12 +35,12 @@ export function AccountGrowthChart({ data, series, loading, stale, isEmpty }: Ac
     <div className="bg-white dark:bg-neutral-950 rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 p-4 sm:p-5 min-w-0">
       <div className="mb-4">
         <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{t.dashboard.accountGrowthTitle}</h2>
-        <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{t.dashboard.accountGrowthSubtitle}</p>
+        <p className="text-xs text-neutral-900 dark:text-neutral-50 mt-0.5">{t.dashboard.accountGrowthSubtitle}</p>
       </div>
       {loading ? (
         <div className="h-64 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl animate-pulse" />
       ) : isEmpty || series.length === 0 || data.length === 0 ? (
-        <div className="h-64 flex items-center justify-center text-sm text-neutral-400 dark:text-neutral-500 text-center px-6">
+        <div className="h-64 flex items-center justify-center text-sm text-neutral-900 dark:text-neutral-50 text-center px-6">
           {t.dashboard.accountGrowthEmpty}
         </div>
       ) : (

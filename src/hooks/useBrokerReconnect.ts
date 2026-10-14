@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { BrokerAccount } from '../types/database'
 import { fxsocketBroker } from '../lib/fxsocketBroker'
+import { resolveProvider } from '../lib/brokerLink'
+import { brokerAccountHealthPatchFromMtStatus } from '../lib/brokerHealth'
 import { brokerCanReconnect } from '../lib/brokerReconnect'
 import {
   brokerReconnectBlockedReason,
@@ -95,6 +97,17 @@ export function useBrokerReconnect(opts: {
 
     setReconnectingBrokerIds(prev => new Set(prev).add(brokerId))
     try {
+      const broker = opts.brokers.find(b => b.id === brokerId)
+      if (broker && resolveProvider(broker) === 'ctrader') {
+        const { account, status } = await fxsocketBroker.checkStatus(brokerId, 'ctrader')
+        upsertBrokerRef.current({
+          ...account,
+          ...brokerAccountHealthPatchFromMtStatus(status),
+        })
+        onSuccessRef.current?.(brokerId)
+        return
+      }
+
       const entered = await requestPassword(brokerId)
       if (!entered?.password.trim()) {
         return
@@ -103,12 +116,12 @@ export function useBrokerReconnect(opts: {
       const { account } = await fxsocketBroker.reconnect({
         accountId: brokerId,
         password: entered.password.trim(),
-        provider: opts.brokers.find(b => b.id === brokerId)?.provider as 'fxsocket' | 'mtapi' | undefined,
+        provider: resolveProvider(opts.brokers.find(b => b.id === brokerId) ?? {}),
       })
       upsertBrokerRef.current(account)
 
       const result = await fxsocketBroker.waitUntilConnected(account.id, {
-        provider: opts.brokers.find(b => b.id === brokerId)?.provider as 'fxsocket' | 'mtapi' | undefined,
+        provider: resolveProvider(opts.brokers.find(b => b.id === brokerId) ?? {}),
         onProgress: (progress) => {
           upsertBrokerRef.current(progress.account)
         },

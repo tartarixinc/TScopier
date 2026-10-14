@@ -109,7 +109,7 @@ function statusLabel(status: string, copy: AssistantTradesCardCopy): string {
 function statusStyles(status: string): string {
   switch (status) {
     case 'executed':
-      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+      return 'bg-green-100 text-neutral-950 dark:bg-green-100 dark:text-neutral-950'
     case 'failed':
     case 'error':
       return 'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300'
@@ -122,7 +122,7 @@ function statusStyles(status: string): string {
     case 'parsed':
       return 'bg-sky-100 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300'
     default:
-      return 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300'
+      return 'bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50'
   }
 }
 
@@ -169,7 +169,7 @@ function LivePositionBadge({
         'rounded-full px-2 py-0.5 text-[10px] font-semibold',
         isOpen
           ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
-          : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300',
+          : 'bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50',
       )}
     >
       {label}
@@ -194,7 +194,7 @@ function TradeRow({
       className={clsx(
         'rounded-xl border border-neutral-200/65 bg-white p-2.5 dark:border-neutral-800/55 dark:bg-neutral-900/70',
         clickable &&
-          'cursor-pointer transition hover:border-teal-300 hover:bg-neutral-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/60 dark:hover:border-teal-700 dark:hover:bg-neutral-800/60',
+          'cursor-pointer transition hover:border-teal-300 hover:bg-neutral-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400/60 dark:hover:border-green-500 dark:hover:bg-neutral-800/60',
       )}
       role={clickable ? 'button' : undefined}
       tabIndex={clickable ? 0 : undefined}
@@ -217,7 +217,7 @@ function TradeRow({
           <span className="truncate font-semibold text-neutral-900 dark:text-neutral-50">{symbol}</span>
           {directionBadge(trade.direction)}
           {trade.legs ? (
-            <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
+            <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50">
               {copy.legs}: {trade.legs + 1}
             </span>
           ) : null}
@@ -235,19 +235,19 @@ function TradeRow({
             {statusLabel(status, copy)}
           </span>
           {clickable ? (
-            <ChevronRight className="h-3.5 w-3.5 text-neutral-400 dark:text-neutral-500" />
+            <ChevronRight className="h-3.5 w-3.5 text-neutral-900 dark:text-neutral-50" />
           ) : null}
         </div>
       </div>
 
       {trade.time ? (
-        <p className="mt-1 text-[11px] text-neutral-500 dark:text-neutral-400">
+        <p className="mt-1 text-[11px] text-neutral-900 dark:text-neutral-50">
           {new Date(trade.time).toLocaleString()}
           {trade.channel ? ` · ${trade.channel}` : ''}
         </p>
       ) : null}
 
-      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-neutral-600 dark:text-neutral-300">
+      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-neutral-900 dark:text-neutral-50">
         {trade.entry_price != null ? <span>Entry {formatPrice(trade.entry_price)}</span> : null}
         {trade.sl != null ? <span>SL {formatPrice(trade.sl)}</span> : null}
         {trade.tp != null ? <span>TP {formatPrice(trade.tp)}</span> : null}
@@ -255,10 +255,10 @@ function TradeRow({
       </div>
 
       {trade.tickets?.length ? (
-        <p className="mt-1.5 text-[11px] text-neutral-600 dark:text-neutral-300">
+        <p className="mt-1.5 text-[11px] text-neutral-900 dark:text-neutral-50">
           {copy.ticket}:{' '}
           {trade.tickets.map((t, i) => (
-            <span key={t} className="font-mono text-teal-700 dark:text-teal-300">
+            <span key={t} className="font-mono text-green-500 dark:text-teal-300">
               {i > 0 ? ', ' : ''}#{t}
             </span>
           ))}
@@ -279,7 +279,7 @@ function TradeRow({
             </li>
           ))}
           {trade.errors.length > 2 ? (
-            <li className="text-[11px] text-neutral-500 dark:text-neutral-400">
+            <li className="text-[11px] text-neutral-900 dark:text-neutral-50">
               +{trade.errors.length - 2} more
             </li>
           ) : null}
@@ -298,7 +298,7 @@ function ReportRow({ report, copy }: { report: NonNullable<ParsedResult['reports
           <span className="truncate font-semibold text-neutral-900 dark:text-neutral-50">
             {report.symbol ?? copy.title}
             {report.ticket ? (
-              <span className="font-mono text-teal-700 dark:text-teal-300"> #{report.ticket}</span>
+              <span className="font-mono text-green-500 dark:text-teal-300"> #{report.ticket}</span>
             ) : null}
           </span>
           {directionBadge(report.direction)}
@@ -315,12 +315,12 @@ function ReportRow({ report, copy }: { report: NonNullable<ParsedResult['reports
         </span>
       </div>
       {report.reason ? (
-        <p className="mt-1.5 whitespace-pre-wrap break-words text-[11px] text-neutral-600 dark:text-neutral-300">
+        <p className="mt-1.5 whitespace-pre-wrap break-words text-[11px] text-neutral-900 dark:text-neutral-50">
           {report.reason}
         </p>
       ) : null}
       {report.time && Number.isFinite(Date.parse(report.time)) ? (
-        <p className="mt-1 text-[11px] text-neutral-500 dark:text-neutral-400">
+        <p className="mt-1 text-[11px] text-neutral-900 dark:text-neutral-50">
           {new Date(report.time).toLocaleString()}
           {report.broker ? ` · ${report.broker}` : ''}
         </p>
@@ -356,7 +356,7 @@ export function AssistantTradesCard({
 
   return (
     <div className="animate-assistant-msg-in ms-[2.375rem] space-y-2">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400 dark:text-neutral-500">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
         {copy.title}
       </p>
       {trades.length ? (

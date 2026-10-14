@@ -6,6 +6,8 @@ describe('tradingPlatform', () => {
   it('normalizeTradingPlatform defaults to MT5', () => {
     assert.equal(normalizeTradingPlatform(''), 'MT5')
     assert.equal(normalizeTradingPlatform('mt4'), 'MT4')
+    assert.equal(normalizeTradingPlatform('ctrader'), 'cTrader')
+    assert.equal(normalizeTradingPlatform('cTrader'), 'cTrader')
   })
 
   it('inferServerPlatform reads common server suffixes', () => {

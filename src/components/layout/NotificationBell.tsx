@@ -30,10 +30,10 @@ export function NotificationBell({ open, onOpen, onClose }: NotificationBellProp
         className={clsx(
           'relative rounded-lg p-1.5 transition-colors sm:p-2',
           open
-            ? 'text-teal-600 bg-teal-50 dark:text-teal-400 dark:bg-teal-950/50'
+            ? 'text-green-400 bg-teal-50 dark:text-green-400 dark:bg-teal-950/50'
             : soundEnabled
-              ? 'text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
-              : 'text-neutral-300 hover:bg-neutral-100 dark:text-neutral-600 dark:hover:bg-neutral-800',
+              ? 'text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+              : 'text-neutral-900 hover:bg-neutral-100 dark:text-neutral-50 dark:hover:bg-neutral-800',
         )}
       >
         {soundEnabled ? (
@@ -49,7 +49,7 @@ export function NotificationBell({ open, onOpen, onClose }: NotificationBellProp
           />
         ) : null}
         {badge ? (
-          <span className="absolute -end-0.5 -top-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-teal-600 px-1 text-[10px] font-bold leading-none text-white">
+          <span className="absolute -end-0.5 -top-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-green-400 px-1 text-[10px] font-bold leading-none text-neutral-950">
             {badge}
           </span>
         ) : null}

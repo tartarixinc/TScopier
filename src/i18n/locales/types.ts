@@ -126,6 +126,7 @@ export interface NavTranslations {
     profileSettings: string
     subscriptionBilling: string
     affiliateProgram: string
+    wallet: string
     rateUs: string
     signOut: string
   }
@@ -403,6 +404,30 @@ export interface DashboardTranslations {
     brokerErrors: string
     allChecksPassed: string
     checksFailed: string
+    signalSources: string
+    notConnected: string
+    connected: string
+    reconnectRequired: string
+    reconnecting: string
+    operational: string
+    degraded: string
+    stopped: string
+    unknown: string
+    noSignalSource: string
+    readyMessage: string
+    noSourceMessage: string
+    telegramReconnectMessage: string
+    telegramReconnectingMessage: string
+    telegramOfflineMessage: string
+    otherSourcesStillCopying: string
+    listenerOfflineMessage: string
+    whatsappOfflineMessage: string
+    stoppedMessage: string
+    checkingMessage: string
+    unreportedMessage: string
+    lastHealthy: string
+    notAvailable: string
+    refreshStatus: string
   }
   tradeOutcomeTitle: string
   tradeOutcomeSubtitle: string
@@ -617,6 +642,14 @@ export interface AccountConfigConnectFormTranslations {
   platformLabel: string
   platformMt5: string
   platformMt4: string
+  platformCtrader: string
+  ctraderConnectButton: string
+  ctraderConnectHint: string
+  ctraderNotConfigured: string
+  ctraderPickAccount: string
+  ctraderLinkButton: string
+  ctraderDemo: string
+  ctraderLive: string
   brokerServerLabel: string
   brokerServerHint: string
   brokerServerPlaceholder: string
@@ -775,6 +808,24 @@ export interface AccountConfigBrokerListTranslations {
   accountSearchLabel: string
   accountSearchPlaceholder: string
   accountSearchNoMatch: string
+  overviewTotal: string
+  overviewActive: string
+  overviewInactive: string
+  overviewBest: string
+  overviewNotAvailable: string
+  overviewRoi: string
+  accountsHeading: string
+  noData: string
+  colName: string
+  colAccount: string
+  colPlatform: string
+  colBalance: string
+  colConnection: string
+  colStatus: string
+  colActions: string
+  statusActive: string
+  statusInactive: string
+  platformFilterAll: string
 }
 
 export interface BrokerStatusModalCopy {
@@ -863,6 +914,40 @@ export interface MirrorTradingPageTranslations {
   back: string
   next: string
   loadError: string
+  setup: {
+    title: string
+    preview: string
+    subtitle: string
+    copyMethod: string
+    protections: string
+    moreSettings: string
+    exampleTrade: string
+    masterSize: string
+    slaveAccount: string
+    estimatedLot: string
+    copied: string
+    notCopied: string
+    riskProfile: string
+    estimateUnavailable: string
+    lots: string
+    done: string
+    advanced: string
+    advancedHint: string
+    proportional: string
+    riskMultiplier: string
+    proportionalProfile: string
+    fixedCopiedLot: string
+    copiedLot: string
+    modes: {
+      fixed_lot: string
+      lot_multiplier: string
+      balance_ratio: string
+      equity_ratio: string
+      percent_risk: string
+      cash_risk: string
+      stop_distance: string
+    }
+  }
 }
 
 export interface SocialTradingPageTranslations {
@@ -883,6 +968,12 @@ export interface SocialTradingPageTranslations {
   private: string
   requestToCopy: string
   requested: string
+  copyForFree: string
+  copyForAmount: string
+  monthlyPrice: string
+  priceFree: string
+  pricePaid: string
+  pricePerMonth: string
   whoCanCopy: string
   anyoneCanCopy: string
   requestsRequired: string
@@ -914,6 +1005,7 @@ export interface SocialTradingPageTranslations {
   colName: string
   colStatus: string
   colBalance: string
+  colPrice: string
   colActions: string
   statusActive: string
   visibility: string
@@ -1350,6 +1442,8 @@ export interface SettingsTranslations {
   saveError: string
   saved: string
   emailHint: string
+  countryHint: string
+  countryDetecting: string
   passwordHint: string
   passwordTooShort: string
   passwordMismatch: string
@@ -1361,6 +1455,15 @@ export interface SettingsTranslations {
     security: string
   }
   personal: { title: string; description: string }
+    photo: {
+      change: string
+      hint: string
+      tooLarge: string
+      invalidType: string
+      uploadError: string
+      cropTitle: string
+      zoom: string
+    }
   general: { title: string; description: string }
   security: { title: string; description: string; updatePassword: string }
   fields: {
@@ -1444,6 +1547,10 @@ export interface CopierEngineAdditionalKeywordTranslations {
 
 export interface CopierEnginePageTranslations {
   connectTelegram: string
+  newSignalSource: string
+  chooseSignalSource: string
+  noSignalSourcesTitle: string
+  noSignalSourcesBody: string
   telegramNotConnectedTitle: string
   telegramNotConnectedBody: string
   tgConnectHeroTitle: string
@@ -1651,8 +1758,12 @@ export interface ChannelsPageTranslations {
   whatsappDisconnect: string
   whatsappQrHelp: string
   whatsappListenerMissing: string
+  whatsappListenerUnavailable: string
   whatsappAdd: string
   whatsappRefresh: string
+  whatsappConnectedHint: string
+  whatsappSearchPlaceholder: string
+  whatsappActiveGroups: string
 }
 
 export interface BacktestOutcomeLabels {
@@ -1889,6 +2000,9 @@ export interface PricingTranslations {
     extraAccounts: string
     extraAccountsSummary: string
     manageBilling: string
+    cancelSubscription: string
+    cancelSubscriptionHint: string
+    cancelSubscriptionFailed: string
     noPlan: string
     statusActive: string
     statusTrialing: string
@@ -1968,6 +2082,27 @@ export interface AffiliateTranslations {
   policyMinimumPayout: string
 }
 
+export interface WalletPageTranslations {
+  title: string
+  subtitle: string
+  available: string
+  pending: string
+  refresh: string
+  history: string
+  colDate: string
+  colDescription: string
+  colAmount: string
+  colStatus: string
+  colRole: string
+  statusPending: string
+  statusPaid: string
+  statusReversed: string
+  rolePayer: string
+  roleProvider: string
+  empty: string
+  loadError: string
+}
+
 export interface Translations {
   auth: AuthTranslations
   channelWorker: ChannelWorkerTranslations
@@ -2002,6 +2137,7 @@ export interface Translations {
   performance: PerformanceTranslations
   settings: SettingsTranslations
   affiliate: AffiliateTranslations
+  wallet: WalletPageTranslations
   pages: {
     accountConfiguration: PageMeta
     brokers: PageMeta
@@ -2013,6 +2149,7 @@ export interface Translations {
     featureRequest: PageMeta
     partnerWithUs: PageMeta
     affiliateProgram: PageMeta
+    wallet: PageMeta
     billing: PageMeta
     subscriptions: PageMeta
     marketNews: PageMeta

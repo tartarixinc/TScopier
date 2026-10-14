@@ -42,12 +42,12 @@ export const PERFORMANCE_MT_HISTORY_DAYS = 400
 export const DASHBOARD_MT_HISTORY_DAYS = DASHBOARD_CHART_MT_HISTORY_DAYS
 
 export const ACCOUNT_CHART_COLORS = [
-  '#0d9488',
+  '#4ade80',
   '#6366f1',
   '#f59e0b',
   '#ec4899',
   '#8b5cf6',
-  '#14b8a6',
+  '#86efac',
   '#f97316',
   '#3b82f6',
 ] as const

@@ -17,7 +17,7 @@ export function RelatedNewsPanel({ articles, title, empty, readArticle }: Relate
       </div>
       <div className="max-h-[32rem] overflow-y-auto divide-y divide-neutral-100 dark:divide-neutral-800">
         {articles.length === 0 ? (
-          <p className="px-4 py-8 text-center text-sm text-neutral-500 dark:text-neutral-400">{empty}</p>
+          <p className="px-4 py-8 text-center text-sm text-neutral-900 dark:text-neutral-50">{empty}</p>
         ) : (
           articles.map((article) => (
             <a
@@ -30,12 +30,12 @@ export function RelatedNewsPanel({ articles, title, empty, readArticle }: Relate
               <p className="text-sm font-medium leading-snug text-neutral-900 dark:text-neutral-50 line-clamp-2">
                 {article.headline}
               </p>
-              <div className="mt-1 flex items-center justify-between gap-2 text-xs text-neutral-500 dark:text-neutral-400">
+              <div className="mt-1 flex items-center justify-between gap-2 text-xs text-neutral-900 dark:text-neutral-50">
                 <span className="truncate">{article.source || '—'}</span>
                 <span className="shrink-0 tabular-nums">{formatRelative(articleTimestampSec(article))}</span>
               </div>
               {article.url ? (
-                <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-teal-600 dark:text-teal-400">
+                <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-green-400 dark:text-green-400">
                   {readArticle}
                   <ExternalLink className="h-3 w-3" />
                 </span>

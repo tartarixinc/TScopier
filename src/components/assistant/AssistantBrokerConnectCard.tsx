@@ -82,10 +82,10 @@ export function AssistantBrokerConnectCard({
       )}
     >
       <p className="text-[13.5px] font-semibold text-neutral-900 dark:text-neutral-50">{copy.title}</p>
-      <p className="mt-1 text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">{copy.hint}</p>
+      <p className="mt-1 text-xs leading-relaxed text-neutral-900 dark:text-neutral-50">{copy.hint}</p>
 
       <div className="mt-3 space-y-2">
-        <label className="block text-xs text-neutral-500 dark:text-neutral-400">
+        <label className="block text-xs text-neutral-900 dark:text-neutral-50">
           {copy.platformLabel}
           <select
             value={platform}
@@ -97,34 +97,34 @@ export function AssistantBrokerConnectCard({
             <option value="MT4">MT4</option>
           </select>
         </label>
-        <label className="block text-xs text-neutral-500 dark:text-neutral-400">
+        <label className="block text-xs text-neutral-900 dark:text-neutral-50">
           {copy.loginLabel}
           <input
             value={login}
             disabled={busy}
             onChange={e => setLogin(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm outline-none focus:border-teal-500 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+            className="mt-1 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm outline-none focus:border-green-400 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
           />
         </label>
-        <label className="block text-xs text-neutral-500 dark:text-neutral-400">
+        <label className="block text-xs text-neutral-900 dark:text-neutral-50">
           {copy.serverLabel}
           <input
             value={server}
             disabled={busy}
             onChange={e => setServer(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm outline-none focus:border-teal-500 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+            className="mt-1 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm outline-none focus:border-green-400 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
           />
         </label>
-        <label className="block text-xs text-neutral-500 dark:text-neutral-400">
+        <label className="block text-xs text-neutral-900 dark:text-neutral-50">
           {copy.labelLabel}
           <input
             value={label}
             disabled={busy}
             onChange={e => setLabel(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm outline-none focus:border-teal-500 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+            className="mt-1 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm outline-none focus:border-green-400 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
           />
         </label>
-        <label className="block text-xs text-neutral-500 dark:text-neutral-400">
+        <label className="block text-xs text-neutral-900 dark:text-neutral-50">
           {copy.passwordLabel}
           <div className="mt-1">
             <PasswordInput
@@ -160,7 +160,7 @@ export function AssistantBrokerConnectCard({
       {onOpenFullForm ? (
         <button
           type="button"
-          className="mt-2 text-xs text-teal-700 underline-offset-2 hover:underline dark:text-teal-300"
+          className="mt-2 text-xs text-green-500 underline-offset-2 hover:underline dark:text-teal-300"
           disabled={busy}
           onClick={onOpenFullForm}
         >

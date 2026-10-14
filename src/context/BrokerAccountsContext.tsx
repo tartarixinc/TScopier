@@ -20,6 +20,7 @@ import {
   sortBrokerAccountsNewestFirst,
 } from '../lib/brokerAccountSelect'
 import { planLimitErrorMessage } from '../lib/telegramChannelApi'
+import { resolveProvider } from '../lib/brokerLink'
 import { useT } from './LocaleContext'
 import { interpolate } from '../i18n/interpolate'
 import { BrokerReconnectPasswordModal } from '../components/broker/BrokerReconnectPasswordModal'
@@ -321,7 +322,7 @@ export function BrokerAccountsProvider({
     // prompt for an account that is about to disappear.
     if (passwordPromptBrokerRef.current) cancelPasswordPrompt()
     try {
-      await fxsocketBroker.delete(active.id, active.provider as 'fxsocket' | 'mtapi' | undefined)
+      await fxsocketBroker.delete(active.id, resolveProvider(active))
     } catch (err) {
       setReconnectError(err instanceof Error ? err.message : bl.deleteFailed)
       return

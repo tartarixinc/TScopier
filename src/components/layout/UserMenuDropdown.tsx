@@ -71,6 +71,7 @@ export function UserMenuDropdown({ open, onClose, onSignOut }: UserMenuDropdownP
     { id: 'profile', kind: 'link', label: um.profileSettings, icon: getAppRouteIcon('/settings'), path: '/settings' },
     { id: 'billing', kind: 'link', label: um.subscriptionBilling, icon: getAppRouteIcon('/billing'), path: '/billing' },
     { id: 'affiliate', kind: 'link', label: um.affiliateProgram, icon: getAppRouteIcon('/affiliate-program'), path: '/affiliate-program' },
+    { id: 'wallet', kind: 'link', label: um.wallet, icon: getAppRouteIcon('/wallet'), path: '/wallet' },
     { id: 'rate-us', kind: 'external', label: um.rateUs, icon: Star, href: TRUSTPILOT_REVIEW_URL },
     { id: 'join-telegram', kind: 'external', label: 'Join Telegram', icon: Send, href: 'https://t.me/tscopierai' },
     { id: 'signout', kind: 'action', label: um.signOut, icon: LogOut, destructive: true },
@@ -113,8 +114,8 @@ export function UserMenuDropdown({ open, onClose, onSignOut }: UserMenuDropdownP
           <UserAvatar user={user} profile={profile} email={user?.email} size="md" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">{headerName}</p>
-            <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">{user?.email}</p>
-            <p className="mt-0.5 text-xs font-medium text-teal-600 dark:text-teal-400">{planName || t.nav.planFree}</p>
+            <p className="truncate text-xs text-neutral-900 dark:text-neutral-50">{user?.email}</p>
+            <p className="mt-0.5 text-xs font-medium text-green-400 dark:text-green-400">{planName || t.nav.planFree}</p>
           </div>
         </div>
       </div>
@@ -133,7 +134,7 @@ export function UserMenuDropdown({ open, onClose, onSignOut }: UserMenuDropdownP
                   'flex w-full items-center gap-2.5 px-3 py-2.5 text-start text-sm font-medium transition-colors',
                   isDestructive
                     ? 'text-error-600 hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-950/40'
-                    : 'text-neutral-800 hover:bg-neutral-50 dark:text-neutral-100 dark:hover:bg-neutral-800/80',
+                    : 'text-neutral-900 hover:bg-neutral-50 dark:text-neutral-100 dark:hover:bg-neutral-800/80',
                 )}
               >
                 <span
@@ -141,14 +142,14 @@ export function UserMenuDropdown({ open, onClose, onSignOut }: UserMenuDropdownP
                     'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
                     isDestructive
                       ? 'bg-error-50 text-error-600 dark:bg-error-950/40 dark:text-error-400'
-                      : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300',
+                      : 'bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50',
                   )}
                 >
                   <Icon className="h-4 w-4" />
                 </span>
                 <span className="min-w-0 flex-1">{item.label}</span>
                 {item.kind === 'link' || item.kind === 'external' ? (
-                  <DirectionalIcon icon={ChevronRight} className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
+                  <DirectionalIcon icon={ChevronRight} className="h-3.5 w-3.5 shrink-0 text-neutral-900 dark:text-neutral-50" />
                 ) : null}
               </button>
             </li>

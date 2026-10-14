@@ -98,8 +98,8 @@ export function LanguageSwitcher({ className, compact = false }: LanguageSwitche
         onClick={() => setOpen(v => !v)}
         className={clsx(
           'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors',
-          'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900',
-          'dark:text-neutral-300 dark:hover:bg-neutral-800 dark:hover:text-neutral-50',
+          'text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:text-neutral-50',
+          'dark:text-neutral-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-50',
           open && 'bg-neutral-100 dark:bg-neutral-800',
         )}
         aria-haspopup="listbox"
@@ -124,7 +124,7 @@ export function LanguageSwitcher({ className, compact = false }: LanguageSwitche
         >
           <div className="border-b border-neutral-100 p-2 dark:border-neutral-800">
             <div className="relative">
-              <Search className="pointer-events-none absolute start-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" aria-hidden />
+              <Search className="pointer-events-none absolute start-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-900 dark:text-neutral-50" aria-hidden />
               <input
                 ref={inputRef}
                 type="search"
@@ -142,8 +142,8 @@ export function LanguageSwitcher({ className, compact = false }: LanguageSwitche
                 onKeyDown={onInputKeyDown}
                 className={clsx(
                   'w-full rounded-lg border py-2 ps-8 pe-3 text-sm',
-                  'border-neutral-200 bg-neutral-50 text-neutral-900 placeholder:text-neutral-400',
-                  'focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary-500',
+                  'border-neutral-200 bg-neutral-50 text-neutral-900 dark:text-neutral-50 placeholder:text-neutral-900 dark:placeholder:text-neutral-50',
+                  'focus:border-transparent focus:outline-none focus:ring-2 focus:ring-green-400',
                   'dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100',
                 )}
               />
@@ -158,7 +158,7 @@ export function LanguageSwitcher({ className, compact = false }: LanguageSwitche
             className="max-h-[min(16rem,50vh)] overflow-y-auto py-1"
           >
             {filtered.length === 0 ? (
-              <li className="px-3 py-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
+              <li className="px-3 py-6 text-center text-sm text-neutral-900 dark:text-neutral-50">
                 {auth.language.noResults}
               </li>
             ) : (
@@ -181,16 +181,16 @@ export function LanguageSwitcher({ className, compact = false }: LanguageSwitche
                         'flex w-full items-center gap-2.5 px-3 py-2 text-start text-sm transition-colors',
                         isActive || isSelected
                           ? 'bg-teal-50 text-teal-800 dark:bg-teal-950/50 dark:text-teal-200'
-                          : 'text-neutral-700 hover:bg-neutral-50 dark:text-neutral-200 dark:hover:bg-neutral-800',
+                          : 'text-neutral-900 hover:bg-neutral-50 dark:text-neutral-50 dark:hover:bg-neutral-800',
                       )}
                     >
                       <LocaleFlag flagId={opt.flagId} className="h-3.5 w-[1.3125rem]" />
                       <span className="min-w-0 flex-1">
                         <span className="font-medium">{opt.label}</span>
-                        <span className="ms-1.5 text-xs text-neutral-400 dark:text-neutral-500">{opt.short}</span>
+                        <span className="ms-1.5 text-xs text-neutral-900 dark:text-neutral-50">{opt.short}</span>
                       </span>
                       {isSelected ? (
-                        <Check className="h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400" aria-hidden />
+                        <Check className="h-4 w-4 shrink-0 text-green-400 dark:text-green-400" aria-hidden />
                       ) : (
                         <span className="h-4 w-4 shrink-0" aria-hidden />
                       )}

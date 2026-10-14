@@ -25,7 +25,7 @@ import { Toggle } from '../../components/ui/Toggle'
 import { Button } from '../../components/ui/Button'
 import { InfoTooltip } from '../../components/ui/InfoTooltip'
 import { fxsocketBroker, type MtTrade } from '../../lib/fxsocketBroker'
-import { isFxsocketLinkedBroker, countLinkedBrokerSessionsForUi, hasLinkedBrokerForUi, resolveProvider } from '../../lib/brokerLink'
+import { isFxsocketLinkedBroker, countLinkedBrokerSessionsForUi, hasLinkedBrokerForUi, resolveProvider, type BrokerProvider } from '../../lib/brokerLink'
 import { equityWithFloatingPnl, resolveBrokerTotalBalance } from '../../lib/effectiveBrokerBalance'
 import { useFxsocketStream } from '../../hooks/useFxsocketStream'
 import {
@@ -115,7 +115,6 @@ import {
   brokerReconnectBannerText,
 } from '../../lib/brokerConnectError'
 import { useLocale, useT } from '../../context/LocaleContext'
-import { SOCIAL_FOLLOWER_COUNT, SOCIAL_FOLLOWING_COUNT } from '../../lib/socialTradingFixture'
 import { useFormatMoney } from '../../hooks/useFormatMoney'
 import { lossTextClass, pnlSignTextClass } from '../../lib/pnlDisplay'
 import { formatMoneyWithCode } from '../../lib/currency'
@@ -148,7 +147,7 @@ const DASHBOARD_CARD =
   'rounded-2xl border border-neutral-200/65 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-neutral-800/55 dark:bg-neutral-950 dark:shadow-none'
 
 const DASHBOARD_SECTION_LINK =
-  'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-neutral-500 transition-colors hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100'
+  'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-neutral-900 transition-colors hover:text-neutral-900 dark:text-neutral-50 dark:hover:text-neutral-100'
 
 function isNonTradeSkipReason(value: string | null | undefined): boolean {
   const normalized = String(value ?? '')
@@ -982,7 +981,7 @@ export function DashboardPage() {
   const dashboardGreeting = greetingParts ? (
     <>
       {greetingParts[0]}
-      <span className="text-teal-600 dark:text-teal-400">{greetingName}</span>
+      <span className="text-green-500 dark:text-green-400">{greetingName}</span>
       {greetingParts[1] ?? ''}
     </>
   ) : (
@@ -2014,86 +2013,158 @@ export function DashboardPage() {
   /** Poll AccountSummary. MTAPI has no price stream, so this is the live balance source. */
   const linkedAccountIdsKey = linkedAccounts.map(a => a.id).sort().join(',')
   useEffect(() => {
-    const accounts = linkedAccounts.filter(account =>
-      resolveProvider(account) === 'mtapi'
-        ? hasLinkedBrokerForUi(account)
-        : isFxsocketLinkedBroker(account),
-    )
+    const accounts = linkedAccounts.filter(account => {
+      const provider = resolveProvider(account)
+      if (provider === 'mtapi' || provider === 'ctrader') return hasLinkedBrokerForUi(account)
+      return isFxsocketLinkedBroker(account)
+    })
     if (accounts.length === 0) return
 
     let cancelled = false
-    let cursor = 0
-    // MTAPI AccountSummary shares the trade session. A few-second poll trips
-    // "too many requests" and the copier then fails every order. Keep MTAPI
-    // refreshes infrequent; FxSocket still polls faster because it has a stream.
-    const hasMtapi = accounts.some(account => resolveProvider(account) === 'mtapi')
-    const pollIntervalMs = hasMtapi
-      ? 45_000
-      : Math.min(15_000, Math.max(4_000, 2_000 * Math.ceil(accounts.length / 2)))
     const throttleUntilById: Record<string, number> = {}
+    const cursors = { mtapi: 0, ctrader: 0, fxsocket: 0 }
+    const inflight = { mtapi: false, ctrader: false, fxsocket: false }
 
-    const pollLiveSnapshots = async () => {
-      if (cancelled || accounts.length === 0) return
-      const now = Date.now()
-      // Probe at most one quiet account per tick to avoid burst throttling.
-      for (let attempt = 0; attempt < accounts.length; attempt++) {
-        const account = accounts[cursor % accounts.length]!
-        cursor += 1
-        if ((throttleUntilById[account.id] ?? 0) > now) continue
+    const pollGroup = async (group: 'mtapi' | 'ctrader' | 'fxsocket') => {
+      if (cancelled || inflight[group]) return
+      const groupAccounts = accounts.filter(account => {
         const provider = resolveProvider(account)
-        const lastWs = lastWsTickRef.current[account.id] ?? 0
-        if (provider !== 'mtapi' && now - lastWs < 2500) continue
-        try {
-          const summary = provider === 'mtapi'
-            ? await (async () => {
-                const refreshed = await fxsocketBroker.refreshSummary(account.id, 'mtapi')
-                if (refreshed.account) replaceBroker(refreshed.account)
-                return refreshed.pending ? undefined : refreshed.summary
-              })()
-            : (await fxsocketBroker.liveSnapshot(account.id)).summary
-          if (cancelled || !summary) return
-          const snap = parseFxsocketAccountStreamData(summary as Record<string, unknown>)
-          const openTrades = linkedBalancesRef.current[account.id]?.open_trades ?? 0
-          const openPnl = resolveFxsocketFloatingOpenPnl(snap, openTrades)
-          const nextBalances = applyFxsocketAccountStreamUpdate(
-            account.id,
-            openPnl != null ? { ...snap, openPnl } : snap,
-            linkedBalancesRef.current,
-          )
-          linkedBalancesRef.current = nextBalances
-          if (openPnl != null) {
-            liveBrokerStateRef.current[account.id] = {
-              ...liveBrokerStateRef.current[account.id],
-              open_pnl: openPnl,
+        if (group === 'fxsocket') return provider !== 'mtapi' && provider !== 'ctrader'
+        return provider === group
+      })
+      if (groupAccounts.length === 0) return
+      inflight[group] = true
+      const now = Date.now()
+      try {
+        // Probe at most one quiet account per tick to avoid burst throttling.
+        for (let attempt = 0; attempt < groupAccounts.length; attempt++) {
+          const account = groupAccounts[cursors[group] % groupAccounts.length]!
+          cursors[group] += 1
+          if ((throttleUntilById[account.id] ?? 0) > now) continue
+          const provider = resolveProvider(account)
+          const rawProvider: BrokerProvider = provider
+          const lastWs = lastWsTickRef.current[account.id] ?? 0
+          if (provider !== 'mtapi' && provider !== 'ctrader' && now - lastWs < 2500) continue
+          try {
+            if (provider === 'ctrader') {
+              const { trades } = await fxsocketBroker.trades({
+                brokerId: account.id,
+                scope: 'open',
+                historyProfile: 'dashboard',
+                provider: 'ctrader',
+              })
+              if (cancelled) return
+              const rows = trades.filter(trade => trade.status !== 'closed')
+              let marked = 0
+              let priced = 0
+              for (const trade of rows) {
+                const profit = Number(trade.profit)
+                if (!Number.isFinite(profit)) continue
+                marked += profit
+                priced += 1
+              }
+              const openPnl = rows.length === 0
+                ? 0
+                : priced > 0
+                  ? Math.round(marked * 100) / 100
+                  : undefined
+              applyBrokerLiveSnapshot(account.id, {
+                open_trades: rows.length,
+                ...(openPnl != null ? { open_pnl: openPnl } : {}),
+              })
+              return
+            }
+            const summary = provider === 'mtapi'
+              ? await (async () => {
+                  const refreshed = await fxsocketBroker.refreshSummary(account.id, 'mtapi')
+                  if (refreshed.account) replaceBroker(refreshed.account)
+                  return refreshed.pending ? undefined : refreshed.summary
+                })()
+              : (await fxsocketBroker.liveSnapshot(account.id, rawProvider === 'ctrader' ? 'ctrader' : undefined)).summary
+            if (cancelled || !summary) return
+            const snap = parseFxsocketAccountStreamData(summary as Record<string, unknown>)
+            const summaryOpenTrades = typeof summary.open_trades === 'number' && Number.isFinite(summary.open_trades)
+              ? summary.open_trades
+              : undefined
+            const openTrades = summaryOpenTrades ?? linkedBalancesRef.current[account.id]?.open_trades ?? 0
+            let openPnl = resolveFxsocketFloatingOpenPnl(snap, openTrades)
+            if (rawProvider === 'ctrader' && (openPnl == null || openPnl === 0) && openTrades > 0) {
+              const fromBook = snapshotFromPositionBook(positionBooksRef.current[account.id] ?? new Map()).openPnl
+              if (fromBook) openPnl = fromBook
+            }
+            const nextBalances = applyFxsocketAccountStreamUpdate(
+              account.id,
+              openPnl != null ? { ...snap, openPnl } : snap,
+              linkedBalancesRef.current,
+            )
+            linkedBalancesRef.current = nextBalances
+            if (summaryOpenTrades != null || openPnl != null) {
+              const current = linkedBalancesRef.current[account.id] ?? {}
+              linkedBalancesRef.current = {
+                ...linkedBalancesRef.current,
+                [account.id]: {
+                  ...current,
+                  ...(summaryOpenTrades != null ? { open_trades: summaryOpenTrades } : {}),
+                },
+              }
+              liveBrokerStateRef.current[account.id] = {
+                ...liveBrokerStateRef.current[account.id],
+                ...(summaryOpenTrades != null ? { open_trades: summaryOpenTrades } : {}),
+                ...(openPnl != null ? { open_pnl: openPnl } : {}),
+              }
+            }
+            flushLiveBrokerMetrics()
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err)
+            if (/throttl|rate limit|too many requests|expected available in/i.test(msg)) {
+              const m = msg.match(/expected available in\s+(\d+)\s*seconds?/i)
+              const sec = m ? Number(m[1]) : 8
+              const floorMs = provider === 'mtapi' ? 90_000 : 4_000
+              throttleUntilById[account.id] = Date.now() + Math.min(180_000, Math.max(floorMs, (Number.isFinite(sec) ? sec : 8) * 1000 + 500))
             }
           }
-          flushLiveBrokerMetrics()
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err)
-          if (/throttl|rate limit|too many requests|expected available in/i.test(msg)) {
-            const m = msg.match(/expected available in\s+(\d+)\s*seconds?/i)
-            const sec = m ? Number(m[1]) : 8
-            const floorMs = provider === 'mtapi' ? 90_000 : 4_000
-            throttleUntilById[account.id] = Date.now() + Math.min(180_000, Math.max(floorMs, (Number.isFinite(sec) ? sec : 8) * 1000 + 500))
-          }
+          return
         }
-        return
+      } finally {
+        inflight[group] = false
       }
     }
 
-    const intervalId = window.setInterval(() => {
-      void pollLiveSnapshots()
-    }, pollIntervalMs)
-    // Let the page's own broker reads finish before the first MTAPI summary,
-    // so opening the dashboard does not collide with an order burst.
-    const startId = window.setTimeout(() => {
-      void pollLiveSnapshots()
-    }, hasMtapi ? 15_000 : 0)
+    const timers: number[] = []
+    const schedule = (group: 'mtapi' | 'ctrader' | 'fxsocket', intervalMs: number, startDelayMs: number) => {
+      if (!accounts.some(account => {
+        const provider = resolveProvider(account)
+        if (group === 'fxsocket') return provider !== 'mtapi' && provider !== 'ctrader'
+        return provider === group
+      })) return
+      timers.push(window.setInterval(() => {
+        void pollGroup(group)
+      }, intervalMs))
+      timers.push(window.setTimeout(() => {
+        void pollGroup(group)
+      }, startDelayMs))
+    }
+
+    // MTAPI AccountSummary shares the trade session. A few-second poll trips
+    // "too many requests" and the copier then fails every order.
+    schedule('mtapi', 45_000, 15_000)
+    // cTrader Open PnL is marked from spots on each snapshot, so it can tick
+    // without sharing the MTAPI session limit.
+    schedule('ctrader', 4_000, 800)
+    const fxCount = accounts.filter(account => {
+      const provider = resolveProvider(account)
+      return provider !== 'mtapi' && provider !== 'ctrader'
+    }).length
+    if (fxCount > 0) {
+      schedule('fxsocket', Math.min(15_000, Math.max(4_000, 2_000 * Math.ceil(fxCount / 2))), 0)
+    }
 
     return () => {
       cancelled = true
-      window.clearTimeout(startId)
-      window.clearInterval(intervalId)
+      for (const timer of timers) {
+        window.clearTimeout(timer)
+        window.clearInterval(timer)
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the poll interval is keyed on account identity only; field-level account changes arrive through the realtime handlers and must not restart the interval
   }, [linkedAccountIdsKey])
@@ -2117,7 +2188,9 @@ export function DashboardPage() {
           scheduleDismissLoader: scheduleDismissDashboardMetricsLoader,
         },
       )
-      if (cached?.linkedAccounts?.some(hasLinkedBrokerForUi)) {
+      // A warm session already has this snapshot on screen. Reloading here is
+      // what flashes the dashboard every time the page mounts again.
+      if (!tabSessionWarmRef.current && cached?.linkedAccounts?.some(hasLinkedBrokerForUi)) {
         // Kicked through a promise callback: no direct state-setting call
         // from the effect body.
         void Promise.resolve().then(() => loadDashboard({ fresh: false, syncLive: true }))
@@ -2385,32 +2458,6 @@ export function DashboardPage() {
       <PageHeader
         title={dashboardGreeting}
         titleClassName="text-3xl"
-        actions={
-          <div className="flex gap-2">
-            <Link
-              to="/social-trading?view=followers"
-              className="rounded-2xl bg-[#F7F8FA] px-4 py-3 dark:bg-white/[0.03] dark:ring-1 dark:ring-inset dark:ring-white/[0.06]"
-            >
-              <span className="block text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">
-                {t.socialTradingPage.followers}
-              </span>
-              <span className="mt-1 block text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
-                {SOCIAL_FOLLOWER_COUNT}
-              </span>
-            </Link>
-            <Link
-              to="/social-trading?view=following"
-              className="rounded-2xl bg-[#F7F8FA] px-4 py-3 dark:bg-white/[0.03] dark:ring-1 dark:ring-inset dark:ring-white/[0.06]"
-            >
-              <span className="block text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">
-                {t.socialTradingPage.following}
-              </span>
-              <span className="mt-1 block text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
-                {SOCIAL_FOLLOWING_COUNT}
-              </span>
-            </Link>
-          </div>
-        }
       />
       {showDashboardLoader ? (
         <DashboardMetricsSkeleton message={t.dashboard.loadingMetrics} />
@@ -2425,7 +2472,7 @@ export function DashboardPage() {
             label={t.dashboard.totalBalance}
             value={formatMoney(stats.totalEquity)}
             sub={interpolate(t.dashboard.acrossAccounts, { count: stats.accounts })}
-            subColor="text-neutral-500 dark:text-neutral-400"
+            subColor="text-neutral-900 dark:text-neutral-50"
           />
           <StatBlock
             label={t.dashboard.todaysProfit}
@@ -2440,7 +2487,7 @@ export function DashboardPage() {
             subColor={
               headlineStats.todayProfit - headlineStats.yesterdayProfit < 0
                 ? lossTextClass
-                : 'text-neutral-500 dark:text-neutral-400'
+                : 'text-neutral-900 dark:text-neutral-50'
             }
           />
           <StatBlock
@@ -2451,17 +2498,17 @@ export function DashboardPage() {
                 t.dashboard.noClosedTradesToday
               ) : (
                 <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-                  <span className="text-teal-700 dark:text-teal-400">
+                  <span className="text-green-500 dark:text-green-400">
                     {interpolate(t.common.won, { count: headlineStats.tradesWon })}
                   </span>
-                  <span className="text-neutral-300 dark:text-neutral-600">•</span>
+                  <span className="text-neutral-900 dark:text-neutral-50">•</span>
                   <span className={lossTextClass}>
                     {interpolate(t.common.lost, { count: headlineStats.tradesLost })}
                   </span>
                   {headlineStats.tradesBreakeven > 0 ? (
                     <>
-                      <span className="text-neutral-300 dark:text-neutral-600">•</span>
-                      <span className="text-neutral-500 dark:text-neutral-400">
+                      <span className="text-neutral-900 dark:text-neutral-50">•</span>
+                      <span className="text-neutral-900 dark:text-neutral-50">
                         {interpolate(t.common.breakeven, { count: headlineStats.tradesBreakeven })}
                       </span>
                     </>
@@ -2469,7 +2516,7 @@ export function DashboardPage() {
                 </span>
               )
             }
-            subColor="text-neutral-500 dark:text-neutral-400"
+            subColor="text-neutral-900 dark:text-neutral-50"
           />
           <StatBlock
             label={t.dashboard.openPnl}
@@ -2479,7 +2526,7 @@ export function DashboardPage() {
                 <button
                   type="button"
                   onClick={() => setOpenPnlModalOpen(true)}
-                  className="font-medium text-teal-700 underline-offset-2 hover:underline dark:text-teal-400"
+                  className="font-medium text-green-500 underline-offset-2 hover:underline dark:text-green-400"
                 >
                   {openPnlSub}
                 </button>
@@ -2488,7 +2535,7 @@ export function DashboardPage() {
               )
             }
             valueColor={pnlSignTextClass(stats.openPnl)}
-            subColor="text-neutral-500 dark:text-neutral-400"
+            subColor="text-neutral-900 dark:text-neutral-50"
           />
       </div>
 
@@ -2554,7 +2601,7 @@ export function DashboardPage() {
               ))}
             </div>
           ) : visibleTradeActivities.length === 0 ? (
-            <div className="px-5 py-10 text-sm text-neutral-400">{t.dashboard.noTradeActivities}</div>
+            <div className="px-5 py-10 text-sm text-neutral-900 dark:text-neutral-50">{t.dashboard.noTradeActivities}</div>
           ) : (
             <div className="divide-y divide-neutral-100 dark:divide-neutral-800 max-h-96 overflow-y-auto">
               {visibleTradeActivities.map(activity => (
@@ -2584,7 +2631,7 @@ export function DashboardPage() {
           <div className="overflow-x-auto">
           {/* Table header */}
           <div
-            className={`${DASHBOARD_COPIER_LOG_GRID} min-w-[28rem] border-b border-neutral-100 px-5 py-2.5 text-[11px] font-medium uppercase tracking-[0.06em] text-neutral-400 dark:border-neutral-800/80`}
+            className={`${DASHBOARD_COPIER_LOG_GRID} min-w-[28rem] border-b border-neutral-100 px-5 py-2.5 text-xs font-regular uppercase tracking-[0.06em] text-neutral-900 dark:text-neutral-50 dark:border-neutral-800/80`}
           >
             <span>{t.copierLogs.colStatus}</span>
             <span className="min-w-0">{t.copierLogs.colChannel}</span>
@@ -2605,7 +2652,7 @@ export function DashboardPage() {
             </div>
           ) : copierLogs.length === 0 ? (
             <div className="flex flex-col items-center justify-center px-5 py-16 text-center">
-              <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400">{t.dashboard.noData}</p>
+              <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{t.dashboard.noData}</p>
             </div>
           ) : (
             <div className="divide-y divide-neutral-100 dark:divide-neutral-800 max-h-80 overflow-y-auto min-w-[28rem]">
@@ -2629,7 +2676,7 @@ export function DashboardPage() {
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800/80">
           <h2 className="inline-flex items-center gap-2 text-[15px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
             {la.title}
-            <span className="text-xs font-medium tabular-nums text-neutral-400">
+            <span className="text-xs font-medium tabular-nums text-neutral-900 dark:text-neutral-50">
               {linkedAccounts.length}
             </span>
           </h2>
@@ -2644,7 +2691,7 @@ export function DashboardPage() {
         </div>
 
         {brokerReconnectError ? (
-          <div className="px-4 sm:px-5 py-2 text-sm text-neutral-600 dark:text-neutral-400 border-b border-neutral-100 dark:border-neutral-800">
+          <div className="px-4 sm:px-5 py-2 text-sm text-neutral-900 dark:text-neutral-50 border-b border-neutral-100 dark:border-neutral-800">
             {brokerReconnectError}
           </div>
         ) : null}
@@ -2657,7 +2704,7 @@ export function DashboardPage() {
 
         <div className="overflow-x-auto">
         <div className="min-w-[52rem] lg:min-w-0">
-        <div className="hidden lg:grid grid-cols-9 gap-2 border-b border-neutral-100 px-5 py-2.5 text-[11px] font-medium uppercase tracking-[0.06em] text-neutral-400 dark:border-neutral-800/80">
+        <div className="hidden lg:grid grid-cols-9 gap-2 border-b border-neutral-100 px-5 py-2.5 text-[11px] font-medium uppercase tracking-[0.06em] text-neutral-900 dark:text-neutral-50 dark:border-neutral-800/80">
           <LinkedAccountSortHeader
             label={la.colAccount}
             sortKey="account"
@@ -2737,7 +2784,7 @@ export function DashboardPage() {
             ))}
           </div>
         ) : linkedAccounts.length === 0 ? (
-          <div className="px-5 py-8 text-sm text-neutral-400">{la.empty}</div>
+          <div className="px-5 py-8 text-sm text-neutral-900 dark:text-neutral-50">{la.empty}</div>
         ) : (
           <div className="divide-y divide-neutral-100 dark:divide-neutral-800"> 
             {displayedLinkedAccounts.map(account => (
@@ -2792,7 +2839,7 @@ function StatBlock({ label, labelHint, value, sub, subColor, valueColor = 'text-
 }) {
   return (
     <div className="rounded-2xl bg-[#F7F8FA] px-4 py-4 sm:px-5 dark:bg-white/[0.03] dark:ring-1 dark:ring-inset dark:ring-white/[0.06]">
-      <p className="inline-flex items-center gap-1 text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">
+      <p className="inline-flex items-center gap-1 text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-900 dark:text-neutral-50">
         {label}
         {labelHint ? <InfoTooltip text={labelHint} /> : null}
       </p>
@@ -2821,11 +2868,11 @@ function OverviewStat({
   onAdd?: () => void
   addLabel?: string
 }) {
-  const actionClass = 'mt-2 inline-flex items-center gap-1 text-xs font-medium text-neutral-500 transition-colors hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100'
+  const actionClass = 'mt-2 inline-flex items-center gap-1 text-xs font-medium text-neutral-900 transition-colors hover:text-neutral-900 dark:text-neutral-50 dark:hover:text-neutral-100'
 
   return (
     <div className="px-4 py-4 sm:px-5">
-      <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-400">{label}</p>
+      <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-900 dark:text-neutral-50">{label}</p>
       <p className="mt-2 text-xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">{value}</p>
       {onAdd ? (
         <button type="button" onClick={onAdd} className={actionClass}>
@@ -2838,7 +2885,7 @@ function OverviewStat({
           <ChevronRight className="h-3.5 w-3.5" />
         </Link>
       ) : sub ? (
-        <p className="mt-2 text-xs text-neutral-400">{sub}</p>
+        <p className="mt-2 text-xs text-neutral-900 dark:text-neutral-50">{sub}</p>
       ) : (
         <span className="mt-2 block h-5" aria-hidden />
       )}
@@ -2852,14 +2899,14 @@ function LogRow({ signal, channelName, symbol, sourceKind }: { signal: Signal; c
   const action = parsed?.action as string | undefined
 
   const statusConfig: Record<string, { color: string; label: string }> = {
-    executed: { color: 'text-teal-700 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60', label: t.copierLogs.statusExecuted },
+    executed: { color: 'bg-green-100 text-neutral-950 dark:bg-green-100 dark:text-neutral-950', label: t.copierLogs.statusExecuted },
     skipped:  { color: 'text-warning-800 bg-warning-50 dark:!text-amber-100 dark:!bg-amber-900', label: t.copierLogs.statusSkipped },
     failed:   { color: 'text-error-800 bg-error-50 dark:text-error-300 dark:bg-error-950/70', label: t.copierLogs.statusFailed },
-    pending:  { color: 'text-neutral-600 bg-neutral-100 dark:text-neutral-300 dark:bg-neutral-800', label: t.copierLogs.statusPending },
-    parsed:   { color: 'text-teal-700 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60', label: t.copierLogs.statusParsed },
+    pending:  { color: 'text-neutral-900 bg-neutral-100 dark:text-neutral-50 dark:bg-neutral-800', label: t.copierLogs.statusPending },
+    parsed:   { color: 'text-green-500 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60', label: t.copierLogs.statusParsed },
   }
 
-  const s = statusConfig[signal.status] ?? { color: 'text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800', label: signal.status }
+  const s = statusConfig[signal.status] ?? { color: 'text-neutral-900 dark:text-neutral-50 bg-neutral-100 dark:bg-neutral-800', label: signal.status }
   const isBuy = action === 'buy'
 
   const typeLabel = action ? action.replace(/_/g, ' ') : '—'
@@ -2867,23 +2914,23 @@ function LogRow({ signal, channelName, symbol, sourceKind }: { signal: Signal; c
 
   return (
     <div className={`${DASHBOARD_COPIER_LOG_GRID} px-5 py-3 transition-colors hover:bg-[#F7F8FA] dark:hover:bg-white/[0.03]`}>
-      <span className={`inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${s.color}`}>
+      <span className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-sm font-regular ${s.color}`}>
         {s.label}
       </span>
-      <span className="flex min-w-0 items-center gap-2 text-xs text-neutral-700 dark:text-neutral-200" title={channelTitle}>
+      <span className="flex min-w-0 items-center gap-2 text-sm font-regular text-neutral-900 dark:text-neutral-50" title={channelTitle}>
         {sourceKind ? <SignalSourceLogo kind={sourceKind} /> : null}
         <span className="truncate">{channelName}</span>
       </span>
-      <span className="min-w-0 text-sm font-medium text-neutral-900 dark:text-neutral-50 truncate" title={symbol}>{symbol}</span>
+      <span className="min-w-0 text-base font-regular text-neutral-900 dark:text-neutral-50 truncate" title={symbol}>{symbol}</span>
       <span
-        className={`min-w-0 text-xs font-medium uppercase truncate ${
-          isBuy ? 'text-primary-600' : action === 'sell' ? 'text-error-600' : 'text-neutral-600 dark:text-neutral-400'
+        className={`min-w-0 text-sm font-regular uppercase truncate ${
+          isBuy ? 'text-green-500 dark:text-green-400' : action === 'sell' ? 'text-error-600' : 'text-neutral-900 dark:text-neutral-50'
         }`}
         title={typeLabel}
       >
         {typeLabel}
       </span>
-      <span className="text-xs text-neutral-400 text-right whitespace-nowrap">
+      <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50 text-right whitespace-nowrap">
         {signal.created_at
           ? new Date(signal.created_at).toLocaleString([], {
               month: 'short',
@@ -2931,13 +2978,13 @@ function LinkedAccountSortHeader({
       type="button"
       onClick={() => onSort(sortKey)}
       title={title}
-      className={`inline-flex min-w-0 items-center gap-0.5 rounded-md transition-colors hover:text-neutral-600 dark:hover:text-neutral-300 ${
+      className={`inline-flex min-w-0 items-center gap-0.5 rounded-md transition-colors hover:text-neutral-900 dark:hover:text-neutral-50 ${
         align === 'right' ? 'ml-auto justify-end' : 'justify-start'
-      } ${isActive ? 'text-neutral-700 dark:text-neutral-200' : 'text-neutral-400'}`}
+      } ${isActive ? 'text-neutral-900 dark:text-neutral-50' : 'text-neutral-900 dark:text-neutral-50'}`}
     >
       <span className="truncate">{label}</span>
       <SortIcon
-        className={`h-3.5 w-3.5 shrink-0 ${isActive ? 'text-teal-600 dark:text-teal-400' : 'opacity-50'}`}
+        className={`h-3.5 w-3.5 shrink-0 ${isActive ? 'text-green-400 dark:text-green-400' : 'opacity-50'}`}
         aria-hidden
       />
     </button>
@@ -2974,10 +3021,10 @@ function LinkedAccountRow({
   const intlLocale = locale === 'en' ? undefined : locale
   const isDisconnected = !isBrokerSessionConnected(account)
   const statusClass = isDisconnected
-    ? 'text-neutral-700 border-neutral-200 bg-neutral-100 dark:text-neutral-300 dark:border-neutral-700 dark:bg-neutral-800/80'
+    ? 'text-neutral-900 border-neutral-200 bg-neutral-100 dark:text-neutral-50 dark:border-neutral-700 dark:bg-neutral-800/80'
     : account.is_active
-      ? 'text-teal-700 border-teal-200 bg-teal-50 dark:text-teal-300 dark:border-teal-800 dark:bg-teal-950/50'
-      : 'text-neutral-600 border-neutral-200 bg-neutral-100 dark:text-neutral-400 dark:border-neutral-700 dark:bg-neutral-800/80'
+      ? 'text-green-500 border-teal-200 bg-teal-50 dark:text-teal-300 dark:border-teal-800 dark:bg-teal-950/50'
+      : 'text-neutral-900 border-neutral-200 bg-neutral-100 dark:text-neutral-50 dark:border-neutral-700 dark:bg-neutral-800/80'
   const cashBalance = accountSummary?.balance ?? account.last_balance ?? null
   // Cash balance stays put while positions tick. Show cash + live floating P/L.
   const balance = equityWithFloatingPnl(
@@ -3026,7 +3073,7 @@ function LinkedAccountRow({
   const winRate = performance?.winRate ?? null
   const maxDd = performance?.maxDrawdownPct ?? null
   const winRateColor =
-    winRate == null ? 'text-neutral-900 dark:text-neutral-50' : winRate >= 50 ? 'text-teal-600' : 'text-neutral-900 dark:text-neutral-50'
+    winRate == null ? 'text-neutral-900 dark:text-neutral-50' : winRate >= 50 ? 'text-green-500 dark:text-green-400' : 'text-neutral-900 dark:text-neutral-50'
   const ddColor =
     maxDd == null ? 'text-neutral-900 dark:text-neutral-50' : lossTextClass
 
@@ -3051,7 +3098,7 @@ function LinkedAccountRow({
           {accountLabel}
         </span>
         <span
-          className="truncate text-[11px] font-medium tracking-wide text-neutral-400"
+          className="truncate text-[11px] font-medium tracking-wide text-neutral-900 dark:text-neutral-50"
           title={platformLine}
         >
           {platformLine}

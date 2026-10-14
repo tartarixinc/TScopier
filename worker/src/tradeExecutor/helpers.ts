@@ -19,14 +19,20 @@ export function isMtUuid(s: string | null | undefined): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
 }
 
-/** FxSocket terminal UUID from broker_accounts (fxsocket_account_id). */
+/**
+ * Session id the copier uses for this broker.
+ * FxSocket and MTAPI ids are UUIDs. cTrader uses the numeric ctidTraderAccountId.
+ */
 export function brokerSessionUuid(broker: {
   provider?: string | null
   mtapi_session_id?: string | null
   fxsocket_account_id?: string | null
   metaapi_account_id?: string | null
+  ctrader_account_id?: string | null
 }): string | null {
   const id = brokerSessionId(broker)
+  if (!id) return null
+  if (broker.provider === 'ctrader') return id
   return isMtUuid(id) ? id : null
 }
 
@@ -35,6 +41,7 @@ export function brokerHasLinkedSession(broker: {
   mtapi_session_id?: string | null
   fxsocket_account_id?: string | null
   metaapi_account_id?: string | null
+  ctrader_account_id?: string | null
 }): boolean {
   return brokerSessionUuid(broker) != null
 }

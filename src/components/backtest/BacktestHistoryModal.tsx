@@ -74,12 +74,12 @@ export function BacktestHistoryModal({
       case 'cancelled':
         return {
           label: bt.statusCancelled,
-          className: 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400',
+          className: 'bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50',
         }
       default:
         return {
           label: status,
-          className: 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800',
+          className: 'bg-neutral-100 text-neutral-900 dark:text-neutral-50 dark:bg-neutral-800',
         }
     }
   }
@@ -195,12 +195,12 @@ export function BacktestHistoryModal({
             <h2 id="backtest-history-title" className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">
               {bt.historyModalTitle}
             </h2>
-            <p className="text-xs text-neutral-500 mt-0.5">{bt.historyModalSubtitle}</p>
+            <p className="text-xs text-neutral-900 dark:text-neutral-50 mt-0.5">{bt.historyModalSubtitle}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-lg text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            className="p-2 rounded-lg text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800"
             aria-label={bt.close}
           >
             <X className="w-5 h-5" />
@@ -209,14 +209,14 @@ export function BacktestHistoryModal({
 
         <div className="flex-1 overflow-y-auto min-h-0">
           {loading ? (
-            <div className="flex items-center justify-center gap-2 py-16 text-sm text-neutral-500">
+            <div className="flex items-center justify-center gap-2 py-16 text-sm text-neutral-900 dark:text-neutral-50">
               <Loader2 className="w-5 h-5 animate-spin" />
               {t.common.loading}
             </div>
           ) : loadError ? (
             <p className="text-sm text-error-600 px-5 py-8">{loadError}</p>
           ) : runs.length === 0 ? (
-            <p className="text-sm text-neutral-500 text-center py-16 px-5">
+            <p className="text-sm text-neutral-900 dark:text-neutral-50 text-center py-16 px-5">
               {bt.historyEmpty}
             </p>
           ) : (
@@ -240,12 +240,12 @@ export function BacktestHistoryModal({
                           <p className="font-medium text-neutral-900 dark:text-neutral-100 truncate">
                             {runSymbols(cfg)}
                           </p>
-                          <p className="text-xs text-neutral-500 mt-0.5">
+                          <p className="text-xs text-neutral-900 dark:text-neutral-50 mt-0.5">
                             {runChannelLabel(cfg)}
                             <span className="mx-1.5">·</span>
                             {dateRange}
                           </p>
-                          <p className="text-xs text-neutral-400 mt-1 flex items-center gap-1 tabular-nums">
+                          <p className="text-xs text-neutral-900 dark:text-neutral-50 mt-1 flex items-center gap-1 tabular-nums">
                             <Clock className="w-3 h-3 shrink-0" />
                             {formatRunDate(run.created_at)}
                           </p>

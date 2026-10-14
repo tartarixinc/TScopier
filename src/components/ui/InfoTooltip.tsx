@@ -115,7 +115,7 @@ export function InfoTooltip({ text, className }: { text: string; className?: str
                 ? 'translate(-50%, 0)'
                 : 'translate(-50%, -100%)',
           }}
-          className="pointer-events-none w-max max-w-[min(22rem,calc(100vw-2rem))] whitespace-pre-line rounded-md border border-neutral-200 bg-white px-2.5 py-2 text-left text-xs font-normal leading-relaxed text-neutral-600 shadow-lg dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300"
+          className="pointer-events-none w-max max-w-[min(22rem,calc(100vw-2rem))] whitespace-pre-line rounded-md border border-neutral-200 bg-white px-2.5 py-2 text-left text-xs font-normal leading-relaxed text-neutral-900 shadow-lg dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-50"
         >
           {trimmed}
         </span>,
@@ -135,7 +135,7 @@ export function InfoTooltip({ text, className }: { text: string; className?: str
           onMouseLeave={hide}
           onFocus={show}
           onBlur={hide}
-          className="inline-flex items-center justify-center rounded-full text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+          className="inline-flex items-center justify-center rounded-full text-neutral-900 hover:text-neutral-900 dark:text-neutral-50 dark:hover:text-neutral-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400"
           aria-label={trimmed}
         >
           <Info className="w-3.5 h-3.5" aria-hidden />
@@ -163,7 +163,7 @@ export function ConfigTitle({
         'inline-flex items-center gap-1.5',
         variant === 'semibold'
           ? 'text-sm font-semibold text-neutral-900 dark:text-neutral-50'
-          : 'text-sm font-medium text-neutral-800 dark:text-neutral-100',
+          : 'text-sm font-medium text-neutral-900 dark:text-neutral-100',
         className,
       )}
     >
@@ -186,7 +186,7 @@ export function ConfigToggleLabel({
   return (
     <span
       className={clsx(
-        'text-sm font-medium text-neutral-800 dark:text-neutral-100 inline-flex items-center gap-1.5',
+        'text-sm font-medium text-neutral-900 dark:text-neutral-100 inline-flex items-center gap-1.5',
         className,
       )}
     >
@@ -198,7 +198,7 @@ export function ConfigToggleLabel({
 
 export function FieldLabelWithInfo({ label, hint }: { label: string; hint?: string }) {
   return (
-    <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300 inline-flex items-center gap-1.5">
+    <label className="text-sm font-medium text-neutral-900 dark:text-neutral-50 inline-flex items-center gap-1.5">
       <span>{label}</span>
       {hint ? <InfoTooltip text={hint} /> : null}
     </label>

@@ -14,6 +14,7 @@ export function PartnerWithUsPage() {
 }
 
 export { AffiliateProgramPage } from './AffiliateProgramPage'
+export { WalletPage } from './WalletPage'
 
 export { BillingPage } from './BillingPage'
 

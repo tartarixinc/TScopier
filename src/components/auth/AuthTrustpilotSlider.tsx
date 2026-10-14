@@ -47,7 +47,7 @@ export function AuthTrustpilotSlider({ reviews, trustpilotLabel }: AuthTrustpilo
 
   return (
     <div className="flex w-full max-w-lg flex-col items-center text-center">
-      <span className="mb-6 flex h-12 w-12 items-center justify-center rounded-2xl bg-teal-100 text-teal-700 dark:bg-teal-950/80 dark:text-teal-400">
+      <span className="mb-6 flex h-12 w-12 items-center justify-center rounded-2xl bg-teal-100 text-green-500 dark:bg-teal-950/80 dark:text-green-400">
         <Quote className="h-6 w-6" strokeWidth={1.75} aria-hidden />
       </span>
 
@@ -76,7 +76,7 @@ export function AuthTrustpilotSlider({ reviews, trustpilotLabel }: AuthTrustpilo
               ) : null}
               <p
                 className={clsx(
-                  'leading-relaxed text-neutral-700 dark:text-neutral-300',
+                  'leading-relaxed text-neutral-900 dark:text-neutral-50',
                   item.headline
                     ? 'mt-3 text-sm font-normal sm:text-base'
                     : 'text-base font-semibold tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-lg',
@@ -89,7 +89,7 @@ export function AuthTrustpilotSlider({ reviews, trustpilotLabel }: AuthTrustpilo
                   {item.author}
                 </p>
                 {item.role ? (
-                  <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+                  <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-50">
                     {item.role}
                   </p>
                 ) : null}
@@ -121,7 +121,7 @@ export function AuthTrustpilotSlider({ reviews, trustpilotLabel }: AuthTrustpilo
               className={clsx(
                 'h-2 rounded-full transition-all duration-300',
                 index === active
-                  ? 'w-6 bg-teal-600 dark:bg-teal-400'
+                  ? 'w-6 bg-green-400 dark:bg-green-400'
                   : 'w-2 bg-neutral-300 hover:bg-neutral-400 dark:bg-neutral-600 dark:hover:bg-neutral-500',
               )}
             />

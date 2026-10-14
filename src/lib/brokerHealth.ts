@@ -15,11 +15,19 @@ type BrokerTerminalHealthLabels = {
 }
 
 function isBrokerLinking(
-  account: Pick<BrokerAccount, 'connection_status' | 'fxsocket_status'>,
+  account: Pick<BrokerAccount, 'connection_status' | 'fxsocket_status' | 'terminal_connected' | 'trade_allowed' | 'live_terminal_health_phase'> & {
+    mtapi_status?: string | null
+    ctrader_status?: string | null
+  },
 ): boolean {
+  if (account.live_terminal_health_phase === 'healthy' || account.live_terminal_health_phase === 'unhealthy') {
+    return false
+  }
+  if (account.terminal_connected === true && account.trade_allowed === true) return false
+  if (account.mtapi_status === 'connected' || account.ctrader_status === 'connected') return false
   if (account.connection_status === 'pending') return true
   const fx = account.fxsocket_status
-  return fx === 'connecting'
+  return fx === 'connecting' || account.mtapi_status === 'connecting' || account.ctrader_status === 'connecting'
 }
 
 export function brokerTerminalHealthPhase(
@@ -28,6 +36,8 @@ export function brokerTerminalHealthPhase(
     | 'is_active'
     | 'connection_status'
     | 'fxsocket_status'
+    | 'mtapi_status'
+    | 'ctrader_status'
     | 'terminal_connected'
     | 'trade_allowed'
     | 'live_terminal_health_phase'
@@ -49,6 +59,8 @@ export function brokerTerminalHealthLabel(
     | 'is_active'
     | 'connection_status'
     | 'fxsocket_status'
+    | 'mtapi_status'
+    | 'ctrader_status'
     | 'terminal_connected'
     | 'trade_allowed'
     | 'live_terminal_health_phase'
@@ -68,6 +80,8 @@ export function brokerTerminalHealthBadgeVariant(
     | 'is_active'
     | 'connection_status'
     | 'fxsocket_status'
+    | 'mtapi_status'
+    | 'ctrader_status'
     | 'terminal_connected'
     | 'trade_allowed'
     | 'live_terminal_health_phase'
@@ -85,11 +99,15 @@ export function brokerAccountHealthPatchFromMtStatus(
 ): Pick<
   BrokerAccount,
   'terminal_connected' | 'trade_allowed' | 'live_terminal_health_phase' | 'linked_account_type'
-> {
+> & {
+  connection_status?: 'connected'
+} {
   const legacyPatch = terminalHealthRowPatchFromMtStatus(status)
+  const healthy = isFxsocketMtStatusHealthy(status)
   return {
     ...legacyPatch,
-    live_terminal_health_phase: isFxsocketMtStatusHealthy(status) ? 'healthy' : 'unhealthy',
+    live_terminal_health_phase: healthy ? 'healthy' : 'unhealthy',
     linked_account_type: parseMtAccountTradeMode(status.account?.type),
+    ...(healthy ? { connection_status: 'connected' as const } : {}),
   }
 }

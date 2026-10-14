@@ -15,7 +15,7 @@ export const chromePl: AppChromeTranslations = {
     items: {
       dashboard: 'Pulpit',
       configuration: 'Konfiguracje',
-      brokers: 'Brokerzy',
+      brokers: 'Konfiguracja handlu',
       mirrorTrading: 'Konto lustrzane',
       socialTrading: 'Trading społecznościowy',
       trades: 'Transakcje',
@@ -90,6 +90,7 @@ export const chromePl: AppChromeTranslations = {
       profileSettings: 'Profil i ustawienia',
       subscriptionBilling: 'Subskrypcja i rozliczenia',
       affiliateProgram: 'Program partnerski',
+      wallet: 'Portfel',
       rateUs: 'Oceń nas',
       signOut: 'Wyloguj się',
     },
@@ -255,7 +256,7 @@ export const chromePl: AppChromeTranslations = {
   },
   pages: {
     accountConfiguration: {
-      title: 'Brokerzy',
+      title: 'Konfiguracja handlu',
       description: 'Połącz konta MetaTrader i dostosuj sposób kopiowania sygnałów dla każdego z nich.',
     },
     brokers: {
@@ -293,6 +294,10 @@ export const chromePl: AppChromeTranslations = {
     affiliateProgram: {
       title: 'Program partnerski',
       description: 'Zaproś traderów i zarabiaj 10% prowizji dożywotnio od płatnych subskrypcji.',
+    },
+    wallet: {
+      title: 'Portfel',
+      description: 'Saldo i historia płatności za kopiowanie sygnałów.',
     },
     billing: {
       title: 'Rozliczenia',

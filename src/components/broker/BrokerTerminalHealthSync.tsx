@@ -4,12 +4,12 @@ import { useAuth } from '../../context/AuthContext'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
 import { brokerAccountHealthPatchFromMtStatus } from '../../lib/brokerHealth'
 import { BrokerHealthCheckUnsupportedError, fxsocketBroker } from '../../lib/fxsocketBroker'
-import { hasFxsocketBrokerSession } from '../../lib/brokerLink'
+import { hasLinkedBrokerForUi, resolveProvider } from '../../lib/brokerLink'
 import { routeNeedsLiveBrokerConnectivity } from '../../lib/liveBrokerRoutes'
 
 const HEALTH_POLL_INTERVAL_MS = 45_000
 
-/** Poll FxSocket /Status for broker terminal health on live dashboard routes. */
+/** Poll terminal health for linked FxSocket, MTAPI, and cTrader accounts on live dashboard routes. */
 export function BrokerTerminalHealthSync() {
   const { user } = useAuth()
   const location = useLocation()
@@ -18,12 +18,12 @@ export function BrokerTerminalHealthSync() {
   const brokerIdsKey = useMemo(
     () => brokers
       .filter(b => {
-        if (!hasFxsocketBrokerSession(b)) return false
+        if (!hasLinkedBrokerForUi(b)) return false
         if (b.connection_status === 'pending') return false
-        if (b.fxsocket_status === 'connecting') return false
+        if (b.fxsocket_status === 'connecting' || b.mtapi_status === 'connecting' || b.ctrader_status === 'connecting') return false
         return true
       })
-      .map(b => b.id)
+      .map(b => `${b.id}:${resolveProvider(b)}`)
       .sort()
       .join(','),
     [brokers],
@@ -43,10 +43,15 @@ export function BrokerTerminalHealthSync() {
     let cancelled = false
 
     const syncHealth = async () => {
-      for (const id of brokerIdsKey.split(',')) {
-        if (cancelled || !id || !terminalHealthSupportedRef.current) continue
+      for (const token of brokerIdsKey.split(',')) {
+        if (cancelled || !token || !terminalHealthSupportedRef.current) continue
+        const splitAt = token.lastIndexOf(':')
+        const id = token.slice(0, splitAt)
+        const suffix = token.slice(splitAt + 1)
+        const provider = suffix === 'mtapi' ? 'mtapi' as const : suffix === 'ctrader' ? 'ctrader' as const : 'fxsocket' as const
+        if (!id) continue
         try {
-          const { account, status } = await fxsocketBroker.checkStatus(id)
+          const { account, status } = await fxsocketBroker.checkStatus(id, provider)
           if (cancelled) return
           upsertBroker({
             ...account,

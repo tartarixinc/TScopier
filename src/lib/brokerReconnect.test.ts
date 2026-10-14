@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   brokerCanReconnect,
+  brokerConnectionStatusLabel,
   brokerEffectiveConnectionStatus,
   brokerConnectionBadgeVariant,
 } from './brokerReconnect'
@@ -64,6 +65,29 @@ describe('brokerConnectionBadgeVariant', () => {
       fxsocket_status: 'connected',
       connection_status: 'error',
     })).toBe('error')
+  })
+
+  it('shows Connected when the terminal is already healthy but the link flag is still pending', () => {
+    const labels = {
+      statusPaused: 'Paused',
+      statusConnected: 'Connected',
+      statusConnecting: 'Connecting',
+      statusRecovering: 'Reconnecting',
+      statusDisconnected: 'Disconnected',
+    }
+    expect(brokerConnectionStatusLabel({
+      is_active: true,
+      fxsocket_status: 'connecting',
+      connection_status: 'pending',
+      terminal_connected: true,
+      trade_allowed: true,
+    }, labels)).toBe('Connected')
+    expect(brokerEffectiveConnectionStatus({
+      fxsocket_status: null,
+      connection_status: 'pending',
+      provider: 'mtapi',
+      mtapi_status: 'connected',
+    })).toBe('connected')
   })
 })
 

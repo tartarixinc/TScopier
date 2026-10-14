@@ -45,16 +45,16 @@ export function OnboardingPage() {
                 <div className="flex flex-col items-center gap-1.5">
                   <div className={clsx(
                     'w-10 h-10 rounded-full flex items-center justify-center transition-all',
-                    done ? 'bg-teal-500' : active ? 'bg-white dark:bg-neutral-900' : 'bg-white dark:bg-neutral-900/10'
+                    done ? 'bg-green-400' : active ? 'bg-white dark:bg-neutral-900' : 'bg-white dark:bg-neutral-900/10'
                   )}>
                     {done
-                      ? <CheckCircle className="w-5 h-5 text-white" />
-                      : <Icon className={clsx('w-5 h-5', active ? 'text-primary-700' : 'text-white/40')} />
+                      ? <CheckCircle className="w-5 h-5 text-neutral-950" />
+                      : <Icon className={clsx('w-5 h-5', active ? 'text-green-500' : 'text-white/40')} />
                     }
                   </div>
                   <span className={clsx(
                     'text-xs font-medium',
-                    active ? 'text-white' : done ? 'text-primary-400' : 'text-white/40'
+                    active ? 'text-white' : done ? 'text-green-400' : 'text-white/40'
                   )}>
                     {step.label}
                   </span>
@@ -62,7 +62,7 @@ export function OnboardingPage() {
                 {idx < steps.length - 1 && (
                   <div className={clsx(
                     'w-20 h-px mx-2 mb-5 transition-colors',
-                    currentStep > step.id ? 'bg-teal-500' : 'bg-white dark:bg-neutral-900/10'
+                    currentStep > step.id ? 'bg-green-400' : 'bg-white dark:bg-neutral-900/10'
                   )} />
                 )}
               </div>

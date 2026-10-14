@@ -14,13 +14,13 @@ export function LegalDocumentPage({ page }: { page: LegalDocumentPageTranslation
     <MarketingLayout>
       <article className="mx-auto max-w-3xl px-5 py-12 sm:px-8 sm:py-16 lg:py-20">
         <header className="mb-10">
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+          <p className="text-xs font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
             {page.lastUpdated}
           </p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-4xl">
             {page.title}
           </h1>
-          <p className="mt-4 text-sm leading-relaxed text-neutral-600 dark:text-neutral-400 sm:text-base">
+          <p className="mt-4 text-sm leading-relaxed text-neutral-900 dark:text-neutral-50 sm:text-base">
             {page.intro}
           </p>
         </header>
@@ -35,7 +35,7 @@ export function LegalDocumentPage({ page }: { page: LegalDocumentPageTranslation
                 {section.paragraphs.map((paragraph, idx) => (
                   <p
                     key={idx}
-                    className="text-sm leading-relaxed text-neutral-600 dark:text-neutral-400"
+                    className="text-sm leading-relaxed text-neutral-900 dark:text-neutral-50"
                   >
                     {paragraph}
                   </p>
@@ -47,17 +47,17 @@ export function LegalDocumentPage({ page }: { page: LegalDocumentPageTranslation
 
         <section className="mt-10 rounded-lg border border-neutral-200/65 bg-neutral-50/80 p-5 dark:border-neutral-800/55 dark:bg-neutral-900/50">
           <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">{c.title}</h2>
-          <dl className="mt-3 space-y-2 text-sm text-neutral-600 dark:text-neutral-400">
+          <dl className="mt-3 space-y-2 text-sm text-neutral-900 dark:text-neutral-50">
             <div>
-              <dt className="font-medium text-neutral-800 dark:text-neutral-200">{c.company}</dt>
+              <dt className="font-medium text-neutral-900 dark:text-neutral-50">{c.company}</dt>
               <dd>{LEGAL_COMPANY.legalName}, {LEGAL_COMPANY.entityDescription}</dd>
             </div>
             <div>
-              <dt className="font-medium text-neutral-800 dark:text-neutral-200">{c.ein}</dt>
+              <dt className="font-medium text-neutral-900 dark:text-neutral-50">{c.ein}</dt>
               <dd>{LEGAL_COMPANY.ein}</dd>
             </div>
             <div>
-              <dt className="font-medium text-neutral-800 dark:text-neutral-200">{c.address}</dt>
+              <dt className="font-medium text-neutral-900 dark:text-neutral-50">{c.address}</dt>
               <dd>
                 {LEGAL_COMPANY.addressLines.map(line => (
                   <span key={line} className="block">{line}</span>
@@ -65,33 +65,33 @@ export function LegalDocumentPage({ page }: { page: LegalDocumentPageTranslation
               </dd>
             </div>
             <div>
-              <dt className="font-medium text-neutral-800 dark:text-neutral-200">{c.phone}</dt>
+              <dt className="font-medium text-neutral-900 dark:text-neutral-50">{c.phone}</dt>
               <dd>
-                <a href={`tel:${LEGAL_COMPANY.phone.replace(/\D/g, '')}`} className="text-teal-600 hover:underline dark:text-teal-400">
+                <a href={`tel:${LEGAL_COMPANY.phone.replace(/\D/g, '')}`} className="text-green-400 hover:underline dark:text-green-400">
                   {LEGAL_COMPANY.phone}
                 </a>
               </dd>
             </div>
             <div>
-              <dt className="font-medium text-neutral-800 dark:text-neutral-200">{c.emailSupport}</dt>
+              <dt className="font-medium text-neutral-900 dark:text-neutral-50">{c.emailSupport}</dt>
               <dd>
-                <a href={`mailto:${LEGAL_COMPANY.emails.support}`} className="text-teal-600 hover:underline dark:text-teal-400">
+                <a href={`mailto:${LEGAL_COMPANY.emails.support}`} className="text-green-400 hover:underline dark:text-green-400">
                   {LEGAL_COMPANY.emails.support}
                 </a>
               </dd>
             </div>
             <div>
-              <dt className="font-medium text-neutral-800 dark:text-neutral-200">{c.emailLegal}</dt>
+              <dt className="font-medium text-neutral-900 dark:text-neutral-50">{c.emailLegal}</dt>
               <dd>
-                <a href={`mailto:${LEGAL_COMPANY.emails.legal}`} className="text-teal-600 hover:underline dark:text-teal-400">
+                <a href={`mailto:${LEGAL_COMPANY.emails.legal}`} className="text-green-400 hover:underline dark:text-green-400">
                   {LEGAL_COMPANY.emails.legal}
                 </a>
               </dd>
             </div>
             <div>
-              <dt className="font-medium text-neutral-800 dark:text-neutral-200">{c.emailDisputes}</dt>
+              <dt className="font-medium text-neutral-900 dark:text-neutral-50">{c.emailDisputes}</dt>
               <dd>
-                <a href={`mailto:${LEGAL_COMPANY.emails.disputes}`} className="text-teal-600 hover:underline dark:text-teal-400">
+                <a href={`mailto:${LEGAL_COMPANY.emails.disputes}`} className="text-green-400 hover:underline dark:text-green-400">
                   {LEGAL_COMPANY.emails.disputes}
                 </a>
               </dd>
@@ -100,7 +100,7 @@ export function LegalDocumentPage({ page }: { page: LegalDocumentPageTranslation
         </section>
 
         {page.closing ? (
-          <p className="mt-8 border-t border-neutral-200/65 pt-8 text-sm leading-relaxed text-neutral-700 dark:border-neutral-800/55 dark:text-neutral-300">
+          <p className="mt-8 border-t border-neutral-200/65 pt-8 text-sm leading-relaxed text-neutral-900 dark:border-neutral-800/55 dark:text-neutral-50">
             {page.closing}
           </p>
         ) : null}

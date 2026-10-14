@@ -310,7 +310,13 @@ async function findLinkedBrokerAccount(
 export async function connectAccountsBatch(args: ConnectAccountsBatchArgs): Promise<BulkConnectResult> {
   const connect = args.connect ?? (async (connectArgs) => {
     const { fxsocketBroker, FXSOCKET_BULK_CONNECT_TIMEOUT_MS } = await import('./fxsocketBroker')
-    return fxsocketBroker.connect({ ...connectArgs, provider: 'mtapi', timeoutMs: FXSOCKET_BULK_CONNECT_TIMEOUT_MS })
+    const { platform, ...rest } = connectArgs
+    return fxsocketBroker.connect({
+      ...rest,
+      platform: platform === 'MT4' || platform === 'MT5' ? platform : undefined,
+      provider: 'mtapi',
+      timeoutMs: FXSOCKET_BULK_CONNECT_TIMEOUT_MS,
+    })
   })
   const progress: BulkConnectRowProgress[] = args.rows.map((row, index) => ({
     index,

@@ -15,9 +15,10 @@ export const landingAr: LandingTranslations = {
     menuClose: 'إغلاق القائمة',
   },
   hero: {
-    headline: 'إشارات Telegram. تُنسخ تلقائيًا.',
+    headline: 'منصة نسخ موحّدة واحدة لـ',
+    headlinePhrases: ['إشارات التداول', 'التداول الاجتماعي', 'مرآة الحسابات'],
     subheadline:
-      'أتمت تداولاتك من Telegram أو Discord أو TradingView أو حساب رئيسي إلى أكثر من 8 منصات وساطة في أقل من 50 مللي ثانية. بدون VPS.',
+      'أتمت تداولاتك من Telegram أو WhatsApp أو Discord أو TradingView أو حساب رئيسي إلى أكثر من 8 منصات وساطة في أقل من 50 مللي ثانية. بدون VPS.',
     socialProof: 'مصنف رقم 1 كناسخ إشارات Telegram سحابي',
     primaryCta: 'ابدأ تجربتك المجانية لمدة 5 أيام',
     secondaryCta: 'تسجيل الدخول',

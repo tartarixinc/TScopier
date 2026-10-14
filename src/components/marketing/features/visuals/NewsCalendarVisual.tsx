@@ -20,7 +20,7 @@ function impactLabel(
 function actualClass(tone: LandingCalendarActualTone): string {
   if (tone === 'good') return 'text-emerald-600 dark:text-emerald-400'
   if (tone === 'bad') return 'text-error-600 dark:text-error-400'
-  return 'text-neutral-700 dark:text-neutral-300'
+  return 'text-neutral-900 dark:text-neutral-50'
 }
 
 function CalendarEventRow({
@@ -39,7 +39,7 @@ function CalendarEventRow({
       </div>
       <div className="min-w-0">
         <div className="mb-0.5 flex flex-wrap items-center gap-1.5">
-          <span className="text-[10px] font-bold text-neutral-500 dark:text-neutral-400 sm:text-xs">
+          <span className="text-[10px] font-bold text-neutral-900 dark:text-neutral-50 sm:text-xs">
             {event.currency}
           </span>
           <ImpactBadge impact={event.impact} label={impactLabel(event.impact, impactLabels)} />
@@ -50,16 +50,16 @@ function CalendarEventRow({
       </div>
       <div className="grid grid-cols-3 gap-1.5 text-right text-[10px] sm:min-w-[9.5rem] sm:gap-2 sm:text-xs">
         <div>
-          <p className="text-neutral-400 dark:text-neutral-500">{labels.actual}</p>
+          <p className="text-neutral-900 dark:text-neutral-50">{labels.actual}</p>
           <p className={clsx('font-semibold tabular-nums', actualClass(event.actualTone))}>{event.actual}</p>
         </div>
         <div>
-          <p className="text-neutral-400 dark:text-neutral-500">{labels.forecast}</p>
-          <p className="font-medium tabular-nums text-neutral-700 dark:text-neutral-300">{event.forecast}</p>
+          <p className="text-neutral-900 dark:text-neutral-50">{labels.forecast}</p>
+          <p className="font-medium tabular-nums text-neutral-900 dark:text-neutral-50">{event.forecast}</p>
         </div>
         <div>
-          <p className="text-neutral-400 dark:text-neutral-500">{labels.previous}</p>
-          <p className="font-medium tabular-nums text-neutral-600 dark:text-neutral-400">{event.previous}</p>
+          <p className="text-neutral-900 dark:text-neutral-50">{labels.previous}</p>
+          <p className="font-medium tabular-nums text-neutral-900 dark:text-neutral-50">{event.previous}</p>
         </div>
       </div>
     </div>
@@ -83,7 +83,7 @@ export function NewsCalendarVisual() {
       <div className="flex w-full max-w-lg flex-col gap-3 sm:gap-4">
         <div className="overflow-hidden rounded-xl border border-neutral-200/55 bg-white shadow-sm dark:border-neutral-800/55 dark:bg-neutral-900">
           <div className="px-3 sm:px-4">
-            <h3 className="sticky top-0 z-10 bg-white/95 py-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-500 backdrop-blur dark:bg-neutral-900/95 dark:text-neutral-400 sm:text-xs">
+            <h3 className="sticky top-0 z-10 bg-white/95 py-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-900 backdrop-blur dark:bg-neutral-900/95 dark:text-neutral-50 sm:text-xs">
               {v.dayHeading}
             </h3>
             {v.events.map((event) => (
@@ -110,11 +110,11 @@ export function NewsCalendarVisual() {
                 <p className="line-clamp-2 text-xs font-medium leading-snug text-neutral-900 dark:text-neutral-50 sm:text-sm">
                   {article.headline}
                 </p>
-                <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-neutral-500 dark:text-neutral-400 sm:text-xs">
+                <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-neutral-900 dark:text-neutral-50 sm:text-xs">
                   <span className="truncate">{article.source}</span>
                   <span className="shrink-0 tabular-nums">{article.relativeTime}</span>
                 </div>
-                <span className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-semibold text-teal-600 dark:text-teal-400 sm:mt-2 sm:text-xs">
+                <span className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-semibold text-green-400 dark:text-green-400 sm:mt-2 sm:text-xs">
                   {ec.readArticle}
                   <ExternalLink className="h-3 w-3" aria-hidden />
                 </span>

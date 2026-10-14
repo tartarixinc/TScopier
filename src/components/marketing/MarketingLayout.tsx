@@ -17,7 +17,7 @@ export function MarketingLayout({ children }: MarketingLayoutProps) {
       <LiveChatWidget visibility={chatVisibility} onVisibilityChanged={setChatVisibility} />
       <MarketingHeader />
 
-      <main className="relative z-10 flex-1 pt-[4.75rem] sm:pt-20">{children}</main>
+      <main className="relative z-10 flex-1 pt-16">{children}</main>
 
       <MarketingFooter />
     </div>

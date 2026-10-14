@@ -14,6 +14,12 @@ export type AppBannerState = {
 
 export const APP_BANNER_DISABLED: AppBannerState = { enabled: false, message: null }
 
+/** Identity of the current warning. A changed message shows the bar again after it was closed. */
+export function appBannerRevision(state: Pick<AppBannerState, 'enabled' | 'message'>): string | null {
+  if (!state.enabled || !state.message) return null
+  return state.message
+}
+
 export function resolveAppBannerMessage(raw: unknown): string | null {
   if (typeof raw !== 'string') return null
   const trimmed = raw.trim()

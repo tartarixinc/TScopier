@@ -41,6 +41,12 @@ export function isExternalAnnouncementHref(href: string): boolean {
   return /^https?:\/\//i.test(href) || href.startsWith('//')
 }
 
+/** Identity of the current announcement. A change means new news, so a prior dismissal no longer applies. */
+export function appAnnouncementRevision(state: Pick<AppAnnouncementState, 'enabled' | 'message' | 'linkHref' | 'linkLabel'>): string | null {
+  if (!state.enabled || !state.message) return null
+  return [state.message, state.linkHref ?? '', state.linkLabel ?? ''].join('\0')
+}
+
 export function normalizeAppAnnouncementRow(row: {
   enabled?: boolean | null
   message?: string | null

@@ -15,7 +15,7 @@ export const chromeJa: AppChromeTranslations = {
     items: {
       dashboard: 'ダッシュボード',
       configuration: '設定',
-      brokers: 'ブローカー',
+      brokers: '取引設定',
       mirrorTrading: 'ミラーアカウント',
       socialTrading: 'ソーシャルトレード',
       trades: '取引',
@@ -89,6 +89,7 @@ export const chromeJa: AppChromeTranslations = {
       profileSettings: 'プロフィールと設定',
       subscriptionBilling: 'サブスクリプションと請求',
       affiliateProgram: 'アフィリエイトプログラム',
+      wallet: 'ウォレット',
       rateUs: '評価する',
       signOut: 'サインアウト',
     },
@@ -253,7 +254,7 @@ export const chromeJa: AppChromeTranslations = {
   },
   pages: {
     accountConfiguration: {
-      title: 'ブローカー',
+      title: '取引設定',
       description: 'MetaTrader口座を接続し、各口座のシグナルコピー方法を調整します。',
     },
     brokers: {
@@ -291,6 +292,10 @@ export const chromeJa: AppChromeTranslations = {
     affiliateProgram: {
       title: 'アフィリエイトプログラム',
       description: 'トレーダーを招待して、有料サブスクリプション更新ごとに生涯 10% の紹介報酬を獲得。',
+    },
+    wallet: {
+      title: 'ウォレット',
+      description: 'コピースクの残高と支払い履歴を確認します。',
     },
     billing: {
       title: '請求',

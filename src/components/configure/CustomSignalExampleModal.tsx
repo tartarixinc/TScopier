@@ -172,7 +172,7 @@ export function CustomSignalExampleModal({
           </h2>
           <button
             type="button"
-            className="p-2 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40"
+            className="p-2 rounded-lg text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40"
             aria-label={labels.cancel}
             onClick={onClose}
             disabled={busy || analyzing}
@@ -185,7 +185,7 @@ export function CustomSignalExampleModal({
           {error ? <Alert variant="error">{error}</Alert> : null}
 
           <label className="block">
-            <span className="text-xs font-medium text-neutral-500">{labels.pasteSignalPlaceholder}</span>
+            <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50">{labels.pasteSignalPlaceholder}</span>
             <textarea
               value={draft.rawMessage}
               disabled={busy || analyzing}
@@ -200,7 +200,7 @@ export function CustomSignalExampleModal({
           </label>
 
           <label className="block">
-            <span className="text-xs font-medium text-neutral-500">{labels.signalTypeLabel}</span>
+            <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50">{labels.signalTypeLabel}</span>
             <select
               value={draft.signalType}
               disabled={busy || analyzing}
@@ -243,12 +243,12 @@ export function CustomSignalExampleModal({
           {showFields ? (
             <div className="space-y-3 rounded-xl border border-neutral-100 dark:border-neutral-800 bg-neutral-50/70 dark:bg-neutral-800/30 p-3">
               {summary ? (
-                <p className="text-xs font-medium text-neutral-600 dark:text-neutral-300">{summary}</p>
+                <p className="text-xs font-medium text-neutral-900 dark:text-neutral-50">{summary}</p>
               ) : null}
 
               {(draft.signalType === 'entry' || draft.signalType === 'auto') && (
                 <label className="block">
-                  <span className="text-xs font-medium text-neutral-500">{labels.sideLabel}</span>
+                  <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50">{labels.sideLabel}</span>
                   <select
                     value={draft.side}
                     disabled={busy}
@@ -271,7 +271,7 @@ export function CustomSignalExampleModal({
 
               {(draft.signalType === 'update') && (
                 <label className="block">
-                  <span className="text-xs font-medium text-neutral-500">{labels.updateKindLabel}</span>
+                  <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50">{labels.updateKindLabel}</span>
                   <select
                     value={draft.updateKind}
                     disabled={busy}
@@ -341,12 +341,12 @@ export function CustomSignalExampleModal({
 
               <div>
                 <div className="flex items-center justify-between gap-2 mb-2">
-                  <span className="text-xs font-medium text-neutral-500">{labels.fieldTp}</span>
+                  <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50">{labels.fieldTp}</span>
                   <button
                     type="button"
                     disabled={busy || draft.tpLevels.length >= 5}
                     onClick={() => setDraft(d => ({ ...d, tpLevels: [...d.tpLevels, ''] }))}
-                    className="inline-flex items-center gap-1 text-xs font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 disabled:opacity-40"
+                    className="inline-flex items-center gap-1 text-xs font-medium text-green-400 hover:text-green-500 dark:text-green-400 disabled:opacity-40"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     {labels.addTp}

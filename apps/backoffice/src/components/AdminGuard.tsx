@@ -38,7 +38,7 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
 
   if (authLoading || loading) {
     return (
-      <div className="grid min-h-screen place-items-center bg-neutral-50 text-sm text-neutral-500 dark:bg-neutral-950">
+      <div className="grid min-h-screen place-items-center bg-neutral-50 text-sm text-neutral-900 dark:text-neutral-50 dark:bg-neutral-950">
         Checking admin access…
       </div>
     )
@@ -48,7 +48,7 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
   if (!isAdmin) {
     return (
       <div className="grid min-h-screen place-items-center bg-neutral-50 px-4 dark:bg-neutral-950">
-        <p className="text-center text-sm text-neutral-600 dark:text-neutral-400">
+        <p className="text-center text-sm text-neutral-900 dark:text-neutral-50">
           Admin access required. Sign in with an admin account.
         </p>
       </div>
