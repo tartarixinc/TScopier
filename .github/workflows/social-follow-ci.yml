@@ -97,11 +97,11 @@ jobs:
         with:
           version: "2.39.2"
 
-      - name: Remove stale Storage migration target
-        run: rm -f supabase/.temp/storage-version
+      - name: Remove incompatible local Supabase metadata
+        run: rm -f supabase/.temp/storage-version supabase/.temp/postgres-version
 
       - name: Start isolated Supabase stack
-        run: supabase start --debug
+        run: supabase start
 
       - name: Apply migrations to isolated database
         run: supabase db reset --local
