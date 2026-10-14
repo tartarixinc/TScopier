@@ -134,7 +134,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          supabase test db | tee social-follow-pgtap.log
+          supabase test db --debug | tee social-follow-pgtap.log
           grep -Fx '1..56' social-follow-pgtap.log
 
       - name: Stop isolated Supabase stack
