@@ -101,7 +101,7 @@ jobs:
         run: rm -f supabase/.temp/storage-version
 
       - name: Start isolated Supabase stack
-        run: supabase start
+        run: supabase start --debug
 
       - name: Apply migrations to isolated database
         run: supabase db reset --local
