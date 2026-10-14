@@ -85,6 +85,16 @@ export interface Database {
         Insert: Omit<UserProfileRow, 'created_at' | 'updated_at'> & { created_at?: string; updated_at?: string }
         Update: Partial<Omit<UserProfileRow, 'user_id' | 'created_at'>>
       }
+      social_profiles: {
+        Row: SocialProfileRow
+        Insert: Omit<SocialProfileRow, 'created_at' | 'updated_at'> & { created_at?: string; updated_at?: string }
+        Update: Partial<Omit<SocialProfileRow, 'user_id' | 'created_at'>>
+      }
+      social_follow_relationships: {
+        Row: SocialFollowRelationshipRow
+        Insert: Omit<SocialFollowRelationshipRow, 'id' | 'created_at' | 'updated_at'> & { id?: string; created_at?: string; updated_at?: string }
+        Update: Partial<Omit<SocialFollowRelationshipRow, 'id' | 'follower_user_id' | 'followed_user_id' | 'created_at'>>
+      }
       affiliate_profiles: {
         Row: AffiliateProfileRow
         Insert: Omit<AffiliateProfileRow, 'created_at' | 'updated_at'> & { created_at?: string; updated_at?: string }
@@ -146,6 +156,24 @@ export interface UserProfileRow {
   copier_paused: boolean
   created_at: string
   updated_at: string
+}
+
+export interface SocialProfileRow {
+  user_id: string
+  access_mode: 'open' | 'private'
+  is_listed: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface SocialFollowRelationshipRow {
+  id: string
+  follower_user_id: string
+  followed_user_id: string
+  status: 'pending' | 'accepted' | 'declined'
+  created_at: string
+  updated_at: string
+  responded_at: string | null
 }
 
 export interface AffiliateProfileRow {

@@ -1011,6 +1011,29 @@ export interface SocialTradingPageTranslations {
   visibility: string
   visibilityAll: string
   requests: string
+  requestToFollow: string
+  followAccess: string
+  anyoneCanFollow: string
+  followRequests: string
+  loadingDirectory: string
+  liveDirectory: string
+  demoDirectory: string
+  demoBadge: string
+  joinTitle: string
+  joinBody: string
+  joinAction: string
+  loadError: string
+  retry: string
+  performanceUnavailable: string
+  socialErrorVerification: string
+  socialErrorProfileRequired: string
+  socialErrorProfileIncomplete: string
+  socialErrorProfileUnavailable: string
+  socialErrorUnauthorized: string
+  socialErrorInvalid: string
+  socialErrorConflict: string
+  socialErrorBackend: string
+  socialErrorUnknown: string
   symbol: string
   result: string
   sampleNote: string
