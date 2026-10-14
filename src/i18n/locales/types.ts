@@ -2010,9 +2010,6 @@ export interface PricingTranslations {
     statusPastDue: string
     trialEnds: string
     choosePlan: string
-    cancelSubscriptionFailed: string
-    cancelSubscriptionHint: string
-    cancelSubscription: string
   }
   checkoutFailed: string
   paywall: {

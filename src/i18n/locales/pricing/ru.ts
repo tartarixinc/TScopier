@@ -137,9 +137,6 @@ export const pricingRu: PricingBundleTranslations = {
       statusPastDue: 'Просрочена',
       trialEnds: 'Пробный период закончится',
       choosePlan: 'Начните 5-дневный бесплатный пробный период',
-      cancelSubscriptionFailed: 'Could not cancel your subscription. Please try again.',
-      cancelSubscriptionHint: 'Your subscription will remain active until the end of the current billing period.',
-      cancelSubscription: 'Cancel subscription',
     },
     checkoutFailed: 'Не удалось начать оплату. Попробуйте снова.',
     paywall: {

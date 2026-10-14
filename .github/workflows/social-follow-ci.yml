@@ -92,6 +92,7 @@ jobs:
         run: npm run build
 
       - name: Install pinned Supabase CLI
+        id: setup_supabase_cli
         uses: supabase/setup-cli@v1
         with:
           version: "2.39.2"
@@ -134,5 +135,5 @@ jobs:
           grep -Fx '1..56' social-follow-pgtap.log
 
       - name: Stop isolated Supabase stack
-        if: always()
+        if: always() && steps.setup_supabase_cli.outcome == 'success'
         run: supabase stop --no-backup

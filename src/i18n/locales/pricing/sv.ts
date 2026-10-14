@@ -137,9 +137,6 @@ export const pricingSv: PricingBundleTranslations = {
       statusPastDue: 'Förfallen',
       trialEnds: 'Provperiod slutar',
       choosePlan: 'Starta din 5-dagars gratis provperiod',
-      cancelSubscriptionFailed: 'Could not cancel your subscription. Please try again.',
-      cancelSubscriptionHint: 'Your subscription will remain active until the end of the current billing period.',
-      cancelSubscription: 'Cancel subscription',
     },
     checkoutFailed: 'Kunde inte starta checkout. Försök igen.',
     paywall: {

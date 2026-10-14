@@ -365,9 +365,6 @@ broker: {
       statusPastDue: 'Past due',
       trialEnds: 'Trial ends',
       choosePlan: 'Start your 5-day free trial',
-      cancelSubscriptionFailed: 'Could not cancel your subscription. Please try again.',
-      cancelSubscriptionHint: 'Your subscription will remain active until the end of the current billing period.',
-      cancelSubscription: 'Cancel subscription',
     },
     checkoutFailed: 'Could not start checkout. Please try again.',
     paywall: {

@@ -368,9 +368,6 @@ export const fr: Translations = {
       statusPastDue: 'En retard',
       trialEnds: 'L\'essai se termine',
       choosePlan: 'Commencez votre essai gratuit de 5 jours',
-      cancelSubscriptionFailed: 'Impossible d’annuler votre abonnement. Veuillez réessayer.',
-      cancelSubscriptionHint: 'Votre abonnement restera actif jusqu’à la fin de la période de facturation actuelle.',
-      cancelSubscription: 'Annuler l’abonnement',
     },
     checkoutFailed: 'Impossible de démarrer le paiement. Veuillez réessayer.',
     paywall: {

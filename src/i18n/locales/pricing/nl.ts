@@ -137,9 +137,6 @@ export const pricingNl: PricingBundleTranslations = {
       statusPastDue: 'Achterstallig',
       trialEnds: 'Proefperiode eindigt',
       choosePlan: 'Start je gratis proefperiode van 5 dagen',
-      cancelSubscriptionFailed: 'Could not cancel your subscription. Please try again.',
-      cancelSubscriptionHint: 'Your subscription will remain active until the end of the current billing period.',
-      cancelSubscription: 'Cancel subscription',
     },
     checkoutFailed: 'Checkout kon niet worden gestart. Probeer opnieuw.',
     paywall: {

@@ -67,13 +67,8 @@ function TraderAvatar({
   src?: string | null
   size: 'row' | 'profile'
 }) {
-  const [failed, setFailed] = useState(false)
-
-  useEffect(() => {
-    setFailed(false)
-  }, [src])
-
-  const showPhoto = Boolean(src && !failed)
+  const [failedSrc, setFailedSrc] = useState<string | null>(null)
+  const showPhoto = Boolean(src && failedSrc !== src)
 
   return (
     <span
@@ -88,7 +83,7 @@ function TraderAvatar({
           alt=""
           className="h-full w-full object-cover"
           referrerPolicy="no-referrer"
-          onError={() => setFailed(true)}
+          onError={() => setFailedSrc(src ?? null)}
         />
       ) : (
         name.slice(0, 1).toUpperCase()
@@ -651,10 +646,6 @@ function MonthlyPriceChoice({
 }) {
   const paid = cents > 0
   const [draft, setDraft] = useState(paid ? String(cents / 100) : '50')
-
-  useEffect(() => {
-    if (cents > 0) setDraft(String(cents / 100))
-  }, [cents])
 
   return (
     <div

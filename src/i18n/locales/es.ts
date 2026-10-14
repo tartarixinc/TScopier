@@ -368,9 +368,6 @@ export const es: Translations = {
       statusPastDue: 'Vencido',
       trialEnds: 'La prueba termina',
       choosePlan: 'Empieza tu prueba gratuita de 5 días',
-      cancelSubscriptionFailed: 'No se pudo cancelar tu suscripción. Inténtalo de nuevo.',
-      cancelSubscriptionHint: 'Tu suscripción seguirá activa hasta el final del periodo de facturación actual.',
-      cancelSubscription: 'Cancelar suscripción',
     },
     checkoutFailed: 'No se pudo iniciar el pago. Inténtalo de nuevo.',
     paywall: {
