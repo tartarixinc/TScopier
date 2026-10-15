@@ -7,6 +7,9 @@
 # "Signup protection is misconfigured" on app.tscopier.ai.
 [build.environment]
   VITE_TURNSTILE_SITE_KEY = "0x4AAAAAAENwYkTwFMwfAUdc"
+  # The site key is public by design (it ships in the browser bundle), so Netlify's
+  # secrets scanner must not fail the build on it. The Turnstile *secret* key is never in the repo.
+  SECRETS_SCAN_OMIT_KEYS = "VITE_TURNSTILE_SITE_KEY"
 
 # Hashed assets — long cache (immutable filenames)
 [[headers]]
