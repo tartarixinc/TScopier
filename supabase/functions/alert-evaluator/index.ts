@@ -55,10 +55,35 @@ const corsHeaders = {
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
-const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+// Prefer the dedicated secret: the project-level SUPABASE_SERVICE_ROLE_KEY
+// override can drift from the current API key (it did on staging — every call
+// 401'd), and we must not disturb that shared value. Fall back to the standard
+// name so behaviour is unchanged where the dedicated secret is absent.
+const SERVICE_ROLE_KEY =
+  Deno.env.get("ALERT_EVALUATOR_SERVICE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const RESEND_FROM = Deno.env.get("ALERT_RESEND_FROM") || "TScopier <alerts@tscopier.ai>";
 const ADMIN_ALERTS_URL = (Deno.env.get("ADMIN_ALERTS_URL") || "https://app.tscopier.ai/monitoring/alerts").replace(/\/$/, "");
+// Emails must never look like production when they come from staging (or the
+// other way round). Derive the label from the project ref; ALERT_ENV overrides.
+const ALERT_ENV =
+  Deno.env.get("ALERT_ENV") ||
+  (SUPABASE_URL.includes("axdcledcyhyvzrnfkwat") ? "staging" : "production");
+
+// First human action per rule — the description says what the alert means;
+// this says what to do about it at 3am.
+const NEXT_ACTION: Record<string, string> = {
+  bridge_down: "Check the MTAPI bridge service and the Systems Health page — MT5/MT4 copies are blocked until it recovers.",
+  probe_stale: "Open the Systems Health page — the named target stopped reporting. If it is the alert evaluator itself, other alerts may be delayed.",
+  mtapi_accounts_error: "Check the Bridges / Reconnects pages — this usually means a bridge-side problem, not isolated user issues.",
+  mtapi_reconnect_storm: "Accounts are flapping between connected and error; check bridge and network stability before users report failed copies.",
+  workers_offline: "Check the Railway listener service — nothing is listening, so no signals are being received at all.",
+  trade_workers_offline: "Check the Railway trade-worker service — existing open trades are not being managed while this fires.",
+  queue_stuck: "Open the Signals and Execution pages — trades are delayed; check trade-worker and bridge health first.",
+  executions_failing: "Open the Execution logs page and filter by failure reason.",
+  dead_letters_high: "Open the dead-letter view and replay or discard the parked messages.",
+  telegram_gap: "Linked accounts without a listener are not being copied — check worker leases on the Systems Health page.",
+};
 
 const EMAIL_BATCH_LIMIT = 25;
 const EMAIL_MAX_ATTEMPTS = 5; // recovery (resolved) emails only; firing retries are uncapped
@@ -425,6 +450,10 @@ function alertEmailHtml(opts: {
   const resolvedNote = !isFiring
     ? `<p style="margin:0 0 12px 0;font-size:14px;color:#404040;">The condition cleared at ${esc(event.resolved_at ?? "")}.</p>`
     : "";
+  const actionText = NEXT_ACTION[rule.code];
+  const actionLine = actionText
+    ? `<p style="margin:0 0 12px 0;padding:10px 12px;background:#f4f4f5;border-left:3px solid ${accent};font-size:13px;line-height:1.5;color:#404040;"><strong>What to do:</strong> ${esc(actionText)}</p>`
+    : "";
   return `<!doctype html>
 <html>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:Helvetica Neue,Arial,sans-serif;">
@@ -432,9 +461,11 @@ function alertEmailHtml(opts: {
     <div style="background:#ffffff;border:1px solid #e4e4e7;border-radius:10px;padding:24px;">
       <p style="margin:0 0 4px 0;font-size:13px;font-weight:700;letter-spacing:0.06em;color:#71717a;">TSCOPIER SYSTEMS</p>
       <span style="display:inline-block;background:${accent};color:#ffffff;font-size:11px;font-weight:700;letter-spacing:0.08em;padding:3px 8px;border-radius:999px;">${label}</span>
+      <span style="display:inline-block;background:#f4f4f5;color:#52525b;font-size:11px;font-weight:700;letter-spacing:0.08em;padding:3px 8px;border-radius:999px;margin-left:6px;">${esc(ALERT_ENV.toUpperCase())}</span>
       <h1 style="margin:12px 0 4px 0;font-size:20px;color:#18181b;">${esc(rule.name)}</h1>
       <p style="margin:0 0 16px 0;font-size:14px;line-height:1.5;color:#404040;">${esc(event.message ?? "")}</p>
       ${valueLine}
+      ${actionLine}
       <p style="margin:0 0 16px 0;font-size:13px;line-height:1.5;color:#71717a;">${esc(rule.description)}</p>
       ${resolvedNote}
       <p style="margin:0 0 20px 0;"><a href="${esc(ADMIN_ALERTS_URL)}" style="font-size:14px;font-weight:600;color:${accent};text-decoration:none;">Open the Alerts console &rarr;</a></p>
@@ -459,8 +490,8 @@ async function sendAlertEmail(
 
   const html = alertEmailHtml({ rule, event, kind });
   const subject = kind === "firing"
-    ? `TScopier alert: ${rule.name}`
-    : `TScopier recovered: ${rule.name}`;
+    ? `TScopier [${ALERT_ENV}] alert: ${rule.name}`
+    : `TScopier [${ALERT_ENV}] recovered: ${rule.name}`;
 
   let sent = 0;
   let lastError = "";
