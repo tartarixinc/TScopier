@@ -81,11 +81,13 @@
         "npm:eslint-plugin-react-refresh@~0.5.2",
         "npm:eslint@^10.2.1",
         "npm:globals@^17.5.0",
+        "npm:happy-dom@^20.14.5",
         "npm:lightweight-charts@^5.2.0",
         "npm:lucide-react@^1.14.0",
         "npm:postcss@^8.5.14",
         "npm:qrcode.react@^4.2.0",
         "npm:react-dom@^19.2.5",
+        "npm:react-is@^19.3.1",
         "npm:react-router-dom@^7.14.2",
         "npm:react@^19.2.5",
         "npm:recharts@^3.8.1",
@@ -94,7 +96,7 @@
         "npm:typescript-eslint@^8.58.2",
         "npm:typescript@~6.0.2",
         "npm:vite@^8.0.10",
-        "npm:vitest@^3.2.4"
+        "npm:vitest@^4.1.11"
       ]
     }
   }
