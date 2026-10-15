@@ -13,6 +13,11 @@ import {
   type BasketSymbolParams,
 } from './basketSlTpReconcile'
 import { takeProfitForLegIndex } from './manualPlanning/tpBucketDistribution'
+import {
+  isBundleBasket,
+  remapBundleLegTpsByTpOrder,
+} from './manualPlanning/tpBundleIdentity'
+import { isTpBundleEnabled } from './manualPlanning/tpBundleRollout'
 import type { ManualSettings, ManualTpLot } from './manualPlanning/types'
 import type { MgmtTradeRow } from './managementScope'
 import {
@@ -55,6 +60,8 @@ function buildMgmtModifyTargets(args: {
   parsedTpLevels: number[]
   multiBasket: boolean
   tpLots: ManualTpLot[] | null | undefined
+  /** Bundled multi basket (flag on, non-range): 1:1 TP-order remap, no weights. */
+  bundleReladder?: boolean
 }): PerLegStopTarget[] {
   const {
     familyTrades,
@@ -64,12 +71,25 @@ function buildMgmtModifyTargets(args: {
     parsedTpLevels,
     multiBasket,
     tpLots,
+    bundleReladder,
   } = args
+  const bundled = bundleReladder === true && isTpBundleEnabled() && hasNewTp && multiBasket
+  const isBuy = !String(familyTrades[0]?.direction ?? '').toLowerCase().includes('sell')
+  const bundleTps = bundled
+    ? remapBundleLegTpsByTpOrder({
+      legs: familyTrades.map(tr => tr.tp),
+      ladder: parsedTpLevels,
+      isBuy,
+    })
+    : null
   return familyTrades.map((tr, legIndex) => {
     const stoploss = hasNewSl ? newSl : sanitizeLevel(tr.sl)
     let takeprofit = sanitizeLevel(tr.tp)
     if (hasNewTp) {
-      if (multiBasket) {
+      if (bundleTps != null) {
+        const mapped = bundleTps[legIndex]
+        if (mapped != null && mapped > 0) takeprofit = mapped
+      } else if (multiBasket) {
         const distributed = takeProfitForLegIndex({
           legIndex,
           openLegCount: familyTrades.length,
@@ -196,6 +216,7 @@ export async function applyMgmtModifyToBasketGroups(args: {
       parsedTpLevels,
       multiBasket,
       tpLots: manual.tp_lots,
+      bundleReladder: isBundleBasket(manual),
     })
 
     const nImmCwe = brokerRows.filter(r => r.cwe_close_price != null).length

@@ -3,6 +3,7 @@ import type { FxsocketBrokerClient } from './fxsocketClient'
 import { breakevenStopLossForSymbol } from './autoManagement'
 import type { ManualTpLot } from './manualPlanning/types'
 import { normalizeManualSettingsForExecution } from './manualPlanning/normalizeManualSettings'
+import { isBundleBasket } from './manualPlanning/tpBundleIdentity'
 import { resolveChannelTradingConfig } from './channelTradingConfig'
 import {
   channelParamsPredateBasket,
@@ -19,7 +20,7 @@ import {
   type RangeBasketTpPhase,
 } from './manualPlanning/tpBucketDistribution'
 import { isBenignOrderModifyError } from './orderModifyBenign'
-
+import { writeExecutionLog } from './observability/executionLog'
 type ParsedMgmt = {
   action?: string
   symbol?: string | null
@@ -72,7 +73,7 @@ type FollowUpLegContext = {
   entryPrice: number | null
   symbol: string
   isBuy: boolean
-  manual: { breakeven_offset_pips?: number; range_trading?: boolean }
+  manual: { breakeven_offset_pips?: number; range_trading?: boolean; trade_style?: string | null }
   tradeRowId?: string
   openLegsForTp?: EntryQualityLeg[]
   tpPhase?: RangeBasketTpPhase
@@ -133,6 +134,10 @@ export function computeFollowUpStops(
         finalTps,
         tpLots: ctx.tpLots,
       })
+    } else if (isBundleBasket(ctx.manual)) {
+      // Bundled basket: a new fill keeps its own TP; only a naked leg is
+      // backfilled positionally. Never count-weighted (D3).
+      if (takeprofit <= 0) takeprofit = finalTps[idx] ?? finalTps[finalTps.length - 1]!
     } else {
       takeprofit = takeProfitForSplitBasketLeg({
         legIndex: idx,
@@ -177,7 +182,7 @@ async function executeFollowUpModify(
     if (Object.keys(args.dbPatch).length > 0) {
       await supabase.from('trades').update(args.dbPatch).eq('id', args.tradeRowId)
     }
-    await supabase.from('trade_execution_logs').insert({
+    await writeExecutionLog(supabase, {
       user_id: args.userId,
       signal_id: args.sourceSignalId,
       broker_account_id: args.brokerAccountId,
@@ -196,7 +201,7 @@ async function executeFollowUpModify(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     const benign = isBenignOrderModifyError(msg)
-    await supabase.from('trade_execution_logs').insert({
+    await writeExecutionLog(supabase, {
       user_id: args.userId,
       signal_id: args.sourceSignalId,
       broker_account_id: args.brokerAccountId,

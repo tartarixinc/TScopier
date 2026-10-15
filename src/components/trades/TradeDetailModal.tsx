@@ -20,6 +20,12 @@ import {
   type TradeSignalContext,
 } from '../../lib/tradeSignalLink'
 import {
+  fetchTradeCloseReason,
+  resolveTradeCloseReason,
+  tradeCloseReasonLabel,
+  type TradeCloseReasonCode,
+} from '../../lib/tradeCloseReason'
+import {
   fetchBrokerFailuresForTrade,
   formatBrokerFailureRow,
   getTradeFailureDisplayFromLog,
@@ -58,12 +64,14 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState('')
   const [context, setContext] = useState<TradeSignalContext | null | undefined>(undefined)
+  const [closeReasonCode, setCloseReasonCode] = useState<TradeCloseReasonCode | null>(null)
   const [brokerFailures, setBrokerFailures] = useState<CopierBrokerFailureRow[]>([])
   const [showReport, setShowReport] = useState(false)
 
   useEffect(() => {
     if (!trade) {
       setContext(undefined)
+      setCloseReasonCode(null)
       setLoadError('')
       setLoading(false)
       setBrokerFailures([])
@@ -71,6 +79,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
     }
     if (!userId) {
       setContext(null)
+      setCloseReasonCode(null)
       setBrokerFailures([])
       return
     }
@@ -79,12 +88,23 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
     setLoading(true)
     setLoadError('')
     setContext(undefined)
+    setCloseReasonCode(null)
     setBrokerFailures([])
 
     void (async () => {
       try {
-        const result = await resolveTradeSignalContext(userId, trade)
+        const [result, storedCloseReason] = await Promise.all([
+          resolveTradeSignalContext(userId, trade),
+          trade.status === 'closed'
+            ? fetchTradeCloseReason(supabase, {
+                userId,
+                brokerAccountId: trade.broker_id,
+                ticket: trade.ticket,
+              }).catch(() => null)
+            : Promise.resolve(null),
+        ])
         if (cancelled) return
+        setCloseReasonCode(resolveTradeCloseReason(storedCloseReason, trade))
         setContext(result)
         if (result?.signal) {
           const failures = await fetchBrokerFailuresForTrade(supabase, {
@@ -130,6 +150,17 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
   )
   const liveQuote = useTradeLiveQuote(trade, userId)
   const bidAskLine = formatBidAskLine(liveQuote.quote)
+
+  const closeReasonSentence = useMemo(() => {
+    if (!trade || trade.status !== 'closed' || !closeReasonCode) return null
+    const price =
+      closeReasonCode === 'stop_loss'
+        ? formatTradePrice(trade.sl)
+        : closeReasonCode === 'take_profit'
+          ? formatTradePrice(trade.tp)
+          : undefined
+    return tradeCloseReasonLabel(closeReasonCode, tr, { price })
+  }, [trade, closeReasonCode, tr])
 
   const linkedSignalId = context?.signal?.id
 
@@ -366,6 +397,14 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                   </dd>
                 </div>
               )}
+              {closeReasonSentence ? (
+                <div className="col-span-2 border-t border-neutral-100 dark:border-neutral-800 pt-2.5">
+                  <dt className="text-neutral-400 uppercase tracking-wide">{tr.closeReason}</dt>
+                  <dd className="text-sm text-neutral-700 dark:text-neutral-300 mt-1 leading-relaxed">
+                    {closeReasonSentence}
+                  </dd>
+                </div>
+              ) : null}
             </dl>
           </section>
 

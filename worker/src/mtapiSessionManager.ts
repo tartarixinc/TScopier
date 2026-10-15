@@ -3,10 +3,15 @@ import { decryptMtPassword } from './brokerCredentialsCrypto'
 import type { MtPlatform } from './fxsocketClient'
 import { getMtapiProvider, MtapiApiError, type MtapiProvider } from './mtapiProvider'
 import { authorityFromBrokerRow, withBrokerWriteAuthority } from './brokerWriteAuthority'
+import { BridgeHealthTracker } from './observability/bridgeHealthTracker'
+import { BridgeProbe } from './observability/bridgeProbe'
+import { captureCriticalHealthIssue, hashHealthResourceId } from './observability/criticalHealth'
+import { workerConfig } from './workerConfig'
 
 type MtapiSessionRow = {
   id: string
   mtapi_session_id: string | null
+  mtapi_status?: string | null
   account_login: string | null
   broker_server: string | null
   platform: string | null
@@ -44,6 +49,30 @@ function safeCode(error: unknown): string {
  */
 const MTAPI_CODE_DETAIL: Record<string, string> = {
   INVALID_ACCOUNT: 'invalid login or password',
+  HTTP_502: 'broker bridge temporarily unavailable',
+  HTTP_503: 'broker bridge temporarily unavailable',
+  HTTP_504: 'broker bridge temporarily unavailable',
+  TRANSPORT_ERROR: 'broker bridge unreachable',
+}
+
+/**
+ * Codes that mean "the bridge could not answer right now", not "this account
+ * can never connect". A temporary failure must be retried rather than marking
+ * the account as `error`: during the 2026-10-08 bridge outage a single 502 was
+ * written as a permanent error and stranded customers until it was reset by
+ * hand. Anything else (for example INVALID_ACCOUNT) is a real rejection and is
+ * surfaced immediately.
+ */
+const TRANSIENT_PROVISION_CODES = new Set([
+  'TRANSPORT_ERROR',
+  'INVALID_RESPONSE',
+  'HTTP_429',
+  'RATE_LIMITED',
+  'TIMEOUT',
+])
+
+export function isTransientProvisionError(code: string): boolean {
+  return TRANSIENT_PROVISION_CODES.has(code) || /^HTTP_5\d\d$/.test(code)
 }
 
 export function mtapiFailureDetail(code: string): string {
@@ -93,11 +122,68 @@ export class MtapiSessionManager {
   private provisionTimer: NodeJS.Timeout | null = null
   private sweepRunning = false
   private provisionRunning = false
+  /** Earliest epoch ms at which the next paced sweep request may start. */
+  private nextSweepStartAt = 0
+  /** Wait before trying a temporary bridge failure again, per account. */
+  private readonly provisionRetries = new Map<string, { attempts: number; nextAttemptAt: number }>()
+  /** Throttle for the "inconsistent session state" log + alert (epoch ms). */
+  private lastSessionStateWarnAt = 0
+  /** Shared bridge outage state machine (also fed by the bridge probe). */
+  private bridgeHealth = new BridgeHealthTracker({ graceMs: () => this.bridgeOutageGraceMs() })
+  /** Standalone bridge liveness probe (starts on shard 0; see start()). */
+  private bridgeProbe: BridgeProbe | null = null
 
   constructor(
     private readonly supabase: SupabaseClient,
     private readonly provider: MtapiProvider = getMtapiProvider(),
   ) {}
+
+  private provisionRetryBaseMs(): number {
+    return resolveIntervalMs(process.env.MTAPI_PROVISION_RETRY_BASE_MS, 15_000, 1_000)
+  }
+
+  private provisionRetryMaxMs(): number {
+    return resolveIntervalMs(process.env.MTAPI_PROVISION_RETRY_MAX_MS, 300_000, 1_000)
+  }
+
+  private bridgeOutageGraceMs(): number {
+    return resolveIntervalMs(process.env.MTAPI_BRIDGE_OUTAGE_GRACE_MS, 120_000, 5_000)
+  }
+
+  /** Throttle window for the "inconsistent session state" log + alert. */
+  private sessionStateWarnIntervalMs(): number {
+    return resolveIntervalMs(process.env.MTAPI_SESSION_STATE_WARN_INTERVAL_MS, 300_000, 60_000)
+  }
+
+  /** Epoch ms before which this account must not be tried again. */
+  private nextProvisionAttemptAt(id: string): number {
+    return this.provisionRetries.get(id)?.nextAttemptAt ?? 0
+  }
+
+  private scheduleProvisionRetry(id: string): void {
+    const state = this.provisionRetries.get(id) ?? { attempts: 0, nextAttemptAt: 0 }
+    state.attempts += 1
+    const delay = Math.min(
+      this.provisionRetryMaxMs(),
+      this.provisionRetryBaseMs() * 2 ** (state.attempts - 1),
+    )
+    state.nextAttemptAt = Date.now() + delay
+    this.provisionRetries.set(id, state)
+  }
+
+  /**
+   * Record a bridge-level failure. The shared BridgeHealthTracker raises
+   * exactly one Sentry critical-health issue after the grace period (default
+   * 2 minutes), so a total bridge outage alerts instead of running silently.
+   * The bridge probe feeds the same tracker.
+   */
+  private noteBridgeFailure(): void {
+    this.bridgeHealth.noteFailure()
+  }
+
+  private noteBridgeSuccess(): void {
+    this.bridgeHealth.noteSuccess()
+  }
 
   private async sessions(): Promise<MtapiSessionRow[]> {
     const { data, error } = await this.supabase
@@ -228,25 +314,66 @@ export class MtapiSessionManager {
     if (error) throw new Error('MTAPI account state persist failed')
   }
 
+  /**
+   * Space out the start of health-check requests so the whole fleet cannot hit
+   * the bridge at once. The bridge rejects bursts over ~10 req/s per source IP
+   * with `429 rate_limited`, and a simultaneous sweep over every session was
+   * exactly that burst — it starved real orders (see the 2026-10-05 incident).
+   * Requests are paced per process and jittered so they do not re-synchronise
+   * with other periodic traffic.
+   */
+  private async paceSweepStart(gapMs: number): Promise<void> {
+    if (gapMs <= 0) return
+    const jitter = gapMs * (0.5 + Math.random())
+    const now = Date.now()
+    const startAt = Math.max(now, this.nextSweepStartAt)
+    this.nextSweepStartAt = startAt + jitter
+    const wait = startAt - now
+    if (wait > 0) await new Promise<void>(resolve => setTimeout(resolve, wait))
+  }
+
+  private async sweepOne(row: MtapiSessionRow): Promise<void> {
+    const sessionId = String(row.mtapi_session_id ?? '').trim()
+    if (!sessionId) return
+    this.provider.seedPlatformCache(sessionId, platformOf(row.platform))
+    try {
+      await this.provider.ensureConnected(sessionId)
+      await this.syncAccountState(row, sessionId)
+      this.noteBridgeSuccess()
+    } catch (error) {
+      const code = safeCode(error)
+      if (isTransientProvisionError(code)) this.noteBridgeFailure()
+      const detail = mtapiFailureDetail(code)
+      console.warn('[mtapiSession] health recovery failed broker=' + row.id + ' code=' + code
+        + (detail ? ' detail=' + detail : ''))
+    }
+  }
+
   private async sweep(rows?: MtapiSessionRow[]): Promise<void> {
     if (this.sweepRunning) return
     this.sweepRunning = true
     try {
       const current = rows ?? await this.sessions()
-      await Promise.all(current.map(async row => {
-        const sessionId = String(row.mtapi_session_id ?? '').trim()
-        if (!sessionId) return
-        this.provider.seedPlatformCache(sessionId, platformOf(row.platform))
-        try {
-          await this.provider.ensureConnected(sessionId)
-          await this.syncAccountState(row, sessionId)
-        } catch (error) {
-          const code = safeCode(error)
-          const detail = mtapiFailureDetail(code)
-          console.warn('[mtapiSession] health recovery failed broker=' + row.id + ' code=' + code
-            + (detail ? ' detail=' + detail : ''))
+      // A handful of workers hide per-session latency, while the per-process
+      // pacer bounds the number of session starts. Note: each session start
+      // makes ~2 bridge calls (CheckConnect + AccountSummary), and every
+      // replica sweeps all sessions, so aggregate request rate is roughly
+      // replicas x 2 / gap. The nginx zone exemption is the real safety net;
+      // this pacing just removes the self-inflicted burst.
+      const concurrency = Math.min(8, resolveIntervalMs(process.env.MTAPI_SESSION_HEALTH_CONCURRENCY, 2, 1))
+      const gapMs = resolveIntervalMs(process.env.MTAPI_SESSION_HEALTH_GAP_MS, 250, 0)
+      let index = 0
+      const worker = async (): Promise<void> => {
+        for (;;) {
+          const i = index++
+          if (i >= current.length) return
+          await this.paceSweepStart(gapMs)
+          await this.sweepOne(current[i])
         }
-      }))
+      }
+      await Promise.all(
+        Array.from({ length: Math.min(concurrency, current.length) }, () => worker()),
+      )
     } finally {
       this.sweepRunning = false
     }
@@ -269,22 +396,65 @@ export class MtapiSessionManager {
   private async provisionPendingAccounts(): Promise<void> {
     const { data, error } = await this.supabase
       .from('broker_accounts')
-      .select('id,provider,mtapi_session_id,fxsocket_account_id,metaapi_account_id,writer_epoch,provider_transition_state,account_login,broker_server,platform,broker_password_encrypted,performance_baseline_balance')
+      .select('id,provider,mtapi_session_id,mtapi_status,connection_status,fxsocket_account_id,metaapi_account_id,writer_epoch,provider_transition_state,account_login,broker_server,platform,broker_password_encrypted,performance_baseline_balance')
       .eq('provider', 'mtapi')
       .eq('provider_transition_state', 'stable')
       .is('mtapi_session_id', null)
-      .eq('connection_status', 'pending')
     if (error) {
       console.warn('[mtapiSession] provision query failed code=' + error.message)
       return
     }
-    const pending = (data ?? []) as MtapiSessionRow[]
-    // Log only real work: at the 15 s cadence a "pending=0" line every tick
-    // would be thousands of lines a day.
-    if (pending.length > 0) {
-      console.info('[mtapiSession] provision scan pending=' + pending.length)
+    // Eligible = an account that wants a session and does not have one (the
+    // query already requires no session). Two marks count as "wants":
+    //  - `connection_status='pending'` — the legacy "waiting to connect" mark,
+    //    kept so any flow that still sets it keeps working; and
+    //  - `mtapi_status='connecting'` — the MTAPI-native connect intent.
+    // Keying only off the legacy field stranded accounts: the migration flow
+    // does not maintain `connection_status`, so a row can carry a live intent
+    // while that field reads 'connected', matching neither the old query nor the
+    // UI's reconnect gate (2026-10-12 incident). A row with `mtapi_status = null`
+    // AND no `pending` mark is the migration state where the customer is prompted
+    // to reconnect; it is deliberately left alone here.
+    const rows = (data ?? []) as MtapiSessionRow[]
+    const eligible = rows.filter(
+      (row: MtapiSessionRow) => row.connection_status === 'pending' || row.mtapi_status === 'connecting',
+    )
+    // A connect intent that is not marked `pending` is exactly the inconsistent
+    // combination that used to strand accounts silently. We repair it below;
+    // report it too, so the next occurrence is visible instead of being reported
+    // by a customer. Both the log and the alert are throttled: a row that cannot
+    // be repaired (for example no stored password) must not log every 15 s.
+    const stranded = eligible.filter(
+      (row: MtapiSessionRow) => row.mtapi_status === 'connecting' && row.connection_status !== 'pending',
+    )
+    if (stranded.length > 0 && Date.now() - this.lastSessionStateWarnAt >= this.sessionStateWarnIntervalMs()) {
+      this.lastSessionStateWarnAt = Date.now()
+      console.warn('[mtapiSession] recovering inconsistent session state accounts=' + stranded.length)
+      captureCriticalHealthIssue({
+        component: 'broker_rpc',
+        failureClass: 'stalled',
+        provider: 'mtapi',
+        state: 'degraded',
+        severity: 'warning',
+        reasonCode: 'MTAPI_SESSION_STATE_INCONSISTENT',
+        message: 'critical_health.broker_rpc.mtapi_session_state_inconsistent',
+        fingerprint: ['critical_health', 'broker_rpc', 'mtapi', 'session_state_inconsistent'],
+        dedupeKey: 'broker_rpc|stalled|mtapi|session_state_inconsistent',
+        metadata: {
+          account_count: stranded.length,
+          accounts: stranded.map((row: MtapiSessionRow) => 'acct_' + hashHealthResourceId(row.id)),
+        },
+      })
     }
-    for (const row of pending) {
+    // Log only real work: at the 15 s cadence a "eligible=0" line every tick
+    // would be thousands of lines a day.
+    if (eligible.length > 0) {
+      console.info('[mtapiSession] provision scan eligible=' + eligible.length)
+    }
+    for (const row of eligible) {
+      // A temporary bridge failure keeps the row `pending` and schedules a
+      // retry; skip it until that wait has passed.
+      if (this.nextProvisionAttemptAt(row.id) > Date.now()) continue
       const password = decryptMtPassword(row.broker_password_encrypted)
       const login = String(row.account_login ?? '').trim()
       const server = String(row.broker_server ?? '').trim()
@@ -300,6 +470,8 @@ export class MtapiSessionManager {
           password,
           platform: platformOf(row.platform),
         })
+        this.provisionRetries.delete(row.id)
+        this.noteBridgeSuccess()
         const { data: updated, error: updErr } = await this.supabase
           .from('broker_accounts')
           .update({ mtapi_session_id: token, connection_status: 'connected', mtapi_status: 'connected', connection_error: null })
@@ -308,7 +480,6 @@ export class MtapiSessionManager {
           .eq('provider_transition_state', 'stable')
           .eq('writer_epoch', row.writer_epoch)
           .is('mtapi_session_id', null)
-          .eq('connection_status', 'pending')
           .select('id')
           .maybeSingle()
         if (updErr || !updated) {
@@ -329,6 +500,27 @@ export class MtapiSessionManager {
       } catch (err) {
         const code = safeCode(err)
         const detail = mtapiFailureDetail(code)
+        if (isTransientProvisionError(code)) {
+          this.noteBridgeFailure()
+          this.scheduleProvisionRetry(row.id)
+          // Leave the row `pending` so it recovers on its own, but tell the
+          // customer why it is taking time. Writing `connection_status='error'`
+          // is what stranded accounts during the 2026-10-08 outage, so only the
+          // message is written here; the session guard keeps a concurrent
+          // successful connect from being overwritten.
+          await this.supabase
+            .from('broker_accounts')
+            .update({ connection_error: 'MTAPI connect failed: ' + mtapiFailureSummary(code) })
+            .eq('id', row.id)
+            .eq('provider', 'mtapi')
+            .is('mtapi_session_id', null)
+          console.warn('[mtapiSession] provision retry scheduled broker=' + row.id
+            + ' code=' + code + (detail ? ' detail=' + detail : '')
+            + ' attempt=' + (this.provisionRetries.get(row.id)?.attempts ?? 0)
+            + ' in_ms=' + Math.max(0, this.nextProvisionAttemptAt(row.id) - Date.now()))
+          continue
+        }
+        this.provisionRetries.delete(row.id)
         console.warn('[mtapiSession] provision failed broker=' + row.id + ' code=' + code
           + (detail ? ' detail=' + detail : ''))
         await this.supabase
@@ -339,7 +531,7 @@ export class MtapiSessionManager {
             connection_error: 'MTAPI connect failed: ' + mtapiFailureSummary(code),
           })
           .eq('id', row.id)
-          .eq('connection_status', 'pending')
+          .is('mtapi_session_id', null)
       }
     }
   }
@@ -354,7 +546,14 @@ export class MtapiSessionManager {
     }
     await this.reconcileOrphans(rows)
     await this.provisionNewAccounts()
-    await this.sweep(rows)
+    // Do NOT await the initial health sweep. It is now paced (~1 session per
+    // gap) so awaiting it would delay the trade executor by tens of seconds on
+    // every restart. The interval timer re-runs it anyway; sessions are already
+    // seeded above, and a session found unhealthy is recovered by the trade
+    // path on first use.
+    void this.sweep(rows).catch(error => {
+      console.warn('[mtapiSession] initial health sweep failed code=' + safeCode(error))
+    })
     // A newly authorised account waits for the provision sweep, so it runs far
     // more often than the health sweep: the bridge link must be made in
     // seconds, not minutes. The health sweep stays slow because it queries the
@@ -373,6 +572,22 @@ export class MtapiSessionManager {
       })
     }, intervalMs)
     this.timer.unref?.()
+
+    // Standalone bridge liveness probe: writes the probe tables the admin
+    // Systems Health page and alert-evaluator read, and feeds the shared
+    // outage tracker. Shard 0 only, so a sharded fleet does not multiply
+    // probes (the RPC is compare-and-set safe anyway — this is politeness).
+    this.bridgeProbe = new BridgeProbe({
+      supabase: this.supabase,
+      intervalMs: resolveIntervalMs(process.env.BRIDGE_PROBE_INTERVAL_MS, 30_000, 5_000),
+      timeoutMs: resolveIntervalMs(process.env.BRIDGE_PROBE_TIMEOUT_MS, 5_000, 1_000),
+      enabled: workerConfig.shardId === 0,
+      onAggregate: state => {
+        if (state === 'up') this.noteBridgeSuccess()
+        else this.noteBridgeFailure()
+      },
+    })
+    this.bridgeProbe.start()
   }
 
   stop(): void {
@@ -380,6 +595,8 @@ export class MtapiSessionManager {
     this.timer = null
     if (this.provisionTimer) clearInterval(this.provisionTimer)
     this.provisionTimer = null
+    this.bridgeProbe?.stop()
+    this.bridgeProbe = null
     this.provider.setRecoveryHandler(undefined)
   }
 }

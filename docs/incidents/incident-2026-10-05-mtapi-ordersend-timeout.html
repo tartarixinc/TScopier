@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Incident report — Trade copies failed: broker overload and order timeouts (2026-10-05)</title>
+<style>
+  @page { size: A4; margin: 22mm 20mm; }
+  body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1f2937; font-size: 10.5px; line-height: 1.5; }
+  h1 { font-size: 19px; margin: 0 0 2px 0; }
+  .subtitle { color: #6b7280; font-size: 11px; margin-bottom: 14px; }
+  h2 { font-size: 13px; margin: 20px 0 6px 0; padding-bottom: 3px; border-bottom: 2px solid #2563eb; }
+  h3 { font-size: 11.5px; margin: 12px 0 4px 0; color: #111827; }
+  table.meta { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+  table.meta td { border: 1px solid #e5e7eb; padding: 5px 7px; vertical-align: top; }
+  table.meta td.k { background: #f9fafb; color: #6b7280; width: 18%; font-weight: bold; }
+  table.data { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 9.5px; }
+  table.data th { background: #f9fafb; text-align: left; border: 1px solid #e5e7eb; padding: 4px 6px; }
+  table.data td { border: 1px solid #e5e7eb; padding: 4px 6px; vertical-align: top; }
+  code { font-family: 'SFMono-Regular', Consolas, monospace; background: #f3f4f6; padding: 0 3px; border-radius: 2px; font-size: 9.5px; }
+  pre { font-family: 'SFMono-Regular', Consolas, monospace; background: #f3f4f6; border: 1px solid #e5e7eb;
+        border-left: 3px solid #9ca3af; padding: 6px 8px; font-size: 9px; line-height: 1.45; margin: 6px 0;
+        white-space: pre-wrap; word-break: break-word; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; color: #fff; font-weight: bold; font-size: 9.5px; }
+  .open { background: #dc2626; }
+  .fixed { background: #16a34a; }
+  .box { border-left: 4px solid #2563eb; background: #eff6ff; padding: 7px 9px; margin: 8px 0; }
+  .box.green { border-left-color: #16a34a; background: #f0fdf4; }
+  .box.amber { border-left-color: #d97706; background: #fffbeb; }
+  ul, ol { margin: 4px 0 4px 16px; padding: 0; }
+  li { margin: 3px 0; }
+  .note { color: #6b7280; font-size: 9.5px; }
+</style>
+</head>
+<body>
+
+<h1>Incident report — Trade copies failed: broker overload, order timeouts and a retry loop that never stopped</h1>
+<div class="subtitle">2026-10-05 (detected) &rarr; 2026-10-06 (fixed on staging) &middot; Trading worker / trade execution</div>
+
+<table class="meta">
+  <tr>
+    <td class="k">Severity</td><td>High</td>
+    <td class="k">Status</td><td><span class="pill fixed">Fixed</span> &mdash; staging deployed 2026-10-06 06:37:21 UTC; production pending</td>
+  </tr>
+  <tr>
+    <td class="k">Affected user(s)</td><td>36 customer accounts rate-limited; 1 trade copy failed; 1 signal opened three positions</td>
+    <td class="k">Component</td><td>Trading worker &mdash; order placement, account management, partial take-profit handling</td>
+  </tr>
+  <tr>
+    <td class="k">Root cause</td><td>Two jobs sent broker requests hundreds of times per second, overwhelming the connection; our timeout (20&nbsp;s) was shorter than the bridge's (60&nbsp;s)</td>
+    <td class="k">Data impact</td><td>Event log table grew to 4.42&nbsp;GB (same day, separate cause)</td>
+  </tr>
+</table>
+
+<h2>1. Executive summary (plain English)</h2>
+<div class="box green">
+<p>On 5 October customers started reporting that trades were not being copied. Two different jobs
+inside the worker were each asking the broker for information hundreds of times per second. The
+connection that carries those requests &mdash; the bridge &mdash; became saturated. When a genuine
+trade order then went out, it could not get an answer within 20 seconds, the worker gave up
+waiting, and the order was recorded as "outcome unknown" even though it may well have been placed.
+One trade copy failed permanently as a result, and during the busiest hour
+<strong>36 different customer accounts</strong> were answered with "too many requests".</p>
+<p>Two further problems surfaced while we were investigating. The event-log table had grown to
+4.42&nbsp;gigabytes because nothing ever deleted from it, and one take-profit signal opened
+<strong>three</strong> positions where the system only recorded one, leaving 0.04&nbsp;lots running
+for up to seven minutes with no trade record.</p>
+<p>What we changed, in plain terms:</p>
+<ul>
+  <li>The two jobs now <strong>wait progressively longer between attempts</strong> instead of
+      hammering the broker many times a second. A job that keeps failing with the same unfixable
+      error waits up to 30 minutes between attempts, and parks for six hours after twelve failed
+      attempts.</li>
+  <li>An order that times out is now <strong>checked with the broker and either adopted or
+      retried</strong> instead of being left permanently uncertain.</li>
+  <li>Requests are <strong>spread evenly</strong> across both available bridge channels instead of
+      arriving in bursts.</li>
+  <li>The event-log table is now <strong>pruned daily</strong> (4.42&nbsp;GB down to
+      477&nbsp;MB).</li>
+  <li>A stuck take-profit task can only be <strong>closed off after four independent pieces of
+      evidence</strong> that the position really has gone &mdash; never on a guess, and never while
+      the position is still open.</li>
+</ul>
+<p>None of these changes closes, cancels or duplicates a live position. Every check fails towards
+"wait and do nothing", never towards "act".</p>
+<p>The fixes passed <strong>four rounds of code review</strong> and the <strong>complete worker test
+suite (2,210 of 2,210 tests passing)</strong>, and were deployed to <strong>staging on 6 October at
+06:37&nbsp;UTC</strong>. In the 83 minutes after that deployment there were no rate-limit errors and
+no failure spam at all. <strong>Production is still running the old code</strong> (last deployed
+4 October) &mdash; moving it forward is a separate, deliberate decision.</p>
+</div>
+
+<h2>2. Issue encountered &mdash; and what fixed it</h2>
+<p class="note">All changes below are on branch <code>fix/mtapi-rate-limit</code> and were reviewed
+four times before sign-off.</p>
+<p><strong>a) The order that could not be confirmed.</strong> At 15:29:08&nbsp;UTC the worker placed a
+pending buy order (BuyStop, XAUUSD, 0.06&nbsp;lots) for one customer's demo account. The broker did
+not answer within 20 seconds, so the worker stopped waiting. Because an order that times out might
+still have been accepted, the system correctly refused to guess and recorded the outcome as unknown.
+Two alerts fired for this one event &mdash; one for the timeout, one saying the copy had failed
+&mdash; because the same event is reported from two places.</p>
+
+<p><strong>The errors as they appeared:</strong></p>
+<ul>
+  <li><strong>Sentry:</strong> <strong><code>broker_order_ambiguous: Broker OrderSend timed out;
+      outcome requires reconciliation</code></strong> &mdash; one event on 5 October, and it belongs
+      to this trade.</li>
+  <li><strong>Railway:</strong> <strong><code>15:28:47 [mtapiProvider] OrderSendSafe retry
+      id=167f8c47&hellip; attempt=2/3: MTAPI OrderSendSafe timed out</code></strong>, and then
+      <strong><code>15:29:08 [tradeExecutor] OrderSend failed signal=dbd85daa&hellip;
+      broker=fd57d46f&hellip; leg=1/1 op=BuyStop price=4138: MTAPI OrderSendSafe timed
+      out</code></strong>.</li>
+</ul>
+
+<div class="box amber">
+<strong>Fix for (a) &mdash; confirm unknown orders (commit <code>9fff2fb5</code>, 3 files).</strong>
+When an order send times out, the worker now <strong>looks the order up at the broker</strong>: if it
+exists, the position is adopted and recorded; if it provably does not exist, the order is re-sent.
+That turns the original "outcome unknown" alert into something that can be resolved. Eight tests
+cover it, and it is on by default. Supporting change in <code>931347e9</code>: the timeout is now
+configurable and must stay below the bridge's 60-second limit, and a timed-out order can be re-sent
+safely under a separate switch (off by default).
+</div>
+
+<p><strong>b) The rate-limit storm.</strong> The broker allows us a certain number of requests per
+second and refuses everything once we go over it. Because of the loops described below, we went over
+it constantly: in under two hours that evening, <strong>350 requests were refused and 36 different
+customer accounts were affected</strong>. Those customers had done nothing wrong &mdash; their
+settings were fine &mdash; they simply queued behind our own noise and were turned away. Staging,
+which never ran the looping jobs, saw <strong>zero</strong> refusals all day, which is how we know
+the two environments differed because of our own traffic and not because of the broker.</p>
+<p class="note">Evidence from the production logs, 20:00&ndash;21:55 on 5 October:</p>
+<table class="data">
+  <tr><th>Measure</th><th>Production</th><th>Staging</th></tr>
+  <tr><td>"Too many requests" / rate-limit lines</td><td><strong>350, across 36 customer accounts</strong></td><td><strong>0 all day</strong></td></tr>
+  <tr><td>Error events (whole day)</td><td>3,347</td><td>47</td></tr>
+  <tr><td>Distinct error types (whole day)</td><td colspan="2">43 issues / 3,394 events combined</td></tr>
+</table>
+<p class="note">Busiest error types that day, to show this was not one isolated fault: unreconciled open
+trades 2,835 &middot; positions recorded in the app but not at the broker 255 &middot; no matching
+trading channel 95 &middot; rate limited 15 &middot; "too many requests" 8 &middot; timeout 1.</p>
+
+<p><strong>The errors as they appeared:</strong></p>
+<ul>
+  <li><strong>Railway, through the evening:</strong> <strong><code>20:00:00 [autoManagementMonitor]
+      /Quote failed for XAUUSD.s (account=6ca962e0&hellip;): Too many requests</code></strong>,
+      <strong><code>20:01:07 [tradeBrokerDriftMonitor] OpenedOrders failed
+      broker=44ca567b&hellip;: Too many requests</code></strong>, <strong><code>20:01:07
+      [signalEntryPendingMonitor] /OpenedOrders failed account=83efa384&hellip;: Too many
+      requests</code></strong> &mdash; the same three words, line after line, for two hours.</li>
+  <li><strong>Railway, the bridge saturated at 17:11:</strong> <strong><code>17:11:14
+      [openTradeReconcileMonitor] reconcile failed broker=7399156c&hellip;: MTAPI OpenedOrders
+      timed out</code></strong>, <strong><code>17:11:16 [tradeExecutor] /SymbolParams failed
+      uuid=a93f5ec4&hellip; symbol=XAUUSD: MTAPI SymbolParams timed out</code></strong>,
+      <strong><code>17:11:13 [closedTradeFillMonitor] history read failed broker=d658debc&hellip;:
+      MTAPI OrderHistoryPagination timed out</code></strong> &mdash; three different jobs, within
+      seconds of each other, every call against the bridge timing out.</li>
+  <li><strong>Sentry:</strong> <strong>rate limited</strong> (15 events),
+      <strong>"too many requests"</strong> (8), <strong>timeout</strong> (1) &mdash; the names
+      Sentry recorded for the refusals that day.</li>
+</ul>
+
+<div class="box amber">
+<strong>Fix for (b) &mdash; spread the load (commit <code>931347e9</code>).</strong> Requests are now
+<strong>paced evenly across both bridge channels</strong> instead of arriving in bursts. The broker
+answers the health check with a short quoted text value, <code>"OK"</code>, instead of a full
+message. Our code only treated replies that begin with <code>{</code> or <code>[</code> as JSON, so
+that answer was never unwrapped &mdash; and the check then compared the text together with its
+quotation marks, found no match, and recorded a <strong>successful</strong> reply as a failure on
+every account. The worker now parses replies by their content type whatever their shape, so the
+health check tells the truth. That matters because the clean-up job described under root cause 3
+accepts an empty account as proof only when this check passes &mdash; with it permanently failing,
+that job deferred every time and stale records were never closed. Session clean-up is bounded so it
+cannot run away. On top of
+that, the waiting periods described under (c) cut the total number of requests, which is the main
+reason the storm cannot rebuild.
+</div>
+
+<p><strong>c) The two loops that never stopped.</strong> Two jobs in the worker each keep a list of
+work to do. Normally the list empties as each job is finished. On 5 October both lists held items
+that could never succeed &mdash; a position the broker no longer had, a task trying to close a slice
+of a position that had already been closed &mdash; and nothing ever removed them. So the jobs kept
+picking up the same impossible items and trying again, with no waiting period and no attempt limit,
+forever. Every attempt was a real request to the broker, which is exactly what pushed us over the
+limit described above.</p>
+<pre>Job that applies stop-loss settings: 1,108 failed attempts in 5 minutes
+                                       from just 15 records (15:27-15:29, continuous)
+
+Job that handles partial take-profits: 1 failed log entry every ~7 seconds
+                                       from a single task - 571 entries in 70 minutes</pre>
+<p>Read plainly: 15 stuck records produced over a thousand failed attempts in five minutes, and one
+stuck task produced more than eight attempts a minute for over an hour. Neither job ever reached a
+conclusion; both simply carried on until we stopped them.</p>
+
+<p><strong>The errors as they appeared:</strong></p>
+<ul>
+  <li><strong>Sentry:</strong> <strong><code>reconciliation_failed: Open trade reconciliation failed
+      for broker account</code></strong> &mdash; the busiest error of the day &mdash; and
+      <strong><code>unmanaged_live_position: Broker holds a live position with no trade row for this
+      user</code></strong> (250 events).</li>
+  <li><strong>Railway:</strong> <strong><code>15:27:00 [autoManagementMonitor] apply failed
+      trade=d96c0580&hellip; ticket=402106270: automatic management reconciliation required: stored
+      ticket has no live position match</code></strong> &mdash; 1,108 of these in five minutes &mdash;
+      and <strong><code>[partialTpMonitor] fire failed partial=&hellip; ticket=&hellip;: partial close
+      reconciliation required: stored ticket has no live position match</code></strong>, the stuck
+      task's own message, 83 times in two hours.</li>
+  <li><strong>Railway, the clean-up giving up:</strong> <strong><code>17:11:15
+      [openTradeReconcile] empty OpenedOrders with 1 tracked open trade(s)
+      account=e72773cd&hellip; &mdash; deferring ghost close (suspected disconnect)</code></strong>.</li>
+</ul>
+
+<div class="box amber">
+<strong>Fix for (c) &mdash; wait, quarantine, park (commits <code>931347e9</code> and
+<code>bd751498</code>).</strong>
+<ul>
+  <li>The stop-loss job now fetches the account's open positions <strong>once per account per
+      attempt</strong> instead of once per record, waits longer after each failure, quarantines
+      records that keep failing, and parks them entirely after repeated failure.</li>
+  <li>The partial take-profit job <strong>waits before contacting the broker at all</strong>:
+      unfixable errors 30 seconds doubling to 30 minutes, ordinary hiccups such as rate limits 5 to
+      60 seconds, and parks for six hours after twelve unfixable attempts. It writes <strong>at most
+      one failure record per task per five minutes</strong> instead of one per attempt.</li>
+  <li>A stuck task can only be <strong>closed off after four pieces of evidence, all of them</strong>:
+      enough failed attempts; a fresh, healthy connection check; the position absent from
+      <strong>two separate</strong> readings of the account's live positions; and a genuine closing
+      entry in the broker's own history for that exact ticket. The history test uses the rules of the
+      account's own broker connection, and a wrong connection type answers "no proof", never "proof".
+      The main trade record is never modified by this path.</li>
+  <li>A failed price request is counted separately, so a flaky price feed cannot reset a task's
+      failure count or delay healthy tasks.</li>
+  <li>A successful close is recorded safely: the update only applies while the record is still in
+      the state we expect and is retried, so a slow database write can never leave an
+      already-completed close pending and cause the same slice to be closed twice.</li>
+  <li>Recording a trade as closed at the broker now additionally requires matching history
+      evidence, so stale records stop feeding the loop.</li>
+</ul>
+</div>
+
+<p><strong>d) The event table.</strong> Every attempt &mdash; successful or not &mdash; writes a row to
+the event-log table, and nothing ever deleted from that table. So the table grew and grew until it
+reached <strong>4.42&nbsp;GB</strong>, leaving the database close to its size limit and at risk of
+refusing further writes. It also made this incident hard to read: one stuck task alone added 571 rows
+in 70 minutes, burying the few lines that actually mattered under thousands that said the same
+thing.</p>
+
+<div class="box amber">
+<strong>Fix for (d) &mdash; daily pruning (SQL applied to production on 5 October).</strong> A
+retention policy now removes old event-log rows daily and the backlog was purged.
+<strong>4.42&nbsp;GB &rarr; 477&nbsp;MB.</strong>
+</div>
+
+<h2>3. Affected user(s)</h2>
+<table class="data">
+  <tr><th>User</th><th>Signal</th><th>Symbol</th><th>Lot</th><th>Opened (UTC)</th><th>Record in our database</th></tr>
+  <tr><td><code>7833f81b&hellip;</code></td><td><code>dbd85daa&hellip;</code></td><td>XAUUSD (pending buy)</td><td>0.06</td><td>2026-10-05 15:28:02</td><td>signal marked failed; no trade row</td></tr>
+  <tr><td><code>081d5976&hellip;</code> (<code>Xlence-Real1</code>, login <code>5510044400</code>)</td><td><code>cbf88eeb&hellip;</code></td><td>XAUUSD (buy)</td><td>0.02 &times;3</td><td>2026-10-05 17:12:38</td><td>1 trade row (<code>eab120e6</code>, still marked open) + <strong>2 positions with no record at all</strong></td></tr>
+  <tr><td>36 customer accounts</td><td>&mdash;</td><td>mixed</td><td>&mdash;</td><td>20:00&ndash;21:55</td><td>refused with "too many requests"</td></tr>
+</table>
+<p>Broker account <code>fd57d46f&hellip;</code> &mdash; MT5 demo, login <code>10012882280</code>,
+connected (the unconfirmed pending order).</p>
+
+<h3>Proof A &mdash; the unconfirmed order is no longer open (account is flat)</h3>
+<p>Read directly from the broker for account <code>081d5976&hellip;</code>: the connection check
+returned <code>200 "OK"</code>, and the list of open positions returned <strong>none</strong>.</p>
+<pre>ticket 12572015  Buy 0.02 XAUUSD @ 4126.46   opened 17:12:38.306Z
+                 closed 17:29:50.987Z @ 4129.67  volume closed 0.02  profit +6.42
+                 close comment "" (closed by hand, not by stop-loss or take-profit)
+                 ref TScopier:INVESTMENTVI:cbf88eeb</pre>
+<p>Our database still shows that row as <strong>open</strong> &mdash; so it is a <strong>stale
+record</strong>, exactly the kind the clean-up job in root cause 3 exists to remove. It is still
+there because production runs the old code: the health check fails, the job defers, and the row is
+never corrected. There are no worker
+log entries between 17:15 and 17:30, so the close was almost certainly done by hand in the trading
+terminal.</p>
+
+<h3>Proof B &mdash; one signal opened three positions, only one was recorded</h3>
+<p>Signal <code>cbf88eeb</code> ("GOLD BUY 4126 / TP1 4129 / TP2 4133 / TP3 4137 / SL 4116", lot size
+not stated &rarr; 0.02, one leg expected) produced three positions within one millisecond:</p>
+<table class="data">
+  <tr><th>Ticket</th><th>Stop-loss</th><th>Take-profit</th><th>Opened</th><th>Closed</th><th>Result</th><th>Trade record</th></tr>
+  <tr><td><code>12572015</code></td><td>4116.00</td><td>4137</td><td>17:12:38.306Z</td><td>17:29:50.987Z</td><td>+6.42</td><td>yes &mdash; <code>eab120e6</code> (still marked open)</td></tr>
+  <tr><td><code>12572016</code></td><td>4120.38</td><td>4137</td><td>17:12:38.306Z</td><td>17:19:56Z</td><td>+1.50</td><td><strong>MISSING</strong></td></tr>
+  <tr><td><code>12572017</code></td><td>4122.05</td><td>4137</td><td>17:12:38.306Z</td><td>17:15:28Z</td><td>+7.62</td><td><strong>MISSING</strong></td></tr>
+</table>
+<p>The log for that same second shows why:</p>
+<pre>17:12:00  first attempt to place the order, timed out, retrying (1 of 3)
+17:12:21  second attempt, timed out, retrying (2 of 3)
+17:12:38  order confirmed by the broker, ticket 12572016, took 58.4 seconds</pre>
+<p>Two blind retries after our side timed out, then the broker processed all three attempts together.
+<strong>0.04&nbsp;lots were running with no trade record for three to seven minutes.</strong> The
+ticket the broker reported back (<code>12572016</code>) also does not match the ticket we stored
+(<code>12572015</code>, whose stop-loss matches <code>12572017</code>). The cause of this part is
+still open &mdash; see section 8.</p>
+
+<h2>4. Root cause</h2>
+<p>The broker connection was overwhelmed by requests of our own making; the 20-second timeout is a
+symptom, not the disease.</p>
+<ol>
+  <li><strong>The stop-loss management job retried forever.</strong> It runs every 400 milliseconds
+      and was working through 15 records that could never be applied &mdash; every attempt returned
+      "the stored ticket has no live position match". They never left the work list, there was no
+      waiting period between attempts, no attempt limit, and no way for the job to conclude and move
+      on. Result: 1,108 failed attempts in five minutes, each one a real request.</li>
+  <li><strong>The partial take-profit job retried forever.</strong> One stuck task kept asking the
+      broker to close a slice of a position that no longer existed &mdash; once every tick, writing a
+      failure record every seven seconds (571 in 70 minutes) and consuming the shared request
+      allowance each time.</li>
+  <li><strong>The clean-up job never caught up.</strong> What does the cleaning is a job inside the
+      trading worker, started alongside the two jobs from (1) and (2). It runs every 30 seconds while
+      there is work, every 120 seconds when idle, and handles up to 500 rows at a time. It takes
+      every trade row our database still shows as open, asks the broker which positions are actually
+      open on that account, and marks a row closed once its position has gone &mdash; but only when
+      three things hold together: the account passes its health check, a second reading of open
+      positions is still empty, and the broker's own history contains a closing entry for that exact
+      ticket. Anything less and the row is left alone for review. What it cleans is <strong>stale
+      "open" rows</strong>: rows whose position was closed at the broker (by hand, by stop-loss or
+      take-profit) while our database still shows them as open &mdash; for example the row for ticket
+      <code>12572015</code> in Proof A, still marked open a day later. Those stale rows are exactly
+      the work items the jobs in (1) and (2) retried forever, so this job is what should have
+      emptied their lists. It failed 113,000+ times since 25 August (2,835 on 5 October alone), and
+      one reason is structural: an empty list of positions is only accepted as proof when the health
+      check passes, and that check reported failure on every account (see fix (b) above), so the job
+      deferred every single time and the stale rows piled up. This job is <strong>not</strong> what
+      caused the rate limits &mdash; the loops were &mdash; but without it the loops never ran out
+      of work.</li>
+  <li><strong>Our timeout was shorter than the bridge's.</strong> The worker gave up after 20 seconds
+      while the bridge allows 60 &mdash; we quit before the bridge did. Worse, an order that timed out
+      was never afterwards checked with the broker, so the uncertainty was permanent.</li>
+  <li><strong>The result under load:</strong> a perfectly normal order exceeds 20 seconds &rarr;
+      recorded as unknown &rarr; two alerts for one event &rarr; the copy fails. The same mechanism
+      produced the morning's "too many requests" storm and the 350 rate-limited lines across 36
+      accounts that evening.</li>
+</ol>
+<p><strong>Chain:</strong> two work lists that never empty &times; retries every 400&nbsp;ms &rarr;
+the bridge is saturated &rarr; legitimate orders exceed 20 seconds &rarr; failed copies, and every
+other customer gets refused for rate limiting.</p>
+<p class="note">Same day, unrelated cause: the event-log table reached 4.42&nbsp;GB because no
+retention policy existed &mdash; a data-growth problem, not a loop.</p>
+
+<h2>5. Files changed</h2>
+<table class="data">
+  <tr><th>Commit</th><th>Files</th><th>What</th></tr>
+  <tr><td><code>931347e9</code></td><td>14</td><td>order placement, request pacing, stop-loss job, session handling, open-trade reconciliation + tests</td></tr>
+  <tr><td><code>9fff2fb5</code></td><td>3</td><td>new unknown-order reconciliation (<code>worker/src/tradeExecutor/reconcileUnknownSend.ts</code>), wired into order execution, with tests</td></tr>
+  <tr><td><code>bd751498</code></td><td>6</td><td>partial take-profit job, its tests, open-trade classification, shared error classification (new), stop-loss job</td></tr>
+  <tr><td>SQL</td><td>1</td><td><code>supabase/migrations/20261005120000_listener_events_retention.sql</code></td></tr>
+</table>
+
+<h2>6. Verification</h2>
+<p><strong>Four rounds of code review:</strong></p>
+<table class="data">
+  <tr><th>Round</th><th>Verdict</th><th>Notes</th></tr>
+  <tr><td>1</td><td><span class="pill open">Failed</span></td><td>Serious: the proof that a position was gone was a naive ticket scan &mdash; it could claim to have looked when it had not</td></tr>
+  <tr><td>2</td><td>Passed with notes</td><td>7 medium findings &mdash; all fixed</td></tr>
+  <tr><td>3</td><td>Passed</td><td>2 medium + 8 low &mdash; all addressed, including the safe recording of a successful close and the provider-specific history test</td></tr>
+  <tr><td>4</td><td>Passed</td><td>Round-3 fixes confirmed; one further medium issue (a database error path) fixed with a retrying write</td></tr>
+</table>
+
+<p><strong>Tests:</strong></p>
+<table class="data">
+  <tr><th>Check</th><th>Result</th></tr>
+  <tr><td>Type check (full worker build)</td><td>clean</td></tr>
+  <tr><td>Lint on all 6 changed files</td><td>clean</td></tr>
+  <tr><td>Targeted test suites (run one at a time)</td><td><strong>89 / 89</strong></td></tr>
+  <tr><td><strong>Complete worker test suite</strong> (216 files, 49&nbsp;minutes)</td><td><strong>2,210 / 2,210 passed, 0 failed</strong></td></tr>
+  <tr><td>Partial take-profit suite</td><td>17 &rarr; <strong>28</strong> tests</td></tr>
+</table>
+<p class="note">Tests were run one file at a time: running several at once nearly exhausted the
+machine's memory.</p>
+
+<div class="box green">
+<strong>Statement on customer money.</strong> Nothing in these changes can close, cancel or duplicate a
+position that is still open at the broker. The single call that closes part of a position sits behind
+a step that refuses to proceed unless the position can be positively identified, and the path that
+closes off a stuck task never contacts the broker at all &mdash; it only updates an internal record
+after four independent proofs. Any failed or incomplete check results in "do nothing and wait".
+</div>
+
+<p><strong>Evidence after deployment (staging, 6 October):</strong></p>
+<pre>06:37:21Z  deployment successful - staging branch, commit bd751498
+           (listener, trade and backtest services)
+06:38:09Z  partial take-profit job started
+06:38:09Z  first tick completed, 4 tasks pending</pre>
+<p>Window 06:37 &rarr; 08:00 UTC (83 minutes, 869 log lines): <strong>zero</strong> matches for failed
+closes, terminal cancels, parking notices, lost claims, "too many requests" or rate-limit errors.</p>
+
+<h2>7. Deployment status</h2>
+<table class="data">
+  <tr><th>Environment</th><th>Service</th><th>Deployed (UTC)</th><th>Branch</th><th>Commit</th><th>Status</th></tr>
+  <tr><td><strong>staging</strong></td><td>listener, trade, backtest</td><td><strong>2026-10-06 06:37:21</strong></td><td><code>staging</code></td><td><strong><code>bd751498</code></strong></td><td>successful</td></tr>
+  <tr><td>production</td><td>listener, backtest, worker</td><td>2026-10-04 18:38:32</td><td><code>main</code></td><td><code>e188ff09</code> (PR #158)</td><td>successful &mdash; <strong>contains none of these fixes</strong></td></tr>
+</table>
+<p>Pushed to both <code>origin/staging</code> and <code>upstream/staging</code> as a verified clean
+fast-forward. The event-log retention policy <strong>is</strong> already applied in production,
+because that was a database change and does not depend on a code deployment.</p>
+<p>Production therefore still runs the old code: the rate-limit storm and the stale "open" records
+can still occur there until staging is promoted to production.</p>
+
+<h2>8. Follow-ups</h2>
+<ol>
+  <li><strong>Promote staging to production</strong> &mdash; a separate, explicit decision; not taken here.</li>
+  <li><strong>The signal that opened three positions</strong> (<code>cbf88eeb&hellip;</code>) &mdash; three positions, one trade record, 0.04&nbsp;lots untracked for 3&ndash;7 minutes, and the reported ticket does not match the stored one. Working notes in <code>docs/scratchpads/scratchpad-duplicate-fill-cbf88eeb-2026-10-05.md</code>; it deserves its own incident report once the mechanism is proven.</li>
+  <li><strong>Stale "open" trade records</strong> (for example <code>eab120e6</code>, ticket <code>12572015</code>, now proven closed) &mdash; 18 known orphans; cleaning them up needs a reviewed, evidence-gated change.</li>
+  <li><strong>Confirm the pending order</strong> on login <code>10012882280</code> and adopt or clear it.</li>
+  <li><strong>Fix unreconciled open trades</strong> (2,835 a day) &mdash; this is what keeps both jobs supplied with impossible work.</li>
+  <li><strong>Merge the duplicate alerts</strong> for a single timeout into one.</li>
+  <li><strong>History pagination</strong> &mdash; the proof reads one page of broker history, so on a busy account a closing entry on page two would postpone the decision indefinitely. This is the safe direction (nothing is ever cancelled wrongly), but the cancel half may never run; the existing paginated reader should be reused.</li>
+  <li><strong>Keep the job audible while it waits</strong> (it currently goes quiet during long waits) and <strong>park tasks that fail persistently for ordinary reasons</strong> such as the market being closed.</li>
+  <li><strong>Store wait-times centrally</strong> so all replicas share them, and document the new settings in the environment template.</li>
+  <li>Rotate the secrets that were pasted into the chat during diagnosis (database service key, broker keys, credential encryption key, AI and Telegram keys) &mdash; still outstanding.</li>
+</ol>
+
+</body>
+</html>

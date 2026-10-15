@@ -17,7 +17,9 @@ import {
 import { sanitizeChannelCommentSlug } from './tradeComment'
 import type { BrokerRow } from './tradeExecutor/types'
 import { brokerSessionUuid } from './tradeExecutor/helpers'
-
+import { TRADE_CLOSE_REASON } from './tradeCloseReasons'
+import { applyCloseUpdate } from './tradeCloseUpdate'
+import { writeExecutionLog } from './observability/executionLog'
 export type BrokerOpenOrderLike = {
   ticket: number
   symbol: string
@@ -144,13 +146,22 @@ export async function tryBrokerFallbackClose(args: {
           continue
         }
         closed += 1
-        await supabase
-          .from('trades')
-          .update({ status: 'closed', closed_at: new Date().toISOString() })
-          .eq('user_id', signal.user_id)
-          .eq('broker_account_id', broker.id)
-          .eq('metaapi_order_id', String(order.ticket))
-          .in('status', ['open', 'pending'])
+        await applyCloseUpdate(
+          {
+            status: 'closed',
+            closed_at: new Date().toISOString(),
+            close_reason: TRADE_CLOSE_REASON.SIGNAL_CLOSE,
+          },
+          patch => supabase
+            .from('trades')
+            .update(patch)
+            .eq('user_id', signal.user_id)
+            .eq('broker_account_id', broker.id)
+            // The broker reports the position ticket; the row may hold the send
+            // ticket. Match either so a confirmed close is never left open.
+            .or(`metaapi_order_id.eq.${Number(order.ticket)},broker_position_ticket.eq.${Number(order.ticket)}`)
+            .in('status', ['open', 'pending']),
+        )
         if (signal.channel_id) {
           await clearChannelActiveTradeParamsWhenFlat(supabase, {
             userId: signal.user_id,
@@ -158,7 +169,7 @@ export async function tryBrokerFallbackClose(args: {
             symbolHint: order.symbol,
           })
         }
-        await supabase.from('trade_execution_logs').insert({
+        await writeExecutionLog(supabase, {
           user_id: signal.user_id,
           signal_id: signal.id,
           broker_account_id: broker.id,

@@ -3,7 +3,7 @@ import { buildRangeLayerTriggerMap } from '../manualPlanning/rangeLayerTriggers'
 import { roundLot, triggerPriceFor, virtualPendingTriggerAllowed } from './helpers'
 import type { PreparedEntry } from './entryPrepare'
 import { captureDeferredBusinessFailure } from '../observability/deferredBusinessEvents'
-
+import { writeExecutionLog } from '../observability/executionLog'
 /**
  * Persist virtual pending ladder rows to `range_pending_legs` for the worker monitor.
  */
@@ -102,17 +102,15 @@ export async function materializeVirtualPendingLegs(
       `[tradeExecutor] range_pending_legs persist failed signal=${signal.id} broker=${broker.id}: ${persist.lastError ?? 'unknown'}`,
     )
     if (!liveEntryFast) {
-      try {
-        await ctx.supabase.from('trade_execution_logs').insert({
-          user_id: signal.user_id,
-          signal_id: signal.id,
-          broker_account_id: broker.id,
-          action: 'virtual_pending_failed',
-          status: 'failed',
-          request_payload: { rows: insertRows.length, anchor, anchorSource } as unknown as Record<string, unknown>,
-          error_message: persist.lastError ?? 'unknown',
-        })
-      } catch { /* logging is best-effort */ }
+      await writeExecutionLog(ctx.supabase, {
+        user_id: signal.user_id,
+        signal_id: signal.id,
+        broker_account_id: broker.id,
+        action: 'virtual_pending_failed',
+        status: 'failed',
+        request_payload: { rows: insertRows.length, anchor, anchorSource } as unknown as Record<string, unknown>,
+        error_message: persist.lastError ?? 'unknown',
+      })
     }
     captureDeferredBusinessFailure({
       category: 'layering',
@@ -145,32 +143,30 @@ export async function materializeVirtualPendingLegs(
   console.log(
     `[tradeExecutor] virtual pendings inserted=${insertRows.length} signal=${signal.id} broker=${broker.id} symbol=${symbol} anchor=${anchor ?? 'n/a'} (${anchorSource})`,
   )
-  try {
-    await ctx.supabase.from('trade_execution_logs').insert({
-      user_id: signal.user_id,
-      signal_id: signal.id,
-      broker_account_id: broker.id,
-      action: 'virtual_pending_inserted',
-      status: 'success',
-      request_payload: {
-        rows: insertRows.length,
-        anchor,
-        anchorSource,
-        symbol,
-        stepIdxs: insertRows.map(r => r.step_idx),
-        triggers: insertRows.map(r => r.trigger_price),
-        range_layering: plan.rangeLayering ?? null,
-        basket_leg_cap: plan.rangeLayering?.basketLegCap
-          ?? (
-            (plan.rangeLayering?.plannedImmediateLegs ?? 0)
-            + (plan.rangeLayering?.activePendingLegs ?? insertRows.length)
-          ),
-        planned_immediate_legs: plan.rangeLayering?.plannedImmediateLegs ?? null,
-        planned_range_legs: plan.rangeLayering?.activePendingLegs ?? insertRows.length,
-        strict_deferred: strictDeferred,
-        strict_broker_pending: strictBrokerPlaced,
-      } as unknown as Record<string, unknown>,
-    })
-  } catch { /* logging is best-effort */ }
+  await writeExecutionLog(ctx.supabase, {
+    user_id: signal.user_id,
+    signal_id: signal.id,
+    broker_account_id: broker.id,
+    action: 'virtual_pending_inserted',
+    status: 'success',
+    request_payload: {
+      rows: insertRows.length,
+      anchor,
+      anchorSource,
+      symbol,
+      stepIdxs: insertRows.map(r => r.step_idx),
+      triggers: insertRows.map(r => r.trigger_price),
+      range_layering: plan.rangeLayering ?? null,
+      basket_leg_cap: plan.rangeLayering?.basketLegCap
+        ?? (
+          (plan.rangeLayering?.plannedImmediateLegs ?? 0)
+          + (plan.rangeLayering?.activePendingLegs ?? insertRows.length)
+        ),
+      planned_immediate_legs: plan.rangeLayering?.plannedImmediateLegs ?? null,
+      planned_range_legs: plan.rangeLayering?.activePendingLegs ?? insertRows.length,
+      strict_deferred: strictDeferred,
+      strict_broker_pending: strictBrokerPlaced,
+    } as unknown as Record<string, unknown>,
+  })
   return true
 }

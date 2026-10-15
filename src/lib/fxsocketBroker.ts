@@ -719,7 +719,31 @@ function isWrongProviderError(message: string): boolean {
 }
 
 /**
- * Fetch trades from every requested provider (or both when omitted) and merge.
+ * True for a provider edge that is simply absent for THIS account/provider —
+ * the phased-out FxSocket edge answering 404 ("broker account not found") or
+ * a user with no account for that provider. These must never be treated as a
+ * real outage that raises the degraded-feed banner.
+ *
+ * The broad 404 matching is deliberately scoped to `fxsocket`: MTAPI is the
+ * only live provider, and a 404 from the MTAPI edge (e.g. an undeployed or
+ * misrouted function) is a genuine outage that must raise the banner rather
+ * than have its trades silently dropped.
+ */
+function isProviderUnavailableError(
+  provider: 'fxsocket' | 'mtapi',
+  message: string,
+): boolean {
+  if (isWrongProviderError(message)) return true
+  return provider === 'fxsocket' && /broker account not found|http 404|\b404\b/i.test(message)
+}
+
+/**
+ * Fetch trades from every requested provider and merge.
+ *
+ * MTAPI is the only live provider now that FxSocket is phased out, so when
+ * the caller does not say which provider to use we ask MTAPI alone. A
+ * FxSocket edge is only ever contacted for accounts explicitly marked
+ * `provider: 'fxsocket'` (legacy rows) — never added as a fallback.
  *
  * Each edge only returns rows for its own provider, so merging is safe.
  * A wrong-provider 400 (when brokerId is set on the other edge) is ignored
@@ -733,20 +757,22 @@ export async function fetchTradesAcrossProviders(
 ): Promise<{ trades: MtTrade[] }> {
   let providers = args.providers
   if (!providers && args.accounts) {
-    const set = new Set(
+    // Only the providers the accounts actually declare are queried. An account
+    // with no provider field resolves to the retired FxSocket edge, so treat it
+    // as MTAPI (the phase-out default) and never fan out to the dead edge.
+    // cTrader accounts are declared too, and must be queried.
+    const explicit = new Set(
       args.accounts
-        .map(account => resolveProvider(account))
+        .map(a => {
+          const provider = resolveProvider(a)
+          return provider === 'fxsocket' && !a.provider ? 'mtapi' : provider
+        })
         .filter((provider): provider is BrokerEdgeProvider =>
-          provider === 'fxsocket' || provider === 'mtapi' || provider === 'ctrader'),
+          provider === 'mtapi' || provider === 'ctrader' || provider === 'fxsocket'),
     )
-    // Anchors without a provider field resolve to fxsocket — if nothing was
-    // explicitly marked, still query both so MTAPI-only data is not dropped.
-    const anyExplicit = args.accounts.some(
-      a => a.provider === 'mtapi' || a.provider === 'fxsocket' || a.provider === 'ctrader',
-    )
-    providers = anyExplicit && set.size > 0 ? [...set] : ['fxsocket', 'mtapi']
+    providers = explicit.size > 0 ? [...explicit] : ['mtapi']
   }
-  if (!providers) providers = ['fxsocket', 'mtapi']
+  if (!providers) providers = ['mtapi']
   if (providers.length === 0) return { trades: [] }
   if (providers.length === 1) {
     return fxsocketBroker.trades({ ...args, provider: providers[0] })
@@ -762,39 +788,39 @@ export async function fetchTradesAcrossProviders(
     includeBalanceCashflow: args.includeBalanceCashflow,
   }
 
-  const results = await Promise.allSettled(
+  const settled = await Promise.allSettled(
     providers.map(provider => fxsocketBroker.trades({ ...base, provider })),
   )
-  const ok = results.filter(
+  const ok = settled.filter(
     (r): r is PromiseFulfilledResult<{ trades: MtTrade[] }> => r.status === 'fulfilled',
   )
-  const failed = results.filter(
-    (r): r is PromiseRejectedResult => r.status === 'rejected',
-  )
-  // Prefer a real (non wrong-provider) rejection over failed[0], which may be
-  // a wrong-provider 400 ordered first by the providers array.
-  const pickRealFailure = (): unknown => {
-    const real = failed.find(
-      r =>
-        !(r.reason instanceof Error
-          ? isWrongProviderError(r.reason.message)
-          : isWrongProviderError(String(r.reason))),
+  const failed = settled
+    .map((r, i) => ({ r, provider: providers[i] as 'fxsocket' | 'mtapi' }))
+    .filter(
+      (x): x is { r: PromiseRejectedResult; provider: 'fxsocket' | 'mtapi' } =>
+        x.r.status === 'rejected',
     )
-    if (real) return real.reason
-    if (failed[0]?.reason instanceof Error) return failed[0].reason
-    if (failed[0]) return failed[0].reason
+  const failureMessage = (x: { r: PromiseRejectedResult; provider: 'fxsocket' | 'mtapi' }): string =>
+    x.r.reason instanceof Error ? x.r.reason.message : String(x.r.reason)
+  const isUnavailable = (x: { r: PromiseRejectedResult; provider: 'fxsocket' | 'mtapi' }): boolean =>
+    isProviderUnavailableError(x.provider, failureMessage(x))
+  // Prefer a real (non wrong-provider/absent) rejection over failed[0], which
+  // may be a wrong-provider 400 ordered first by the providers array.
+  const pickRealFailure = (): unknown => {
+    const real = failed.find(x => !isUnavailable(x))
+    if (real) return real.r.reason
+    if (failed[0]?.r.reason instanceof Error) return failed[0].r.reason
+    if (failed[0]) return failed[0].r.reason
     return new Error('Failed to load trades')
   }
   if (ok.length === 0) {
     throw pickRealFailure()
   }
   if (failed.length > 0) {
-    const failedMessages = failed.map(r =>
-      r.reason instanceof Error ? r.reason.message : String(r.reason),
-    )
-    const realFailures = failedMessages.filter(
-      m => m.length > 0 && !isWrongProviderError(m),
-    )
+    const realFailures = failed
+      .filter(x => !isUnavailable(x))
+      .map(failureMessage)
+      .filter(m => m.length > 0)
     const anyData = ok.some(r => (r.value.trades ?? []).length > 0)
     if (realFailures.length > 0 && !anyData) {
       throw pickRealFailure()

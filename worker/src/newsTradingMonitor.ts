@@ -1,4 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { TRADE_CLOSE_REASON } from './tradeCloseReasons'
+import { applyCloseUpdate } from './tradeCloseUpdate'
 import { findPreNewsCloseTriggers } from './newsTrading/blackout'
 import { getCalendarEventsCached } from './newsTrading/calendarProvider'
 import { isNewsTradingEnabled, type ScheduleFilterSettings } from './newsTrading/settings'
@@ -7,7 +9,7 @@ import { resolveCurrentLivePosition } from './livePositionIdentity'
 import { brokerRuntimeForAccount, loadBrokerApiByAccountId } from './mtApiByAccount'
 import { resolveChannelTradingConfig } from './channelTradingConfig'
 import { isUserCopierPausedCached } from './copierPause'
-
+import { writeExecutionLog } from './observability/executionLog'
 interface BrokerRow {
   id: string
   user_id: string
@@ -26,6 +28,7 @@ interface OpenTradeRow {
   user_id: string
   broker_account_id: string | null
   metaapi_order_id: string | null
+  broker_position_ticket?: string | null
   symbol: string
   signal_id: string | null
   direction: string
@@ -108,7 +111,7 @@ export class NewsTradingMonitor {
 
       const { data: trades, error: tradeErr } = await this.supabase
         .from('trades')
-        .select('id,user_id,broker_account_id,metaapi_order_id,symbol,signal_id,direction,lot_size,entry_price')
+        .select('id,user_id,broker_account_id,metaapi_order_id,broker_position_ticket,symbol,signal_id,direction,lot_size,entry_price')
         .eq('broker_account_id', broker.id)
         .eq('status', 'open')
       if (tradeErr) {
@@ -170,7 +173,7 @@ export class NewsTradingMonitor {
 
         let closed = 0
         for (const t of toClose) {
-          const ticket = Number(t.metaapi_order_id)
+          const ticket = Number(t.broker_position_ticket ?? t.metaapi_order_id)
           if (!Number.isFinite(ticket) || ticket <= 0) continue
           try {
             const identity = await resolveCurrentLivePosition({
@@ -191,10 +194,14 @@ export class NewsTradingMonitor {
               console.warn(`[newsTradingMonitor] close ambiguous trade=${t.id}: ${result.reason ?? 'unconfirmed'}`)
               continue
             }
-            await this.supabase
-              .from('trades')
-              .update({ status: 'closed', closed_at: new Date().toISOString() })
-              .eq('id', t.id)
+            await applyCloseUpdate(
+              {
+                status: 'closed',
+                closed_at: new Date().toISOString(),
+                close_reason: TRADE_CLOSE_REASON.NEWS_PRE_CLOSE,
+              },
+              patch => this.supabase.from('trades').update(patch).eq('id', t.id),
+            )
             closed += 1
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err)
@@ -206,22 +213,18 @@ export class NewsTradingMonitor {
           console.log(
             `[newsTradingMonitor] pre-news close broker=${broker.id} event=${event.event} closed=${closed}`,
           )
-          try {
-            await this.supabase.from('trade_execution_logs').insert({
-              user_id: broker.user_id,
-              broker_account_id: broker.id,
-              action: 'news_pre_close',
-              status: 'success',
-              request_payload: {
-                event_id: event.id,
-                event: event.event,
-                currency: event.currency,
-                closed_trades: closed,
-              } as unknown as Record<string, unknown>,
-            })
-          } catch {
-            // best-effort
-          }
+          await writeExecutionLog(this.supabase, {
+            user_id: broker.user_id,
+            broker_account_id: broker.id,
+            action: 'news_pre_close',
+            status: 'success',
+            request_payload: {
+              event_id: event.id,
+              event: event.event,
+              currency: event.currency,
+              closed_trades: closed,
+            } as unknown as Record<string, unknown>,
+          })
         }
         this.closedForEvent.set(dedupeKey, now.getTime())
       }

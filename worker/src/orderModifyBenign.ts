@@ -51,14 +51,22 @@ export function isBenignOrderModifyError(message: string): boolean {
     || isPositionGoneError(m)
   )
 }
-
-/** Compare DB-stored stops to planned targets (broker may use different rounding). */
+/**
+ * Compare DB-stored stops to planned targets (broker may use different rounding).
+ *
+ * `opts.requireTakeProfit` — set when a single take-profit target is configured.
+ * A target take-profit of 0 then never counts as "already correct"; without it a
+ * leg whose target was never resolved stays silently in sync and is never repaired.
+ * Callers that have no notion of a selected target must leave it off, because the
+ * zero-target rule is shared with the signal-override and channel-stop paths.
+ */
 export function stopsAlreadyMatchDb(
   tr: { sl: number | null; tp: number | null },
   target: { stoploss: number; takeprofit: number },
   nImmCwe: number,
   legIdx: number,
   epsilon = 1e-8,
+  opts?: { requireTakeProfit?: boolean },
 ): boolean {
   if (legIdx < nImmCwe) {
     const tpOk = tr.tp == null || Number(tr.tp) === 0
@@ -66,6 +74,9 @@ export function stopsAlreadyMatchDb(
   } else if (target.takeprofit > 0) {
     const curTp = Number(tr.tp)
     if (!Number.isFinite(curTp) || Math.abs(curTp - target.takeprofit) > epsilon) return false
+  } else if (opts?.requireTakeProfit === true) {
+    const curTp = Number(tr.tp)
+    if (!Number.isFinite(curTp) || curTp <= 0) return false
   }
   if (target.stoploss > 0) {
     const curSl = Number(tr.sl)

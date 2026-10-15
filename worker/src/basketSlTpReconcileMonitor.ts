@@ -21,6 +21,8 @@ import {
   type MonitorLoopHandle,
 } from './monitorIdleGate'
 import { normalizeManualSettingsForExecution } from './manualPlanning/normalizeManualSettings'
+import { shouldApplySingleTakeProfitTarget } from './manualPlanning/partialTpSchedule'
+import { filterPlausibleInstrumentPrices } from './tradableSymbol'
 import { resolveChannelTradingConfig } from './channelTradingConfig'
 import { normalizeSymbolParams } from './fxsocketClient'
 import { isUserCopierPausedCached } from './copierPause'
@@ -32,7 +34,7 @@ import {
   isDriftSweepReconcileJob,
   notifyManualBrokerOverrideReverted,
 } from './manualBrokerOverrideNotification'
-
+import { writeExecutionLog } from './observability/executionLog'
 const ACTIVE_MS = monitorActiveIntervalMs('BASKET_RECONCILE_TICK_MS', 5_000)
 const IDLE_MS = monitorIdleIntervalMs('BASKET_RECONCILE_IDLE_MS', 15_000)
 const JOB_BATCH_LIMIT = Math.min(
@@ -40,6 +42,11 @@ const JOB_BATCH_LIMIT = Math.min(
   Math.max(5, Number(process.env.BASKET_RECONCILE_SWEEP_BATCH ?? 50)),
 )
 const HOST_ID = `worker-${process.pid}`
+/** A reconcile job where every leg is unfixable gives up after this many ticks. */
+const RECONCILE_NO_PROGRESS_MAX = (() => {
+  const n = Number(process.env.BASKET_RECONCILE_NO_PROGRESS_MAX ?? 3)
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 3
+})()
 
 function reconcileTargetsHaveSl(
   targets: Array<{ stoploss?: number; takeprofit?: number }>,
@@ -293,14 +300,16 @@ export class BasketSlTpReconcileMonitor {
       await this.releaseJob(row.id, 'empty per_leg_targets', row.attempts)
       return
     }
-    const effectiveSignalTps = freshSignalTps.length
-      ? freshSignalTps
-      : (Array.isArray(anchorParsed?.tp)
-        ? anchorParsed.tp.filter(
-            (t): t is number => typeof t === 'number' && Number.isFinite(t) && t > 0,
-          )
-        : [])
-
+    const effectiveSignalTps = filterPlausibleInstrumentPrices(
+      row.symbol,
+      freshSignalTps.length
+        ? freshSignalTps
+        : (Array.isArray(anchorParsed?.tp)
+          ? anchorParsed.tp.filter(
+              (t): t is number => typeof t === 'number' && Number.isFinite(t) && t > 0,
+            )
+          : []),
+    )
     let params: BasketSymbolParams | null = null
     try {
       const sp = await api.symbolParams(uuid, row.symbol)
@@ -375,6 +384,7 @@ export class BasketSlTpReconcileMonitor {
       skipAlreadySynced: true,
       parallelLegs: true,
       internalRebalance: manual.range_trading === true,
+      bundleIdentity: manual.range_trading !== true,
       effectiveStoploss: effectiveStoploss > 0 ? effectiveStoploss : undefined,
       orderCommentsEnabled: manual.order_comments_enabled !== false,
       // Explicit latest instruction (Manage Signals, basket target, or channel
@@ -383,6 +393,12 @@ export class BasketSlTpReconcileMonitor {
       explicitChannelTargets:
         row.source_signal_id !== row.anchor_signal_id
         || isExplicitBasketSlSource(effectiveSlSource),
+      // The pin may only be applied on a `trade_style === 'single'` account, matching
+      // basketReconcileTargets and channelStopApply. Passing it unconditionally makes
+      // expandPerLegTargetsToCount collapse a multi/range ladder onto one level.
+      singleTpTarget: shouldApplySingleTakeProfitTarget(manual)
+        ? manual.single_tp_target
+        : null,
     })
 
     const mergeFailed = basketLegModifyMergeFailed(summary)
@@ -397,24 +413,22 @@ export class BasketSlTpReconcileMonitor {
         this.supabase,
         familyTrades.map(tr => tr.id),
       )
-      try {
-        await this.supabase.from('trade_execution_logs').insert({
-          user_id: row.user_id,
-          signal_id: row.source_signal_id,
-          broker_account_id: row.broker_account_id,
-          action: 'basket_reconcile_tick',
-          status: 'success',
-          error_message: null,
-          request_payload: {
-            job_id: row.id,
-            anchor_signal_id: row.anchor_signal_id,
-            ghost_closed: true,
-            closed_stale_trades: closedCount,
-            ...summary,
-            leg_errors: legErrors.slice(0, 5),
-          } as unknown as Record<string, unknown>,
-        })
-      } catch { /* best-effort */ }
+      await writeExecutionLog(this.supabase, {
+        user_id: row.user_id,
+        signal_id: row.source_signal_id,
+        broker_account_id: row.broker_account_id,
+        action: 'basket_reconcile_tick',
+        status: 'success',
+        error_message: null,
+        request_payload: {
+          job_id: row.id,
+          anchor_signal_id: row.anchor_signal_id,
+          ghost_closed: true,
+          closed_stale_trades: closedCount,
+          ...summary,
+          leg_errors: legErrors.slice(0, 5),
+        } as unknown as Record<string, unknown>,
+      })
       console.log(
         `[basketSlTpReconcileMonitor] ghost basket closed job=${row.id}`
         + ` signal=${row.anchor_signal_id} broker=${row.broker_account_id}`
@@ -430,7 +444,10 @@ export class BasketSlTpReconcileMonitor {
     }
 
     let brokerStillDrift = false
-    if (!mergeFailed && reconcileTargetsHaveSl(effectiveTargets)) {
+    // Always re-measure broker drift (when there is an SL target) — independent of
+    // mergeFailed, which is also true when a leg was skipped. Otherwise the
+    // completion gate below could finish a job without ever reading the broker.
+    if (reconcileTargetsHaveSl(effectiveTargets)) {
       const ordersByTicket = await fetchBrokerOrdersByTicket(api, uuid)
       brokerStillDrift = basketLegsOutOfSyncOnBroker(
         familyTrades,
@@ -447,44 +464,42 @@ export class BasketSlTpReconcileMonitor {
         + (summary.skippedNotOnBroker > 0 ? `; ${summary.skippedNotOnBroker} not on broker` : '')
         + (brokerStillDrift ? '; broker SL still drifted' : '')
       : null
-
-    try {
-      await this.supabase.from('trade_execution_logs').insert({
+    await writeExecutionLog(this.supabase, {
+      user_id: row.user_id,
+      signal_id: row.source_signal_id,
+      broker_account_id: row.broker_account_id,
+      action: 'basket_reconcile_tick',
+      status: summary.failed > 0 || brokerStillDrift ? 'failed' : 'success',
+      error_message: partialMsg,
+      request_payload: {
+        job_id: row.id,
+        anchor_signal_id: row.anchor_signal_id,
+        ...summary,
+        leg_errors: legErrors.slice(0, 5),
+      } as unknown as Record<string, unknown>,
+    })
+    // Complete the job when the broker matches the applicable targets and there were
+    // no hard broker failures. A leg skipped as structurally un-applicable (its stop
+    // or target is on the wrong side of its entry) can never be synced, so it must
+    // not keep the job retrying forever.
+    if (summary.failed === 0 && !brokerStillDrift) {
+      await writeExecutionLog(this.supabase, {
         user_id: row.user_id,
         signal_id: row.source_signal_id,
         broker_account_id: row.broker_account_id,
-        action: 'basket_reconcile_tick',
-        status: mergeFailed || brokerStillDrift ? 'failed' : 'success',
+        action: 'merge_modify_summary',
+        status: 'success',
         error_message: partialMsg,
         request_payload: {
-          job_id: row.id,
-          anchor_signal_id: row.anchor_signal_id,
+          parent_signal_id: row.anchor_signal_id,
+          symbol: row.symbol,
+          modify_only: true,
+          reconcile_job_id: row.id,
+          user_message: partialMsg,
           ...summary,
-          leg_errors: legErrors.slice(0, 5),
+          leg_errors: legErrors.slice(0, 10),
         } as unknown as Record<string, unknown>,
       })
-    } catch { /* best-effort */ }
-
-    if (!mergeFailed && !brokerStillDrift) {
-      try {
-        await this.supabase.from('trade_execution_logs').insert({
-          user_id: row.user_id,
-          signal_id: row.source_signal_id,
-          broker_account_id: row.broker_account_id,
-          action: 'merge_modify_summary',
-          status: 'success',
-          error_message: partialMsg,
-          request_payload: {
-            parent_signal_id: row.anchor_signal_id,
-            symbol: row.symbol,
-            modify_only: true,
-            reconcile_job_id: row.id,
-            user_message: partialMsg,
-            ...summary,
-            leg_errors: legErrors.slice(0, 10),
-          } as unknown as Record<string, unknown>,
-        })
-      } catch { /* best-effort */ }
       if (manualBrokerOverrides.length > 0 && summary.modified <= summary.benignModify) {
         console.log(`[MANUAL_OVERRIDE_NOTIFY] skipped job=${row.id} signal=${row.anchor_signal_id} broker=${row.broker_account_id} symbol=${row.symbol} reason=no_non_benign_restore modified=${summary.modified} benign=${summary.benignModify}`)
       }
@@ -512,12 +527,23 @@ export class BasketSlTpReconcileMonitor {
       return
     }
 
-    if (row.attempts >= row.max_attempts) {
+    // Every leg is unfixable and nothing was modified — e.g. an SL the broker
+    // keeps rejecting (wrong side of the live market). Give up early with a clear
+    // reason instead of grinding through max_attempts, one "broker SL still
+    // drifted" error per minute. Transient failures (some legs just failed) keep
+    // the full max_attempts budget.
+    const permanentlyUnresolvable = summary.skippedUnfixable > 0 && summary.modified === 0
+    const exhausted = row.attempts >= row.max_attempts
+      || (permanentlyUnresolvable && row.attempts >= RECONCILE_NO_PROGRESS_MAX)
+
+    if (exhausted) {
       await this.supabase
         .from('basket_reconcile_jobs')
         .update({
           status: 'failed',
-          last_error: partialMsg,
+          last_error: permanentlyUnresolvable && !(row.attempts >= row.max_attempts)
+            ? `unresolvable (${row.attempts} ticks, no change): ${partialMsg}`
+            : partialMsg,
           locked_at: null,
           locked_by: null,
           updated_at: new Date().toISOString(),

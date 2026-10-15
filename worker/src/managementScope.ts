@@ -9,10 +9,12 @@ import { classifySymbol } from './pipMath'
 import { signalPipPrice } from './signalPip'
 import { sanitizeParsedSymbol } from './tradableSymbol'
 import { extractProviderSignalNumber } from './forexBroSignalPatterns'
+import { parseExplicitProviderOrderMessage } from './parseSignal'
 
 export type MgmtParsedLike = {
   action?: string
   symbol?: string | null
+  provider_order_type?: 'new' | 'close' | null
   sl?: number | null
   tp?: number[] | null
   provider_signal_number?: number | null
@@ -27,6 +29,7 @@ export type MgmtTradeRow = {
   signal_id: string
   broker_account_id: string
   metaapi_order_id: string | null
+  broker_position_ticket?: string | null
   symbol: string
   direction: string
   lot_size: number
@@ -180,7 +183,7 @@ export function resolveNewestOpenSymbolTrades(trades: MgmtTradeRow[]): MgmtTrade
 }
 
 const MGMT_TRADE_SELECT =
-  'id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,lot_size,status,sl,tp,entry_price,opened_at,cwe_close_price'
+  'id,signal_id,broker_account_id,metaapi_order_id,broker_position_ticket,symbol,direction,lot_size,status,sl,tp,entry_price,opened_at,cwe_close_price'
 
 /** Active legs eligible for management (open + broker-pending strict entries). */
 export function isMgmtEligibleTradeStatus(status: string): boolean {
@@ -513,13 +516,14 @@ export async function loadOpenTradesForSignalAcrossBrokers(
   return { rows, brokersFound: [...found], brokersMissing }
 }
 
-/** Find the entry signal row for a provider trade number (ForexBro Signal #NNN). */
+/** Find one unambiguous entry signal for a provider external trade/order number. */
 export async function resolveEntrySignalIdByProviderNumber(
   supabase: SupabaseClient,
   args: {
     userId: string
     channelId: string
     providerSignalNumber: number
+    symbol?: string | null
   },
 ): Promise<string | null> {
   const n = args.providerSignalNumber
@@ -531,15 +535,38 @@ export async function resolveEntrySignalIdByProviderNumber(
     .eq('channel_id', args.channelId)
     .order('created_at', { ascending: false })
     .limit(300)
-  const ref = new RegExp(`(?:new\\s+signal|signal)\\s*#\\s*${n}\\b`, 'i')
+  const forexBroRef = new RegExp(`(?:new\\s+signal|signal)\\s*#\\s*${n}\\b`, 'i')
+  const matches = new Set<string>()
   for (const row of data ?? []) {
-    const pd = row.parsed_data as { action?: string; raw_instruction?: string } | null
+    const pd = row.parsed_data as {
+      action?: string
+      raw_instruction?: string
+      symbol?: string | null
+      provider_order_type?: 'new' | 'close' | null
+      provider_signal_number?: number | null
+    } | null
     const action = String(pd?.action ?? '').toLowerCase()
     if (action !== 'buy' && action !== 'sell') continue
     const text = String(row.raw_message ?? pd?.raw_instruction ?? '')
-    if (ref.test(text)) return String(row.id)
+    const legacyStructured = parseExplicitProviderOrderMessage(text)
+    const parsedProviderEntry = pd?.provider_order_type === 'new'
+      && pd.provider_signal_number === n
+    const legacyProviderEntry = legacyStructured?.provider_order_type === 'new'
+      && legacyStructured.provider_signal_number === n
+    const forexBroEntry = forexBroRef.test(text)
+    if (!parsedProviderEntry && !legacyProviderEntry && !forexBroEntry) continue
+
+    if (args.symbol?.trim()) {
+      const candidateSymbol = sanitizeParsedSymbol(
+        String(pd?.symbol ?? legacyStructured?.symbol ?? ''),
+      )
+      if (!candidateSymbol || !symbolsCompatibleForBasket(args.symbol, candidateSymbol)) continue
+    }
+
+    matches.add(String(row.id))
+    if (matches.size > 1) return null
   }
-  return null
+  return matches.size === 1 ? [...matches][0]! : null
 }
 
 export const PROVIDER_ENTRY_DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000

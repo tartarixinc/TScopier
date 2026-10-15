@@ -55,10 +55,12 @@ export async function loadRangePendingLegsInMgmtScope(
     channelId?: string | null
     basketSignalId?: string | null
     symbolFilter?: string | null
+    includeBrokerPending?: boolean
   },
 ): Promise<RangePendingMgmtRow[]> {
-  const { userId, brokerAccountIds, channelId, basketSignalId, symbolFilter } = args
+  const { userId, brokerAccountIds, channelId, basketSignalId, symbolFilter, includeBrokerPending } = args
   if (!brokerAccountIds.length) return []
+  if (!basketSignalId && !channelId) return []
 
   let signalIds: string[] | null = null
   if (basketSignalId) {
@@ -81,7 +83,7 @@ export async function loadRangePendingLegsInMgmtScope(
     )
     .eq('user_id', userId)
     .in('broker_account_id', brokerAccountIds)
-    .in('status', ['pending', 'claimed'])
+    .in('status', includeBrokerPending ? ['pending', 'claimed', 'broker_pending'] : ['pending', 'claimed'])
     .limit(500)
 
   if (signalIds) {
@@ -101,6 +103,90 @@ export async function loadRangePendingLegsInMgmtScope(
   return legs
 }
 
+
+export type ExactProviderCloseArtifacts = {
+  scopes: PendingLegCancelScope[]
+  waitScopes: PendingLegCancelScope[]
+  entryPendingCount: number
+  waitingCount: number
+  error: string | null
+}
+
+/** Load only durable pending/deferred artifacts owned by one correlated provider parent. */
+export async function loadExactProviderCloseArtifacts(
+  supabase: SupabaseClient,
+  args: {
+    parentSignalId: string
+    brokerAccountIds: string[]
+  },
+): Promise<ExactProviderCloseArtifacts> {
+  if (!args.parentSignalId || !args.brokerAccountIds.length) {
+    return {
+      scopes: [],
+      waitScopes: [],
+      entryPendingCount: 0,
+      waitingCount: 0,
+      error: 'provider parent scope is empty',
+    }
+  }
+
+  const [entryResult, waitResult] = await Promise.all([
+    supabase
+      .from('signal_entry_pending_orders')
+      .select('broker_account_id,symbol')
+      .eq('signal_id', args.parentSignalId)
+      .in('broker_account_id', args.brokerAccountIds)
+      .eq('status', 'broker_pending')
+      .limit(500),
+    supabase
+      .from('signal_range_entry_waits')
+      .select('broker_account_id,symbol')
+      .eq('signal_id', args.parentSignalId)
+      .in('broker_account_id', args.brokerAccountIds)
+      .eq('status', 'waiting')
+      .limit(500),
+  ])
+  if (entryResult.error || waitResult.error) {
+    return {
+      scopes: [],
+      waitScopes: [],
+      entryPendingCount: 0,
+      waitingCount: 0,
+      error: entryResult.error?.message ?? waitResult.error?.message ?? 'provider artifact lookup failed',
+    }
+  }
+
+  const toScopes = (rows: unknown[]): PendingLegCancelScope[] => {
+    const uniq = new Map<string, PendingLegCancelScope>()
+    for (const row of rows as Array<{
+      broker_account_id: string
+      symbol?: string | null
+    }>) {
+      const scope = {
+        signalId: args.parentSignalId,
+        brokerAccountId: row.broker_account_id,
+        symbol: String(row.symbol ?? ''),
+      }
+      uniq.set(scope.signalId + '|' + scope.brokerAccountId, scope)
+    }
+    return [...uniq.values()]
+  }
+  const entryRows = (entryResult.data ?? []) as Array<{
+    broker_account_id: string
+    symbol?: string | null
+  }>
+  const waitRows = (waitResult.data ?? []) as Array<{
+    broker_account_id: string
+    symbol?: string | null
+  }>
+  return {
+    scopes: toScopes(entryRows),
+    waitScopes: toScopes(waitRows),
+    entryPendingCount: entryRows.length,
+    waitingCount: waitRows.length,
+    error: null,
+  }
+}
 export async function updateRangePendingLegsForManagement(args: {
   supabase: SupabaseClient
   parsed: MgmtParsedLike

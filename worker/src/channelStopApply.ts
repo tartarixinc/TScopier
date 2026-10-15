@@ -12,7 +12,10 @@ import {
   mtPlatformFrom,
   type FxsocketBrokerClient,
 } from './fxsocketClient'
-import { loadChannelActiveTradeParamsForSymbol } from './channelActiveTradeParams'
+import {
+  loadChannelActiveTradeParamsForSymbol
+} from './channelActiveTradeParams'
+import { bundleTpOrderMap, isBundleBasket } from './manualPlanning/tpBundleIdentity'
 import {
   buildEntryQualityTakeProfitMap,
   type EntryQualityLeg,
@@ -35,9 +38,15 @@ import { brokerSessionUuid, brokerHasLinkedSession } from './tradeExecutor/helpe
 import { incMetric } from './workerMetrics'
 import { mgmtBasketConcurrency, mgmtLegConcurrency, parallelMap } from './parallelPool'
 import { deepestFinalTp, hasClosedBasketLegs } from './rangeBasketTpSync'
+import {
+  normalizeSingleTpTarget,
+  resolveChosenTakeProfit,
+  shouldApplySingleTakeProfitTarget,
+} from './manualPlanning/partialTpSchedule'
 import { hasTpTouchedLock } from './rangePendingFireGuard'
+import { filterPlausibleInstrumentPrices } from './tradableSymbol'
 import { classifyBrokerFailureReason } from './observability/businessEvents'
-
+import { writeExecutionLog } from './observability/executionLog'
 export type ChannelStopLeg = {
   id: string
   signal_id: string
@@ -63,7 +72,11 @@ export type ChannelStopBroker = {
   metaapi_account_id?: string | null
   writer_epoch?: number | null
   provider_transition_state?: string | null
-  manual_settings?: { tp_lots?: ManualTpLot[] | null } | null
+  manual_settings?: {
+    tp_lots?: ManualTpLot[] | null
+    trade_style?: string | null
+    single_tp_target?: unknown
+  } | null
 }
 
 export type BrokerBasketStopResult = {
@@ -786,6 +799,18 @@ export async function applyChannelStopsToBaskets(
 
     const tpLots = broker.manual_settings?.tp_lots ?? null
     const isBuy = direction === 'buy'
+    // Legacy `parsed_data.tp` may still hold junk (a stray 100 from before the parser
+    // fix). Filtering here covers the chosen target, the deepest fallback and the map.
+    const plausibleTpLevels = filterPlausibleInstrumentPrices(symbol, parsedTpLevels)
+    // Single-target accounts ride to one level of the ladder; without this the
+    // map spreads legs across every level and the furthest one wins.
+    const chosenTp = shouldApplySingleTakeProfitTarget(broker.manual_settings)
+      ? resolveChosenTakeProfit({
+        finalTps: plausibleTpLevels,
+        singleTpTarget: normalizeSingleTpTarget(broker.manual_settings?.single_tp_target),
+        isBuy,
+      })
+      : 0
     // Freeze: once a TP has been hit (a leg closed OR a sticky TP-touch lock),
     // never repaint TP across remaining legs. Keep each leg's existing TP and
     // only backfill a naked leg with the deepest TP — mirrors the
@@ -799,10 +824,18 @@ export async function applyChannelStopsToBaskets(
         tpFrozen = false
       }
     }
-    const frozenDeepestTp = deepestFinalTp(parsedTpLevels, isBuy)
+    const frozenDeepestTp = deepestFinalTp(plausibleTpLevels, isBuy)
     const tpMap = slOnly || tpOnly || tpFrozen
       ? new Map<string, number>()
-      : buildEntryQualityTakeProfitMap({
+      : isBundleBasket(broker.manual_settings)
+        // Bundled multi basket: explicit TP change re-maps levels 1:1 by TP
+        // order — never the count-weighted entry-quality slots (D3).
+        ? bundleTpOrderMap({
+            legs: legs.map(tr => ({ id: tr.id, tp: tr.tp })),
+            ladder: plausibleTpLevels,
+            isBuy,
+          })
+        : buildEntryQualityTakeProfitMap({
           legs: legs.map(tr => ({
             id: tr.id,
             entryPrice: Number(tr.entry_price ?? 0),
@@ -810,8 +843,9 @@ export async function applyChannelStopsToBaskets(
           })) satisfies EntryQualityLeg[],
           isBuy,
           slotLegCount: legs.length,
-          finalTps: parsedTpLevels,
+          finalTps: plausibleTpLevels,
           tpLots: tpLots ?? null,
+          chosenTp,
         })
 
     let openedTickets: Set<number> | null = null
@@ -955,11 +989,14 @@ export async function applyChannelStopsToBaskets(
           ticket,
           modifyArgs.stoploss ?? 0,
           modifyArgs.takeprofit ?? 0,
-          { deepestTp: frozenDeepestTp },
+          // The selected single target belongs ahead of the deepest ladder level,
+          // otherwise a rejected requested TP falls back to the furthest rung and
+          // the account's chosen take profit is silently ignored.
+          { deepestTp: frozenDeepestTp, tpFallbacks: chosenTp > 0 ? [chosenTp] : undefined },
         )
         if (!safe.ok) {
           const diagnostic = buildMgmtModifyFailureDiagnostic({ message: safe.error ?? 'OrderModify failed' })
-          await supabase.from('trade_execution_logs').insert({
+          await writeExecutionLog(supabase, {
             user_id: userId,
             signal_id: signalId,
             broker_account_id: brokerId,
@@ -981,7 +1018,7 @@ export async function applyChannelStopsToBaskets(
         if (slRequested && !safe.slApplied) {
           const msg = safe.error ?? 'SL not applied'
           const diagnostic = buildMgmtModifyFailureDiagnostic({ message: msg, skipReason: 'sl_not_applied' })
-          await supabase.from('trade_execution_logs').insert({
+          await writeExecutionLog(supabase, {
             user_id: userId,
             signal_id: signalId,
             broker_account_id: brokerId,
@@ -1011,7 +1048,7 @@ export async function applyChannelStopsToBaskets(
         if (!brokerOk) {
           const msg = 'broker SL mismatch after OrderModify'
           const diagnostic = buildMgmtModifyFailureDiagnostic({ message: msg, skipReason: 'broker_verify_failed' })
-          await supabase.from('trade_execution_logs').insert({
+          await writeExecutionLog(supabase, {
             user_id: userId,
             signal_id: signalId,
             broker_account_id: brokerId,
@@ -1047,7 +1084,7 @@ export async function applyChannelStopsToBaskets(
         const tpReassigned = safe.tpApplied
           && (modifyArgs.takeprofit ?? 0) > 0
           && safe.appliedTp !== (modifyArgs.takeprofit ?? 0)
-        await supabase.from('trade_execution_logs').insert({
+        await writeExecutionLog(supabase, {
           user_id: userId,
           signal_id: signalId,
           broker_account_id: brokerId,
@@ -1074,23 +1111,21 @@ export async function applyChannelStopsToBaskets(
         if (isBenignOrderModifyError(msg)) {
           return { ...noop(), skipped: 1 }
         }
-        try {
-          const diagnostic = buildMgmtModifyFailureDiagnostic({ message: msg })
-          await supabase.from('trade_execution_logs').insert({
-            user_id: userId,
-            signal_id: signalId,
-            broker_account_id: brokerId,
-            action: 'mgmt_modify',
-            status: 'failed',
-            error_message: msg,
-            request_payload: {
-              ticket,
-              trade_id: tr.id,
-              channel_stop_apply: true,
-              ...mgmtModifyFailurePayload(diagnostic),
-            } as unknown as Record<string, unknown>,
-          })
-        } catch { /* best-effort */ }
+        const diagnostic = buildMgmtModifyFailureDiagnostic({ message: msg })
+        await writeExecutionLog(supabase, {
+          user_id: userId,
+          signal_id: signalId,
+          broker_account_id: brokerId,
+          action: 'mgmt_modify',
+          status: 'failed',
+          error_message: msg,
+          request_payload: {
+            ticket,
+            trade_id: tr.id,
+            channel_stop_apply: true,
+            ...mgmtModifyFailurePayload(diagnostic),
+          } as unknown as Record<string, unknown>,
+        })
         return { ...noop(), failed: 1, error: { tradeId: tr.id, ticket, message: msg } }
       }
     }
@@ -1170,33 +1205,31 @@ export async function logMgmtModifyBrokerSummaries(
 ): Promise<void> {
   for (const r of results) {
     if (r.openLegs === 0 && r.errors.length === 0) continue
-    try {
-      const failurePayload = r.fullySynced ? {} : mgmtModifySummaryFailurePayload(r)
-      const retryPending = mgmtModifySummaryRetryPending(r)
-      await supabase.from('trade_execution_logs').insert({
-        user_id: userId,
-        signal_id: signalId,
-        broker_account_id: r.brokerId,
-        action: 'mgmt_modify_broker_summary',
-        status: r.fullySynced ? 'success' : 'failed',
-        request_payload: {
-          anchor_signal_id: r.anchorSignalId,
-          symbol: r.symbol,
-          open_legs: r.openLegs,
-          attempted: r.attempted,
-          modified: r.modified,
-          failed: r.failed,
-          skipped: r.skipped,
-          verified: r.verified,
-          fully_synced: r.fullySynced,
-          retry_expected: retryPending,
-          retry_pending: retryPending,
-          reconcile_requested: !r.fullySynced && r.openLegs > 0,
-          skip_reasons: r.errors.map(e => e.skipReason ?? buildMgmtModifyFailureDiagnostic({ message: e.message }).failure_reason),
-          ...failurePayload,
-        } as unknown as Record<string, unknown>,
-      })
-    } catch { /* best-effort */ }
+    const failurePayload = r.fullySynced ? {} : mgmtModifySummaryFailurePayload(r)
+    const retryPending = mgmtModifySummaryRetryPending(r)
+    await writeExecutionLog(supabase, {
+      user_id: userId,
+      signal_id: signalId,
+      broker_account_id: r.brokerId,
+      action: 'mgmt_modify_broker_summary',
+      status: r.fullySynced ? 'success' : 'failed',
+      request_payload: {
+        anchor_signal_id: r.anchorSignalId,
+        symbol: r.symbol,
+        open_legs: r.openLegs,
+        attempted: r.attempted,
+        modified: r.modified,
+        failed: r.failed,
+        skipped: r.skipped,
+        verified: r.verified,
+        fully_synced: r.fullySynced,
+        retry_expected: retryPending,
+        retry_pending: retryPending,
+        reconcile_requested: !r.fullySynced && r.openLegs > 0,
+        skip_reasons: r.errors.map(e => e.skipReason ?? buildMgmtModifyFailureDiagnostic({ message: e.message }).failure_reason),
+        ...failurePayload,
+      } as unknown as Record<string, unknown>,
+    })
   }
 }
 

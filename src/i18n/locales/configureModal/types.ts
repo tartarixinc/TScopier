@@ -382,6 +382,7 @@ export interface ConfigureModalTranslations {
     monitorIntroMulti: string
     moveSlTitle: string
     moveSlSubtitle: string
+    basicPlanAutoManagementLimit: string
     activeRule: string
     triggerTitle: string
     triggerPips: string

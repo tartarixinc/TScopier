@@ -19,6 +19,16 @@ type AuditSink = (event: OrderCloseAuditEvent & { stack: string }) => void
 let sink: AuditSink | null = null
 const accountByFxAccount = new Map<string, { userId: string; brokerAccountId: string }>()
 
+/**
+ * Every id that reaches this module is a uuid, but the safe property to rely
+ * on is the character set: the pattern excludes `.`, `,`, `(` and `)` — the
+ * structural characters of a PostgREST `or=` filter — so an unexpected value
+ * can never widen the predicate it is interpolated into. An id containing any
+ * other character is looked up on `fxsocket_account_id` alone, the
+ * parameterised way.
+ */
+const FILTER_SAFE_ID_PATTERN = /^[0-9a-zA-Z-]+$/
+
 /** Register from worker boot so closes can persist to trade_execution_logs. */
 export function registerOrderCloseAuditSink(next: AuditSink | null): void {
   sink = next
@@ -27,19 +37,44 @@ export function registerOrderCloseAuditSink(next: AuditSink | null): void {
 export function registerOrderCloseAuditSupabase(supabase: SupabaseClient): void {
   registerOrderCloseAuditSink((event) => {
     void (async () => {
-      // The audit event only carries the FxSocket account id + ticket, but
+      // The audit event only carries the bridge account id + ticket, but
       // trade_execution_logs requires user_id (NOT NULL) and signal_id (NOT
-      // NULL). Resolve user_id + broker_account id from broker_accounts
-      // (fxsocket_account_id), then signal_id from the owning trades row
-      // (broker_account_id + metaapi order id). Both are required — if either
-      // cannot be resolved the DB write is skipped (console trail remains).
+      // NULL). Resolve user_id + broker_account id from broker_accounts, then
+      // signal_id from the owning trades row (broker_account_id + metaapi order
+      // id). Both are required — if either cannot be resolved the DB write is
+      // skipped (console trail remains).
       let account = accountByFxAccount.get(event.accountId)
       if (!account) {
-        const { data } = await supabase
+        // The id a close reports depends on the bridge that served it:
+        // FxSocket reports fxsocket_account_id, MetaApi reports
+        // metaapi_account_id, and MTAPI reports its session uuid, which is
+        // stored in mtapi_session_id. An MTAPI account leaves both legacy
+        // columns empty, so matching fxsocket_account_id alone can never
+        // resolve it and the audit row is silently dropped.
+        const query = supabase
           .from('broker_accounts')
           .select('id, user_id')
-          .eq('fxsocket_account_id', event.accountId)
-          .maybeSingle()
+        const { data, error } = FILTER_SAFE_ID_PATTERN.test(event.accountId)
+          ? await query
+              .or(
+                `fxsocket_account_id.eq.${event.accountId},`
+                + `metaapi_account_id.eq.${event.accountId},`
+                + `mtapi_session_id.eq.${event.accountId}`,
+              )
+              .maybeSingle()
+          : await query.eq('fxsocket_account_id', event.accountId).maybeSingle()
+        if (error) {
+          // A dropped audit row and a lookup that never ran look identical if
+          // this is folded into the 'no broker_account' warning below: a
+          // multi-row match (PGRST116), a missing column in an unmigrated
+          // environment, and a genuine no-such-account all need different
+          // follow-up.
+          console.warn(
+            `[orderCloseAudit] broker_account lookup failed id=${event.accountId}`
+            + ` code=${error.code ?? 'unknown'} msg=${error.message}`,
+          )
+          return
+        }
         const row = data as { id?: string; user_id?: string } | null
         if (row?.id && row?.user_id) {
           account = { brokerAccountId: row.id, userId: row.user_id }

@@ -8,7 +8,7 @@ import type { SignalRangeEntryWaitRow } from './signalRangeEntryHelpers'
 import type { BrokerRow, SignalRow } from './tradeExecutor/types'
 import { evaluateTpTouch } from './rangeBasketLayeringLock'
 import { SKIP_REASON_SIGNAL_ENTRY_RANGE_EXPIRED } from './manualPlanning/parsedEntry'
-
+import { writeExecutionLog } from './observability/executionLog'
 export type PreEntryStaleReason =
   | 'expired_ttl'
   | 'tp_before_entry'
@@ -79,18 +79,14 @@ export async function logSignalRangeEntryActivity(
     payload?: Record<string, unknown>
   },
 ): Promise<void> {
-  try {
-    await supabase.from('trade_execution_logs').insert({
-      user_id: args.userId,
-      signal_id: args.signalId,
-      broker_account_id: args.brokerAccountId,
-      action: args.action,
-      status: args.status ?? 'success',
-      request_payload: args.payload ?? {},
-    })
-  } catch {
-    /* best-effort */
-  }
+  await writeExecutionLog(supabase, {
+    user_id: args.userId,
+    signal_id: args.signalId,
+    broker_account_id: args.brokerAccountId,
+    action: args.action,
+    status: args.status ?? 'success',
+    request_payload: args.payload ?? {},
+  })
 }
 
 export async function expireWait(

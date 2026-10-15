@@ -8,6 +8,7 @@ import { resolvePredefinedSlPips } from '../manualPlanning/manualStops'
 import {
   ENTRY_TP_WITHOUT_SL_REASON,
   entryHasTpWithoutSl,
+  messageHasExplicitStopLabel,
   parsedHasSlOrTp,
 } from '../signalEntryNowRequirement'
 import {
@@ -27,6 +28,18 @@ function parsedEntryAnchorForFallback(parsed: ParsedSignal): number | null {
   return zone != null ? (zone.lo + zone.hi) / 2 : null
 }
 
+/** Narrow exception: only an explicit provider lifecycle New Order is independent. */
+export function isExplicitProviderNewOrder(parsed: ParsedSignal): boolean {
+  return parsed.provider_order_type === 'new'
+}
+
+export function shouldEnforceSingleOpenSymbolSlot(
+  parsed: ParsedSignal,
+  manual: ManualSettings,
+): boolean {
+  return manual.add_new_trades_to_existing === false && !isExplicitProviderNewOrder(parsed)
+}
+
 /**
  * Account can supply a stop loss without a numeric signal SL:
  * Override signal SL (from fill/quote — no signal entry required), or RR from a TP.
@@ -41,6 +54,27 @@ export function configuredFallbackSlPossible(parsed: ParsedSignal, manual: Manua
     && anchor != null
 }
 
+/**
+ * A revision is exempt from entry SL validation only after this signal/broker
+ * has actually materialized an entry or durable pending artifact.
+ */
+export function shouldRunMissingRequiredSlPolicy(
+  isManual: boolean,
+  revisionAlreadyMaterialized: boolean,
+): boolean {
+  return isManual && !revisionAlreadyMaterialized
+}
+/**
+ * True when the message *did* state a stop loss but the parser could not read its
+ * price. Callers use this so the user is told "we could not read the stop loss"
+ * instead of "the signal had no stop loss".
+ */
+export function stopStatedButUnreadable(parsed: ParsedSignal): boolean {
+  if (positiveNumber(parsed.sl) != null) return false
+  const rawInstruction = parsed.raw_instruction ?? ''
+  if (isStopLossWithheldByProvider(rawInstruction)) return false
+  return messageHasExplicitStopLabel(rawInstruction)
+}
 /**
  * Returns a skip when the entry must not open due to a missing stop loss.
  * Override signal SL always wins: Premium / missing / wrong-side signal SL still execute.

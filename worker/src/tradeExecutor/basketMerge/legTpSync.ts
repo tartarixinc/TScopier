@@ -95,6 +95,9 @@ export async function syncMultiBasketLegTakeProfits(ctx: TradeExecutorContext, a
       totalPlannedLegCount,
       immediateLegCount,
       tpLots: manual.tp_lots,
+      currentLegTps: familyTrades.map(tr => tr.tp),
+      bundleReladder: false,
+      isBuy: direction !== 'sell',
     })
     if (!perLegTargets.length) return
 
@@ -139,6 +142,7 @@ export async function syncMultiBasketLegTakeProfits(ctx: TradeExecutorContext, a
         openedTickets,
         skipAlreadySynced: true,
         orderCommentsEnabled: manual.order_comments_enabled !== false,
+        bundleIdentity: true,
       })
     } catch (err) {
       console.warn(

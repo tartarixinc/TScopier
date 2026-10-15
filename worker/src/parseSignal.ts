@@ -87,10 +87,14 @@ export interface ChannelParsedSignal {
   raw_instruction: string
   open_tp?: boolean
   partial_close_fraction?: number | null
+  /** Referenced TP level on a "CLOSE TPn" message (1-based); null when absent. */
+  close_tp_index?: number | null
   /** Explicit channel intent to open a new trade (not modify existing). */
   re_enter?: boolean
   /** Provider-side trade id (e.g. ForexBro Signal #899). */
   provider_signal_number?: number | null
+  /** Explicit provider lifecycle marker; separate from Telegram signal and broker ticket ids. */
+  provider_order_type?: 'new' | 'close' | null
 }
 
 export type ChannelLexiconRow = {
@@ -535,9 +539,11 @@ function buildTpRegex(extraLabels: string[] = []): RegExp {
   const base = ["tp", "take\\s*profit", "target(?:\\s+level)?"]
   const custom = extraLabels.map((x) => escapeRegExp(x.trim())).filter(Boolean)
   // Guard against tier ordinals being mistaken for TP prices in shapes like:
-  // "Take Profit 1: 4514.00" (capture 4514, not the ordinal 1).
+  // "Take Profit 1: 4514.00" (capture 4514, not the ordinal 1); the trailing
+  // `(?![0-9.])` stops a partial digit run and `(?!\s*%)` keeps a "100% sure"
+  // percentage out of the ladder.
   return new RegExp(
-    `\\b(?:${[...base, ...custom].join("|")})(?:\\s*[:=\\-]\\s*|\\s+|\\.\\s*)(${SIGNAL_PRICE_NUM})(?!\\s*[:=\\-]\\s*${SIGNAL_PRICE_NUM})`,
+    `\\b(?:${[...base, ...custom].join("|")})(?:\\s*[:=\\-]\\s*|\\s+|\\.\\s*)(${SIGNAL_PRICE_NUM})(?![0-9.])(?!\\s*[:=\\-]\\s*${SIGNAL_PRICE_NUM})(?!\\s*%)`,
     "gi",
   )
 }
@@ -553,21 +559,42 @@ function extractTpLevels(message: string, extraLabels: string[] = []): {
 
   const collect = (rx: RegExp) => {
     for (const m of text.matchAll(rx)) {
+      const start = m.index ?? 0
+      // "SL.TP 4105" (also "SL/TP", "SL - TP", "SL — TP") is one combined label whose
+      // price is the stop. The TP half must not swallow it, or the ladder above it
+      // disappears because a take profit is then considered already present. A run of
+      // separators is allowed so "SL - TP" is caught; newlines are not a separator here
+      // because "SL\n\nTP 4120" is two separate labels.
+      if (/\b(?:sl|stop\s*loss|stoploss)[ \t_./-]+$/i.test(text.slice(Math.max(0, start - 24), start))) continue
       const value = parseSignalPriceToken(m[1])
       if (value == null) continue
-      hits.push({ index: m.index ?? 0, value })
-      const after = text.slice((m.index ?? 0) + m[0].length, (m.index ?? 0) + m[0].length + 12)
+      hits.push({ index: start, value })
+      const after = text.slice(start + m[0].length, start + m[0].length + 12)
       if (/^\s*pips?\b/i.test(after) || /^pips?\b/i.test(after)) explicitPips = true
     }
   }
 
-  // Numbered tiers first — "TP 1 4086" must not capture ordinal 1 via the generic TP regex.
+  // "TP¹ (4095)" / "TP1 (4095)" / "TP 1 (4095)" / "TP⁴ ↗ (4110)" / "Take Profit (4095)" —
+  // the price is parenthesised. Collected first: it is the most specific rule, and for a
+  // shape like "TP 1 (4095)" a generic rule also matches at the same label index and the
+  // index dedupe keeps whichever is inserted first. Parenthesised prices are never offered
+  // to inference, so without this they are lost. The tier may be a superscript ordinal or
+  // up to two ASCII digits, but an ASCII tier is only accepted when followed by the "(" (a
+  // full price glued to the label, e.g. "TP4105 (4080)", must not be eaten as a tier).
+  collect(new RegExp(
+    `\\b(?:tp|take\\s*profit|target(?:\\s+level)?)(?:\\s*(?:[\\u00B9\\u00B2\\u00B3\\u2070-\\u2079]+|\\d{1,2}(?![0-9])))?\\s*(?:[#.:]\\s*)?(?:\\u2197|\\u2192|\\u27A4)?\\s*\\(\\s*(${SIGNAL_PRICE_NUM})\\s*\\)`,
+    'giu',
+  ))
+  // Numbered tiers — "TP 1 4086" must not capture ordinal 1 via the generic TP regex.
   collect(new RegExp(`\\b(?:tp|take\\s*profit|target(?:\\s+level)?)\\s*#\\s*\\d+\\s*[:=\\-@]\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
   collect(new RegExp(`\\b(?:tp|take\\s*profit|target(?:\\s+level)?)\\s+\\d+\\s*[:=\\-@]\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
-  collect(new RegExp(`\\b(?:tp|target(?:\\s+level)?)\\s*\\d+\\s*[:=\\-@]\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
-  collect(new RegExp(`\\b(?:tp|target(?:\\s+level)?)\\s*\\d+\\s+(${SIGNAL_PRICE_NUM})`, 'gi'))
-  collect(new RegExp(`\\btp\\s*\\.\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
-  collect(new RegExp(`\\b(?:tp|take\\s*profit)\\b[.\\s]+(${SIGNAL_PRICE_NUM})`, 'gi'))
+  collect(new RegExp(`\\b(?:tp|target(?:\\s+level)?)\\s*\\d{1,2}\\s*[:=\\-@]\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
+  // Tier index is 1–2 digits and the price follows on the next line: "TP 1\n4112".
+  // The 1–2 digit bound stops "TP 4105" being split so only 100 satisfies the tier;
+  // `(?![0-9.])` stops a partial digit run and `(?!\s*%)` stops a "100% sure" line.
+  collect(new RegExp(`\\b(?:tp|target(?:\\s+level)?)\\s*\\d{1,2}\\s+(${SIGNAL_PRICE_NUM})(?![0-9.])(?!\\s*%)`, 'gi'))
+  collect(new RegExp(`\\btp\\s*\\.\\s*(${SIGNAL_PRICE_NUM})(?![0-9.])(?!\\s*%)`, 'gi'))
+  collect(new RegExp(`\\b(?:tp|take\\s*profit)\\b[.\\s]+(${SIGNAL_PRICE_NUM})(?![0-9.])(?!\\s*%)`, 'gi'))
   // Tier index only (1–2 digits): "TP1. 4066" or "TP1@4066". Must not match "TP 4053.22" (full decimal price).
   collect(new RegExp(`\\btp\\s*\\d{1,2}\\s*\\.\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
   collect(new RegExp(`\\btp\\s*\\d{1,2}[@.\\s]+(${SIGNAL_PRICE_NUM})`, 'gi'))
@@ -685,6 +712,10 @@ function normalizeParsedFromModel(raw: unknown, fallbackText: string): ChannelPa
     if (Number.isFinite(n) && n > 0 && n <= 1) partial_close_fraction = n
   }
 
+  const ctiRaw = Number(j.close_tp_index)
+  const close_tp_index =
+    Number.isInteger(ctiRaw) && ctiRaw >= 1 && ctiRaw <= 9 ? ctiRaw : undefined
+
   const re_enter = j.re_enter === true || detectReEnterIntent(raw_instruction)
   const provider_signal_number = numOrNull(j.provider_signal_number)
 
@@ -710,6 +741,7 @@ function normalizeParsedFromModel(raw: unknown, fallbackText: string): ChannelPa
     raw_instruction,
     open_tp: Boolean(j.open_tp ?? detectOpenTp(fallbackText)),
     ...(partial_close_fraction != null ? { partial_close_fraction } : {}),
+    ...(close_tp_index != null ? { close_tp_index } : {}),
     ...(re_enter ? { re_enter: true } : {}),
     ...(provider_signal_number != null ? { provider_signal_number } : {}),
   }
@@ -796,10 +828,26 @@ function looksLikeStopOrTpAdjustCommand(text: string): boolean {
 
 function parseSlFromText(text: string): number | null {
   const cleaned = stripRiskRewardRatioNoise(text)
+  // "SL.TP 4105" / "SL/TP 4105" — a combined stop/target label whose price is the stop.
+  const slCombinedTarget = cleaned.match(
+    new RegExp(
+      `\\b(?:${SL_TEXT_LABELS})[\\t _.\\/-]*(?:tp|take\\s*profit)\\s*[:=@\\-]?\\s*(${SIGNAL_PRICE_NUM})`,
+      'i',
+    ),
+  )
+  if (slCombinedTarget?.[1]) return parseSignalPriceToken(slCombinedTarget[1])
   const slSlashAt = cleaned.match(
     /(?:^|\s)(?:sl|stop\s*loss|stoploss)[_\s]*\/\s*@\s*(\d+(?:\.\d+)?)/i,
   )
   if (slSlashAt?.[1]) return parseSignalPriceToken(slSlashAt[1])
+  // "SL (4080)" / "STOP LOSS ➡️ (4110)" — the price itself is parenthesised.
+  const slWrappedPrice = cleaned.match(
+    new RegExp(
+      `\\b(?:${SL_TEXT_LABELS})\\b\\s*[:=@\\-]?\\s*\\(\\s*(${SIGNAL_PRICE_NUM})\\s*\\)`,
+      'i',
+    ),
+  )
+  if (slWrappedPrice?.[1]) return parseSignalPriceToken(slWrappedPrice[1])
   // "SL (STOP LOSS): 4325" / "Stop Loss (SL): 4325"
   const slParenthetical = cleaned.match(
     new RegExp(
@@ -896,6 +944,20 @@ function parseDeterministicManagement(
   const hitCloseHalfKw = hasAnyKeyword(t, kwCloseHalf)
   const hitClosePartialKw = hasAnyKeyword(t, kwClosePartialOnly)
   const hitCloseTpTierKw = hasAnyKeyword(t, kwCloseTpTiers)
+  /** Referenced level on a "CLOSE TPn" message (1-based); lowest tier wins. */
+  const resolveCloseTpIndex = (): number | undefined => {
+    const tiers: Array<[number, string]> = [
+      [1, channelKeywords.update.close_tp1],
+      [2, channelKeywords.update.close_tp2],
+      [3, channelKeywords.update.close_tp3],
+      [4, channelKeywords.update.close_tp4],
+    ]
+    for (const [idx, raw] of tiers) {
+      if (hasAnyKeyword(t, splitKeywordAliases(raw, delim))) return idx
+    }
+    return undefined
+  }
+  const closeTpIndex = resolveCloseTpIndex()
 
   const wantsPartialHalf =
     hitCloseHalfKw ||
@@ -999,6 +1061,9 @@ function parseDeterministicManagement(
     open_tp: detectOpenTp(message),
     ...((action === "partial_profit" || action === "partial_breakeven") && partial_close_fraction != null
       ? { partial_close_fraction }
+      : {}),
+    ...(action === "partial_profit" && closeTpIndex != null
+      ? { close_tp_index: closeTpIndex }
       : {}),
   }
 }
@@ -1617,6 +1682,51 @@ function ignorePayload(raw: string): ChannelParsedSignal {
   }
 }
 
+/**
+ * Provider-generic structured lifecycle format carrying an external order id
+ * and an explicit New/Close declaration. Dewa is one known producer, but the
+ * complete four-field contract is intentionally not header-specific. The id is
+ * never a broker ticket. Zero SL/TP values mean "not supplied".
+ */
+export function parseExplicitProviderOrderMessage(rawMessage: string): ChannelParsedSignal | null {
+  const raw = normalizeTelegramMessageText(rawMessage)
+  const type = raw.match(/^\s*Type\s*:\s*(New|Close)\s+Order\b/im)?.[1]?.toLowerCase()
+  const idText = raw.match(/^\s*ID\s*:\s*(\d{1,18})\s*$/im)?.[1]
+  const pair = raw.match(/^\s*Pair\s*:\s*([^\s]+)\s*$/im)?.[1]
+  const side = raw.match(/^\s*Order\s*:\s*(Buy|Sell)\s*$/im)?.[1]?.toLowerCase()
+  if ((type !== 'new' && type !== 'close') || !idText || !pair || !side) return null
+
+  const providerId = Number(idText)
+  if (!Number.isSafeInteger(providerId) || providerId <= 0) return null
+  const symbol = sanitizeParsedSymbol(pair)
+  if (!symbol) return null
+
+  const positiveField = (label: string): number | null => {
+    const escaped = label.replace(/[.*+?^\$\{\}()|[\]\\]/g, '\\$&')
+    const value = raw.match(new RegExp(`^\\s*${escaped}\\s*:\\s*(-?\\d+(?:\\.\\d+)?)\\s*$`, 'im'))?.[1]
+    if (value == null) return null
+    const n = Number(value)
+    return Number.isFinite(n) && n > 0 ? n : null
+  }
+
+  return {
+    action: type === 'new' ? side : 'close',
+    symbol,
+    entry_price: null,
+    entry_zone_low: null,
+    entry_zone_high: null,
+    sl: positiveField('Stop Loss'),
+    tp: type === 'new' ? [positiveField('Take Profit')].filter((n): n is number => n != null) : [],
+    lot_size: positiveField('Lot Size'),
+    confidence: 1,
+    raw_instruction: raw,
+    open_tp: false,
+    provider_signal_number: providerId,
+    provider_order_type: type,
+    ...(type === 'new' ? { re_enter: true } : {}),
+  }
+}
+
 export async function loadChannelLexicon(
   supabase: SupabaseClient,
   channelId: string | null,
@@ -1709,7 +1819,20 @@ function applyStopUnits(
     ...(parsed.sl != null && Number.isFinite(parsed.sl) ? { sl_unit } : {}),
   }
 }
-
+/**
+ * Drop take-profit prices that cannot be a quote for this instrument.
+ * A percentage ("100% sure"), an order id or a tier ordinal that leaked through as a
+ * price is removed from the ladder instead of being handed to the executor.
+ * Pip-denominated targets are left alone — they are offsets, not quotes.
+ */
+function applyPlausibleTakeProfits(parsed: ChannelParsedSignal): ChannelParsedSignal {
+  if (parsed.tp_unit === 'pips') return parsed
+  const values = Array.isArray(parsed.tp) ? parsed.tp : []
+  if (!values.length) return parsed
+  const kept = filterPlausibleInstrumentPrices(parsed.symbol, values)
+  if (kept.length === values.length) return parsed
+  return { ...parsed, tp: kept }
+}
 export function enrichParsedKeywordMatch(
   keywordMatch: ChannelParsedSignal,
   rawMessage: string,
@@ -1727,9 +1850,18 @@ export function enrichParsedKeywordMatch(
   const dropped = dropInvalidTradeSymbol(quoteRepaired)
   const withUnits = applyStopUnits(dropped, rawMessage, channelKeywords)
   const withOrderType = applyExplicitEntryOrderType(withUnits, rawMessage)
-  const providerNum = withOrderType.provider_signal_number ?? extractProviderSignalNumber(rawMessage)
-  if (providerNum == null) return withOrderType
-  return { ...withOrderType, provider_signal_number: providerNum }
+  const withPlausibleTp = applyPlausibleTakeProfits(withOrderType)
+  const providerNum = withPlausibleTp.provider_signal_number ?? extractProviderSignalNumber(rawMessage)
+  const explicitProvider = parseExplicitProviderOrderMessage(rawMessage)
+  return {
+    ...withPlausibleTp,
+    ...(providerNum != null ? { provider_signal_number: providerNum } : {}),
+    ...(explicitProvider?.provider_signal_number != null
+      ? { provider_signal_number: explicitProvider.provider_signal_number }
+      : {}),
+    ...(explicitProvider?.provider_order_type ? { provider_order_type: explicitProvider.provider_order_type } : {}),
+    ...(explicitProvider?.provider_order_type === 'new' ? { re_enter: true } : {}),
+  }
 }
 
 /** Deterministic management / SL-TP follow-up parse only (no entry parsers). */
@@ -1805,8 +1937,9 @@ export function parseChannelMessageSync(
 
   const explicitIgnore = hasAnyKeyword(message, ignoreAliases)
 
-  const forexBro = parseForexBroManagementMessage(message)
-  const keywordMatch = forexBro
+  const explicitProvider = parseExplicitProviderOrderMessage(displayMessage)
+  const forexBro = explicitProvider ? null : parseForexBroManagementMessage(message)
+  const keywordMatch = explicitProvider ?? (forexBro
     ? {
       action: forexBro.action,
       symbol: forexBro.symbol,
@@ -1826,7 +1959,7 @@ export function parseChannelMessageSync(
     : parseDeterministicManagement(message, lexicon, channelKeywords) ??
     parseChannelParameterFollowUp(message, lexicon, channelKeywords) ??
     parseSimpleSignal(message, lexicon, channelKeywords) ??
-    parseEntryFromKeywords(message, lexicon, channelKeywords)
+    parseEntryFromKeywords(message, lexicon, channelKeywords))
 
   const rawParsed = explicitIgnore
     ? ignorePayload(displayMessage)
@@ -1844,7 +1977,11 @@ export function parseChannelMessageSync(
       open_tp: false,
     }
 
-  const dropped = enrichParsedKeywordMatch(rawParsed, message, channelKeywords)
+  // The explicit lifecycle parser has already assigned every numeric field by
+  // label. Do not run generic price inference over Date/Time or provider ID.
+  const dropped = !explicitIgnore && explicitProvider
+    ? explicitProvider
+    : enrichParsedKeywordMatch(rawParsed, message, channelKeywords)
   if (entryMissingSlTpRequiresNow(dropped, message, channelKeywords)) {
     return {
       parsed: {

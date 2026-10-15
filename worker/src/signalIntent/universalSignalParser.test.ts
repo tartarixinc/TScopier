@@ -1,11 +1,11 @@
-import { describe, it } from 'node:test'
+import { describe, it, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { compareParseShadowDiff } from './shadowDiff'
 import { DEFAULT_CHANNEL_KEYWORDS, parseChannelMessageSync } from '../parseSignal'
 import { tradeIntentToChannelParsedSignal } from './tradeIntentAdapter'
 import { coerceTradeIntent } from './coerceTradeIntent'
 import { PORTUGUESE_SCALP_SELL } from './fixtures/multilingualFixtures'
-import { cerebrasKeyOrder, isCerebrasDailyLimit } from './universalSignalParser'
+import { cerebrasKeyOrder, isCerebrasDailyLimit, uncertainReviewSkipReason } from './universalSignalParser'
 
 describe('compareParseShadowDiff', () => {
   it('detects action mismatch between deterministic and universal', () => {
@@ -80,5 +80,28 @@ describe('cerebrasKeyOrder', () => {
 
   it('handles a start index beyond the pool length', () => {
     assert.deepEqual(cerebrasKeyOrder(7, ['a', 'b', 'c'], noExhausted), [1, 2, 0])
+  })
+})
+
+describe('uncertainReviewSkipReason', () => {
+  const prev = process.env.HUMAN_REVIEW_ESCALATION_ENABLED
+  after(() => {
+    if (prev != null) process.env.HUMAN_REVIEW_ESCALATION_ENABLED = prev
+    else delete process.env.HUMAN_REVIEW_ESCALATION_ENABLED
+  })
+
+  it('is an ordinary skip while review escalation is deactivated (default)', () => {
+    delete process.env.HUMAN_REVIEW_ESCALATION_ENABLED
+    assert.equal(uncertainReviewSkipReason(), 'AI classified as non-actionable')
+  })
+
+  it('marks the signal for review only while the flag is active', () => {
+    process.env.HUMAN_REVIEW_ESCALATION_ENABLED = 'true'
+    assert.equal(
+      uncertainReviewSkipReason(),
+      'AI classified as uncertain; human review required',
+    )
+    process.env.HUMAN_REVIEW_ESCALATION_ENABLED = 'false'
+    assert.equal(uncertainReviewSkipReason(), 'AI classified as non-actionable')
   })
 })

@@ -14,8 +14,10 @@ import {
 import { stripInvalidStopsForSide } from '../channelActiveTradeParams'
 import { isInvalidStopsError } from '../orderModifySafe'
 import { humanizeOrderSendError, tradeFailureReasonFromBrokerMessage } from '../brokerTradeError'
+import { reconcileUnknownSend } from './reconcileUnknownSend'
 import { trailingTradeRowSnapshot } from '../trailingStop'
 import { applyPostFillFollowUp, type PostFillTradeLeg } from '../postFillFollowUp'
+import { captureBrokerPositionIdentity } from '../captureBrokerPositionIdentity'
 import type { TradeExecutorContext } from './context'
 import { clampOrderStops, isBuySideOp, resolveBurstFillAnchor, type Leg } from './helpers'
 import type { BrokerRow, ParsedSignal, SendOrderOutcome, SignalRow, SymbolCacheEntry, SymbolMappingResult } from './types'
@@ -40,7 +42,7 @@ import {
 import { captureDeferredBusinessFailure } from '../observability/deferredBusinessEvents'
 import { collapseIdenticalImmediateLegs } from './collapseIdenticalImmediateLegs'
 import { authorityFromBrokerRow, withBrokerWriteAuthority } from '../brokerWriteAuthority'
-
+import { writeExecutionLog } from '../observability/executionLog'
 export { collapseIdenticalImmediateLegs }
 
 /** Normalized broker fill shape shared by the v1 client and the v2 fxClient. */
@@ -115,19 +117,17 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
       `[tradeExecutor] duplicate_leg_collapsed removed=${collapsed.collapsed}`
       + ` kept=${workingLegs.length} signal=${signal.id} broker=${broker.id}`,
     )
-    try {
-      await ctx.supabase.from('trade_execution_logs').insert({
-        user_id: signal.user_id,
-        signal_id: signal.id,
-        broker_account_id: broker.id,
-        action: 'duplicate_leg_collapsed',
-        status: 'info',
-        request_payload: {
-          removed: collapsed.collapsed,
-          kept: workingLegs.length,
-        } as unknown as Record<string, unknown>,
-      })
-    } catch { /* best-effort */ }
+    await writeExecutionLog(ctx.supabase, {
+      user_id: signal.user_id,
+      signal_id: signal.id,
+      broker_account_id: broker.id,
+      action: 'duplicate_leg_collapsed',
+      status: 'info',
+      request_payload: {
+        removed: collapsed.collapsed,
+        kept: workingLegs.length,
+      } as unknown as Record<string, unknown>,
+    })
   }
 
   if (manual.trade_style !== 'multi' && workingLegs.length > 1) {
@@ -135,17 +135,15 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
       `[tradeExecutor] single_style_multi_leg_blocked ${workingLegs.length} legs`
       + ` signal=${signal.id} broker=${broker.id}`,
     )
-    try {
-      await ctx.supabase.from('trade_execution_logs').insert({
-        user_id: signal.user_id,
-        signal_id: signal.id,
-        broker_account_id: broker.id,
-        action: 'single_style_multi_leg_blocked',
-        status: 'failed',
-        request_payload: { leg_count: workingLegs.length } as unknown as Record<string, unknown>,
-        error_message: `single trade_style refused ${workingLegs.length} immediate legs`,
-      })
-    } catch { /* best-effort */ }
+    await writeExecutionLog(ctx.supabase, {
+      user_id: signal.user_id,
+      signal_id: signal.id,
+      broker_account_id: broker.id,
+      action: 'single_style_multi_leg_blocked',
+      status: 'failed',
+      request_payload: { leg_count: workingLegs.length } as unknown as Record<string, unknown>,
+      error_message: `single trade_style refused ${workingLegs.length} immediate legs`,
+    })
     return {
       channelDelayMs,
       channelDelaySkipped,
@@ -177,6 +175,21 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
     ? await getFxClient().openedOrders(uuid, v2Platform).catch(() => [])
     : []
 
+  // One broker read per send batch, used only to record the MT5 position
+  // identity of the legs that filled (see captureBrokerPositionIdentity).
+  // Lazy: no read happens unless a market leg is persisted.
+  let positionSnapshotPromise: Promise<unknown[] | null> | null = null
+  const positionSnapshot = (): Promise<unknown[] | null> => {
+    positionSnapshotPromise ??= (async () => {
+      try {
+        return (await api.openedOrders(uuid)) ?? null
+      } catch {
+        return null
+      }
+    })()
+    return positionSnapshotPromise
+  }
+
   const sendLeg = async (leg: Leg): Promise<boolean> => {
     let args = leg.args
     const isBuyLeg = isBuySideOp(String(args.operation))
@@ -190,7 +203,14 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
       }
     }
     const refPx = Number(args.price) || 0
-    if (refPx > 0) {
+    const plannedSlForSide = Number(args.stoploss) || 0
+    // A stop on the wrong side of the live price cannot be applied by any broker.
+    // Do not move it (no re-anchor) and do not open naked — reject the copy below
+    // with an "Invalid stops" failure.
+    const wrongSideSl = refPx > 0
+      && plannedSlForSide > 0
+      && (isBuyLeg ? plannedSlForSide >= refPx : plannedSlForSide <= refPx)
+    if (refPx > 0 && !wrongSideSl) {
       const stripped = stripInvalidStopsForSide({
         stoploss: Number(args.stoploss) || 0,
         takeprofit: Number(args.takeprofit) || 0,
@@ -239,6 +259,13 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
 
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
+        // Reject a copy whose signal stop sits on the wrong side of the live price:
+        // no broker can apply it, and we will not move the stop or open naked.
+        if (wrongSideSl) {
+          throw new Error(
+            `Invalid stops: signal stop loss ${plannedSlForSide} is on the wrong side of the live price ${refPx} for ${args.operation}`,
+          )
+        }
         const attemptNo = attempt + 1
         correlation = buildPipelineCorrelation({
           userId: signal.user_id,
@@ -363,7 +390,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
           sendArgs.symbol,
         )
         const hasStops = (Number(sendArgs.stoploss) || 0) > 0 || (Number(sendArgs.takeprofit) || 0) > 0
-        if (attempt === 0 && isInvalidStopsError(lastAttemptError) && hasStops) {
+        if (attempt === 0 && isInvalidStopsError(lastAttemptError) && hasStops && !wrongSideSl) {
           console.warn(
             `[tradeExecutor] retry without stops signal=${signal.id} broker=${broker.id} leg=${leg.idx + 1}/${totalCount}`
             + ` reason="${lastAttemptError}" (sl=${sendArgs.stoploss} tp=${sendArgs.takeprofit})`,
@@ -380,6 +407,58 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
           `[tradeExecutor] OrderSend failed signal=${signal.id} broker=${broker.id} leg=${leg.idx + 1}/${totalCount} op=${sendArgs.operation} price=${sendArgs.price ?? 0}:`,
           lastAttemptError,
         )
+        // A timeout means the order may or may not have opened. Before treating
+        // it as ambiguous, ask the broker: adopt it if it's live, resend once if
+        // a market order is provably absent, otherwise leave it ambiguous.
+        // Default on; set MTAPI_RECONCILE_ON_TIMEOUT=false to disable.
+        if (
+          isOrderOpTimedOutMessage(lastAttemptError)
+          && result == null
+          && !useV2
+          && api
+          && process.env.MTAPI_RECONCILE_ON_TIMEOUT !== 'false'
+        ) {
+          try {
+            const rec = await reconcileUnknownSend(api, uuid, {
+              symbol: sendArgs.symbol,
+              operation: sendArgs.operation,
+              volume: sendArgs.volume,
+              comment: sendArgs.comment,
+            })
+            if (rec.status === 'adopted') {
+              result = {
+                ticket: rec.ticket,
+                openPrice: rec.openPrice,
+                stopLoss: rec.stopLoss,
+                takeProfit: rec.takeProfit,
+                lots: rec.lots ?? sendArgs.volume,
+              }
+              console.warn(
+                `[tradeExecutor] adopted timed-out order signal=${signal.id} broker=${broker.id}`
+                + ` ticket=${rec.ticket} symbol=${sendArgs.symbol}`,
+              )
+              void writeExecutionLog(ctx.supabase, {
+                user_id: signal.user_id,
+                signal_id: signal.id,
+                broker_account_id: broker.id,
+                action: 'order_send_adopted',
+                status: 'success',
+                request_payload: { ...sendArgs, adopted_ticket: rec.ticket } as unknown as Record<string, unknown>,
+                error_message: lastAttemptError,
+              })
+              break
+            }
+            if (rec.status === 'absent' && attempt === 0) {
+              console.warn(
+                `[tradeExecutor] timed-out order confirmed absent; resending signal=${signal.id}`
+                + ` broker=${broker.id} symbol=${sendArgs.symbol}`,
+              )
+              continue
+            }
+            // 'absent' on the last attempt, or 'inconclusive' -> fall through to
+            // the ambiguous capture below.
+          } catch { /* best-effort; fall through to ambiguous */ }
+        }
         if (isOrderOpTimedOutMessage(lastAttemptError)) {
           captureBusinessIssue({
             category: 'broker',
@@ -454,7 +533,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
           brokerSymbol: sendArgs.symbol,
           operation: sendArgs.operation,
         })
-        await ctx.supabase.from('trade_execution_logs').insert({
+        await writeExecutionLog(ctx.supabase, {
           user_id: signal.user_id,
           signal_id: signal.id,
           broker_account_id: broker.id,
@@ -567,6 +646,29 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
     }
 
     const persistPostFillDb = async (tradeRowId: string | null) => {
+      const isMarketFill = sendArgs.operation === 'Buy' || sendArgs.operation === 'Sell'
+      if (tradeRowId && isMarketFill && result.ticket != null) {
+        // Record the broker position identity while the fill is fresh. Only a
+        // certain resolution is written; the helper stays silent otherwise.
+        await captureBrokerPositionIdentity({
+          supabase: ctx.supabase,
+          tradeRowId,
+          trade: {
+            id: tradeRowId,
+            metaapi_order_id: String(result.ticket),
+            symbol: sendArgs.symbol,
+            direction: isBuy ? 'buy' : 'sell',
+            lot_size: result.lots ?? sendArgs.volume,
+            entry_price: entryPx,
+          },
+          openedOrders: await positionSnapshot(),
+        }).catch(err => {
+          console.warn(
+            `[tradeExecutor] position identity capture failed trade=${tradeRowId}:`
+            + ` ${err instanceof Error ? err.message : String(err)}`,
+          )
+        })
+      }
       if (tradeRowId && leg.partialTps && leg.partialTps.length > 0) {
         const partialRows = leg.partialTps.map(p => ({
           trade_id: tradeRowId,
@@ -613,7 +715,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
           })
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err)
-          await ctx.supabase.from('trade_execution_logs').insert({
+          await writeExecutionLog(ctx.supabase, {
             user_id: signal.user_id,
             signal_id: signal.id,
             broker_account_id: broker.id,
