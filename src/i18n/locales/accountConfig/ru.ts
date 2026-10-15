@@ -11,6 +11,9 @@ export const accountConfigRu: AccountConfigBundleTranslations = {
       subtitle: 'Выберите предпочитаемую торговую платформу, чтобы начать',
       footerHint: 'Скоро появятся новые платформы',
       comingSoonBadge: 'Скоро',
+      assetForex: 'Форекс',
+      assetCrypto: 'Крипто',
+      assetFutures: 'Фьючерсы',
       comingSoonPlatform: 'Интеграция с {platform} скоро появится. Пока выберите MT4 или MT5.',
     },
     connectForm: {

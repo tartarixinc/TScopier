@@ -11,6 +11,9 @@ export const accountConfigAr: AccountConfigBundleTranslations = {
       subtitle: 'اختر منصة التداول المفضلة لديك للبدء',
       footerHint: 'منصات إضافية قريبًا',
       comingSoonBadge: 'قريبًا',
+      assetForex: 'الفوركس',
+      assetCrypto: 'العملات الرقمية',
+      assetFutures: 'العقود الآجلة',
       comingSoonPlatform: 'تكامل {platform} سيكون متاحًا قريبًا. اختر MT4 أو MT5 في الوقت الحالي.',
     },
     connectForm: {

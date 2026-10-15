@@ -50,6 +50,8 @@ type ConnectTradingAccountModalProps = {
   onClose: () => void
   onSuccess?: (broker: BrokerAccount) => void
   onBatchSuccess?: (result: BulkConnectResult) => void
+  /** Platform chosen in the Add account picker. Applied each time the modal opens. */
+  initialPlatform?: TradingPlatform | null
 }
 
 type ConnectStep = 0 | 1 | 2
@@ -63,6 +65,7 @@ export function ConnectTradingAccountModal({
   onClose,
   onSuccess,
   onBatchSuccess,
+  initialPlatform,
 }: ConnectTradingAccountModalProps) {
   const t = useT()
   const cf = t.accountConfig.connectForm
@@ -131,8 +134,14 @@ export function ConnectTradingAccountModal({
   }, [open])
 
   useEffect(() => {
-    if (!open) reset()
-  }, [open, reset])
+    if (!open) {
+      reset()
+      return
+    }
+    if (initialPlatform) {
+      setRows(prev => prev.map(row => ({ ...row, platform: initialPlatform })))
+    }
+  }, [open, reset, initialPlatform])
 
   useEffect(() => {
     if (!saving) return

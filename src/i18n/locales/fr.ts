@@ -720,6 +720,9 @@ export const fr: Translations = {
       subtitle: 'Choisissez votre plateforme de trading pour commencer',
       footerHint: 'D\'autres plateformes bientôt disponibles',
       comingSoonBadge: 'Bientôt disponible',
+      assetForex: 'Forex',
+      assetCrypto: 'Crypto',
+      assetFutures: 'Futures',
       comingSoonPlatform: 'L\'intégration {platform} arrive bientôt. Choisissez MT4 ou MT5 pour l\'instant.',
     },
     connectForm: {

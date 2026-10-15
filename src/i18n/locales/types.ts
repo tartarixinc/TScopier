@@ -632,6 +632,9 @@ export interface AccountConfigAddAccountModalTranslations {
   footerHint: string
   comingSoonBadge: string
   comingSoonPlatform: string
+  assetForex: string
+  assetCrypto: string
+  assetFutures: string
 }
 
 export interface AccountConfigConnectFormTranslations {

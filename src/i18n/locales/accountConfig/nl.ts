@@ -11,6 +11,9 @@ export const accountConfigNl: AccountConfigBundleTranslations = {
       subtitle: 'Kies je gewenste handelsplatform om te beginnen',
       footerHint: 'Meer platformen volgen binnenkort',
       comingSoonBadge: 'Binnenkort',
+      assetForex: 'Forex',
+      assetCrypto: 'Crypto',
+      assetFutures: 'Futures',
       comingSoonPlatform: 'Integratie met {platform} komt binnenkort. Kies voorlopig MT4 of MT5.',
     },
     connectForm: {

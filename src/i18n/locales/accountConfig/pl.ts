@@ -11,6 +11,9 @@ export const accountConfigPl: AccountConfigBundleTranslations = {
       subtitle: 'Wybierz preferowaną platformę tradingową, aby rozpocząć',
       footerHint: 'Wkrótce kolejne platformy',
       comingSoonBadge: 'Wkrótce',
+      assetForex: 'Forex',
+      assetCrypto: 'Krypto',
+      assetFutures: 'Kontrakty futures',
       comingSoonPlatform: 'Integracja z {platform} będzie dostępna wkrótce. Na razie wybierz MT4 lub MT5.',
     },
     connectForm: {

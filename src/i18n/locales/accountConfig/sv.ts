@@ -11,6 +11,9 @@ export const accountConfigSv: AccountConfigBundleTranslations = {
       subtitle: 'Välj din föredragna handelsplattform för att komma igång',
       footerHint: 'Fler plattformar kommer snart',
       comingSoonBadge: 'Kommer snart',
+      assetForex: 'Forex',
+      assetCrypto: 'Krypto',
+      assetFutures: 'Terminer',
       comingSoonPlatform: 'Integration med {platform} kommer snart. Välj MT4 eller MT5 tills vidare.',
     },
     connectForm: {

@@ -11,6 +11,9 @@ export const accountConfigJa: AccountConfigBundleTranslations = {
       subtitle: '開始するには希望する取引プラットフォームを選択してください',
       footerHint: '対応プラットフォームは順次追加予定です',
       comingSoonBadge: '近日対応',
+      assetForex: 'FX',
+      assetCrypto: '暗号資産',
+      assetFutures: '先物',
       comingSoonPlatform: '{platform} 連携は近日対応予定です。現時点では MT4 または MT5 を選択してください。',
     },
     connectForm: {

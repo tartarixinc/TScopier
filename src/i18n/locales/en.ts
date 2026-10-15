@@ -717,6 +717,9 @@ broker: {
       subtitle: 'Choose your preferred trading platform to get started',
       footerHint: 'More platforms coming soon',
       comingSoonBadge: 'Coming Soon',
+      assetForex: 'Forex',
+      assetCrypto: 'Crypto',
+      assetFutures: 'Futures',
       comingSoonPlatform: '{platform} integration is coming soon. Pick MT4 or MT5 for now.',
     },
     connectForm: {
