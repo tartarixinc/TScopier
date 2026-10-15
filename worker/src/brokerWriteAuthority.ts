@@ -148,16 +148,25 @@ export function authorityFromBrokerRow(row: {
   fxsocket_account_id?: string | null
   metaapi_account_id?: string | null
   ctrader_account_id?: string | null
+  binance_account_id?: string | null
+  bybit_account_id?: string | null
+  kucoin_account_id?: string | null
   writer_epoch?: number | null
   provider_transition_state?: string | null
 }): BrokerWriteAuthority | null {
   const provider = row.provider == null || row.provider === '' ? 'fxsocket' : row.provider
-  if (provider !== 'fxsocket' && provider !== 'mtapi' && provider !== 'ctrader') return null
+  if (provider !== 'fxsocket' && provider !== 'mtapi' && provider !== 'ctrader' && provider !== 'binance' && provider !== 'bybit' && provider !== 'kucoin') return null
   const sessionId = provider === 'mtapi'
     ? String(row.mtapi_session_id ?? '').trim()
     : provider === 'ctrader'
       ? String(row.ctrader_account_id ?? '').trim()
-      : String(row.fxsocket_account_id ?? row.metaapi_account_id ?? '').trim()
+      : provider === 'binance'
+        ? String(row.binance_account_id ?? '').trim()
+        : provider === 'bybit'
+          ? String(row.bybit_account_id ?? '').trim()
+          : provider === 'kucoin'
+            ? String(row.kucoin_account_id ?? '').trim()
+            : String(row.fxsocket_account_id ?? row.metaapi_account_id ?? '').trim()
   const brokerAccountId = String(row.id ?? '').trim()
   const writerEpoch = Number(row.writer_epoch)
   const transitionState = row.provider_transition_state ?? 'stable'

@@ -1,16 +1,22 @@
-export type BrokerProvider = 'fxsocket' | 'mtapi' | 'ctrader'
+export type BrokerProvider = 'fxsocket' | 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin'
 
 type ProviderAwareAccount = {
   fxsocket_account_id?: string | null
   provider?: string | null
   mtapi_session_id?: string | null
   ctrader_account_id?: string | null
+  binance_account_id?: string | null
+  bybit_account_id?: string | null
+  kucoin_account_id?: string | null
 }
 
 /** Resolve the effective provider for an account (defaults to 'fxsocket'). */
 export function resolveProvider(account: ProviderAwareAccount): BrokerProvider {
   if (account.provider === 'mtapi') return 'mtapi'
   if (account.provider === 'ctrader') return 'ctrader'
+  if (account.provider === 'binance') return 'binance'
+  if (account.provider === 'bybit') return 'bybit'
+  if (account.provider === 'kucoin') return 'kucoin'
   return 'fxsocket'
 }
 
@@ -43,11 +49,38 @@ export function hasCtraderBroker(
   return (account.ctrader_account_id ?? '').trim().length > 0
 }
 
-/** Broker has a linked session of any provider (FxSocket, MTAPI, or cTrader). */
+/** Broker has a linked Binance futures API key. */
+export function hasBinanceBroker(
+  account: Pick<ProviderAwareAccount, 'provider' | 'binance_account_id'>,
+): boolean {
+  if (account.provider === 'binance') return true
+  return (account.binance_account_id ?? '').trim().length > 0
+}
+
+/** Broker has a linked Bybit linear futures API key. */
+export function hasBybitBroker(
+  account: Pick<ProviderAwareAccount, 'provider' | 'bybit_account_id'>,
+): boolean {
+  if (account.provider === 'bybit') return true
+  return (account.bybit_account_id ?? '').trim().length > 0
+}
+
+/** Broker has a linked KuCoin futures API key. */
+export function hasKucoinBroker(
+  account: Pick<ProviderAwareAccount, 'provider' | 'kucoin_account_id'>,
+): boolean {
+  if (account.provider === 'kucoin') return true
+  return (account.kucoin_account_id ?? '').trim().length > 0
+}
+
+/** Broker has a linked session of any provider (FxSocket, MTAPI, cTrader, Binance, Bybit, or KuCoin). */
 export function hasAnyBrokerSession(account: ProviderAwareAccount): boolean {
   const provider = resolveProvider(account)
   if (provider === 'mtapi') return hasMtapiBrokerSession(account)
   if (provider === 'ctrader') return hasCtraderBroker(account)
+  if (provider === 'binance') return hasBinanceBroker(account)
+  if (provider === 'bybit') return hasBybitBroker(account)
+  if (provider === 'kucoin') return hasKucoinBroker(account)
   return hasFxsocketBrokerSession(account)
 }
 
@@ -61,7 +94,7 @@ export function hasLinkedBrokerForUi(
   account: ProviderAwareAccount & { mtapi_status?: string | null },
 ): boolean {
   const provider = resolveProvider(account)
-  if (provider === 'mtapi' || provider === 'ctrader') return true
+  if (provider === 'mtapi' || provider === 'ctrader' || provider === 'binance' || provider === 'bybit' || provider === 'kucoin') return true
   return hasFxsocketBrokerSession(account)
 }
 

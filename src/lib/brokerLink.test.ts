@@ -73,6 +73,30 @@ describe('brokerLink — MTAPI provider', () => {
     assert.equal(resolveProvider({ provider: 'unknown' }), 'fxsocket')
   })
 
+  it('resolveProvider returns binance and treats the row as linked', () => {
+    assert.equal(resolveProvider({ provider: 'binance' }), 'binance')
+    assert.equal(hasLinkedBrokerForUi({ provider: 'binance' }), true)
+    assert.equal(hasAnyBrokerSession({ provider: 'binance', binance_account_id: 'abcd1234abcd1234' }), true)
+    assert.equal(isBrokerCopyEnabledForUi({ provider: 'binance', is_active: true }), true)
+    assert.equal(isFxsocketLinkedBroker({ provider: 'binance', fxsocket_account_id: SESSION_UUID }), false)
+  })
+
+  it('resolveProvider returns bybit and treats the row as linked', () => {
+    assert.equal(resolveProvider({ provider: 'bybit' }), 'bybit')
+    assert.equal(hasLinkedBrokerForUi({ provider: 'bybit' }), true)
+    assert.equal(hasAnyBrokerSession({ provider: 'bybit', bybit_account_id: 'ef561234ef561234' }), true)
+    assert.equal(isBrokerCopyEnabledForUi({ provider: 'bybit', is_active: true }), true)
+    assert.equal(isFxsocketLinkedBroker({ provider: 'bybit', fxsocket_account_id: SESSION_UUID }), false)
+  })
+
+  it('resolveProvider returns kucoin and treats the row as linked', () => {
+    assert.equal(resolveProvider({ provider: 'kucoin' }), 'kucoin')
+    assert.equal(hasLinkedBrokerForUi({ provider: 'kucoin' }), true)
+    assert.equal(hasAnyBrokerSession({ provider: 'kucoin', kucoin_account_id: '9a8b1234ef561234' }), true)
+    assert.equal(isBrokerCopyEnabledForUi({ provider: 'kucoin', is_active: true }), true)
+    assert.equal(isFxsocketLinkedBroker({ provider: 'kucoin', fxsocket_account_id: SESSION_UUID }), false)
+  })
+
   it('resolveProvider returns ctrader and treats the row as linked', () => {
     assert.equal(resolveProvider({ provider: 'ctrader' }), 'ctrader')
     assert.equal(hasLinkedBrokerForUi({ provider: 'ctrader' }), true)

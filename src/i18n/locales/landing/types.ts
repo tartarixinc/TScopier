@@ -340,6 +340,21 @@ export interface LandingTranslations {
     dashboard: string
     menuOpen: string
     menuClose: string
+    /** Mega menu opened from the "Product" nav item. */
+    productMenu: {
+      heading: string
+      signalCopier: { title: string; description: string }
+      socialTrading: { title: string; description: string }
+      accountMirroring: { title: string; description: string }
+      featuredTitle: string
+      featuredBody: string
+      /** Right-hand detail panel for Social Trading (the Signal Copier panel uses featuredTitle/featuredBody). */
+      socialPanel: { title: string; body: string }
+      mirrorPanel: { title: string; body: string }
+      labels: { roi: string; winRate: string; following: string; copyTrader: string; master: string; slave: string }
+      exploreFeatures: string
+      viewPricing: string
+    }
   }
   hero: {
     headline: string
@@ -352,6 +367,10 @@ export interface LandingTranslations {
     imageAlt: string
     previewUrl: string
     dashboard: LandingHeroDashboardCopy
+  }
+  integrations: {
+    eyebrow: string
+    title: string
   }
   whyChoose: {
     statsCaption: string

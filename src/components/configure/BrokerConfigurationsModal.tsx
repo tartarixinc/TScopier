@@ -7,12 +7,15 @@ import { normalizeSignalChannelIds } from '../../lib/brokerChannelLink'
 import { describeChannelConfiguration, type ConfigurationDetailSection } from '../../lib/configurationSummary'
 import { resolveBrokerTotalBalance } from '../../lib/effectiveBrokerBalance'
 import { resolveChannelTradingConfig } from '../../lib/channelTradingConfig'
+import { normalizeSignalSourceKind } from '../../lib/signalSourceMark'
 import type { BrokerAccount } from '../../types/database'
+import { SignalSourceLogo } from '../dashboard/SignalSourceLogo'
 
 interface ChannelName {
   id: string
   display_name: string
   channel_username?: string | null
+  source_kind?: string | null
 }
 
 function PlatformLogo({ platform }: { platform: string }) {
@@ -28,17 +31,6 @@ function PlatformLogo({ platform }: { platform: string }) {
       className="h-8 w-8 shrink-0 object-contain"
       loading="lazy"
       onError={() => setFailed(true)}
-    />
-  )
-}
-
-function TelegramLogo() {
-  return (
-    <img
-      src="/Telegram.svg"
-      alt=""
-      aria-hidden
-      className="h-7 w-7 shrink-0 object-contain"
     />
   )
 }
@@ -118,7 +110,16 @@ export function BrokerConfigurationsModal({
           ) : error ? (
             <p className="text-sm text-error-600 dark:text-error-400">{copy.loadError}</p>
           ) : channelIds.length === 0 ? (
-            <p className="text-sm text-neutral-900 dark:text-neutral-50">{copy.noChannelsLinked}</p>
+            <div className="flex flex-col items-center gap-4 py-10 text-center">
+              <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{copy.noConfigurationsYet}</p>
+              <button
+                type="button"
+                className="rounded-lg bg-green-400 px-4 py-2 text-sm font-medium text-neutral-950 hover:bg-green-500"
+                onClick={onEdit}
+              >
+                {copy.openConfiguration}
+              </button>
+            </div>
           ) : (
             <div className="space-y-6">
               {channelIds.map(channelId => {
@@ -133,7 +134,10 @@ export function BrokerConfigurationsModal({
                 return (
                   <section key={channelId} className="space-y-3">
                     <h3 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-neutral-900 dark:text-neutral-50">
-                      <TelegramLogo />
+                      <SignalSourceLogo
+                        kind={normalizeSignalSourceKind(channelById.get(channelId.toLowerCase())?.source_kind) ?? 'telegram'}
+                        className="h-7 w-7 shrink-0"
+                      />
                       <span className="truncate">{name}</span>
                     </h3>
                     <ConfigurationSections sections={sections} />

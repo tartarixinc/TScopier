@@ -13,13 +13,26 @@ export const landingSv: LandingTranslations = {
     dashboard: 'Instrumentbräda',
     menuOpen: 'Öppna menyn',
     menuClose: 'Stäng menyn',
+    productMenu: {
+      heading: 'Produkter',
+      signalCopier: { title: 'Signalkopierare', description: 'Kopiera signaler från Telegram, WhatsApp, Discord och TradingView direkt till din mäklare.' },
+      socialTrading: { title: 'Social trading', description: 'Utforska toppnoterade traders efter ROI och vinstandel och kopiera dem gratis eller mot en månadsavgift.' },
+      accountMirroring: { title: 'Kontospegling', description: 'Spegla ett huvudkontos affärer till dina andra konton i realtid.' },
+      featuredTitle: 'Fungerar med 8+ plattformar',
+      featuredBody: 'MT4, MT5, cTrader, Binance, Bybit och KuCoin. Ingen VPS behövs.',
+      socialPanel: { title: 'Kopiera beprövade traders', body: 'Jämför prestanda och följ de traders du litar på.' },
+      mirrorPanel: { title: 'Ett huvudkonto, många konton', body: 'Anslut ett huvudkonto så följer varje slavkonto dess affärer automatiskt.' },
+      labels: { roi: 'ROI', winRate: 'Vinstandel', following: 'Följer', copyTrader: 'Kopiera trader', master: 'Huvud', slave: 'Slav' },
+      exploreFeatures: 'Se alla funktioner',
+      viewPricing: 'Se priser',
+    },
   },
   hero: {
     headline: 'En enhetlig kopieringsplattform för',
     headlinePhrases: ['Handelssignaler', 'Social trading', 'Kontospegling'],
     subheadline:
       'Automatisera dina affärer från Telegram, WhatsApp, Discord, TradingView eller ett masterkonto till 8+ mäklarplattformar på under 50 ms. Ingen VPS krävs.',
-    socialProof: 'Rankad #1 molnbaserad Telegram-signalkopierare',
+    socialProof: 'TScopier.ai är nu UniCopier',
     primaryCta: 'Starta din 5-dagars gratis provperiod',
     secondaryCta: 'Logga in',
     imageAlt:
@@ -102,6 +115,10 @@ export const landingSv: LandingTranslations = {
         },
       ],
     },
+  },
+  integrations: {
+    eyebrow: 'Integrationer',
+    title: 'Fungerar med ledande plattformar',
   },
   whyChoose: {
     statsCaption: 'Används av traders från de mest populära Telegram-signalleverantörerna',

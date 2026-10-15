@@ -13,13 +13,26 @@ export const landingNl: LandingTranslations = {
     dashboard: 'Dashboard',
     menuOpen: 'Menu openen',
     menuClose: 'Menu sluiten',
+    productMenu: {
+      heading: 'Producten',
+      signalCopier: { title: 'Signaalkopieerder', description: 'Kopieer signalen van Telegram, WhatsApp, Discord en TradingView rechtstreeks naar je broker.' },
+      socialTrading: { title: 'Social trading', description: 'Ontdek toptraders op ROI en winstpercentage en kopieer ze gratis of tegen een maandelijks bedrag.' },
+      accountMirroring: { title: 'Accountspiegeling', description: 'Spiegel de trades van een hoofdaccount in realtime naar je andere accounts.' },
+      featuredTitle: 'Werkt met 8+ platforms',
+      featuredBody: 'MT4, MT5, cTrader, Binance, Bybit en KuCoin. Geen VPS nodig.',
+      socialPanel: { title: 'Kopieer bewezen traders', body: 'Vergelijk prestaties en volg de traders die je vertrouwt.' },
+      mirrorPanel: { title: 'Eén master, meerdere accounts', body: 'Koppel een masteraccount en elk slave-account volgt de trades automatisch.' },
+      labels: { roi: 'ROI', winRate: 'Winstpercentage', following: 'Volgend', copyTrader: 'Trader kopiëren', master: 'Master', slave: 'Slave' },
+      exploreFeatures: 'Bekijk alle functies',
+      viewPricing: 'Bekijk prijzen',
+    },
   },
   hero: {
     headline: 'Eén uniform kopieerplatform voor',
     headlinePhrases: ['Handelssignalen', 'Social trading', 'Account mirroring'],
     subheadline:
       'Automatiseer je trades vanuit Telegram, WhatsApp, Discord, TradingView of een masteraccount naar 8+ brokerplatformen in minder dan 50 ms. Geen VPS nodig.',
-    socialProof: 'Beoordeeld als #1 cloud Telegram-signaalkopieerder',
+    socialProof: 'TScopier.ai is nu UniCopier',
     primaryCta: 'Start je gratis proefperiode van 5 dagen',
     secondaryCta: 'Inloggen',
     imageAlt:
@@ -102,6 +115,10 @@ export const landingNl: LandingTranslations = {
         },
       ],
     },
+  },
+  integrations: {
+    eyebrow: 'Integraties',
+    title: 'Werkt met toonaangevende platforms',
   },
   whyChoose: {
     statsCaption: 'Gebruikt door traders van de populairste Telegram-signaalaanbieders',

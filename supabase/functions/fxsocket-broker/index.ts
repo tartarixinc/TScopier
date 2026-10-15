@@ -52,7 +52,22 @@ function bad(status: number, msg: string) {
 
 /** Strip sensitive columns so they are never sent to the browser. */
 function stripSecrets(row: Record<string, unknown>) {
-  const { broker_password_encrypted: _pw, mtapi_session_id: _sid, ...safe } = row
+  const {
+    broker_password_encrypted: _pw,
+    mtapi_session_id: _sid,
+    ctrader_access_token_encrypted: _ctAccess,
+    ctrader_refresh_token_encrypted: _ctRefresh,
+    ctrader_client_id_encrypted: _ctClientId,
+    ctrader_client_secret_encrypted: _ctClientSecret,
+    binance_api_key_encrypted: _bnKey,
+    binance_api_secret_encrypted: _bnSecret,
+    bybit_api_key_encrypted: _byKey,
+    bybit_api_secret_encrypted: _bySecret,
+    kucoin_api_key_encrypted: _kcKey,
+    kucoin_api_secret_encrypted: _kcSecret,
+    kucoin_passphrase_encrypted: _kcPass,
+    ...safe
+  } = row
   return safe
 }
 
