@@ -4,6 +4,9 @@ import type { FxsocketMtStatus } from './fxsocketMtStatus'
 
 export type KucoinMarginMode = 'isolated' | 'cross'
 
+/** Where users create API keys. */
+export const KUCOIN_API_MANAGEMENT_URL = 'https://www.kucoin.com/account/api'
+
 export interface KucoinTradingSettings {
   marginUsdt: number
   leverage: number

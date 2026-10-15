@@ -2,6 +2,9 @@ import type { BrokerAccount } from '../types/database'
 import { ensureFreshAuthSession, refreshAuthTokenSingleFlight } from './fxsocketBroker'
 import type { FxsocketMtStatus } from './fxsocketMtStatus'
 
+/** Where users create API keys. */
+export const BYBIT_API_MANAGEMENT_URL = 'https://www.bybit.com/app/user/api-management'
+
 export type BybitEnvironment = 'demo' | 'live'
 
 /**

@@ -664,6 +664,11 @@ export interface AccountConfigConnectFormTranslations {
   binanceApiHelpTitle: string
   binanceApiHelpSteps: string[]
   binanceApiHelpLink: string
+  /** Same popover for Bybit and KuCoin (the title is shared with Binance). */
+  bybitApiHelpSteps: string[]
+  bybitApiHelpLink: string
+  kucoinApiHelpSteps: string[]
+  kucoinApiHelpLink: string
   binanceEnvironmentLabel: string
   binanceLive: string
   binanceDemo: string

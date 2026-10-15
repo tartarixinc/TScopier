@@ -21,12 +21,14 @@ import {
   parseBybitSettingsDraft,
   type BybitEnvironment,
   type BybitSettingsDraft,
+  BYBIT_API_MANAGEMENT_URL,
 } from '../../lib/bybitBroker'
 import {
   DEFAULT_KUCOIN_SETTINGS_DRAFT,
   linkKucoinAccount,
   parseKucoinSettingsDraft,
   type KucoinSettingsDraft,
+  KUCOIN_API_MANAGEMENT_URL,
 } from '../../lib/kucoinBroker'
 import { ApiKeyHelp } from './ApiKeyHelp'
 import { BinanceSettingsFields } from './BinanceSettingsFields'
@@ -655,6 +657,14 @@ export function ConnectTradingAccountModal({
                   />
                   <Input
                     label={cf.binanceApiKeyLabel}
+                    labelAddon={
+                      <ApiKeyHelp
+                        title={cf.binanceApiHelpTitle}
+                        steps={cf.bybitApiHelpSteps}
+                        linkLabel={cf.bybitApiHelpLink}
+                        href={BYBIT_API_MANAGEMENT_URL}
+                      />
+                    }
                     value={bybitKey}
                     autoComplete="off"
                     spellCheck={false}
@@ -719,6 +729,14 @@ export function ConnectTradingAccountModal({
                   />
                   <Input
                     label={cf.binanceApiKeyLabel}
+                    labelAddon={
+                      <ApiKeyHelp
+                        title={cf.binanceApiHelpTitle}
+                        steps={cf.kucoinApiHelpSteps}
+                        linkLabel={cf.kucoinApiHelpLink}
+                        href={KUCOIN_API_MANAGEMENT_URL}
+                      />
+                    }
                     value={kucoinKey}
                     autoComplete="off"
                     spellCheck={false}
