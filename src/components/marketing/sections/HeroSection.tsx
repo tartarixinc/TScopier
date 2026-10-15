@@ -98,16 +98,14 @@ export function HeroSection() {
     <section id="product" className="relative -mt-16 scroll-mt-20 overflow-hidden bg-white pt-16 dark:bg-transparent">
       {/* Aurora + faint grid. Only decoration, the glass surfaces below pick the colour up. */}
       <div className="pointer-events-none absolute inset-0" aria-hidden>
-        <div className="marketing-hero-grid [mask-image:radial-gradient(ellipse_70%_55%_at_50%_0%,black,transparent)]" />
-        <div className="hero-aurora-blob absolute -top-32 left-1/2 h-[26rem] w-[40rem] -translate-x-[70%] rounded-full bg-green-300/45 blur-3xl dark:bg-green-400/20" />
+        <div className="marketing-hero-grid hero-grid-pan [mask-image:radial-gradient(ellipse_70%_55%_at_50%_0%,black,transparent)]" />
+        <div className="hero-aurora-blob hero-aurora-blob--a absolute -top-32 left-1/2 h-[26rem] w-[40rem] rounded-full bg-green-300/45 blur-3xl dark:bg-green-400/20" />
         <div
-          className="hero-aurora-blob absolute -top-16 left-1/2 h-[24rem] w-[34rem] translate-x-[5%] rounded-full bg-cyan-200/50 blur-3xl dark:bg-cyan-400/15"
-          style={{ animationDelay: '-6s' }}
-        />
+          className="hero-aurora-blob hero-aurora-blob--b absolute -top-16 left-1/2 h-[24rem] w-[34rem] rounded-full bg-cyan-200/50 blur-3xl dark:bg-cyan-400/15"
+                  />
         <div
-          className="hero-aurora-blob absolute top-[28rem] left-1/2 h-[22rem] w-[44rem] -translate-x-1/2 rounded-full bg-emerald-200/40 blur-3xl dark:bg-emerald-400/10"
-          style={{ animationDelay: '-11s' }}
-        />
+          className="hero-aurora-blob hero-aurora-blob--c absolute top-[28rem] left-1/2 h-[22rem] w-[44rem] rounded-full bg-emerald-200/40 blur-3xl dark:bg-emerald-400/10"
+                  />
       </div>
 
       <div className="relative z-[1] mx-auto flex max-w-6xl flex-col items-center px-5 pb-16 pt-14 text-center sm:px-8 sm:pt-20 lg:pb-24">

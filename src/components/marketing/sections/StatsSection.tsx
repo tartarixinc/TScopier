@@ -7,7 +7,7 @@ export function StatsSection() {
 
   return (
     <section className="mx-auto max-w-6xl px-5 pt-16 sm:px-8 sm:pt-20">
-      <p className="mb-6 text-center text-sm text-neutral-900 dark:text-neutral-50 sm:mb-8 sm:text-base">
+      <p className="mb-6 text-center text-sm font-semibold text-neutral-900 dark:text-neutral-50 sm:mb-8 sm:text-base">
         {l.statsCaption}
       </p>
       <MarketingStatsBar stats={l.stats} />
