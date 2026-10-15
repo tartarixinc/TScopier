@@ -13,9 +13,14 @@ from telethon.errors import SessionPasswordNeededError
 from telethon.sessions import StringSession
 
 from .config import Config
+from .listener_events import persist_listener_event
 from .telegram_account_claims import (
     assert_telegram_account_available,
+    claim_conflict_allows_override,
+    list_conflicting_telegram_claims,
     normalize_telegram_phone,
+    release_conflicting_telegram_claims,
+    restore_telegram_account_claims,
     upsert_telegram_account_claim,
 )
 
@@ -39,7 +44,32 @@ class AuthService:
 
     async def send_code(self, user_id: str, phone: str) -> dict[str, str]:
         normalized_phone = normalize_telegram_phone(phone)
-        assert_telegram_account_available(self.supabase, user_id, phone=normalized_phone)
+        # The claim check runs first, exactly as it did before overrides
+        # existed, so an unblocked attempt does no extra work. Admin status is
+        # only read once this number has already been refused — and only the
+        # refusal itself (never a database problem) can open that door.
+        try:
+            assert_telegram_account_available(self.supabase, user_id, phone=normalized_phone)
+        except ValueError as exc:
+            if not claim_conflict_allows_override(self.supabase, user_id, exc):
+                raise
+            # Admin: the request proceeds. Nothing is unbound here — the other
+            # account's claim is released only when this login completes, so
+            # asking for a code can never release anyone. This lookup only
+            # feeds a log line, so it must never fail the request.
+            try:
+                conflicts = list_conflicting_telegram_claims(
+                    self.supabase, user_id, phone=normalized_phone
+                )
+                if conflicts:
+                    print(
+                        f"[auth_service] send_code admin claim override user={user_id} "
+                        f"previous_owners={[row['user_id'] for row in conflicts]}"
+                    )
+            except Exception as lookup_exc:
+                print(
+                    f"[auth_service] send_code conflict lookup failed user={user_id}: {lookup_exc}"
+                )
         await self._cleanup_pending(user_id)
         client = TelegramClient(
             StringSession(""),
@@ -105,12 +135,28 @@ class AuthService:
 
         me = await pending.client.get_me()
         telegram_user_id = int(me.id)
-        assert_telegram_account_available(
-            self.supabase,
-            user_id,
-            phone=pending.phone,
-            telegram_user_id=telegram_user_id,
-        )
+        # The claim check runs first, exactly as it did before overrides
+        # existed, so an unblocked link does no extra work. The override is
+        # consulted only when this Telegram has already been refused, and only
+        # the refusal itself can open that door. The release happens once this
+        # link has a persisted session below, so a login that never finishes
+        # leaves the other account untouched.
+        admin_override = False
+        try:
+            assert_telegram_account_available(
+                self.supabase,
+                user_id,
+                phone=pending.phone,
+                telegram_user_id=telegram_user_id,
+            )
+        except ValueError as exc:
+            if not claim_conflict_allows_override(self.supabase, user_id, exc):
+                raise
+            admin_override = True
+            print(
+                f"[auth_service] admin override granted user={user_id} "
+                f"telegram_user_id={telegram_user_id}"
+            )
 
         self.supabase.table("telegram_sessions").upsert(
             {
@@ -123,12 +169,102 @@ class AuthService:
             on_conflict="user_id",
         ).execute()
 
-        upsert_telegram_account_claim(
-            self.supabase,
-            user_id,
-            phone=pending.phone,
-            telegram_user_id=telegram_user_id,
-        )
+        released_claims: list[dict[str, Any]] = []
+        try:
+            if admin_override:
+                released_claims = release_conflicting_telegram_claims(
+                    self.supabase,
+                    user_id,
+                    phone=pending.phone,
+                    telegram_user_id=telegram_user_id,
+                )
+                if released_claims:
+                    print(
+                        f"[auth_service] admin claim override user={user_id} "
+                        f"previous_owners={[row['user_id'] for row in released_claims]}"
+                    )
+                    # Recorded BEFORE the claim below is written: if this
+                    # process dies in between, the takeover is still on record.
+                    # persist_listener_event logs its own failures, so this can
+                    # never fail the link.
+                    persist_listener_event(
+                        self.supabase,
+                        user_id=user_id,
+                        event_type="telegram_link_attempt",
+                        detail={
+                            "action": "admin_claim_override_released",
+                            "previous_owner_user_ids": [
+                                row["user_id"] for row in released_claims
+                            ],
+                            "telegram_user_id": telegram_user_id,
+                            "phone_masked": f"{pending.phone[:4]}****"
+                            if pending.phone
+                            else None,
+                        },
+                    )
+            upsert_telegram_account_claim(
+                self.supabase,
+                user_id,
+                phone=pending.phone,
+                telegram_user_id=telegram_user_id,
+            )
+        except Exception:
+            # A takeover that fails must not leave the other account unbound.
+            if released_claims:
+                try:
+                    restore_telegram_account_claims(self.supabase, released_claims)
+                    print(
+                        f"[auth_service] released claims restored user={user_id} "
+                        f"owners={[row['user_id'] for row in released_claims]}"
+                    )
+                except Exception as restore_exc:
+                    print(
+                        f"[auth_service] claim restore failed user={user_id}: {restore_exc}"
+                    )
+                    persist_listener_event(
+                        self.supabase,
+                        user_id=user_id,
+                        event_type="telegram_link_failed",
+                        detail={
+                            "step": "finalize_override_restore",
+                            "error": str(restore_exc),
+                        },
+                    )
+            if admin_override:
+                # A link that was allowed through but did not complete must not
+                # leave a session row behind for a Telegram we failed to claim
+                # (the release itself may have failed before anything was
+                # restored). Gated on the override only, so a normal claim
+                # failure keeps behaving exactly as it did before.
+                try:
+                    self.supabase.table("telegram_sessions").delete().eq(
+                        "user_id", user_id
+                    ).execute()
+                except Exception as session_exc:
+                    print(
+                        f"[auth_service] session rollback failed user={user_id}: {session_exc}"
+                    )
+            raise
+
+        if released_claims:
+            persist_listener_event(
+                self.supabase,
+                user_id=user_id,
+                event_type="telegram_link_success",
+                detail={
+                    "session_id": user_id,
+                    "method": "phone",
+                    "admin_claim_override": {
+                        "previous_owner_user_ids": [
+                            row["user_id"] for row in released_claims
+                        ],
+                        "telegram_user_id": telegram_user_id,
+                        "phone_masked": f"{pending.phone[:4]}****"
+                        if pending.phone
+                        else None,
+                    },
+                },
+            )
 
         await self.session_manager.adopt_client(user_id, pending.client, session_string)
         channels = await self.session_manager.list_channels(user_id)
