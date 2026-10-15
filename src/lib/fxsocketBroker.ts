@@ -134,12 +134,14 @@ interface CallOpts<T> {
   edgeFn?: string
 }
 
-export type BrokerEdgeProvider = 'fxsocket' | 'mtapi' | 'ctrader' | 'binance'
+export type BrokerEdgeProvider = 'fxsocket' | 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin'
 
 function brokerEdgeFn(provider?: string): string | undefined {
   if (provider === 'mtapi') return 'mtapi-broker'
   if (provider === 'ctrader') return 'ctrader-broker'
   if (provider === 'binance') return 'binance-broker'
+  if (provider === 'bybit') return 'bybit-broker'
+  if (provider === 'kucoin') return 'kucoin-broker'
   return undefined
 }
 
@@ -716,7 +718,7 @@ export type TradesFetchArgs = {
 }
 
 function isWrongProviderError(message: string): boolean {
-  return /not an MTAPI account|no FxSocket account linked|not a cTrader account|not a Binance account/i.test(message)
+  return /not an MTAPI account|no FxSocket account linked|not a cTrader account|not a Binance account|not a Bybit account|not a KuCoin account/i.test(message)
 }
 
 /**
@@ -738,12 +740,12 @@ export async function fetchTradesAcrossProviders(
       args.accounts
         .map(account => resolveProvider(account))
         .filter((provider): provider is BrokerEdgeProvider =>
-          provider === 'fxsocket' || provider === 'mtapi' || provider === 'ctrader' || provider === 'binance'),
+          provider === 'fxsocket' || provider === 'mtapi' || provider === 'ctrader' || provider === 'binance' || provider === 'bybit' || provider === 'kucoin'),
     )
     // Anchors without a provider field resolve to fxsocket — if nothing was
     // explicitly marked, still query both so MTAPI-only data is not dropped.
     const anyExplicit = args.accounts.some(
-      a => a.provider === 'mtapi' || a.provider === 'fxsocket' || a.provider === 'ctrader' || a.provider === 'binance',
+      a => a.provider === 'mtapi' || a.provider === 'fxsocket' || a.provider === 'ctrader' || a.provider === 'binance' || a.provider === 'bybit' || a.provider === 'kucoin',
     )
     providers = anyExplicit && set.size > 0 ? [...set] : ['fxsocket', 'mtapi']
   }

@@ -654,6 +654,8 @@ export interface AccountConfigConnectFormTranslations {
   ctraderDemo: string
   ctraderLive: string
   platformBinance: string
+  platformBybit: string
+  platformKucoin: string
   binanceConnectHint: string
   binanceApiKeyLabel: string
   binanceApiSecretLabel: string
@@ -676,6 +678,15 @@ export interface AccountConfigConnectFormTranslations {
   binanceSettingsTitle: string
   binanceSettingsSave: string
   binanceSettingsSaved: string
+  bybitConnectHint: string
+  bybitConnectButton: string
+  bybitMarginModeNote: string
+  bybitPortfolioMargin: string
+  kucoinConnectHint: string
+  kucoinConnectButton: string
+  kucoinApiPassphraseLabel: string
+  kucoinApiPassphraseHint: string
+  kucoinKeysRequired: string
   brokerServerLabel: string
   brokerServerHint: string
   brokerServerPlaceholder: string

@@ -79,6 +79,26 @@ describe('resolveExecutionEngine (cutover flag)', () => {
       false,
     )
   })
+  it('Bybit provider bypasses EXECUTION_ENGINE and stays on v1', () => {
+    assert.equal(
+      resolveExecutionEngine({ brokerAccountId: 'b1', userId: 'u1', provider: 'bybit' }, { EXECUTION_ENGINE: 'v2' }),
+      'v1',
+    )
+    assert.equal(
+      isV2({ brokerAccountId: 'b1', userId: 'u1', provider: 'bybit' }, { EXECUTION_ENGINE: 'v2' }),
+      false,
+    )
+  })
+  it('KuCoin provider bypasses EXECUTION_ENGINE and stays on v1', () => {
+    assert.equal(
+      resolveExecutionEngine({ brokerAccountId: 'b1', userId: 'u1', provider: 'kucoin' }, { EXECUTION_ENGINE: 'v2' }),
+      'v1',
+    )
+    assert.equal(
+      isV2({ brokerAccountId: 'b1', userId: 'u1', provider: 'kucoin' }, { EXECUTION_ENGINE: 'v2' }),
+      false,
+    )
+  })
   it('fxsocket/null provider still follows the global v2 switch', () => {
     assert.equal(resolveExecutionEngine({ brokerAccountId: 'b1', provider: 'fxsocket' }, { EXECUTION_ENGINE: 'v2' }), 'v2')
     assert.equal(resolveExecutionEngine({ brokerAccountId: 'b1', provider: null }, { EXECUTION_ENGINE: 'v2' }), 'v2')

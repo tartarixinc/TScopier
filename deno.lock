@@ -81,6 +81,7 @@
         "npm:eslint-plugin-react-refresh@~0.5.2",
         "npm:eslint@^10.2.1",
         "npm:globals@^17.5.0",
+        "npm:happy-dom@^20.14.5",
         "npm:lightweight-charts@^5.2.0",
         "npm:lucide-react@^1.14.0",
         "npm:postcss@^8.5.14",

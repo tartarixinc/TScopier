@@ -99,7 +99,7 @@ export function useBrokerReconnect(opts: {
     try {
       const broker = opts.brokers.find(b => b.id === brokerId)
       const linkedProvider = broker ? resolveProvider(broker) : null
-      if (broker && (linkedProvider === 'ctrader' || linkedProvider === 'binance')) {
+      if (broker && (linkedProvider === 'ctrader' || linkedProvider === 'binance' || linkedProvider === 'bybit' || linkedProvider === 'kucoin')) {
         const { account, status } = await fxsocketBroker.checkStatus(brokerId, linkedProvider)
         upsertBrokerRef.current({
           ...account,

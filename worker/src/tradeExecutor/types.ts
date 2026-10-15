@@ -89,6 +89,10 @@ export interface BrokerRow {
   ctrader_account_id?: string | null
   /** Binance futures key fingerprint. Not a UUID. */
   binance_account_id?: string | null
+  /** Bybit key fingerprint. Not a UUID. */
+  bybit_account_id?: string | null
+  /** KuCoin key fingerprint. Not a UUID. */
+  kucoin_account_id?: string | null
   metaapi_account_id: string | null
   account_login: string | null
   broker_server: string | null

@@ -50,6 +50,13 @@ function stripSecrets(row: Record<string, unknown>) {
     ctrader_token_expires_at: _expires,
     ctrader_client_id_encrypted: _clientId,
     ctrader_client_secret_encrypted: _clientSecret,
+    binance_api_key_encrypted: _bnKey,
+    binance_api_secret_encrypted: _bnSecret,
+    bybit_api_key_encrypted: _byKey,
+    bybit_api_secret_encrypted: _bySecret,
+    kucoin_api_key_encrypted: _kcKey,
+    kucoin_api_secret_encrypted: _kcSecret,
+    kucoin_passphrase_encrypted: _kcPass,
     ...safe
   } = row
   return safe

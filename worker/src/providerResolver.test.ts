@@ -5,6 +5,8 @@ import { FxsocketProvider } from './fxsocketProvider'
 import { MtapiProvider } from './mtapiProvider'
 import { CtraderProvider } from './ctraderProvider'
 import { BinanceProvider } from './binanceProvider'
+import { BybitProvider } from './bybitProvider'
+import { KucoinProvider } from './kucoinProvider'
 import { apiForFxsocketAccount, brokerSessionId, type PlatformByFxsocketId } from './mtApiByAccount'
 import {
   apiForBrokerAccount,
@@ -12,6 +14,8 @@ import {
   resetProviderResolverForTests,
   setFxsocketProviderForTests,
   setBinanceProviderForResolverTests,
+  setBybitProviderForResolverTests,
+  setKucoinProviderForResolverTests,
   setCtraderProviderForResolverTests,
   setMtapiProviderForResolverTests,
 } from './providerResolver'
@@ -69,6 +73,12 @@ test('resolver routes mtapi and fails closed for unknown providers', () => {
   const binance = new BinanceProvider()
   setBinanceProviderForResolverTests(binance)
   assert.equal(apiForBrokerAccount('binance', 'abcd1234abcd1234'), binance)
+  const bybit = new BybitProvider()
+  setBybitProviderForResolverTests(bybit)
+  assert.equal(apiForBrokerAccount('bybit', 'abcd1234abcd1234'), bybit)
+  const kucoin = new KucoinProvider()
+  setKucoinProviderForResolverTests(kucoin)
+  assert.equal(apiForBrokerAccount('kucoin', 'abcd1234abcd1234'), kucoin)
   assert.equal(apiForBrokerAccount('unknown-provider', 'session-123'), null)
 })
 
@@ -105,6 +115,8 @@ test('inferProvider is typed and fails closed for invalid values', () => {
   assert.equal(inferProvider({ provider: 'mtapi' }), 'mtapi')
   assert.equal(inferProvider({ provider: 'ctrader' }), 'ctrader')
   assert.equal(inferProvider({ provider: 'binance' }), 'binance')
+  assert.equal(inferProvider({ provider: 'bybit' }), 'bybit')
+  assert.equal(inferProvider({ provider: 'kucoin' }), 'kucoin')
   assert.equal(inferProvider({ provider: 'other' }), null)
 })
 
@@ -115,12 +127,16 @@ test('broker session identity is provider-specific and unknown providers fail cl
     metaapi_account_id: 'legacy-id',
     ctrader_account_id: '4242',
     binance_account_id: 'abcd1234abcd1234',
+    bybit_account_id: 'ef561234ef561234',
+    kucoin_account_id: '9a8b1234ef561234',
   }
   assert.equal(brokerSessionId({ ...row, provider: 'mtapi' }), 'mtapi-token')
   assert.equal(brokerSessionId({ ...row, provider: 'fxsocket' }), 'fxsocket-id')
   assert.equal(brokerSessionId({ ...row, provider: null }), 'fxsocket-id')
   assert.equal(brokerSessionId({ ...row, provider: 'ctrader' }), '4242')
   assert.equal(brokerSessionId({ ...row, provider: 'binance' }), 'abcd1234abcd1234')
+  assert.equal(brokerSessionId({ ...row, provider: 'bybit' }), 'ef561234ef561234')
+  assert.equal(brokerSessionId({ ...row, provider: 'kucoin' }), '9a8b1234ef561234')
   assert.equal(brokerSessionId({ ...row, provider: 'unknown' }), '')
 })
 

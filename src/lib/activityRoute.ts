@@ -29,6 +29,8 @@ const PLATFORM_ICONS: Record<string, string> = {
   tradelocker: '/Trade_locker.png',
   tradovate: '/Tradovate.png',
   binance: '/Binance.png',
+  bybit: '/Bybit.png',
+  kucoin: '/Kucoin.png',
   'dx-trade': '/DX-trade.png',
   dxtrade: '/DX-trade.png',
 }

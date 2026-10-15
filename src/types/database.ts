@@ -440,8 +440,8 @@ export interface BrokerAccount {
   fxsocket_account_id?: string | null
   /** FxSocket v1 account status. */
   fxsocket_status?: FxsocketConnectionStatus | null
-  /** Provider routing: 'fxsocket' (default), 'mtapi', 'ctrader', or 'binance'. */
-  provider?: 'fxsocket' | 'mtapi' | 'ctrader' | 'binance' | null
+  /** Provider routing: 'fxsocket' (default), 'mtapi', 'ctrader', 'binance', or 'bybit'. */
+  provider?: 'fxsocket' | 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin' | null
   /** Monotonic broker-writer fence used to reject stale worker jobs. */
   writer_epoch?: number
   /** Mutations are allowed only while stable. */
@@ -470,6 +470,26 @@ export interface BrokerAccount {
   binance_leverage?: number | null
   /** Cross or isolated margin. */
   binance_margin_mode?: 'isolated' | 'cross' | null
+  /** Bybit linear futures key fingerprint. The key and secret stay server-side. */
+  bybit_account_id?: string | null
+  /** Bybit host: demo or live. */
+  bybit_environment?: 'demo' | 'live' | null
+  /** Bybit link status shown in the Connection column. */
+  bybit_status?: 'connected' | 'connecting' | 'disconnected' | 'error' | null
+  /** Quote-currency margin committed to each copied signal. */
+  bybit_margin_usdt?: number | null
+  /** Leverage applied to the symbol before each order. */
+  bybit_leverage?: number | null
+  /** KuCoin futures key fingerprint. The key, secret and passphrase stay server-side. */
+  kucoin_account_id?: string | null
+  /** KuCoin link status shown in the Connection column. */
+  kucoin_status?: 'connected' | 'connecting' | 'disconnected' | 'error' | null
+  /** Quote-currency margin committed to each copied signal. */
+  kucoin_margin_usdt?: number | null
+  /** Leverage applied to the symbol before each order. */
+  kucoin_leverage?: number | null
+  /** Cross or isolated margin, applied per symbol before each order. */
+  kucoin_margin_mode?: 'isolated' | 'cross' | null
   /** Auto-reconnect enabled flag. */
   auto_reconnect_enabled?: boolean | null
   /** Error kind classifier (e.g. credential, network, timeout). */
