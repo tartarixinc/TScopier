@@ -104,8 +104,8 @@ export const landingSv: LandingTranslations = {
     },
   },
   integrations: {
-    title: 'Smidig integration med ledande plattformar',
-    highlight: 'integration',
+    title: 'Fungerar med ledande plattformar',
+    highlight: 'ledande plattformar',
   },
   whyChoose: {
     statsCaption: 'Används av traders från de mest populära Telegram-signalleverantörerna',

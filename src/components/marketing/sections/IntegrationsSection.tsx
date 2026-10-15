@@ -2,7 +2,11 @@ import { useT } from '../../../context/LocaleContext'
 
 type IntegrationLogo = { name: string; src: string }
 
-/** Two rows of five. Signal sources first, then the brokers and exchanges we trade on. */
+/**
+ * Two rows of five. Each circle carries a ring in the page colour and later circles paint on top,
+ * so overlapping circles read as cut out of one another.
+ * Signal sources first, then the brokers and exchanges we trade on.
+ */
 const INTEGRATION_ROWS: readonly (readonly IntegrationLogo[])[] = [
   [
     { name: 'Telegram', src: '/Telegram.svg' },
@@ -46,12 +50,12 @@ export function IntegrationsSection() {
 
       <ul className="mt-10 flex flex-col items-center sm:mt-14" role="list">
         {INTEGRATION_ROWS.map((row, rowIndex) => (
-          <li key={rowIndex} className={rowIndex === 0 ? undefined : '-mt-3 sm:-mt-5 lg:-mt-6'}>
-            <ul className="flex items-center justify-center -space-x-2 sm:-space-x-3 lg:-space-x-4" role="list">
+          <li key={rowIndex} className={rowIndex === 0 ? undefined : '-mt-[clamp(0.9rem,3.4vw,1.95rem)]'}>
+            <ul className="flex items-center justify-center" role="list">
               {row.map(logo => (
                 <li
                   key={logo.name}
-                  className="flex aspect-square w-[clamp(4.25rem,17vw,10rem)] items-center justify-center rounded-full bg-neutral-50 ring-1 ring-neutral-100 transition-transform duration-200 hover:z-10 hover:scale-105 dark:bg-neutral-800/60 dark:ring-neutral-800"
+                  className="flex aspect-square w-[clamp(3.5rem,13vw,7.5rem)] items-center justify-center rounded-full bg-neutral-50 ring-4 ring-white transition-transform duration-200 hover:scale-105 sm:ring-[6px] dark:bg-neutral-800 dark:ring-neutral-900"
                 >
                   <img
                     src={logo.src}
@@ -59,7 +63,7 @@ export function IntegrationsSection() {
                     title={logo.name}
                     loading="lazy"
                     draggable={false}
-                    className="h-[56%] w-[56%] object-contain"
+                    className="h-[52%] w-[52%] object-contain"
                   />
                 </li>
               ))}

@@ -12,8 +12,8 @@ export function MarketingLayout({ children }: MarketingLayoutProps) {
   const [chatVisibility, setChatVisibility] = useState<LiveChatVisibility>('minimized')
 
   return (
-    <div className="marketing-hero-bg trustpilot-panel-bg trustpilot-panel-surface relative flex min-h-screen flex-col">
-      <div className="trustpilot-panel-radial pointer-events-none absolute inset-0" aria-hidden />
+    <div className="marketing-hero-bg marketing-page-bg relative flex min-h-screen flex-col">
+      <div className="trustpilot-panel-radial pointer-events-none absolute inset-0 hidden dark:block" aria-hidden />
       <LiveChatWidget visibility={chatVisibility} onVisibilityChanged={setChatVisibility} />
       <MarketingHeader />
 

@@ -104,8 +104,8 @@ export const landingFr: LandingTranslations = {
     },
   },
   integrations: {
-    title: 'Une intégration fluide avec les plateformes leaders',
-    highlight: 'intégration fluide',
+    title: 'Compatible avec les plateformes leaders',
+    highlight: 'plateformes leaders',
   },
   whyChoose: {
     statsCaption: 'Utilisé par des traders des fournisseurs de signaux Telegram les plus populaires',
