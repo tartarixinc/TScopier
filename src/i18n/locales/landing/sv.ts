@@ -19,7 +19,7 @@ export const landingSv: LandingTranslations = {
     headlinePhrases: ['Handelssignaler', 'Social trading', 'Kontospegling'],
     subheadline:
       'Automatisera dina affärer från Telegram, WhatsApp, Discord, TradingView eller ett masterkonto till 8+ mäklarplattformar på under 50 ms. Ingen VPS krävs.',
-    socialProof: 'Rankad #1 molnbaserad Telegram-signalkopierare',
+    socialProof: 'TScopier.ai är nu UniCopier',
     primaryCta: 'Starta din 5-dagars gratis provperiod',
     secondaryCta: 'Logga in',
     imageAlt:

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import clsx from 'clsx'
 import { Link } from 'react-router-dom'
 import { Menu, X } from 'lucide-react'
 import { TscopierLogo } from '../ui/TscopierLogo'
@@ -67,10 +68,17 @@ function MarketingNavLink({
   )
 }
 
+/** At the top of the page the bar is invisible; it keeps the same footprint so nothing shifts on scroll. */
+const GLASS_BAR =
+  'border border-transparent bg-transparent shadow-none backdrop-blur-none'
+const GLASS_BAR_SCROLLED =
+  'border border-white/80 bg-white/80 shadow-[0_10px_40px_rgba(15,23,42,0.12)] backdrop-blur-2xl dark:border-white/10 dark:bg-neutral-950/70 dark:shadow-[0_10px_40px_rgba(0,0,0,0.55)]'
+
 export function MarketingHeader() {
   const l = useT().landing.nav
   const { auth } = useLocale()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [scrolled, setScrolled] = useState(false)
 
   // Close the drawer when the viewport can show the desktop nav (avoids stuck open state).
   useEffect(() => {
@@ -83,27 +91,40 @@ export function MarketingHeader() {
     return () => mq.removeEventListener('change', onChange)
   }, [])
 
+  // Floating bar firms up once the page moves under it.
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8)
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
   const closeMobile = () => setMobileOpen(false)
 
   const desktopLinkClass =
-    'whitespace-nowrap text-sm font-medium text-neutral-900 transition-colors hover:text-green-500 dark:text-neutral-50 dark:hover:text-green-400'
+    'whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-900/[0.06] hover:text-neutral-950 dark:text-neutral-300 dark:hover:bg-white/10 dark:hover:text-white'
   const mobileLinkClass =
-    'rounded-lg px-3 py-2.5 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-100 dark:text-neutral-50 dark:hover:bg-white/10'
+    'rounded-xl px-3 py-2.5 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-900/[0.06] dark:text-neutral-50 dark:hover:bg-white/10'
 
   return (
-    <header className="fixed inset-x-0 top-0 z-50 border-b border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-950">
-      <div className="mx-auto flex h-16 max-w-[90rem] items-center gap-3 px-5 sm:px-8 lg:gap-6">
+    <header className="pointer-events-none fixed inset-x-0 top-0 z-50 px-3 pt-3 sm:px-5 sm:pt-4">
+      <div
+        className={clsx(
+          'pointer-events-auto mx-auto flex h-14 max-w-6xl items-center gap-2 rounded-full ps-4 pe-2 transition-[background-color,border-color,box-shadow,backdrop-filter] duration-300 sm:ps-5 lg:gap-4',
+          scrolled ? GLASS_BAR_SCROLLED : GLASS_BAR,
+        )}
+      >
         <Link
           to="/"
           className="flex shrink-0 items-center"
           aria-label="UniCopier home"
           onClick={closeMobile}
         >
-          <TscopierLogo className="h-9 w-auto sm:h-10" />
+          <TscopierLogo className="h-8 w-auto sm:h-9" />
         </Link>
 
         <nav
-          className="hidden min-w-0 flex-1 items-center justify-center gap-6 overflow-hidden lg:flex xl:gap-8"
+          className="hidden min-w-0 flex-1 items-center justify-center gap-0.5 lg:flex"
           aria-label="Main"
         >
           {marketingNavItems().map(item => (
@@ -118,11 +139,11 @@ export function MarketingHeader() {
 
         <div className="ms-auto flex shrink-0 items-center gap-1 lg:ms-0">
           <LanguageSwitcher />
-          <ThemeToggle />
+          <ThemeToggle className="rounded-full" />
           <MarketingAuthCta variant="header" />
           <button
             type="button"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-neutral-900 transition-colors hover:bg-neutral-100 hover:text-neutral-900 lg:hidden dark:text-neutral-50 dark:hover:bg-white/10 dark:hover:text-neutral-100"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-neutral-900 transition-colors hover:bg-neutral-900/[0.06] lg:hidden dark:text-neutral-50 dark:hover:bg-white/10"
             aria-expanded={mobileOpen}
             aria-controls="marketing-mobile-nav"
             aria-label={mobileOpen ? l.menuClose : l.menuOpen}
@@ -136,7 +157,10 @@ export function MarketingHeader() {
       {mobileOpen && (
         <nav
           id="marketing-mobile-nav"
-          className="flex flex-col gap-1 border-t border-neutral-200 bg-white px-5 py-3 dark:border-neutral-800 dark:bg-neutral-950 sm:px-8 lg:hidden"
+          className={clsx(
+            'pointer-events-auto mx-auto mt-2 flex max-w-6xl flex-col gap-1 rounded-3xl px-3 py-3 lg:hidden',
+            GLASS_BAR_SCROLLED,
+          )}
           aria-label="Main mobile"
         >
           {marketingNavItems().map(item => (
@@ -148,7 +172,7 @@ export function MarketingHeader() {
               onClick={closeMobile}
             />
           ))}
-          <div className="flex items-center justify-between gap-2 border-t border-neutral-200/80 px-2 py-2 dark:border-neutral-700/80">
+          <div className="flex items-center justify-between gap-2 border-t border-neutral-200/80 px-2 py-2 dark:border-white/10">
             <span className="text-xs font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
               {auth.language.label}
             </span>

@@ -19,7 +19,7 @@ export const landingAr: LandingTranslations = {
     headlinePhrases: ['إشارات التداول', 'التداول الاجتماعي', 'مرآة الحسابات'],
     subheadline:
       'أتمت تداولاتك من Telegram أو WhatsApp أو Discord أو TradingView أو حساب رئيسي إلى أكثر من 8 منصات وساطة في أقل من 50 مللي ثانية. بدون VPS.',
-    socialProof: 'مصنف رقم 1 كناسخ إشارات Telegram سحابي',
+    socialProof: 'أصبح TScopier.ai الآن UniCopier',
     primaryCta: 'ابدأ تجربتك المجانية لمدة 5 أيام',
     secondaryCta: 'تسجيل الدخول',
     imageAlt:

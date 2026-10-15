@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react'
 import clsx from 'clsx'
+import { ArrowRight, Megaphone } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { HeroDashboardPreview } from '../HeroDashboardPreview'
 import { MarketingAuthCta } from '../MarketingAuthCta'
 import { MarketingPricingHint } from '../MarketingPricingHint'
 import { useT } from '../../../context/LocaleContext'
+import { useLandingAnnouncement } from '../../../hooks/useLandingAnnouncement'
+import type { LandingAnnouncement } from '../../../lib/landingAnnouncement'
 
 const GLASS =
   'border border-white/70 bg-white/55 shadow-[0_8px_32px_rgba(15,23,42,0.08)] backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.06] dark:shadow-[0_8px_32px_rgba(0,0,0,0.4)]'
@@ -47,11 +51,51 @@ function RotatingHeroPhrase({ phrases }: { phrases: string[] }) {
   )
 }
 
+function AnnouncementTag({ announcement }: { announcement: LandingAnnouncement }) {
+  const className = clsx(
+    'inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-medium text-neutral-800 dark:text-neutral-100 sm:text-sm',
+    GLASS,
+  )
+  const content = (
+    <>
+      <Megaphone className="h-4 w-4 shrink-0 text-green-500 dark:text-green-400" aria-hidden />
+      {announcement.message}
+      {announcement.linkHref ? <ArrowRight className="h-3.5 w-3.5" aria-hidden /> : null}
+    </>
+  )
+  const href = announcement.linkHref
+  if (!href) return <div className={className}>{content}</div>
+  if (/^https?:\/\//i.test(href) || href.startsWith('//')) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={announcement.linkLabel ?? undefined}
+        className={clsx(className, 'transition-colors hover:bg-white/80 dark:hover:bg-white/10')}
+      >
+        {content}
+      </a>
+    )
+  }
+  return (
+    <Link
+      to={href}
+      aria-label={announcement.linkLabel ?? undefined}
+      className={clsx(className, 'transition-colors hover:bg-white/80 dark:hover:bg-white/10')}
+    >
+      {content}
+    </Link>
+  )
+}
+
 export function HeroSection() {
   const l = useT().landing
+  const announcement = useLandingAnnouncement()
 
+  // -mt-16 / pt-16 pulls the hero background up under the (transparent) floating nav, so it runs to the top of the page.
   return (
-    <section id="product" className="relative scroll-mt-20 overflow-hidden bg-white dark:bg-transparent">
+    <section id="product" className="relative -mt-16 scroll-mt-20 overflow-hidden bg-white pt-16 dark:bg-transparent">
       {/* Aurora + faint grid. Only decoration, the glass surfaces below pick the colour up. */}
       <div className="pointer-events-none absolute inset-0" aria-hidden>
         <div className="marketing-hero-grid [mask-image:radial-gradient(ellipse_70%_55%_at_50%_0%,black,transparent)]" />
@@ -67,14 +111,8 @@ export function HeroSection() {
       </div>
 
       <div className="relative z-[1] mx-auto flex max-w-6xl flex-col items-center px-5 pb-16 pt-14 text-center sm:px-8 sm:pt-20 lg:pb-24">
-        {l.hero.socialProof ? (
-          <div className={clsx('inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-medium text-neutral-800 dark:text-neutral-100 sm:text-sm', GLASS)}>
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400/70" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-green-400" />
-            </span>
-            {l.hero.socialProof}
-          </div>
+        {announcement ? (
+          <AnnouncementTag announcement={announcement} />
         ) : null}
 
         <h1 className="mt-6 max-w-4xl text-4xl font-semibold tracking-tighter text-neutral-950 dark:text-neutral-50 sm:text-6xl lg:text-7xl lg:leading-[1.04]">

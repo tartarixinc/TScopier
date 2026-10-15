@@ -19,7 +19,7 @@ export const landingEn: LandingTranslations = {
     headlinePhrases: ['Trading Signals', 'Social Trading', 'Account Mirroring'],
     subheadline:
       'Automate your trades from Telegram, WhatsApp, Discord, TradingView, or a Master Account to 8+ broker platforms in under 50ms. No VPS required.',
-    socialProof: 'Rated #1 Cloud-based Telegram Signal Copier',
+    socialProof: 'TScopier.ai is now UniCopier',
     primaryCta: 'Start your 5-day free trial',
     secondaryCta: 'Sign in',
     imageAlt:

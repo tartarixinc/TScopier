@@ -19,7 +19,7 @@ export const landingPl: LandingTranslations = {
     headlinePhrases: ['Sygnałów tradingowych', 'Tradingu społecznościowego', 'Mirroringu kont'],
     subheadline:
       'Automatyzuj transakcje z Telegrama, WhatsApp, Discorda, TradingView lub konta master na ponad 8 platform brokerskich w mniej niż 50 ms. Bez VPS.',
-    socialProof: 'Ocena #1 cloudowy kopiark sygnałów Telegram',
+    socialProof: 'TScopier.ai to teraz UniCopier',
     primaryCta: 'Rozpocznij 5-dniowy bezpłatny okres próbny',
     secondaryCta: 'Zaloguj się',
     imageAlt:

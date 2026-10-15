@@ -19,7 +19,7 @@ export const landingRu: LandingTranslations = {
     headlinePhrases: ['Торговых сигналов', 'Социального трейдинга', 'Зеркалирования счетов'],
     subheadline:
       'Автоматизируйте сделки из Telegram, WhatsApp, Discord, TradingView или мастер-счёта на 8+ брокерских платформ менее чем за 50 мс. VPS не требуется.',
-    socialProof: 'Рейтинг №1 облачный копировщик сигналов Telegram',
+    socialProof: 'TScopier.ai теперь UniCopier',
     primaryCta: 'Начните 5-дневный бесплатный пробный период',
     secondaryCta: 'Войти',
     imageAlt:
