@@ -6,6 +6,9 @@ import type { SocialDirectoryProfile, SocialFollowErrorKind } from '../../lib/so
 import { Alert } from '../ui/Alert'
 import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
+import { SocialCopyPanel } from './SocialCopyPanel'
+import { SocialTradeHistoryPanel } from './SocialTradeHistoryPanel'
+import { TraderReviews } from './TraderReviews'
 
 function socialErrorMessage(kind: SocialFollowErrorKind, copy: SocialTradingPageTranslations): string {
   if (kind === 'verification_required') return copy.socialErrorVerification
@@ -119,6 +122,7 @@ export function SocialFollowDirectory({ copy }: { copy: SocialTradingPageTransla
       </div>
 
       {social.error ? <Alert variant="error">{socialErrorMessage(social.error.kind, copy)}</Alert> : null}
+      {social.success ? <Alert variant="success">Social directory updated.</Alert> : null}
 
       {!social.loading && !self ? (
         <Card>
@@ -194,7 +198,7 @@ export function SocialFollowDirectory({ copy }: { copy: SocialTradingPageTransla
                   const pending = social.pendingKeys.has(`outgoing:${profile.profileUserId}`)
                   return (
                     <tr key={profile.profileUserId} className="border-t border-neutral-100 dark:border-neutral-800">
-                      <td className="px-4 py-3"><Link className="font-medium text-neutral-900 hover:text-teal-700 dark:text-neutral-50" to={`/social-trading/${profile.profileUserId}`}>{profile.isSelf ? copy.you : profile.displayName}</Link><p className="text-xs text-neutral-500">@{profile.username}{profile.country ? ` Â· ${profile.country}` : ''}</p></td>
+                      <td className="px-4 py-3"><Link className="font-medium text-neutral-900 hover:text-teal-700 dark:text-neutral-50" to={`/social-trading/${profile.profileUserId}`}>{profile.isSelf ? copy.you : profile.displayName}</Link><p className="text-xs text-neutral-500">@{profile.username}{profile.country ? ` · ${profile.country}` : ''}</p></td>
                       <td className="px-3 py-3">{profile.access === 'open' ? copy.open : copy.private}</td>
                       <td className="px-3 py-3">{profile.followerCount}</td>
                       <td className="px-3 py-3">{profile.followingCount}</td>
@@ -202,7 +206,10 @@ export function SocialFollowDirectory({ copy }: { copy: SocialTradingPageTransla
                         {profile.isSelf ? (
                           <AccessSelect profile={profile} copy={copy} pending={social.pendingKeys.has('access')} onChange={access => void social.setAccess(access)} />
                         ) : (
-                          <FollowButton profile={profile} copy={copy} pending={pending} eligible={Boolean(self)} onFollow={() => void social.follow(profile.profileUserId)} onRemove={() => void social.remove(profile.profileUserId)} />
+                          <div className="flex items-center justify-end gap-2">
+                            <TraderReviews traderUserId={profile.profileUserId} traderName={profile.displayName} isSelf={false} averageRating={profile.averageRating} reviewCount={profile.reviewCount} />
+                            <FollowButton profile={profile} copy={copy} pending={pending} eligible={Boolean(self)} onFollow={() => void social.follow(profile.profileUserId)} onRemove={() => void social.remove(profile.profileUserId)} />
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -222,17 +229,29 @@ export function SocialFollowProfile({ profileUserId, copy }: { profileUserId: st
   const profile = social.profiles.find(item => item.profileUserId === profileUserId) ?? null
 
   if (social.loading) return <Card><p className="text-sm text-neutral-500">{copy.loadingDirectory}</p></Card>
-  if (social.error) return <Alert variant="error">{socialErrorMessage(social.error.kind, copy)}</Alert>
   if (!profile) return <Card><p className="text-sm text-neutral-500">{copy.notFound}</p></Card>
 
   const outgoingPending = social.pendingKeys.has(`outgoing:${profile.profileUserId}`)
   return (
     <div className="space-y-4">
+      {social.error ? <Alert variant="error">{socialErrorMessage(social.error.kind, copy)}</Alert> : null}
+      {social.success ? <Alert variant="success">Social directory updated.</Alert> : null}
+      {!social.currentProfile && !profile.isSelf ? (
+        <Card>
+          <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{copy.joinTitle}</h2>
+          <p className="mt-1 text-sm leading-6 text-neutral-500 dark:text-neutral-400">{copy.joinBody}</p>
+          <Button type="button" size="sm" className="mt-3"
+            disabled={social.pendingKeys.has('register')}
+            onClick={() => void social.register()}>
+            {copy.joinAction}
+          </Button>
+        </Card>
+      ) : null}
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-50">{profile.isSelf ? copy.you : profile.displayName}</h1>
-            <p className="mt-1 text-sm text-neutral-500">@{profile.username}{profile.country ? ` Â· ${profile.country}` : ''}</p>
+            <p className="mt-1 text-sm text-neutral-500">@{profile.username}{profile.country ? ` · ${profile.country}` : ''}</p>
             <p className="mt-3 text-sm text-neutral-500">{copy.performanceUnavailable}</p>
           </div>
           {profile.isSelf ? (
@@ -246,6 +265,9 @@ export function SocialFollowProfile({ profileUserId, copy }: { profileUserId: st
         <Card><p className="text-xs text-neutral-500">{copy.followers}</p><p className="mt-1 text-xl font-semibold">{profile.followerCount}</p></Card>
         <Card><p className="text-xs text-neutral-500">{copy.following}</p><p className="mt-1 text-xl font-semibold">{profile.followingCount}</p></Card>
       </div>
+      <TraderReviews traderUserId={profile.profileUserId} traderName={profile.displayName} isSelf={profile.isSelf} averageRating={profile.averageRating} reviewCount={profile.reviewCount} expanded />
+      <SocialTradeHistoryPanel traderUserId={profile.profileUserId} isSelf={profile.isSelf} />
+      <SocialCopyPanel traderUserId={profile.profileUserId} isSelf={profile.isSelf} />
     </div>
   )
 }
