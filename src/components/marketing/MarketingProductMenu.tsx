@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
-import { ArrowRight, ChevronDown, Copy, Radio, Users, type LucideIcon } from 'lucide-react'
+import { ArrowRight, ChevronDown, Copy, Radio, Star, Users, type LucideIcon } from 'lucide-react'
 import clsx from 'clsx'
 import { useT } from '../../context/LocaleContext'
 import { appUrl, marketingUrl } from '../../lib/site'
@@ -197,6 +197,13 @@ export function MarketingProductMenu({ triggerClassName }: { triggerClassName: s
   )
 }
 
+/** Illustrative rows, mirroring the in-app Social Trading list. */
+const SAMPLE_TRADERS = [
+  { name: 'Amira Hassan', rating: 4.8, roi: '34.2%', following: true },
+  { name: 'Nora Okonkwo', rating: 4.6, roi: '27.8%', following: false },
+  { name: 'Kenji Sato', rating: 4.0, roi: '9.1%', following: false },
+] as const
+
 const ACCENT_GLOW: Record<ProductKey, { a: string; b: string }> = {
   signalCopier: { a: 'bg-green-400/35', b: 'bg-cyan-400/20' },
   socialTrading: { a: 'bg-sky-400/35', b: 'bg-green-400/20' },
@@ -260,23 +267,43 @@ function DetailPanel({ active, onNavigate }: { active: ProductKey; onNavigate: (
         ) : null}
 
         {active === 'socialTrading' ? (
-          <div className="mt-4 space-y-2">
-            {[
-              { label: copy.labels.roi, value: '+128%', bar: 'w-[78%]' },
-              { label: copy.labels.winRate, value: '74%', bar: 'w-[74%]' },
-              { label: copy.labels.followers, value: '1.2K', bar: 'w-[52%]' },
-            ].map(metric => (
-              <div key={metric.label} className="rounded-xl bg-white/[0.07] px-3 py-2.5 ring-1 ring-white/10">
-                <div className="flex items-baseline justify-between text-xs">
-                  <span className="text-neutral-300">{metric.label}</span>
-                  <span className="font-semibold text-white">{metric.value}</span>
-                </div>
-                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
-                  <div className={clsx('h-full rounded-full bg-sky-400', metric.bar)} />
-                </div>
-              </div>
+          <ul className="mt-4 divide-y divide-neutral-200 overflow-hidden rounded-xl bg-white text-neutral-900 shadow-lg" role="list">
+            {SAMPLE_TRADERS.map(trader => (
+              <li key={trader.name} className="flex items-center gap-2.5 px-3 py-2.5">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">
+                  {trader.name[0]}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs font-semibold leading-tight">{trader.name}</span>
+                  <span className="mt-0.5 flex items-center gap-1">
+                    <span className="flex" aria-hidden>
+                      {[1, 2, 3, 4, 5].map(n => (
+                        <Star
+                          key={n}
+                          className={clsx('h-2.5 w-2.5', n <= Math.round(trader.rating) ? 'fill-green-400 text-green-400' : 'fill-transparent text-neutral-300')}
+                        />
+                      ))}
+                    </span>
+                    <span className="text-[0.65rem] text-neutral-600">{trader.rating.toFixed(1)}</span>
+                  </span>
+                </span>
+                <span className="text-end">
+                  <span className="block text-xs font-semibold">{trader.roi}</span>
+                  <span className="block text-[0.6rem] uppercase tracking-wide text-neutral-500">{copy.labels.roi}</span>
+                </span>
+                <span
+                  className={clsx(
+                    'shrink-0 rounded-md px-2 py-1 text-[0.65rem] font-semibold',
+                    trader.following
+                      ? 'border border-neutral-200 bg-white text-neutral-900'
+                      : 'bg-green-400 text-neutral-950',
+                  )}
+                >
+                  {trader.following ? copy.labels.following : copy.labels.copyTrader}
+                </span>
+              </li>
             ))}
-          </div>
+          </ul>
         ) : null}
 
         {active === 'accountMirroring' ? (

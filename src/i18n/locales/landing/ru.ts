@@ -22,7 +22,7 @@ export const landingRu: LandingTranslations = {
       featuredBody: 'MT4, MT5, cTrader, Binance, Bybit и KuCoin. VPS не нужен.',
       socialPanel: { title: 'Копируйте проверенных трейдеров', body: 'Сравнивайте результаты и подписывайтесь на трейдеров, которым доверяете.' },
       mirrorPanel: { title: 'Один главный счёт — много счетов', body: 'Подключите главный счёт, и каждый подчинённый счёт автоматически повторяет его сделки.' },
-      labels: { roi: 'ROI', winRate: 'Винрейт', followers: 'Подписчики', master: 'Главный', slave: 'Подчинённый' },
+      labels: { roi: 'ROI', winRate: 'Винрейт', following: 'Вы подписаны', copyTrader: 'Копировать трейдера', master: 'Главный', slave: 'Подчинённый' },
       exploreFeatures: 'Все возможности',
       viewPricing: 'Посмотреть тарифы',
     },

@@ -22,7 +22,7 @@ export const landingNl: LandingTranslations = {
       featuredBody: 'MT4, MT5, cTrader, Binance, Bybit en KuCoin. Geen VPS nodig.',
       socialPanel: { title: 'Kopieer bewezen traders', body: 'Vergelijk prestaties en volg de traders die je vertrouwt.' },
       mirrorPanel: { title: 'Eén master, meerdere accounts', body: 'Koppel een masteraccount en elk slave-account volgt de trades automatisch.' },
-      labels: { roi: 'ROI', winRate: 'Winstpercentage', followers: 'Volgers', master: 'Master', slave: 'Slave' },
+      labels: { roi: 'ROI', winRate: 'Winstpercentage', following: 'Volgend', copyTrader: 'Trader kopiëren', master: 'Master', slave: 'Slave' },
       exploreFeatures: 'Bekijk alle functies',
       viewPricing: 'Bekijk prijzen',
     },

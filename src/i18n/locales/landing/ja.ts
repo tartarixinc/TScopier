@@ -22,7 +22,7 @@ export const landingJa: LandingTranslations = {
       featuredBody: 'MT4、MT5、cTrader、Binance、Bybit、KuCoin。VPS不要。',
       socialPanel: { title: '実績あるトレーダーをコピー', body: 'パフォーマンスを比較し、信頼できるトレーダーをフォローします。' },
       mirrorPanel: { title: '1つのマスターで複数の口座へ', body: 'マスター口座を接続すると、すべてのスレーブ口座が取引を自動で追従します。' },
-      labels: { roi: 'ROI', winRate: '勝率', followers: 'フォロワー', master: 'マスター', slave: 'スレーブ' },
+      labels: { roi: 'ROI', winRate: '勝率', following: 'フォロー中', copyTrader: 'トレーダーをコピー', master: 'マスター', slave: 'スレーブ' },
       exploreFeatures: 'すべての機能を見る',
       viewPricing: '料金を見る',
     },

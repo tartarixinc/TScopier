@@ -351,7 +351,7 @@ export interface LandingTranslations {
       /** Right-hand detail panel for Social Trading (the Signal Copier panel uses featuredTitle/featuredBody). */
       socialPanel: { title: string; body: string }
       mirrorPanel: { title: string; body: string }
-      labels: { roi: string; winRate: string; followers: string; master: string; slave: string }
+      labels: { roi: string; winRate: string; following: string; copyTrader: string; master: string; slave: string }
       exploreFeatures: string
       viewPricing: string
     }

@@ -22,7 +22,7 @@ export const landingPl: LandingTranslations = {
       featuredBody: 'MT4, MT5, cTrader, Binance, Bybit i KuCoin. Bez VPS.',
       socialPanel: { title: 'Kopiuj sprawdzonych traderów', body: 'Porównuj wyniki i obserwuj traderów, którym ufasz.' },
       mirrorPanel: { title: 'Jedno konto główne, wiele kont', body: 'Połącz konto główne, a każde konto podrzędne automatycznie naśladuje jego transakcje.' },
-      labels: { roi: 'ROI', winRate: 'Skuteczność', followers: 'Obserwujący', master: 'Główne', slave: 'Podrzędne' },
+      labels: { roi: 'ROI', winRate: 'Skuteczność', following: 'Obserwujesz', copyTrader: 'Kopiuj tradera', master: 'Główne', slave: 'Podrzędne' },
       exploreFeatures: 'Zobacz wszystkie funkcje',
       viewPricing: 'Zobacz cennik',
     },

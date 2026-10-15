@@ -22,7 +22,7 @@ export const landingAr: LandingTranslations = {
       featuredBody: 'MT4 وMT5 وcTrader وBinance وBybit وKuCoin. بدون VPS.',
       socialPanel: { title: 'انسخ متداولين مُثبتين', body: 'قارن الأداء وتابع المتداولين الذين تثق بهم.' },
       mirrorPanel: { title: 'حساب رئيسي، حسابات عديدة', body: 'اربط حسابًا رئيسيًا وستتبع كل الحسابات التابعة صفقاته تلقائيًا.' },
-      labels: { roi: 'العائد', winRate: 'نسبة الربح', followers: 'المتابعون', master: 'رئيسي', slave: 'تابع' },
+      labels: { roi: 'العائد', winRate: 'نسبة الربح', following: 'تتابعه', copyTrader: 'انسخ المتداول', master: 'رئيسي', slave: 'تابع' },
       exploreFeatures: 'استعرض كل الميزات',
       viewPricing: 'عرض الأسعار',
     },

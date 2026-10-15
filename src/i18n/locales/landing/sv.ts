@@ -22,7 +22,7 @@ export const landingSv: LandingTranslations = {
       featuredBody: 'MT4, MT5, cTrader, Binance, Bybit och KuCoin. Ingen VPS behövs.',
       socialPanel: { title: 'Kopiera beprövade traders', body: 'Jämför prestanda och följ de traders du litar på.' },
       mirrorPanel: { title: 'Ett huvudkonto, många konton', body: 'Anslut ett huvudkonto så följer varje slavkonto dess affärer automatiskt.' },
-      labels: { roi: 'ROI', winRate: 'Vinstandel', followers: 'Följare', master: 'Huvud', slave: 'Slav' },
+      labels: { roi: 'ROI', winRate: 'Vinstandel', following: 'Följer', copyTrader: 'Kopiera trader', master: 'Huvud', slave: 'Slav' },
       exploreFeatures: 'Se alla funktioner',
       viewPricing: 'Se priser',
     },
