@@ -9,7 +9,6 @@ export const accountConfigSv: AccountConfigBundleTranslations = {
     addAccount: {
       title: 'Lägg till ett handelskonto',
       subtitle: 'Välj din föredragna handelsplattform för att komma igång',
-      footerHint: 'Fler plattformar kommer snart',
       comingSoonBadge: 'Kommer snart',
       assetForex: 'Forex',
       assetCrypto: 'Krypto',
@@ -35,6 +34,7 @@ export const accountConfigSv: AccountConfigBundleTranslations = {
       platformBinance: 'Binance Futures (USD-M)',
       platformBybit: 'Bybit Futures (Linear)',
       platformKucoin: 'KuCoin Futures',
+      selectAnotherPlatform: 'Välj en annan plattform',
       binanceConnectHint: 'Klistra in en Futures API-nyckel och hemlighet. Aktivera Futures på nyckeln och låt uttag vara avstängda. Signaler öppnar positioner utifrån din marginal och hävstång.',
       binanceApiKeyLabel: 'API-nyckel',
       binanceApiSecretLabel: 'API-hemlighet',

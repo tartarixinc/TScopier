@@ -9,7 +9,6 @@ export const accountConfigAr: AccountConfigBundleTranslations = {
     addAccount: {
       title: 'إضافة حساب تداول',
       subtitle: 'اختر منصة التداول المفضلة لديك للبدء',
-      footerHint: 'منصات إضافية قريبًا',
       comingSoonBadge: 'قريبًا',
       assetForex: 'الفوركس',
       assetCrypto: 'العملات الرقمية',
@@ -35,6 +34,7 @@ export const accountConfigAr: AccountConfigBundleTranslations = {
       platformBinance: 'Binance Futures (USD-M)',
       platformBybit: 'Bybit Futures (Linear)',
       platformKucoin: 'KuCoin Futures',
+      selectAnotherPlatform: 'اختر منصة أخرى',
       binanceConnectHint: 'الصق مفتاح API للعقود الآجلة مع السر. فعّل Futures على المفتاح واترك السحب معطلاً. تفتح الإشارات صفقات بحجم يُحسب من هامشك ورافعتك.',
       binanceApiKeyLabel: 'مفتاح API',
       binanceApiSecretLabel: 'سر API',

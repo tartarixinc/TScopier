@@ -718,7 +718,6 @@ export const fr: Translations = {
     addAccount: {
       title: 'Ajouter un compte de trading',
       subtitle: 'Choisissez votre plateforme de trading pour commencer',
-      footerHint: 'D\'autres plateformes bientôt disponibles',
       comingSoonBadge: 'Bientôt disponible',
       assetForex: 'Forex',
       assetCrypto: 'Crypto',
@@ -744,6 +743,7 @@ export const fr: Translations = {
       platformBinance: 'Binance Futures (USD-M)',
       platformBybit: 'Bybit Futures (Linear)',
       platformKucoin: 'KuCoin Futures',
+      selectAnotherPlatform: 'Choisir une autre plateforme',
       binanceConnectHint: 'Collez une clé API Futures et son secret. Activez Futures sur la clé et laissez les retraits désactivés. Les signaux ouvrent des positions selon votre marge et votre levier.',
       binanceApiKeyLabel: 'Clé API',
       binanceApiSecretLabel: 'Secret API',

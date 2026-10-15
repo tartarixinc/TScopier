@@ -35,7 +35,7 @@ export const en: Translations = {
     items: {
       dashboard: 'Dashboard',
       configuration: 'Configurations',
-      brokers: 'Trade Configuration',
+      brokers: 'Trading Account',
       mirrorTrading: 'Mirror Account',
       socialTrading: 'Social Trading',
       trades: 'Trades',
@@ -715,7 +715,6 @@ broker: {
     addAccount: {
       title: 'Add a trading account',
       subtitle: 'Choose your preferred trading platform to get started',
-      footerHint: 'More platforms coming soon',
       comingSoonBadge: 'Coming Soon',
       assetForex: 'Forex',
       assetCrypto: 'Crypto',
@@ -741,6 +740,7 @@ broker: {
       platformBinance: 'Binance Futures (USD-M)',
       platformBybit: 'Bybit Futures (Linear)',
       platformKucoin: 'KuCoin Futures',
+      selectAnotherPlatform: 'Select another platform',
       binanceConnectHint: 'Paste a Futures API key and secret. Enable Futures on the key and leave withdrawals off. Signals open positions sized from your margin and leverage.',
       binanceApiKeyLabel: 'API key',
       binanceApiSecretLabel: 'API secret',
@@ -2168,7 +2168,7 @@ broker: {
   },
   pages: {
     accountConfiguration: {
-      title: 'Trade Configuration',
+      title: 'Trading Account',
       description: 'Connect MetaTrader accounts and tune how each one copies signals.',
     },
     brokers: {

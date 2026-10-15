@@ -65,6 +65,8 @@ type ConnectTradingAccountModalProps = {
   onBatchSuccess?: (result: BulkConnectResult) => void
   /** Platform chosen in the Add account picker. Applied each time the modal opens. */
   initialPlatform?: TradingPlatform | null
+  /** Go back to the platform picker. The button is hidden when omitted. */
+  onChangePlatform?: () => void
 }
 
 type ConnectStep = 0 | 1 | 2
@@ -79,6 +81,7 @@ export function ConnectTradingAccountModal({
   onSuccess,
   onBatchSuccess,
   initialPlatform,
+  onChangePlatform,
 }: ConnectTradingAccountModalProps) {
   const t = useT()
   const cf = t.accountConfig.connectForm
@@ -555,40 +558,6 @@ export function ConnectTradingAccountModal({
             {error ? <PaywallErrorAlert message={error} className="mb-4" /> : null}
 
             <form onSubmit={handleSubmit} className={clsx('space-y-4', saving && 'pointer-events-none opacity-60')}>
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
-                  {cf.platformLabel}
-                </p>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {(['MT5', 'MT4', 'cTrader', 'Binance', 'Bybit', 'KuCoin'] as const).map(option => (
-                    <button
-                      key={option}
-                      type="button"
-                      onClick={() => setPlatform(option)}
-                      aria-pressed={selectedPlatform === option}
-                      className={clsx(
-                        'rounded-xl border px-3 py-2.5 text-left text-sm transition-colors',
-                        selectedPlatform === option
-                          ? 'border-green-400 bg-teal-50 text-teal-900 dark:border-green-400 dark:bg-teal-950/40 dark:text-teal-100'
-                          : 'border-neutral-200/65 bg-white text-neutral-900 hover:border-neutral-300 dark:border-neutral-800/55 dark:bg-neutral-900 dark:text-neutral-50 dark:hover:border-neutral-700',
-                      )}
-                    >
-                      {option === 'MT5'
-                        ? cf.platformMt5
-                        : option === 'MT4'
-                          ? cf.platformMt4
-                          : option === 'cTrader'
-                            ? cf.platformCtrader
-                            : option === 'Binance'
-                              ? cf.platformBinance
-                              : option === 'Bybit'
-                                ? cf.platformBybit
-                                : cf.platformKucoin}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               {ctraderSelected ? (
                 <div className="space-y-4 rounded-2xl border border-neutral-100 p-4 dark:border-neutral-800">
                   <p className="text-sm text-neutral-900 dark:text-neutral-50">{cf.ctraderConnectHint}</p>
@@ -893,6 +862,14 @@ export function ConnectTradingAccountModal({
               </div>
             ) : null}
           </div>
+
+          {onChangePlatform ? (
+            <div className="flex shrink-0 justify-end border-t border-neutral-100 px-6 py-4 dark:border-neutral-800 sm:px-8">
+              <Button type="button" variant="secondary" size="sm" onClick={onChangePlatform} disabled={saving}>
+                {cf.selectAnotherPlatform}
+              </Button>
+            </div>
+          ) : null}
         </div>
       </div>
 

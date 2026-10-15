@@ -154,7 +154,6 @@ export function AddAccountPlatformModal({ open, onClose, onSelect }: AddAccountP
             })}
           </ul>
 
-          <p className="mt-6 text-center text-xs text-neutral-900 dark:text-neutral-50">{copy.footerHint}</p>
         </div>
       </div>
     </div>

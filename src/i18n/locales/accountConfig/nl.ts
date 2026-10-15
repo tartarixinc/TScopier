@@ -9,7 +9,6 @@ export const accountConfigNl: AccountConfigBundleTranslations = {
     addAccount: {
       title: 'Een tradingaccount toevoegen',
       subtitle: 'Kies je gewenste handelsplatform om te beginnen',
-      footerHint: 'Meer platformen volgen binnenkort',
       comingSoonBadge: 'Binnenkort',
       assetForex: 'Forex',
       assetCrypto: 'Crypto',
@@ -35,6 +34,7 @@ export const accountConfigNl: AccountConfigBundleTranslations = {
       platformBinance: 'Binance Futures (USD-M)',
       platformBybit: 'Bybit Futures (Linear)',
       platformKucoin: 'KuCoin Futures',
+      selectAnotherPlatform: 'Kies een ander platform',
       binanceConnectHint: 'Plak een Futures API-sleutel en secret. Schakel Futures in op de sleutel en laat opnames uit. Signalen openen posities op basis van je marge en hefboom.',
       binanceApiKeyLabel: 'API-sleutel',
       binanceApiSecretLabel: 'API-secret',

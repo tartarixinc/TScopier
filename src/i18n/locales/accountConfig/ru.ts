@@ -9,7 +9,6 @@ export const accountConfigRu: AccountConfigBundleTranslations = {
     addAccount: {
       title: 'Добавить торговый счет',
       subtitle: 'Выберите предпочитаемую торговую платформу, чтобы начать',
-      footerHint: 'Скоро появятся новые платформы',
       comingSoonBadge: 'Скоро',
       assetForex: 'Форекс',
       assetCrypto: 'Крипто',
@@ -35,6 +34,7 @@ export const accountConfigRu: AccountConfigBundleTranslations = {
       platformBinance: 'Binance Futures (USD-M)',
       platformBybit: 'Bybit Futures (Linear)',
       platformKucoin: 'KuCoin Futures',
+      selectAnotherPlatform: 'Выбрать другую платформу',
       binanceConnectHint: 'Вставьте API-ключ Futures и секрет. Включите Futures для ключа и оставьте выводы отключёнными. Сигналы открывают позиции по вашей марже и плечу.',
       binanceApiKeyLabel: 'API-ключ',
       binanceApiSecretLabel: 'API-секрет',

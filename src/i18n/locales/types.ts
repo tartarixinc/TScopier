@@ -629,7 +629,6 @@ export interface CopierLogsTranslations {
 export interface AccountConfigAddAccountModalTranslations {
   title: string
   subtitle: string
-  footerHint: string
   comingSoonBadge: string
   comingSoonPlatform: string
   assetForex: string
@@ -656,6 +655,7 @@ export interface AccountConfigConnectFormTranslations {
   platformBinance: string
   platformBybit: string
   platformKucoin: string
+  selectAnotherPlatform: string
   binanceConnectHint: string
   binanceApiKeyLabel: string
   binanceApiSecretLabel: string

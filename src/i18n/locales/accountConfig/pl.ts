@@ -9,7 +9,6 @@ export const accountConfigPl: AccountConfigBundleTranslations = {
     addAccount: {
       title: 'Dodaj konto tradingowe',
       subtitle: 'Wybierz preferowaną platformę tradingową, aby rozpocząć',
-      footerHint: 'Wkrótce kolejne platformy',
       comingSoonBadge: 'Wkrótce',
       assetForex: 'Forex',
       assetCrypto: 'Krypto',
@@ -35,6 +34,7 @@ export const accountConfigPl: AccountConfigBundleTranslations = {
       platformBinance: 'Binance Futures (USD-M)',
       platformBybit: 'Bybit Futures (Linear)',
       platformKucoin: 'KuCoin Futures',
+      selectAnotherPlatform: 'Wybierz inną platformę',
       binanceConnectHint: 'Wklej klucz API Futures i sekret. Włącz Futures dla klucza i pozostaw wypłaty wyłączone. Sygnały otwierają pozycje o wielkości wynikającej z marży i dźwigni.',
       binanceApiKeyLabel: 'Klucz API',
       binanceApiSecretLabel: 'Sekret API',

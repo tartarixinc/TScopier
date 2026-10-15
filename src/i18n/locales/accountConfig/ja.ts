@@ -9,7 +9,6 @@ export const accountConfigJa: AccountConfigBundleTranslations = {
     addAccount: {
       title: '取引口座を追加',
       subtitle: '開始するには希望する取引プラットフォームを選択してください',
-      footerHint: '対応プラットフォームは順次追加予定です',
       comingSoonBadge: '近日対応',
       assetForex: 'FX',
       assetCrypto: '暗号資産',
@@ -35,6 +34,7 @@ export const accountConfigJa: AccountConfigBundleTranslations = {
       platformBinance: 'Binance Futures (USD-M)',
       platformBybit: 'Bybit Futures (Linear)',
       platformKucoin: 'KuCoin Futures',
+      selectAnotherPlatform: '別のプラットフォームを選択',
       binanceConnectHint: 'Futures の API キーとシークレットを貼り付けます。キーで Futures を有効にし、出金は無効のままにしてください。シグナルは証拠金とレバレッジからポジションサイズを決めて発注します。',
       binanceApiKeyLabel: 'API キー',
       binanceApiSecretLabel: 'API シークレット',

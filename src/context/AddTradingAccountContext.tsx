@@ -66,6 +66,11 @@ export function AddTradingAccountProvider({ children }: { children: ReactNode })
     setOpen(true)
   }, [])
 
+  const handleChangePlatform = useCallback(() => {
+    setOpen(false)
+    setPickerOpen(true)
+  }, [])
+
   const handlePickerClose = useCallback(() => {
     placementRef.current = null
     setPickerOpen(false)
@@ -200,6 +205,7 @@ export function AddTradingAccountProvider({ children }: { children: ReactNode })
       <ConnectTradingAccountModal
         open={open}
         initialPlatform={selectedPlatform}
+        onChangePlatform={handleChangePlatform}
         onClose={handleClose}
         onSuccess={handleConnectSuccess}
         onBatchSuccess={handleBatchSuccess}
