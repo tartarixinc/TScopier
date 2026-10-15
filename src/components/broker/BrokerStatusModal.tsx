@@ -14,6 +14,7 @@ import type { BrokerAccount } from '../../types/database'
 import { useOverlayDismiss } from '../../hooks/useOverlayDismiss'
 import { Button } from '../ui/Button'
 import { Badge } from '../ui/Badge'
+import { BinanceSettingsEditor } from './BinanceSettingsEditor'
 import { BrokerHealthCheckUnsupportedError, fxsocketBroker } from '../../lib/fxsocketBroker'
 import { brokerAccountHealthPatchFromMtStatus } from '../../lib/brokerHealth'
 import { resolveProvider } from '../../lib/brokerLink'
@@ -39,6 +40,7 @@ function platformLogo(platform: string): string | null {
   if (platform === 'MT5') return '/MT5.png'
   if (platform === 'MT4') return '/MT4.png'
   if (platform === 'cTrader') return '/cTrader.png'
+  if (platform === 'Binance') return '/Binance.png'
   return null
 }
 
@@ -284,6 +286,14 @@ function BrokerStatusModalInner({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {resolveProvider(broker) === 'binance' ? (
+            <div className="mb-3">
+              <BinanceSettingsEditor
+                broker={broker}
+                onSaved={account => onAccountUpdate?.(account)}
+              />
+            </div>
+          ) : null}
           {loading ? (
             <div className="flex flex-col items-center justify-center gap-2 py-12 text-sm text-neutral-900 dark:text-neutral-50">
               <RefreshCw className="h-5 w-5 animate-spin" aria-hidden />

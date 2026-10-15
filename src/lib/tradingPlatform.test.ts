@@ -7,6 +7,7 @@ describe('tradingPlatform', () => {
     assert.equal(normalizeTradingPlatform(''), 'MT5')
     assert.equal(normalizeTradingPlatform('mt4'), 'MT4')
     assert.equal(normalizeTradingPlatform('ctrader'), 'cTrader')
+    assert.equal(normalizeTradingPlatform('binance'), 'Binance')
     assert.equal(normalizeTradingPlatform('cTrader'), 'cTrader')
   })
 

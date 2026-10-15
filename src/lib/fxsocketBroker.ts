@@ -134,11 +134,12 @@ interface CallOpts<T> {
   edgeFn?: string
 }
 
-export type BrokerEdgeProvider = 'fxsocket' | 'mtapi' | 'ctrader'
+export type BrokerEdgeProvider = 'fxsocket' | 'mtapi' | 'ctrader' | 'binance'
 
 function brokerEdgeFn(provider?: string): string | undefined {
   if (provider === 'mtapi') return 'mtapi-broker'
   if (provider === 'ctrader') return 'ctrader-broker'
+  if (provider === 'binance') return 'binance-broker'
   return undefined
 }
 
@@ -715,7 +716,7 @@ export type TradesFetchArgs = {
 }
 
 function isWrongProviderError(message: string): boolean {
-  return /not an MTAPI account|no FxSocket account linked|not a cTrader account/i.test(message)
+  return /not an MTAPI account|no FxSocket account linked|not a cTrader account|not a Binance account/i.test(message)
 }
 
 /**
@@ -737,12 +738,12 @@ export async function fetchTradesAcrossProviders(
       args.accounts
         .map(account => resolveProvider(account))
         .filter((provider): provider is BrokerEdgeProvider =>
-          provider === 'fxsocket' || provider === 'mtapi' || provider === 'ctrader'),
+          provider === 'fxsocket' || provider === 'mtapi' || provider === 'ctrader' || provider === 'binance'),
     )
     // Anchors without a provider field resolve to fxsocket — if nothing was
     // explicitly marked, still query both so MTAPI-only data is not dropped.
     const anyExplicit = args.accounts.some(
-      a => a.provider === 'mtapi' || a.provider === 'fxsocket' || a.provider === 'ctrader',
+      a => a.provider === 'mtapi' || a.provider === 'fxsocket' || a.provider === 'ctrader' || a.provider === 'binance',
     )
     providers = anyExplicit && set.size > 0 ? [...set] : ['fxsocket', 'mtapi']
   }

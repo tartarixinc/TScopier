@@ -22,6 +22,7 @@ export function isMtUuid(s: string | null | undefined): boolean {
 /**
  * Session id the copier uses for this broker.
  * FxSocket and MTAPI ids are UUIDs. cTrader uses the numeric ctidTraderAccountId.
+ * Binance uses the stored API-key fingerprint.
  */
 export function brokerSessionUuid(broker: {
   provider?: string | null
@@ -29,10 +30,11 @@ export function brokerSessionUuid(broker: {
   fxsocket_account_id?: string | null
   metaapi_account_id?: string | null
   ctrader_account_id?: string | null
+  binance_account_id?: string | null
 }): string | null {
   const id = brokerSessionId(broker)
   if (!id) return null
-  if (broker.provider === 'ctrader') return id
+  if (broker.provider === 'ctrader' || broker.provider === 'binance') return id
   return isMtUuid(id) ? id : null
 }
 
@@ -42,6 +44,7 @@ export function brokerHasLinkedSession(broker: {
   fxsocket_account_id?: string | null
   metaapi_account_id?: string | null
   ctrader_account_id?: string | null
+  binance_account_id?: string | null
 }): boolean {
   return brokerSessionUuid(broker) != null
 }

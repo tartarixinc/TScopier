@@ -8,6 +8,14 @@ import { useSubscription } from '../../context/SubscriptionContext'
 import { fxsocketBroker } from '../../lib/fxsocketBroker'
 import { startCtraderConnect } from '../../lib/ctraderBroker'
 import {
+  DEFAULT_BINANCE_SETTINGS_DRAFT,
+  linkBinanceAccount,
+  parseBinanceSettingsDraft,
+  type BinanceEnvironment,
+  type BinanceSettingsDraft,
+} from '../../lib/binanceBroker'
+import { BinanceSettingsFields } from './BinanceSettingsFields'
+import {
   emptyConnectTradingAccountForm,
   type ConnectTradingAccountForm,
 } from '../../lib/connectTradingAccountForm'
@@ -76,6 +84,12 @@ export function ConnectTradingAccountModal({
   const [connectStep, setConnectStep] = useState<ConnectStep>(0)
   const [batchRows, setBatchRows] = useState<BulkConnectRowProgress[]>([])
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false)
+  const [binanceKey, setBinanceKey] = useState('')
+  const [binanceSecret, setBinanceSecret] = useState('')
+  const [binanceLabel, setBinanceLabel] = useState('')
+  const [binanceEnv, setBinanceEnv] = useState<BinanceEnvironment>('live')
+  const [binanceDraft, setBinanceDraft] = useState<BinanceSettingsDraft>(DEFAULT_BINANCE_SETTINGS_DRAFT)
+  const [binanceFieldError, setBinanceFieldError] = useState<'margin' | 'leverage' | null>(null)
 
   const reset = useCallback(() => {
     setRows(emptyConnectRows())
@@ -84,6 +98,12 @@ export function ConnectTradingAccountModal({
     setConnectStep(0)
     setBatchRows([])
     setBulkUploadOpen(false)
+    setBinanceKey('')
+    setBinanceSecret('')
+    setBinanceLabel('')
+    setBinanceEnv('live')
+    setBinanceDraft(DEFAULT_BINANCE_SETTINGS_DRAFT)
+    setBinanceFieldError(null)
   }, [])
 
   const handleClose = useCallback(() => {
@@ -173,8 +193,48 @@ export function ConnectTradingAccountModal({
     }
   }
 
+  const startBinance = async () => {
+    setError('')
+    setBinanceFieldError(null)
+    if (!hasActiveSubscription) {
+      setError(pw.subscriptionRequired)
+      return
+    }
+    if (!isAdmin && activeBrokerCount >= limits.maxBrokerAccounts) {
+      setError(interpolate(pw.brokerLimit, { limit: String(limits.maxBrokerAccounts) }))
+      return
+    }
+    if (!binanceKey.trim() || !binanceSecret.trim()) {
+      setError(cf.binanceKeysRequired)
+      return
+    }
+    const parsed = parseBinanceSettingsDraft(binanceDraft)
+    if (!parsed.ok) {
+      setBinanceFieldError(parsed.field === 'margin' ? 'margin' : parsed.field === 'leverage' ? 'leverage' : null)
+      return
+    }
+    setSaving(true)
+    try {
+      const { account } = await linkBinanceAccount({
+        apiKey: binanceKey,
+        apiSecret: binanceSecret,
+        environment: binanceEnv,
+        label: binanceLabel,
+        settings: parsed.settings,
+      })
+      upsertBroker(account)
+      reset()
+      if (onSuccess) onSuccess(account)
+      else onClose()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : cf.connectFailed
+      setError(message || cf.connectFailed)
+      setSaving(false)
+    }
+  }
+
   const connectSingle = async (row: ConnectTradingAccountForm) => {
-    if (row.platform === 'cTrader') return
+    if (row.platform === 'cTrader' || row.platform === 'Binance') return
     const login = row.account_number.trim()
     const server = row.broker_server.trim()
     const platform = row.platform
@@ -204,6 +264,10 @@ export function ConnectTradingAccountModal({
     event.preventDefault()
     if (rows[0]?.platform === 'cTrader') {
       await startCtrader()
+      return
+    }
+    if (rows[0]?.platform === 'Binance') {
+      await startBinance()
       return
     }
     setError('')
@@ -277,7 +341,9 @@ export function ConnectTradingAccountModal({
   if (!open) return null
 
   const selectedPlatform = rows[0]?.platform ?? 'MT5'
+  const binanceSelected = selectedPlatform === 'Binance'
   const ctraderSelected = selectedPlatform === 'cTrader'
+  const mtFormHidden = ctraderSelected || binanceSelected
   const title = interpolate(cf.title, { platform: selectedPlatform })
   const validCount = countValidRows(rows)
   const isMulti = rows.length > 1 || validCount > 1
@@ -323,7 +389,7 @@ export function ConnectTradingAccountModal({
                 </h2>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                {ctraderSelected ? null : (
+                {mtFormHidden ? null : (
                   <Button
                     type="button"
                     variant="secondary"
@@ -357,8 +423,8 @@ export function ConnectTradingAccountModal({
                 <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                   {cf.platformLabel}
                 </p>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  {(['MT5', 'MT4', 'cTrader'] as const).map(option => (
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {(['MT5', 'MT4', 'cTrader', 'Binance'] as const).map(option => (
                     <button
                       key={option}
                       type="button"
@@ -371,7 +437,13 @@ export function ConnectTradingAccountModal({
                           : 'border-neutral-200/65 bg-white text-neutral-900 hover:border-neutral-300 dark:border-neutral-800/55 dark:bg-neutral-900 dark:text-neutral-50 dark:hover:border-neutral-700',
                       )}
                     >
-                      {option === 'MT5' ? cf.platformMt5 : option === 'MT4' ? cf.platformMt4 : cf.platformCtrader}
+                      {option === 'MT5'
+                        ? cf.platformMt5
+                        : option === 'MT4'
+                          ? cf.platformMt4
+                          : option === 'cTrader'
+                            ? cf.platformCtrader
+                            : cf.platformBinance}
                     </button>
                   ))}
                 </div>
@@ -391,7 +463,69 @@ export function ConnectTradingAccountModal({
                 </div>
               ) : null}
 
-              {serverPlatformMismatch && !ctraderSelected ? (
+              {binanceSelected ? (
+                <div className="space-y-4 rounded-2xl border border-neutral-100 p-4 dark:border-neutral-800">
+                  <p className="text-sm text-neutral-900 dark:text-neutral-50">{cf.binanceConnectHint}</p>
+                  <Input
+                    label={cf.accountLabel}
+                    placeholder={interpolate(cf.accountLabelPlaceholder, { platform: 'Binance' })}
+                    value={binanceLabel}
+                    onChange={event => setBinanceLabel(event.target.value)}
+                  />
+                  <Input
+                    label={cf.binanceApiKeyLabel}
+                    value={binanceKey}
+                    autoComplete="off"
+                    spellCheck={false}
+                    onChange={event => setBinanceKey(event.target.value)}
+                    required
+                  />
+                  <PasswordInput
+                    label={cf.binanceApiSecretLabel}
+                    value={binanceSecret}
+                    hint={cf.binanceApiSecretHint}
+                    onChange={event => setBinanceSecret(event.target.value)}
+                    required
+                  />
+                  <div className="space-y-1.5">
+                    <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{cf.binanceEnvironmentLabel}</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(['live', 'demo'] as const).map(env => (
+                        <button
+                          key={env}
+                          type="button"
+                          aria-pressed={binanceEnv === env}
+                          onClick={() => setBinanceEnv(env)}
+                          className={clsx(
+                            'rounded-xl border px-3 py-2 text-left text-sm transition-colors',
+                            binanceEnv === env
+                              ? 'border-green-400 bg-teal-50 text-teal-900 dark:border-green-400 dark:bg-teal-950/40 dark:text-teal-100'
+                              : 'border-neutral-200/65 bg-white text-neutral-900 hover:border-neutral-300 dark:border-neutral-800/55 dark:bg-neutral-900 dark:text-neutral-50 dark:hover:border-neutral-700',
+                          )}
+                        >
+                          {env === 'live' ? cf.binanceLive : cf.binanceDemo}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <BinanceSettingsFields
+                    value={binanceDraft}
+                    onChange={setBinanceDraft}
+                    marginError={binanceFieldError === 'margin' ? cf.binanceInvalidMargin : undefined}
+                    leverageError={binanceFieldError === 'leverage' ? cf.binanceInvalidLeverage : undefined}
+                  />
+                  <div className="flex gap-2">
+                    <Button type="submit" size="sm" loading={saving}>
+                      {cf.binanceConnectButton}
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={handleClose} disabled={saving}>
+                      {t.common.cancel}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              {serverPlatformMismatch && !mtFormHidden ? (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
                   <p>
                     {serverPlatformMismatch === 'MT4'
@@ -408,7 +542,7 @@ export function ConnectTradingAccountModal({
                 </div>
               ) : null}
 
-              {ctraderSelected ? null : rows.map((row, index) => (
+              {mtFormHidden ? null : rows.map((row, index) => (
                 <div
                   key={index}
                   className="space-y-3 rounded-2xl border border-neutral-100 p-4 dark:border-neutral-800"
@@ -464,7 +598,7 @@ export function ConnectTradingAccountModal({
                 </div>
               ))}
 
-              {ctraderSelected ? null : (
+              {mtFormHidden ? null : (
                 <>
                   <div className="flex flex-wrap gap-2">
                     <Button type="button" variant="secondary" size="sm" onClick={addRow} disabled={saving}>

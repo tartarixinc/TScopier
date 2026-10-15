@@ -47,7 +47,7 @@ export async function fetchBrokerMtTrades(opts: {
   /** Skip OrderHistory balance rows — dashboard analytics only needs position deals. */
   includeBalanceCashflow?: boolean
   /** Restrict to one provider when the caller already knows the account. */
-  providers?: Array<'fxsocket' | 'mtapi' | 'ctrader'>
+  providers?: Array<'fxsocket' | 'mtapi' | 'ctrader' | 'binance'>
 } = {}): Promise<MtTrade[]> {
   const scope = opts.scope ?? 'dashboard'
   const historyDays = opts.historyDays ?? DEFAULT_HISTORY_DAYS[scope]

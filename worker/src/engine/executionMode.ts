@@ -34,10 +34,10 @@ export function resolveExecutionEngine(
   args: { brokerAccountId?: string | null; userId?: string | null; provider?: string | null },
   env: ExecutionModeEnv = process.env,
 ): ExecutionEngineVersion {
-  // MTAPI and cTrader never use FxClient (FxSocket HTTP). Bypass EXECUTION_ENGINE
-  // entirely so OrderSend goes through MtapiProvider / CtraderProvider.
+  // MTAPI, cTrader, and Binance never use FxClient (FxSocket HTTP). Bypass EXECUTION_ENGINE
+  // entirely so OrderSend goes through the provider's own client.
   const provider = String(args.provider ?? '').trim()
-  if (provider === 'mtapi' || provider === 'ctrader') return 'v1'
+  if (provider === 'mtapi' || provider === 'ctrader' || provider === 'binance') return 'v1'
   if ((env.EXECUTION_ENGINE ?? '').trim().toLowerCase() === 'v2') return 'v2'
   const brokers = parseIds(env.EXECUTION_ENGINE_V2_BROKERS)
   if (args.brokerAccountId && brokers.has(args.brokerAccountId)) return 'v2'
@@ -56,7 +56,7 @@ export function isV2(
 /**
  * Partition a signal's matching brokers into v1 vs v2 lanes so the two engines can
  * run side by side during cutover. With the flag off every broker lands in `v1` and
- * behavior is byte-for-byte unchanged. MTAPI and cTrader brokers always stay in `v1`.
+ * behavior is byte-for-byte unchanged. MTAPI, cTrader, and Binance brokers always stay in `v1`.
  */
 export function splitBrokersByEngine<T extends { id: string; user_id?: string | null; provider?: string | null }>(
   brokers: T[],

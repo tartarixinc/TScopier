@@ -650,6 +650,29 @@ export interface AccountConfigConnectFormTranslations {
   ctraderLinkButton: string
   ctraderDemo: string
   ctraderLive: string
+  platformBinance: string
+  binanceConnectHint: string
+  binanceApiKeyLabel: string
+  binanceApiSecretLabel: string
+  binanceApiSecretHint: string
+  binanceEnvironmentLabel: string
+  binanceLive: string
+  binanceDemo: string
+  binanceMarginLabel: string
+  binanceMarginHint: string
+  binanceLeverageLabel: string
+  binanceLeverageHint: string
+  binanceMarginModeLabel: string
+  binanceIsolated: string
+  binanceCross: string
+  binanceMarginModeHint: string
+  binanceConnectButton: string
+  binanceKeysRequired: string
+  binanceInvalidMargin: string
+  binanceInvalidLeverage: string
+  binanceSettingsTitle: string
+  binanceSettingsSave: string
+  binanceSettingsSaved: string
   brokerServerLabel: string
   brokerServerHint: string
   brokerServerPlaceholder: string

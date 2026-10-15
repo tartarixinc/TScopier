@@ -2015,21 +2015,21 @@ export function DashboardPage() {
   useEffect(() => {
     const accounts = linkedAccounts.filter(account => {
       const provider = resolveProvider(account)
-      if (provider === 'mtapi' || provider === 'ctrader') return hasLinkedBrokerForUi(account)
+      if (provider === 'mtapi' || provider === 'ctrader' || provider === 'binance') return hasLinkedBrokerForUi(account)
       return isFxsocketLinkedBroker(account)
     })
     if (accounts.length === 0) return
 
     let cancelled = false
     const throttleUntilById: Record<string, number> = {}
-    const cursors = { mtapi: 0, ctrader: 0, fxsocket: 0 }
-    const inflight = { mtapi: false, ctrader: false, fxsocket: false }
+    const cursors = { mtapi: 0, ctrader: 0, binance: 0, fxsocket: 0 }
+    const inflight = { mtapi: false, ctrader: false, binance: false, fxsocket: false }
 
-    const pollGroup = async (group: 'mtapi' | 'ctrader' | 'fxsocket') => {
+    const pollGroup = async (group: 'mtapi' | 'ctrader' | 'binance' | 'fxsocket') => {
       if (cancelled || inflight[group]) return
       const groupAccounts = accounts.filter(account => {
         const provider = resolveProvider(account)
-        if (group === 'fxsocket') return provider !== 'mtapi' && provider !== 'ctrader'
+        if (group === 'fxsocket') return provider !== 'mtapi' && provider !== 'ctrader' && provider !== 'binance'
         return provider === group
       })
       if (groupAccounts.length === 0) return
@@ -2044,14 +2044,14 @@ export function DashboardPage() {
           const provider = resolveProvider(account)
           const rawProvider: BrokerProvider = provider
           const lastWs = lastWsTickRef.current[account.id] ?? 0
-          if (provider !== 'mtapi' && provider !== 'ctrader' && now - lastWs < 2500) continue
+          if (provider !== 'mtapi' && provider !== 'ctrader' && provider !== 'binance' && now - lastWs < 2500) continue
           try {
-            if (provider === 'ctrader') {
+            if (provider === 'ctrader' || provider === 'binance') {
               const { trades } = await fxsocketBroker.trades({
                 brokerId: account.id,
                 scope: 'open',
                 historyProfile: 'dashboard',
-                provider: 'ctrader',
+                provider,
               })
               if (cancelled) return
               const rows = trades.filter(trade => trade.status !== 'closed')
@@ -2131,10 +2131,10 @@ export function DashboardPage() {
     }
 
     const timers: number[] = []
-    const schedule = (group: 'mtapi' | 'ctrader' | 'fxsocket', intervalMs: number, startDelayMs: number) => {
+    const schedule = (group: 'mtapi' | 'ctrader' | 'binance' | 'fxsocket', intervalMs: number, startDelayMs: number) => {
       if (!accounts.some(account => {
         const provider = resolveProvider(account)
-        if (group === 'fxsocket') return provider !== 'mtapi' && provider !== 'ctrader'
+        if (group === 'fxsocket') return provider !== 'mtapi' && provider !== 'ctrader' && provider !== 'binance'
         return provider === group
       })) return
       timers.push(window.setInterval(() => {
@@ -2151,9 +2151,11 @@ export function DashboardPage() {
     // cTrader Open PnL is marked from spots on each snapshot, so it can tick
     // without sharing the MTAPI session limit.
     schedule('ctrader', 4_000, 800)
+    // Binance marks open positions from the exchange on each trades call (no shared session limit).
+    schedule('binance', 5_000, 1_200)
     const fxCount = accounts.filter(account => {
       const provider = resolveProvider(account)
-      return provider !== 'mtapi' && provider !== 'ctrader'
+      return provider !== 'mtapi' && provider !== 'ctrader' && provider !== 'binance'
     }).length
     if (fxCount > 0) {
       schedule('fxsocket', Math.min(15_000, Math.max(4_000, 2_000 * Math.ceil(fxCount / 2))), 0)

@@ -87,6 +87,8 @@ export interface BrokerRow {
   fxsocket_account_id?: string | null
   /** cTrader ctidTraderAccountId. Numeric, not a UUID. */
   ctrader_account_id?: string | null
+  /** Binance futures key fingerprint. Not a UUID. */
+  binance_account_id?: string | null
   metaapi_account_id: string | null
   account_login: string | null
   broker_server: string | null
