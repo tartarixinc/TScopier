@@ -16,7 +16,7 @@ const primaryBtnClass =
   'inline-flex max-w-[11rem] shrink-0 items-center justify-center truncate rounded-lg border border-green-400 bg-green-400 px-2.5 py-1.5 text-xs font-medium text-neutral-950 transition-colors hover:border-green-500 hover:bg-green-500 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2 xl:max-w-[16rem] xl:px-3 xl:text-sm 2xl:max-w-none dark:focus:ring-offset-neutral-950'
 
 const heroCtaClass =
-  'group inline-flex w-fit self-center items-center justify-center gap-2 rounded-xl border border-green-400 bg-green-400 px-9 py-4 text-lg font-semibold text-neutral-950 shadow-lg shadow-green-400/25 transition-all duration-300 hover:border-green-400 hover:bg-green-400 hover:shadow-[0_0_28px_rgba(74,222,128,0.55),0_0_56px_rgba(74,222,128,0.22)] sm:px-11 sm:py-5 sm:text-xl lg:self-start'
+  'group inline-flex w-fit self-center items-center justify-center gap-2 rounded-full border border-green-400 bg-green-400 px-8 py-3.5 text-base font-semibold text-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_12px_32px_-10px_rgba(74,222,128,0.7)] transition-all duration-300 hover:-translate-y-0.5 hover:border-green-400 hover:bg-green-400 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_0_28px_rgba(74,222,128,0.55),0_0_56px_rgba(74,222,128,0.22)] sm:px-10 sm:py-4 sm:text-lg'
 
 export function MarketingAuthCta({ variant, onNavigate }: MarketingAuthCtaProps) {
   const { isSignedIn, loading } = useMarketingAuthState()
@@ -68,7 +68,7 @@ export function MarketingAuthCta({ variant, onNavigate }: MarketingAuthCtaProps)
 
     if (variant === 'hero') {
       return (
-        <div className="flex w-full flex-col items-center lg:items-start">{dashboardLink}</div>
+        <div className="flex w-full flex-col items-center">{dashboardLink}</div>
       )
     }
     return dashboardLink
@@ -76,7 +76,7 @@ export function MarketingAuthCta({ variant, onNavigate }: MarketingAuthCtaProps)
 
   if (variant === 'hero') {
     return (
-      <div className="flex w-full flex-col items-center lg:items-start">
+      <div className="flex w-full flex-col items-center">
         <a
           href={signupHref}
           onClick={() => onCtaClick('signup')}

@@ -648,6 +648,27 @@ html.app-viewport-lock #root {
   }
 }
 
+/* Hero: slow drifting aurora behind the glass surfaces */
+@keyframes hero-aurora-drift {
+  from {
+    transform: translate3d(-3%, -2%, 0) scale(1);
+  }
+  to {
+    transform: translate3d(3%, 4%, 0) scale(1.08);
+  }
+}
+
+.hero-aurora-blob {
+  animation: hero-aurora-drift 16s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-aurora-blob {
+    animation: none;
+  }
+}
+
 /* RTL layout overrides for marketing decorative positioning */
 html[dir="rtl"] .marketing-bento-watermark {
   right: auto;
