@@ -1169,6 +1169,8 @@ export interface ConfigurationsPageTranslations {
   accountTypeDemo: string
   accountTypePropFirm: string
   noChannelsLinked: string
+  noConfigurationsYet: string
+  openConfiguration: string
   emptyTitle: string
   emptyBody: string
   openBrokers: string

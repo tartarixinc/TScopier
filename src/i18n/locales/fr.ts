@@ -680,6 +680,8 @@ export const fr: Translations = {
     accountTypeDemo: 'Démo',
     accountTypePropFirm: 'Prop firm',
     noChannelsLinked: 'Aucun canal lié',
+    noConfigurationsYet: 'Aucune configuration pour le moment',
+    openConfiguration: 'Ouvrir la configuration',
     emptyTitle: 'Aucun broker pour le moment',
     emptyBody: 'Connectez un broker et liez un canal pour voir sa configuration ici.',
     openBrokers: 'Aller aux brokers',

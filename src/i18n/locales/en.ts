@@ -677,6 +677,8 @@ broker: {
     accountTypeDemo: 'Demo',
     accountTypePropFirm: 'Prop Firm',
     noChannelsLinked: 'No channels linked',
+    noConfigurationsYet: 'No configurations yet',
+    openConfiguration: 'Open configuration',
     emptyTitle: 'No brokers yet',
     emptyBody: 'Connect a broker and link a channel to see its configuration here.',
     openBrokers: 'Go to Brokers',

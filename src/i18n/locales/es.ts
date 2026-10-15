@@ -680,6 +680,8 @@ export const es: Translations = {
     accountTypeDemo: 'Demo',
     accountTypePropFirm: 'Firma prop',
     noChannelsLinked: 'Sin canales vinculados',
+    noConfigurationsYet: 'Aún no hay configuraciones',
+    openConfiguration: 'Abrir configuración',
     emptyTitle: 'Aún no hay brókers',
     emptyBody: 'Conecta un bróker y vincula un canal para ver su configuración aquí.',
     openBrokers: 'Ir a Brókers',
