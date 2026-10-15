@@ -104,8 +104,8 @@ export const landingAr: LandingTranslations = {
     },
   },
   integrations: {
+    eyebrow: 'التكاملات',
     title: 'يعمل مع المنصات الرائدة',
-    highlight: 'المنصات الرائدة',
   },
   whyChoose: {
     statsCaption: 'يستخدمه متداولون من أشهر مزوّدي إشارات Telegram',

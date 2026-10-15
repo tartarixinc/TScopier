@@ -354,9 +354,8 @@ export interface LandingTranslations {
     dashboard: LandingHeroDashboardCopy
   }
   integrations: {
+    eyebrow: string
     title: string
-    /** Part of `title` shown in the accent colour. */
-    highlight: string
   }
   whyChoose: {
     statsCaption: string

@@ -104,8 +104,8 @@ export const landingRu: LandingTranslations = {
     },
   },
   integrations: {
+    eyebrow: 'Интеграции',
     title: 'Работает с ведущими платформами',
-    highlight: 'ведущими платформами',
   },
   whyChoose: {
     statsCaption: 'Используется трейдерами самых популярных провайдеров сигналов Telegram',

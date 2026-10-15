@@ -104,8 +104,8 @@ export const landingNl: LandingTranslations = {
     },
   },
   integrations: {
+    eyebrow: 'Integraties',
     title: 'Werkt met toonaangevende platforms',
-    highlight: 'toonaangevende platforms',
   },
   whyChoose: {
     statsCaption: 'Gebruikt door traders van de populairste Telegram-signaalaanbieders',

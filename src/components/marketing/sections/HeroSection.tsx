@@ -77,15 +77,8 @@ export function HeroSection() {
         </div>
 
         <div className="w-full min-w-0 flex-1 lg:pt-1">
-          <div className="max-h-[22rem] w-[140%] overflow-hidden rounded-[1.75rem] bg-green-400 p-2.5 sm:max-h-[26rem] sm:w-[148%] sm:p-3 lg:max-h-[30rem] lg:w-[155%]">
-            <div className="mb-2 flex items-center gap-1.5 px-1" aria-hidden>
-              <span className="hero-chrome-dot bg-[#FF5F57]" />
-              <span className="hero-chrome-dot bg-[#FEBC2E]" />
-              <span className="hero-chrome-dot bg-[#28C840]" />
-            </div>
-            <div className="overflow-hidden rounded-xl bg-white shadow-sm dark:bg-neutral-950">
-              <HeroDashboardPreview />
-            </div>
+          <div className="max-h-[22rem] w-[140%] overflow-hidden rounded-[1.75rem] border border-neutral-200/70 bg-white shadow-xl dark:border-neutral-800 dark:bg-neutral-950 sm:max-h-[26rem] sm:w-[148%] lg:max-h-[30rem] lg:w-[155%]">
+            <HeroDashboardPreview />
           </div>
         </div>
       </div>
