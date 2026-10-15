@@ -8,6 +8,7 @@ import { useSubscription } from '../../context/SubscriptionContext'
 import { fxsocketBroker } from '../../lib/fxsocketBroker'
 import { startCtraderConnect } from '../../lib/ctraderBroker'
 import {
+  BINANCE_API_MANAGEMENT_URL,
   DEFAULT_BINANCE_SETTINGS_DRAFT,
   linkBinanceAccount,
   parseBinanceSettingsDraft,
@@ -27,6 +28,7 @@ import {
   parseKucoinSettingsDraft,
   type KucoinSettingsDraft,
 } from '../../lib/kucoinBroker'
+import { ApiKeyHelp } from './ApiKeyHelp'
 import { BinanceSettingsFields } from './BinanceSettingsFields'
 import {
   emptyConnectTradingAccountForm,
@@ -583,6 +585,14 @@ export function ConnectTradingAccountModal({
                   />
                   <Input
                     label={cf.binanceApiKeyLabel}
+                    labelAddon={
+                      <ApiKeyHelp
+                        title={cf.binanceApiHelpTitle}
+                        steps={cf.binanceApiHelpSteps}
+                        linkLabel={cf.binanceApiHelpLink}
+                        href={BINANCE_API_MANAGEMENT_URL}
+                      />
+                    }
                     value={binanceKey}
                     autoComplete="off"
                     spellCheck={false}

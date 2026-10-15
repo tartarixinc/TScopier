@@ -17,6 +17,9 @@ export interface BinanceSettingsDraft {
   marginMode: BinanceMarginMode
 }
 
+/** Where users create API keys. */
+export const BINANCE_API_MANAGEMENT_URL = 'https://www.binance.com/en/my/settings/api-management'
+
 export const BINANCE_MAX_LEVERAGE = 125
 export const BINANCE_MAX_MARGIN_USDT = 10_000_000
 

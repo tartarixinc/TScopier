@@ -1,9 +1,11 @@
-import { type InputHTMLAttributes, forwardRef } from 'react'
+import { type InputHTMLAttributes, type ReactNode, forwardRef } from 'react'
 import clsx from 'clsx'
 import { FieldLabelWithInfo } from './InfoTooltip'
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string
+  /** Extra control shown on the right of the label row (for example a help link). */
+  labelAddon?: ReactNode
   error?: string
   hint?: string
   /** When true, hint shows on an info icon by the label instead of below the input. */
@@ -11,7 +13,7 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, hint, hintInTooltip, className, ...props }, ref) => {
+  ({ label, labelAddon, error, hint, hintInTooltip, className, ...props }, ref) => {
     const showHintInTooltip = hintInTooltip === true
     return (
       <div className="flex flex-col gap-1.5">
@@ -19,9 +21,12 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           showHintInTooltip && hint && !error
             ? <FieldLabelWithInfo label={label} hint={hint} />
             : (
-              <label className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
-                {label}
-              </label>
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                  {label}
+                </label>
+                {labelAddon}
+              </div>
             )
         )}
         <input

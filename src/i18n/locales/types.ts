@@ -660,6 +660,10 @@ export interface AccountConfigConnectFormTranslations {
   binanceApiKeyLabel: string
   binanceApiSecretLabel: string
   binanceApiSecretHint: string
+  /** Popover next to the API key field: title, ordered steps, and the link label. */
+  binanceApiHelpTitle: string
+  binanceApiHelpSteps: string[]
+  binanceApiHelpLink: string
   binanceEnvironmentLabel: string
   binanceLive: string
   binanceDemo: string
