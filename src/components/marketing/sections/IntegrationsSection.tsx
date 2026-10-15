@@ -24,12 +24,25 @@ const INTEGRATION_ROWS: readonly (readonly IntegrationLogo[])[] = [
   ],
 ]
 
+/** Fractal-noise grain as an inline SVG, tiled. */
+const NOISE_BG =
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.9 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")"
+
 export function IntegrationsSection() {
   const copy = useT().landing.integrations
 
   return (
-    <section className="bg-black" aria-labelledby="integrations-title">
-      <div className="mx-auto max-w-6xl px-5 py-14 sm:px-8 sm:py-20">
+    <section className="relative isolate overflow-hidden bg-neutral-950" aria-labelledby="integrations-title">
+      <div
+        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(60%_70%_at_50%_0%,rgba(74,222,128,0.10),transparent_70%)]"
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute inset-0 z-10 opacity-[0.22] mix-blend-screen"
+        style={{ backgroundImage: NOISE_BG, backgroundSize: '140px 140px' }}
+        aria-hidden
+      />
+      <div className="relative mx-auto max-w-6xl px-5 py-14 sm:px-8 sm:py-20">
         <div className="mx-auto max-w-2xl text-center">
           <p className="text-xs font-semibold uppercase tracking-wider text-green-400 dark:text-green-400">
             {copy.eyebrow}
@@ -49,7 +62,7 @@ export function IntegrationsSection() {
                 {row.map(logo => (
                   <li
                     key={logo.name}
-                    className="flex aspect-square w-[clamp(3.5rem,13vw,7.5rem)] items-center justify-center rounded-full bg-neutral-50 ring-4 ring-black transition-transform duration-200 hover:scale-105 sm:ring-[6px]"
+                    className="flex aspect-square w-[clamp(3.5rem,13vw,7.5rem)] items-center justify-center rounded-full bg-neutral-50 ring-4 ring-neutral-950 transition-transform duration-200 hover:scale-105 sm:ring-[6px]"
                   >
                     <img
                       src={logo.src}
