@@ -730,7 +730,7 @@ function isWrongProviderError(message: string): boolean {
  * than have its trades silently dropped.
  */
 function isProviderUnavailableError(
-  provider: 'fxsocket' | 'mtapi',
+  provider: BrokerEdgeProvider,
   message: string,
 ): boolean {
   if (isWrongProviderError(message)) return true
@@ -795,14 +795,14 @@ export async function fetchTradesAcrossProviders(
     (r): r is PromiseFulfilledResult<{ trades: MtTrade[] }> => r.status === 'fulfilled',
   )
   const failed = settled
-    .map((r, i) => ({ r, provider: providers[i] as 'fxsocket' | 'mtapi' }))
+    .map((r, i) => ({ r, provider: providers[i] as BrokerEdgeProvider }))
     .filter(
-      (x): x is { r: PromiseRejectedResult; provider: 'fxsocket' | 'mtapi' } =>
+      (x): x is { r: PromiseRejectedResult; provider: BrokerEdgeProvider } =>
         x.r.status === 'rejected',
     )
-  const failureMessage = (x: { r: PromiseRejectedResult; provider: 'fxsocket' | 'mtapi' }): string =>
+  const failureMessage = (x: { r: PromiseRejectedResult; provider: BrokerEdgeProvider }): string =>
     x.r.reason instanceof Error ? x.r.reason.message : String(x.r.reason)
-  const isUnavailable = (x: { r: PromiseRejectedResult; provider: 'fxsocket' | 'mtapi' }): boolean =>
+  const isUnavailable = (x: { r: PromiseRejectedResult; provider: BrokerEdgeProvider }): boolean =>
     isProviderUnavailableError(x.provider, failureMessage(x))
   // Prefer a real (non wrong-provider/absent) rejection over failed[0], which
   // may be a wrong-provider 400 ordered first by the providers array.

@@ -455,8 +455,11 @@ export class MtapiProvider implements BrokerProvider {
     allowTimeoutRetry = true,
     // 'pre_accept' restricts throttle retries to the pre-accept 429 signature
     // (`code=rate_limited`); 'any' also retries a bare 429; 'off' never retries
-    // a throttle. OrderSend uses 'off' by default because its idempotency is not
-    // proven (see MTAPI_ORDER_THROTTLE_RETRY); idempotent calls use 'any'.
+    // a throttle — except the bridge's own `expected available in` pre-execution
+    // signature, which is always retried because the order was refused before
+    // it reached the terminal. OrderSend uses 'off' by default because its
+    // idempotency is not proven (see MTAPI_ORDER_THROTTLE_RETRY); idempotent
+    // calls use 'any'.
     throttleRetry: 'any' | 'pre_accept' | 'off' = 'any',
   ): Promise<unknown> {
     const MAX_ATTEMPTS = Math.max(1, Number(process.env.MT_ORDERSEND_MAX_ATTEMPTS ?? 3) || 3)
