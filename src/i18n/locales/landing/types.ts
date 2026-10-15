@@ -353,6 +353,11 @@ export interface LandingTranslations {
     previewUrl: string
     dashboard: LandingHeroDashboardCopy
   }
+  integrations: {
+    title: string
+    /** Part of `title` shown in the accent colour. */
+    highlight: string
+  }
   whyChoose: {
     statsCaption: string
     stats: LandingStatItem[]

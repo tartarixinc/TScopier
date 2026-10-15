@@ -103,6 +103,10 @@ export const landingPl: LandingTranslations = {
       ],
     },
   },
+  integrations: {
+    title: 'Płynna integracja z wiodącymi platformami',
+    highlight: 'integracja',
+  },
   whyChoose: {
     statsCaption: 'Używany przez traderów najpopularniejszych dostawców sygnałów Telegram',
     stats: [

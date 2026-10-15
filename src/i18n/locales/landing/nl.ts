@@ -103,6 +103,10 @@ export const landingNl: LandingTranslations = {
       ],
     },
   },
+  integrations: {
+    title: 'Naadloze integratie met toonaangevende platforms',
+    highlight: 'integratie',
+  },
   whyChoose: {
     statsCaption: 'Gebruikt door traders van de populairste Telegram-signaalaanbieders',
     stats: [

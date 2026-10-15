@@ -102,6 +102,10 @@ export const landingJa: LandingTranslations = {
       ],
     },
   },
+  integrations: {
+    title: '主要プラットフォームとのシームレスな連携',
+    highlight: '連携',
+  },
   whyChoose: {
     statsCaption: '最も人気のあるTelegramシグナルプロバイダーのトレーダーに利用されています',
     stats: [
