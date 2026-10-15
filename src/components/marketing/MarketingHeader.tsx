@@ -9,6 +9,7 @@ import { useLocale, useT } from '../../context/LocaleContext'
 import { HELP_LINKS } from '../../lib/helpLinks'
 import { marketingUrl } from '../../lib/site'
 import { MarketingAuthCta } from './MarketingAuthCta'
+import { MarketingProductMenu, MarketingProductMenuMobile } from './MarketingProductMenu'
 
 type NavItemKey = 'product' | 'features' | 'pricing' | 'faq' | 'docs'
 
@@ -110,7 +111,7 @@ export function MarketingHeader() {
     <header className="pointer-events-none fixed inset-x-0 top-0 z-50 px-3 pt-3 sm:px-5 sm:pt-4">
       <div
         className={clsx(
-          'pointer-events-auto mx-auto flex h-14 max-w-6xl items-center gap-2 rounded-full ps-4 pe-2 transition-[background-color,border-color,box-shadow,backdrop-filter] duration-300 sm:ps-5 lg:gap-4',
+          'pointer-events-auto relative mx-auto flex h-14 max-w-6xl items-center gap-2 rounded-full ps-4 pe-2 transition-[background-color,border-color,box-shadow,backdrop-filter] duration-300 sm:ps-5 lg:gap-4',
           scrolled ? GLASS_BAR_SCROLLED : GLASS_BAR,
         )}
       >
@@ -127,14 +128,18 @@ export function MarketingHeader() {
           className="hidden min-w-0 flex-1 items-center justify-center gap-0.5 lg:flex"
           aria-label="Main"
         >
-          {marketingNavItems().map(item => (
-            <MarketingNavLink
-              key={item.key}
-              item={item}
-              label={l[item.key]}
-              className={desktopLinkClass}
-            />
-          ))}
+          {marketingNavItems().map(item =>
+            item.key === 'product' ? (
+              <MarketingProductMenu key={item.key} triggerClassName={desktopLinkClass} />
+            ) : (
+              <MarketingNavLink
+                key={item.key}
+                item={item}
+                label={l[item.key]}
+                className={desktopLinkClass}
+              />
+            ),
+          )}
         </nav>
 
         <div className="ms-auto flex shrink-0 items-center gap-1 lg:ms-0">
@@ -163,15 +168,19 @@ export function MarketingHeader() {
           )}
           aria-label="Main mobile"
         >
-          {marketingNavItems().map(item => (
-            <MarketingNavLink
-              key={item.key}
-              item={item}
-              label={l[item.key]}
-              className={mobileLinkClass}
-              onClick={closeMobile}
-            />
-          ))}
+          {marketingNavItems().map(item =>
+            item.key === 'product' ? (
+              <MarketingProductMenuMobile key={item.key} linkClassName={mobileLinkClass} onNavigate={closeMobile} />
+            ) : (
+              <MarketingNavLink
+                key={item.key}
+                item={item}
+                label={l[item.key]}
+                className={mobileLinkClass}
+                onClick={closeMobile}
+              />
+            ),
+          )}
           <div className="flex items-center justify-between gap-2 border-t border-neutral-200/80 px-2 py-2 dark:border-white/10">
             <span className="text-xs font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
               {auth.language.label}

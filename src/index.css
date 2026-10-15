@@ -694,6 +694,18 @@ html.app-viewport-lock #root {
   }
 }
 
+/* Mega menu detail panel: content eases in each time the hovered product changes. */
+@keyframes mega-detail-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.mega-detail-in {
+  animation: mega-detail-in 0.28s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mega-detail-in { animation: none; }
+}
+
 /* RTL layout overrides for marketing decorative positioning */
 html[dir="rtl"] .marketing-bento-watermark {
   right: auto;
