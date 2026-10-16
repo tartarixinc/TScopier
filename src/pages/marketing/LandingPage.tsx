@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { MarketingLayout } from '../../components/marketing/MarketingLayout'
 import { HeroSection } from '../../components/marketing/sections/HeroSection'
-import { StatsSection } from '../../components/marketing/sections/StatsSection'
+// import { StatsSection } from '../../components/marketing/sections/StatsSection'
 import { IntegrationsSection } from '../../components/marketing/sections/IntegrationsSection'
 import { ProductShowcaseSection } from '../../components/marketing/sections/ProductShowcaseSection'
 import { WhyChooseSection } from '../../components/marketing/sections/WhyChooseSection'
@@ -27,8 +27,8 @@ export function LandingPage() {
   return (
     <MarketingLayout>
       <HeroSection />
-      <StatsSection />
       <IntegrationsSection />
+      {/* <StatsSection /> */}
       <ProductShowcaseSection />
       <WhyChooseSection />
       <FeaturesSection />
