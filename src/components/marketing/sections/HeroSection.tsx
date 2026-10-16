@@ -77,7 +77,7 @@ export function HeroSection() {
         ) : null}
 
         <div className="grid items-start gap-8 lg:grid-cols-[1.15fr_1fr] lg:gap-16">
-          <h1 className="max-w-xl text-4xl font-semibold tracking-tighter text-white sm:text-5xl lg:text-[clamp(2.25rem,6vh,3.5rem)] lg:leading-[1.05]">
+          <h1 className="max-w-xl text-4xl font-bold tracking-tight text-white sm:text-5xl lg:text-[clamp(3.25rem,6vh,4.5rem)] lg:leading-[1.05]">
             {l.hero.headline}
           </h1>
 
