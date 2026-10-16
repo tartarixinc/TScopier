@@ -347,7 +347,7 @@ test('parser never throws on arbitrary input', () => {
 })
 
 test('migration is additive and leaves old rows nullable legacy', () => {
-  const sql = readFileSync('../supabase/migrations/20260730120000_layering_modes_foundation.sql', 'utf8')
+  const sql = readFileSync('../supabase/migrations/20260730130000_layering_modes_foundation.sql', 'utf8')
   assert.match(sql, /add column if not exists layer_plan_id text/i)
   assert.match(sql, /add column if not exists layer_plan_metadata jsonb/i)
   assert.match(sql, /where layer_plan_id is not null/i)

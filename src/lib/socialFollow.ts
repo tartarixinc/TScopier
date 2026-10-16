@@ -33,6 +33,10 @@ export interface SocialDirectoryProfile {
   followingCount: number
   viewerRelationshipStatus: SocialFollowStatus | null
   followsViewerStatus: SocialFollowStatus | null
+  averageRating: number | null
+  reviewCount: number
+  viewerRating: number | null
+  sharesTradeHistory: boolean
 }
 
 interface SocialDirectoryRow {
@@ -46,6 +50,10 @@ interface SocialDirectoryRow {
   following_count: number | string
   viewer_relationship_status: SocialFollowStatus | null
   follows_viewer_status: SocialFollowStatus | null
+  average_rating: number | string | null
+  review_count: number | string
+  viewer_rating: number | string | null
+  shares_trade_history: boolean
 }
 
 interface RpcErrorLike {
@@ -124,6 +132,10 @@ function mapProfile(row: SocialDirectoryRow): SocialDirectoryProfile {
     followingCount: count(row.following_count),
     viewerRelationshipStatus: row.viewer_relationship_status,
     followsViewerStatus: row.follows_viewer_status,
+    averageRating: row.average_rating == null ? null : Number(row.average_rating),
+    reviewCount: count(row.review_count),
+    viewerRating: row.viewer_rating == null ? null : Number(row.viewer_rating),
+    sharesTradeHistory: row.shares_trade_history === true,
   }
 }
 
