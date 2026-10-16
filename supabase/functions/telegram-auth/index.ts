@@ -90,6 +90,10 @@ Deno.serve(async (req: Request) => {
     delete rest.action
     delete rest.phone_code_hash
     delete rest.session_string
+    // The authenticated caller is the acting user on every route downstream.
+    // Without this, a client-supplied user_id would survive the spread below
+    // and let any signed-in user act as (and link Telegram as) someone else.
+    delete rest.user_id
 
     const workerRes = await fetch(`${WORKER_URL}${path}`, {
       method: "POST",

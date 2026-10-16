@@ -122,6 +122,8 @@ export interface MtapiProviderOptions {
   timeoutMs?: number
   /** Timeout for order operations; must exceed a read timeout and sit under nginx's 60s. */
   orderTimeoutMs?: number
+  /** Timeout for bulk history reads (OrderHistory & co.); they legitimately take longer than a plain read. */
+  historyTimeoutMs?: number
   recoveryHandler?: RecoveryHandler
   /** Shared rate pacer for all bridge calls (injectable for tests). */
   gateway?: BrokerGateway
@@ -132,6 +134,7 @@ export class MtapiProvider implements BrokerProvider {
   private readonly fetchImpl: FetchLike
   private readonly timeoutMs: number
   private readonly orderTimeoutMs: number
+  private readonly historyTimeoutMs: number
   private readonly gateway: BrokerGateway
   private readonly platformBySession = new Map<string, MtPlatform>()
   private readonly canonicalSession = new Map<string, string>()
@@ -149,6 +152,20 @@ export class MtapiProvider implements BrokerProvider {
       55_000,
       options.orderTimeoutMs
         ?? Math.max(this.timeoutMs, Number(process.env.MTAPI_ORDER_TIMEOUT_MS ?? 50_000)),
+    )
+    // Bulk history reads (a 30-day OrderHistory window over an active account)
+    // legitimately take longer than a plain read; prod saw "OrderHistory timed
+    // out" at the 20s default (2026-10-14), which swallowed the close proof and
+    // deferred ghost closes to manual review. Same sub-60s clamp as orders,
+    // applied per attempt. A non-numeric env value falls back to the default
+    // rather than poisoning setTimeout with NaN (instant abort = every history
+    // read would fail).
+    const historyEnvRaw = Number(process.env.MTAPI_HISTORY_TIMEOUT_MS ?? 30_000)
+    const historyEnv = Number.isFinite(historyEnvRaw) && historyEnvRaw > 0 ? historyEnvRaw : 30_000
+    this.historyTimeoutMs = Math.min(
+      55_000,
+      options.historyTimeoutMs
+        ?? Math.max(this.timeoutMs, historyEnv),
     )
     this.recoveryHandler = options.recoveryHandler
     this.gateway = options.gateway ?? createBrokerGateway()
@@ -251,13 +268,39 @@ export class MtapiProvider implements BrokerProvider {
     endpoint: string,
     params: Record<string, string | number | boolean | null | undefined>,
     sessionId: string,
+    options: { timeoutMs?: number } = {},
   ): Promise<unknown> {
     try {
-      return await this.request(endpoint, params, { sessionId })
+      return await this.request(endpoint, params, { sessionId, timeoutMs: options.timeoutMs })
     } catch (error) {
       if (!isSessionGone(error)) throw error
       await this.ensureConnected(sessionId)
-      return this.request(endpoint, params, { sessionId })
+      return this.request(endpoint, params, { sessionId, timeoutMs: options.timeoutMs })
+    }
+  }
+
+  /**
+   * History reads (OrderHistory & co.) get the longer history timeout and one
+   * transport retry: a bulk 30-day pull can time out intermittently (prod
+   * 2026-10-14: `MTAPI OrderHistory timed out` swallowed the close proof for
+   * ghost trades). Only transport errors are retried — a deterministic 4xx is
+   * not made slower. Session-gone recovery stays inside `readRequest`; when a
+   * session-gone recovery and a transport failure interleave, one call can
+   * issue up to 4 bridge requests (2 OrderHistory + up to 2 recovery probes)
+   * before succeeding or failing — still bounded, never looping.
+   */
+  private async historyReadRequest(
+    endpoint: string,
+    params: Record<string, string | number | boolean | null | undefined>,
+    sessionId: string,
+  ): Promise<unknown> {
+    try {
+      return await this.readRequest(endpoint, params, sessionId, { timeoutMs: this.historyTimeoutMs })
+    } catch (error) {
+      const retryable = error instanceof MtapiApiError && error.code === 'TRANSPORT_ERROR'
+      if (!retryable) throw error
+      await new Promise(resolve => setTimeout(resolve, 400 + Math.random() * 600))
+      return this.readRequest(endpoint, params, sessionId, { timeoutMs: this.historyTimeoutMs })
     }
   }
 
@@ -540,17 +583,17 @@ export class MtapiProvider implements BrokerProvider {
   }
 
   async closedOrders(id: string): Promise<unknown[]> {
-    const raw = await this.readRequest('ClosedOrders', {}, id)
+    const raw = await this.historyReadRequest('ClosedOrders', {}, id)
     return list(raw, ['orders', 'Orders'], 'ClosedOrders')
   }
 
   async orderHistory(id: string, from: string, to: string): Promise<unknown[]> {
-    const raw = await this.readRequest('OrderHistory', { from, to }, id)
+    const raw = await this.historyReadRequest('OrderHistory', { from, to }, id)
     return list(raw, ['orders', 'Orders'], 'OrderHistory')
   }
 
   async historyPositions(id: string, from: string, to: string): Promise<unknown[]> {
-    const raw = await this.readRequest('HistoryPositions', { from, to }, id)
+    const raw = await this.historyReadRequest('HistoryPositions', { from, to }, id)
     return list(raw, ['positions', 'Positions', 'orders', 'Orders'], 'HistoryPositions')
   }
 
@@ -561,7 +604,7 @@ export class MtapiProvider implements BrokerProvider {
     pageNumber: number,
     ordersPerPage = 500,
   ): Promise<{ orders: unknown[]; pagesCount: number }> {
-    const raw = await this.readRequest(
+    const raw = await this.historyReadRequest(
       'OrderHistoryPagination',
       // ascending pinned so newest-window selection never depends on the
       // bridge default (matches the edge's orderHistory pagination).
