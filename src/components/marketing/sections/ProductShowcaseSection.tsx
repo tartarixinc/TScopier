@@ -43,7 +43,7 @@ export function ProductShowcaseSection() {
     >
       <div className="mx-auto max-w-[80rem] px-3 sm:px-5">
         <div className="px-2 sm:px-6">
-          <p className="inline-flex items-center gap-2 font-mono text-xs font-medium uppercase tracking-[0.18em] text-neutral-900 dark:text-neutral-50">
+          <p className="inline-flex items-center gap-2  text-xs font-medium uppercase tracking-[0.18em] text-neutral-900 dark:text-neutral-50">
             <span className="h-2 w-2 bg-green-400" aria-hidden />
             {s.eyebrow}
           </p>
@@ -87,7 +87,7 @@ export function ProductShowcaseSection() {
                 />
 
                 <div className="relative z-[3] p-7">
-                  <p className="inline-flex items-center gap-2 font-mono text-xs font-medium uppercase tracking-[0.16em] text-green-400">
+                  <p className="inline-flex items-center gap-2  text-xs font-medium uppercase tracking-[0.16em] text-green-400">
                     <Icon className="h-4 w-4" aria-hidden />
                     {labels[card.key]}
                   </p>

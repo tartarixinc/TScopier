@@ -8,6 +8,8 @@ export const landingEs: LandingTranslations = {
     pricing: 'Precios',
     faq: 'FAQ',
     docs: 'Docs',
+    forTraders: 'Para traders',
+    forProviders: 'Para proveedores',
     signIn: 'Iniciar sesión',
     getStarted: 'Registrarse',
     dashboard: 'Panel',
@@ -33,7 +35,7 @@ export const landingEs: LandingTranslations = {
     subheadline:
       'Automatiza tus operaciones desde Telegram, WhatsApp, Discord, TradingView o una cuenta maestra a más de 8 plataformas de bróker en menos de 50 ms. Sin VPS.',
     socialProof: 'TScopier.ai ahora es UniCopier',
-    primaryCta: 'Empieza tu prueba gratuita de 5 días',
+    primaryCta: 'Elige tu plan',
     secondaryCta: 'Ver cómo funciona',
     imageAlt:
       'Panel de UniCopier con saldo, beneficio diario, resultados de operaciones y gráficos de crecimiento',
@@ -151,13 +153,13 @@ export const landingEs: LandingTranslations = {
     ],
     eyebrow: 'La copia inteligente empieza con herramientas inteligentes',
     title:
-      'Cada función de UniCopier está pensada para darte control, claridad y resultados medibles.',
+      'Por fin, un copiador de señales que funciona con todos los tipos de señal',
     cards: [
       {
         label: 'Velocidad de ejecución',
-        metric: '<150ms',
+        metric: '<50ms',
         metricVariant: 'teal',
-        description: 'Latencia inferior a 150 ms desde el parseo de la señal hasta el broker.',
+        description: 'Latencia inferior a 50 ms desde el parseo de la señal hasta el broker.',
         layout: 'tall',
         icon: 'zap',
       },
@@ -235,6 +237,16 @@ export const landingEs: LandingTranslations = {
         layout: 'short',
         icon: 'history',
       },
+    ],
+  },
+  providers: {
+    eyebrow: 'Para proveedores de señales',
+    title: 'Vende tu servicio de señales con UniCopier.',
+    description: 'Fija tu propio precio, crea tu comunidad y deja que otros traders copien tus operaciones por una cuota mensual. Te quedas con el 100% de las ganancias.',
+    points: [
+      { title: 'Fija tu precio', description: 'Cobra una cuota mensual u ofrece la copia gratis.' },
+      { title: 'Crea tu comunidad', description: 'Reúne a traders que te copian de forma automática.' },
+      { title: 'Quédate con el 100%', description: 'Todo lo que te pagan tus copiadores es tuyo.' },
     ],
   },
   features: {

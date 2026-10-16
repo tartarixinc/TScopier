@@ -3608,7 +3608,7 @@ export function AccountConfigPage() {
                                     <ConfigTitle className="mb-1" info={dynamicBalanceLotPreview?.hint}>
                                       {cm.risk.dynamicBalanceLotSize}
                                     </ConfigTitle>
-                                    <div className="rounded-md border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50 dark:bg-neutral-800/50 px-3 py-2 text-sm font-mono text-neutral-900 dark:text-neutral-50">
+                                    <div className="rounded-md border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50 dark:bg-neutral-800/50 px-3 py-2 text-sm  text-neutral-900 dark:text-neutral-50">
                                       {dynamicBalanceLotPreview?.lotLabel ?? '—'}
                                     </div>
                                     {dynamicBalanceLotPreview?.hint ? (
@@ -3715,7 +3715,7 @@ export function AccountConfigPage() {
                                   />
                                   <div>
                                     <ConfigTitle className="mb-1" info={multiTradePreviewTooltip}>{cm.risk.totalOpenTrades}</ConfigTitle>
-                                    <div className="rounded-md border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50 dark:bg-neutral-800/50 px-3 py-2 text-sm font-mono text-neutral-900 dark:text-neutral-50">
+                                    <div className="rounded-md border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50 dark:bg-neutral-800/50 px-3 py-2 text-sm  text-neutral-900 dark:text-neutral-50">
                                       {multiTradeTotalOpenTradesLabel}
                                     </div>
                                   </div>

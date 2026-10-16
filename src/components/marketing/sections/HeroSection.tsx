@@ -60,7 +60,7 @@ export function HeroSection() {
 
   // -mt-16 / pt-16 runs the dark hero under the (transparent) floating nav, to the top of the page.
   return (
-    <section id="product" className="relative -mt-16 scroll-mt-20 overflow-hidden bg-[#151a21] pt-16">
+    <section id="product" className="relative -mt-16 scroll-mt-20 overflow-hidden bg-green-900 pt-16">
       <div
         className="pointer-events-none absolute inset-0 opacity-[0.2] mix-blend-screen"
         style={{ backgroundImage: NOISE_BG, backgroundSize: '140px 140px' }}
@@ -98,7 +98,7 @@ export function HeroSection() {
                   <MarketingPricingHint
                     basic={l.pricingSnippet.basic}
                     advanced={l.pricingSnippet.advanced}
-                    className="mt-4 text-[0.6875rem] leading-relaxed text-neutral-400"
+                    className="mt-4 text-[0.6875rem] leading-relaxed text-green-100/80"
                   />
                 </div>
               </div>

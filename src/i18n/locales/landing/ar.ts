@@ -8,6 +8,8 @@ export const landingAr: LandingTranslations = {
     pricing: 'الأسعار',
     faq: 'الأسئلة الشائعة',
     docs: 'التوثيق',
+    forTraders: 'للمتداولين',
+    forProviders: 'لمزودي الإشارات',
     signIn: 'تسجيل الدخول',
     getStarted: 'إنشاء حساب',
     dashboard: 'لوحة التحكم',
@@ -33,7 +35,7 @@ export const landingAr: LandingTranslations = {
     subheadline:
       'أتمت تداولاتك من Telegram أو WhatsApp أو Discord أو TradingView أو حساب رئيسي إلى أكثر من 8 منصات وساطة في أقل من 50 مللي ثانية. بدون VPS.',
     socialProof: 'أصبح TScopier.ai الآن UniCopier',
-    primaryCta: 'ابدأ تجربتك المجانية لمدة 5 أيام',
+    primaryCta: 'اختر خطتك',
     secondaryCta: 'شاهد كيف يعمل',
     imageAlt:
       'لوحة تحكم UniCopier تعرض الرصيد والربح اليومي ونتائج التداول ومخططات نمو الحساب',
@@ -151,13 +153,13 @@ export const landingAr: LandingTranslations = {
     ],
     eyebrow: 'النسخ الأذكى يبدأ بأدوات أذكى',
     title:
-      'صُمّم كل ميزة في UniCopier لتمنحك التحكم والشفافية ونتائج قابلة للقياس.',
+      'أخيرًا، ناسخ إشارات يعمل مع جميع أنواع الإشارات',
     cards: [
       {
         label: 'سرعة التنفيذ',
-        metric: '<150ms',
+        metric: '<50ms',
         metricVariant: 'teal',
-        description: 'زمن استجابة أقل من 150 مللي ثانية من تحليل الإشارة إلى إرسال الوسيط في مسارنا السحابي.',
+        description: 'زمن استجابة أقل من 50 مللي ثانية من تحليل الإشارة إلى إرسال الوسيط في مسارنا السحابي.',
         layout: 'tall',
         icon: 'zap',
       },
@@ -235,6 +237,16 @@ export const landingAr: LandingTranslations = {
         layout: 'short',
         icon: 'history',
       },
+    ],
+  },
+  providers: {
+    eyebrow: 'لمزوّدي الإشارات',
+    title: 'بِع خدمة إشاراتك مع UniCopier.',
+    description: 'حدّد سعرك، وابنِ مجتمعك، ودع متداولين آخرين ينسخون صفقاتك مقابل اشتراك شهري. تحتفظ بـ 100% من الأرباح.',
+    points: [
+      { title: 'حدّد سعرك', description: 'اطلب اشتراكًا شهريًا أو اعرض النسخ مجانًا.' },
+      { title: 'ابنِ مجتمعك', description: 'اجمع متداولين ينسخونك تلقائيًا.' },
+      { title: 'احتفظ بـ 100%', description: 'كل ما يدفعه لك من ينسخونك هو لك.' },
     ],
   },
   features: {

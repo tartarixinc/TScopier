@@ -8,6 +8,8 @@ export const landingPl: LandingTranslations = {
     pricing: 'Ceny',
     faq: 'FAQ',
     docs: 'Dokumenty',
+    forTraders: 'Dla traderów',
+    forProviders: 'Dla dostawców',
     signIn: 'Zaloguj się',
     getStarted: 'Zarejestruj się',
     dashboard: 'Panel kontrolny',
@@ -33,7 +35,7 @@ export const landingPl: LandingTranslations = {
     subheadline:
       'Automatyzuj transakcje z Telegrama, WhatsApp, Discorda, TradingView lub konta master na ponad 8 platform brokerskich w mniej niż 50 ms. Bez VPS.',
     socialProof: 'TScopier.ai to teraz UniCopier',
-    primaryCta: 'Rozpocznij 5-dniowy bezpłatny okres próbny',
+    primaryCta: 'Wybierz swój plan',
     secondaryCta: 'Zobacz, jak to działa',
     imageAlt:
       'UniCopier panel kontrolny z saldem, dziennym zyskiem, wynikami handlu i wykresami wzrostu konta',
@@ -151,13 +153,13 @@ export const landingPl: LandingTranslations = {
     ],
     eyebrow: 'Inteligentniejsze kopiowanie zaczyna się od inteligentniejszych narzędzi',
     title:
-      'Każda funkcja UniCopier została stworzona, aby zapewnić kontrolę, przejrzystość i wymierne wyniki.',
+      'Nareszcie kopiarka sygnałów, która działa z każdym typem sygnału',
     cards: [
       {
         label: 'Szybkość wykonania',
-        metric: '<150ms',
+        metric: '<50ms',
         metricVariant: 'teal',
-        description: 'Opóźnienie poniżej 150 ms od analizy sygnału do wysłania brokera w naszym potoku w chmurze.',
+        description: 'Opóźnienie poniżej 50 ms od analizy sygnału do wysłania brokera w naszym potoku w chmurze.',
         layout: 'tall',
         icon: 'zap',
       },
@@ -235,6 +237,16 @@ export const landingPl: LandingTranslations = {
         layout: 'short',
         icon: 'history',
       },
+    ],
+  },
+  providers: {
+    eyebrow: 'Dla dostawców sygnałów',
+    title: 'Sprzedawaj swoją usługę sygnałów z UniCopier.',
+    description: 'Ustal własną cenę, zbuduj społeczność i pozwól innym traderom kopiować Twoje transakcje za miesięczną opłatą. Zatrzymujesz 100% zysku.',
+    points: [
+      { title: 'Ustal swoją cenę', description: 'Pobieraj miesięczną opłatę lub oferuj kopiowanie za darmo.' },
+      { title: 'Zbuduj społeczność', description: 'Zbierz traderów, którzy kopiują Cię automatycznie.' },
+      { title: 'Zatrzymaj 100%', description: 'Wszystko, co płacą Ci kopiujący, należy do Ciebie.' },
     ],
   },
   features: {

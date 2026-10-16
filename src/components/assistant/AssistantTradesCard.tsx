@@ -258,7 +258,7 @@ function TradeRow({
         <p className="mt-1.5 text-[11px] text-neutral-900 dark:text-neutral-50">
           {copy.ticket}:{' '}
           {trade.tickets.map((t, i) => (
-            <span key={t} className="font-mono text-green-500 dark:text-teal-300">
+            <span key={t} className=" text-green-500 dark:text-teal-300">
               {i > 0 ? ', ' : ''}#{t}
             </span>
           ))}
@@ -298,7 +298,7 @@ function ReportRow({ report, copy }: { report: NonNullable<ParsedResult['reports
           <span className="truncate font-semibold text-neutral-900 dark:text-neutral-50">
             {report.symbol ?? copy.title}
             {report.ticket ? (
-              <span className="font-mono text-green-500 dark:text-teal-300"> #{report.ticket}</span>
+              <span className=" text-green-500 dark:text-teal-300"> #{report.ticket}</span>
             ) : null}
           </span>
           {directionBadge(report.direction)}

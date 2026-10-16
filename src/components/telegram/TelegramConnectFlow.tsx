@@ -416,7 +416,7 @@ export function TelegramConnectFlow({
             {authMethod === 'phone' && (
               <div className="rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/50 px-4 py-3">
                 <p className="text-xs text-neutral-900 dark:text-neutral-50">{ce.verificationCode}</p>
-                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50 mt-0.5 font-mono tracking-wide">
+                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50 mt-0.5  tracking-wide">
                   {code || '—'}
                 </p>
                 <p className="text-xs text-neutral-900 dark:text-neutral-50 mt-1">{codeHint}</p>
