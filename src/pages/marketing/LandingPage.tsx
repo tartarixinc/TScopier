@@ -26,7 +26,7 @@ export function LandingPage() {
   }, [location.search])
 
   return (
-    <MarketingLayout>
+    <MarketingLayout darkHero>
       <HeroSection />
       <CompletePictureSection />
       {/* <IntegrationsSection /> */}
