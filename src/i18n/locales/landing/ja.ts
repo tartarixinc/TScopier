@@ -119,6 +119,17 @@ export const landingJa: LandingTranslations = {
     eyebrow: '連携',
     title: '主要プラットフォームに対応',
   },
+  completePicture: {
+    eyebrow: 'トータルな全体像',
+    title: '本気のコピートレーダーのために。',
+    description: '最初のメッセージから最後の決済まで、シグナルを確実にコピーするために必要なすべてを備えています。',
+    cards: [
+      { title: '複数のシグナルソース', description: 'プロバイダーがすでに使っているシグナルソースから取引をコピーできます。' },
+      { title: '8以上のプラットフォームに対応', description: 'UniCopierはFXから暗号資産まで、主要なプラットフォームすべてに対応します。' },
+      { title: 'TradingViewとのシームレスな連携', description: 'TradingViewで戦略を作成し、WebhookでUniCopierに接続できます。' },
+      { title: 'AI搭載', description: '私たちのAIは提案するだけでなく、実際の操作を実行し、設定を支援し、取引を分析して、コピートレード体験を向上させます。' },
+    ],
+  },
   showcase: {
     eyebrow: 'UniCopier',
     title: '現代のトレードの複雑さを減らし、より賢い判断を支えるために作りました',

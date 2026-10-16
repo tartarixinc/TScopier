@@ -120,6 +120,17 @@ export const landingPl: LandingTranslations = {
     eyebrow: 'Integracje',
     title: 'Działa z wiodącymi platformami',
   },
+  completePicture: {
+    eyebrow: 'Pełny obraz',
+    title: 'Stworzone dla poważnych copy traderów.',
+    description: 'Wszystko, czego potrzebujesz, by niezawodnie kopiować sygnały, od pierwszej wiadomości po ostatnie zamknięcie.',
+    cards: [
+      { title: 'Wiele źródeł sygnałów', description: 'Kopiuj transakcje ze źródła sygnałów, z którego korzysta już Twój dostawca.' },
+      { title: 'Obsługa ponad 8 platform', description: 'UniCopier obsługuje wszystkie popularne platformy, od Forex po krypto.' },
+      { title: 'Płynna integracja z TradingView', description: 'Twórz strategie w TradingView i połącz je z UniCopier przez webhook.' },
+      { title: 'AI w zestawie', description: 'Nasze AI nie tylko podpowiada, ale wykonuje realne działania, pomaga w konfiguracji, analizuje Twoje transakcje i poprawia doświadczenie z copy tradingiem.' },
+    ],
+  },
   showcase: {
     eyebrow: 'UniCopier',
     title: 'Stworzone, by zmniejszyć złożoność nowoczesnego tradingu i wspierać mądrzejsze decyzje',

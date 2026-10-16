@@ -120,6 +120,17 @@ export const landingNl: LandingTranslations = {
     eyebrow: 'Integraties',
     title: 'Werkt met toonaangevende platforms',
   },
+  completePicture: {
+    eyebrow: 'Het complete plaatje',
+    title: 'Gebouwd voor serieuze copytraders.',
+    description: 'Alles wat je nodig hebt om signalen betrouwbaar te kopiëren, van het eerste bericht tot de laatste sluiting.',
+    cards: [
+      { title: 'Meerdere signaalbronnen', description: 'Kopieer trades vanuit de signaalbron die je provider al gebruikt.' },
+      { title: 'Ondersteunt 8+ platforms', description: 'UniCopier ondersteunt alle populaire platforms, van forex tot crypto.' },
+      { title: 'Naadloze TradingView-integratie', description: 'Bouw je strategieën in TradingView en koppel ze via webhook aan UniCopier.' },
+      { title: 'AI inbegrepen', description: 'Onze AI geeft niet alleen suggesties, maar voert echte acties uit, helpt bij de installatie, analyseert je trades en verbetert je copytrading-ervaring.' },
+    ],
+  },
   showcase: {
     eyebrow: 'UniCopier',
     title: 'Gebouwd om de complexiteit van modern traden te verminderen en slimmere beslissingen te ondersteunen',

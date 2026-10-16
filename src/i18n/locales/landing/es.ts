@@ -120,6 +120,17 @@ export const landingEs: LandingTranslations = {
     eyebrow: 'Integraciones',
     title: 'Compatible con las principales plataformas',
   },
+  completePicture: {
+    eyebrow: 'La visión completa',
+    title: 'Hecho para copiadores de trading serios.',
+    description: 'Todo lo que necesitas para copiar señales con fiabilidad, desde el primer mensaje hasta el cierre final.',
+    cards: [
+      { title: 'Múltiples fuentes de señales', description: 'Copia operaciones desde la fuente de señales que tu proveedor ya utiliza.' },
+      { title: 'Compatible con más de 8 plataformas', description: 'UniCopier admite todas las plataformas populares, del Forex a las criptomonedas.' },
+      { title: 'Integración fluida con TradingView', description: 'Crea tus estrategias en TradingView y conéctalas a UniCopier mediante webhook.' },
+      { title: 'IA incluida', description: 'Nuestra IA no solo sugiere: ejecuta acciones reales, te ayuda con la configuración, analiza tus operaciones y mejora tu experiencia de copy trading.' },
+    ],
+  },
   showcase: {
     eyebrow: 'UniCopier',
     title: 'Creado para reducir la complejidad del trading moderno y apoyar mejores decisiones',

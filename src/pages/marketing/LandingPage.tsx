@@ -3,7 +3,8 @@ import { useLocation } from 'react-router-dom'
 import { MarketingLayout } from '../../components/marketing/MarketingLayout'
 import { HeroSection } from '../../components/marketing/sections/HeroSection'
 // import { StatsSection } from '../../components/marketing/sections/StatsSection'
-import { IntegrationsSection } from '../../components/marketing/sections/IntegrationsSection'
+import { CompletePictureSection } from '../../components/marketing/sections/CompletePictureSection'
+// import { IntegrationsSection } from '../../components/marketing/sections/IntegrationsSection'
 import { ProductShowcaseSection } from '../../components/marketing/sections/ProductShowcaseSection'
 import { WhyChooseSection } from '../../components/marketing/sections/WhyChooseSection'
 import { ComparisonSection } from '../../components/marketing/sections/ComparisonSection'
@@ -27,7 +28,8 @@ export function LandingPage() {
   return (
     <MarketingLayout>
       <HeroSection />
-      <IntegrationsSection />
+      <CompletePictureSection />
+      {/* <IntegrationsSection /> */}
       {/* <StatsSection /> */}
       <ProductShowcaseSection />
       <WhyChooseSection />

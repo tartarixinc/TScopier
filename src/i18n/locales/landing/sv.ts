@@ -120,6 +120,17 @@ export const landingSv: LandingTranslations = {
     eyebrow: 'Integrationer',
     title: 'Fungerar med ledande plattformar',
   },
+  completePicture: {
+    eyebrow: 'Helheten',
+    title: 'Byggt för seriösa copytraders.',
+    description: 'Allt du behöver för att kopiera signaler pålitligt, från första meddelandet till sista stängningen.',
+    cards: [
+      { title: 'Flera signalkällor', description: 'Kopiera affärer från den signalkälla som din leverantör redan använder.' },
+      { title: 'Stöd för 8+ plattformar', description: 'UniCopier stöder alla populära plattformar, från forex till krypto.' },
+      { title: 'Sömlös TradingView-integration', description: 'Bygg dina strategier i TradingView och koppla dem till UniCopier via webhook.' },
+      { title: 'AI ingår', description: 'Vår AI föreslår inte bara, den utför riktiga åtgärder, hjälper dig med installationen, analyserar dina affärer och förbättrar din copytrading.' },
+    ],
+  },
   showcase: {
     eyebrow: 'UniCopier',
     title: 'Byggt för att minska komplexiteten i modern trading och stödja smartare beslut',

@@ -372,6 +372,17 @@ export interface LandingTranslations {
     eyebrow: string
     title: string
   }
+  completePicture: {
+    eyebrow: string
+    title: string
+    description: string
+    cards: readonly [
+      { title: string; description: string },
+      { title: string; description: string },
+      { title: string; description: string },
+      { title: string; description: string },
+    ]
+  }
   showcase: {
     eyebrow: string
     title: string
