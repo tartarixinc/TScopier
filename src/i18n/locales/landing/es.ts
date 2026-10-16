@@ -120,6 +120,16 @@ export const landingEs: LandingTranslations = {
     eyebrow: 'Integraciones',
     title: 'Compatible con las principales plataformas',
   },
+  showcase: {
+    eyebrow: 'UniCopier',
+    title: 'Creado para reducir la complejidad del trading moderno y apoyar mejores decisiones',
+    cta: 'Más información',
+    cards: [
+      { headline: 'Conecta todas tus cuentas y define tus reglas una sola vez.', description: 'Vincula tus cuentas de MT4, MT5, cTrader, Binance, Bybit y KuCoin y elige tamaño de lote, riesgo, objetivos y fuentes de señales para cada una.' },
+      { headline: 'Replica al instante las operaciones de la cuenta maestra en las esclavas.', description: 'Elige una cuenta maestra y deja que tus otras cuentas la sigan con lotes fijos, multiplicadores o tamaño según el saldo, además de opciones de protección.' },
+      { headline: 'Sigue a los mejores traders y cópialos en unos clics.', description: 'Compara ROI, tasa de acierto y valoraciones, y copia a los proveedores gratis o por una cuota mensual, o comparte tu propio rendimiento.' },
+    ],
+  },
   whyChoose: {
     statsCaption: 'Utilizado por traders de los proveedores de señales de Telegram más populares',
     stats: [

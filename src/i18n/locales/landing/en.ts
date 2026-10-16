@@ -120,6 +120,16 @@ export const landingEn: LandingTranslations = {
     eyebrow: 'Integrations',
     title: 'Works with leading platforms',
   },
+  showcase: {
+    eyebrow: 'UniCopier',
+    title: 'Built to reduce complexity in modern trading and support smarter decisions',
+    cta: 'Learn more',
+    cards: [
+      { headline: 'Connect every account and set your rules once.', description: 'Link your MT4, MT5, cTrader, Binance, Bybit and KuCoin accounts, then choose lot size, risk, targets and signal sources for each one.' },
+      { headline: 'Instantly mirror trades from master to slave accounts.', description: 'Pick a master account and let your other accounts follow it with fixed lots, multipliers or balance-based sizing, plus protection options.' },
+      { headline: 'Follow top traders and copy them in a few clicks.', description: 'Compare ROI, win rate and ratings, then copy providers for free or a monthly fee, or share your own performance.' },
+    ],
+  },
   whyChoose: {
     statsCaption: 'Used by traders from the most popular Telegram signal providers',
     stats: [

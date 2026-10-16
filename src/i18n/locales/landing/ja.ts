@@ -119,6 +119,16 @@ export const landingJa: LandingTranslations = {
     eyebrow: '連携',
     title: '主要プラットフォームに対応',
   },
+  showcase: {
+    eyebrow: 'UniCopier',
+    title: '現代のトレードの複雑さを減らし、より賢い判断を支えるために作りました',
+    cta: '詳しく見る',
+    cards: [
+      { headline: 'すべての口座をつなぎ、ルールは一度だけ設定。', description: 'MT4、MT5、cTrader、Binance、Bybit、KuCoinの口座を連携し、ロットサイズ、リスク、目標、シグナルソースを口座ごとに設定できます。' },
+      { headline: 'マスターからスレーブ口座へ、取引を即座にミラーリング。', description: 'マスター口座を選び、固定ロット、倍率、残高ベースのサイズで他の口座に追従させます。保護オプションも利用できます。' },
+      { headline: 'トップトレーダーをフォローして、数クリックでコピー。', description: 'ROI、勝率、評価を比較して、無料または月額でプロバイダーをコピーしたり、自分の成績を共有したりできます。' },
+    ],
+  },
   whyChoose: {
     statsCaption: '最も人気のあるTelegramシグナルプロバイダーのトレーダーに利用されています',
     stats: [

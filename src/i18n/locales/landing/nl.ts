@@ -120,6 +120,16 @@ export const landingNl: LandingTranslations = {
     eyebrow: 'Integraties',
     title: 'Werkt met toonaangevende platforms',
   },
+  showcase: {
+    eyebrow: 'UniCopier',
+    title: 'Gebouwd om de complexiteit van modern traden te verminderen en slimmere beslissingen te ondersteunen',
+    cta: 'Meer informatie',
+    cards: [
+      { headline: 'Koppel al je accounts en stel je regels één keer in.', description: 'Koppel je MT4-, MT5-, cTrader-, Binance-, Bybit- en KuCoin-accounts en kies per account lotgrootte, risico, doelen en signaalbronnen.' },
+      { headline: 'Spiegel trades direct van master- naar slave-accounts.', description: 'Kies een masteraccount en laat je andere accounts het volgen met vaste lots, multipliers of saldogebaseerde grootte, plus beveiligingsopties.' },
+      { headline: 'Volg toptraders en kopieer ze in een paar klikken.', description: 'Vergelijk ROI, winstpercentage en beoordelingen en kopieer aanbieders gratis of voor een maandbedrag, of deel je eigen prestaties.' },
+    ],
+  },
   whyChoose: {
     statsCaption: 'Gebruikt door traders van de populairste Telegram-signaalaanbieders',
     stats: [

@@ -120,6 +120,16 @@ export const landingSv: LandingTranslations = {
     eyebrow: 'Integrationer',
     title: 'Fungerar med ledande plattformar',
   },
+  showcase: {
+    eyebrow: 'UniCopier',
+    title: 'Byggt för att minska komplexiteten i modern trading och stödja smartare beslut',
+    cta: 'Läs mer',
+    cards: [
+      { headline: 'Anslut alla konton och ställ in dina regler en gång.', description: 'Länka dina MT4-, MT5-, cTrader-, Binance-, Bybit- och KuCoin-konton och välj lotstorlek, risk, mål och signalkällor för varje konto.' },
+      { headline: 'Spegla affärer direkt från huvud- till slavkonton.', description: 'Välj ett huvudkonto och låt dina andra konton följa det med fasta lots, multiplikatorer eller saldobaserad storlek, plus skyddsalternativ.' },
+      { headline: 'Följ toppnoterade traders och kopiera dem med några klick.', description: 'Jämför ROI, vinstandel och betyg och kopiera leverantörer gratis eller mot en månadsavgift, eller dela din egen prestation.' },
+    ],
+  },
   whyChoose: {
     statsCaption: 'Används av traders från de mest populära Telegram-signalleverantörerna',
     stats: [
