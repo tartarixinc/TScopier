@@ -18,7 +18,7 @@ const PLATFORM_LOGOS = [
 ] as const
 
 const LOGO_CIRCLE =
-  'flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-neutral-100 ring-2 ring-white'
+  'flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/80 ring-2 ring-white/40'
 
 function LogoStack({ logos }: { logos: readonly { name: string; src: string }[] }) {
   return (
@@ -53,7 +53,12 @@ export function CompletePictureSection() {
   ]
 
   return (
-    <section className="relative bg-green-400" aria-labelledby="complete-picture-title">
+    <section className="relative isolate overflow-hidden bg-green-400" aria-labelledby="complete-picture-title">
+      {/* Soft light and depth behind the glass cards. */}
+      <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden>
+        <div className="absolute -right-24 -top-24 h-96 w-96 rounded-full bg-white/50 blur-3xl" />
+        <div className="absolute -bottom-32 left-1/3 h-96 w-[28rem] rounded-full bg-emerald-600/40 blur-3xl" />
+      </div>
       <div className="mx-auto max-w-[80rem] px-3 py-12 sm:px-8 sm:py-20">
         <div className="grid items-center gap-8 lg:grid-cols-[0.85fr_1.15fr] lg:gap-12">
           <div className="lg:ps-6">
@@ -73,13 +78,13 @@ export function CompletePictureSection() {
             {c.cards.map((card, index) => (
               <li
                 key={card.title}
-                className="flex min-h-[13rem] flex-col rounded-3xl bg-white p-6 shadow-[0_12px_32px_-16px_rgba(0,0,0,0.35)]"
+                className="flex min-h-[13rem] flex-col rounded-3xl border border-white/50 bg-white/25 p-6 shadow-[0_8px_32px_rgba(0,80,40,0.15),inset_0_1px_0_rgba(255,255,255,0.6)] backdrop-blur-xl"
               >
                 {icons[index]}
                 <h3 className="mt-auto pt-8 text-lg font-semibold leading-snug tracking-tight text-neutral-950">
                   {card.title}
                 </h3>
-                <p className="mt-2 text-sm leading-relaxed text-neutral-600">
+                <p className="mt-2 text-sm leading-relaxed text-neutral-900/75">
                   {card.description}
                 </p>
               </li>
