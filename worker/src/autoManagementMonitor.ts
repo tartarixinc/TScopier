@@ -26,6 +26,7 @@ import {
   type BrokerApiByAccountId,
 } from './mtApiByAccount'
 import { resolveCurrentLivePosition } from './livePositionIdentity'
+import { confirmBrokerStopApplied, readTradeBrokerStop } from './brokerStopReadback'
 import {
   applyShardToQuery,
   hasWorkOnShard,
@@ -90,6 +91,31 @@ const UNRESOLVABLE_BACKOFF_MAX_MS = Math.max(
 /** Consecutive unresolvable failures before a trade is parked (long backoff). */
 const UNRESOLVABLE_QUARANTINE_AFTER = Math.max(3, Number(process.env.AUTO_BE_QUARANTINE_AFTER ?? 6))
 const UNRESOLVABLE_QUARANTINE_MS = Math.max(60_000, Number(process.env.AUTO_BE_QUARANTINE_MS ?? 30 * 60_000))
+
+/**
+ * Verify with the broker that a stop move actually landed before recording it.
+ * On by default. Set `AUTO_BE_VERIFY_AFTER_MODIFY=0` to disable the post-modify
+ * read-back if it ever misbehaves in prod — note the pre-modify check still
+ * requires the broker to show the stop, so this does not fully restore the old
+ * "trust orderModify" behaviour, only stops the extra confirmation read.
+ */
+const VERIFY_AFTER_MODIFY = (() => {
+  const v = String(process.env.AUTO_BE_VERIFY_AFTER_MODIFY ?? 'true').toLowerCase().trim()
+  return !(v === '0' || v === 'false' || v === 'no' || v === 'off')
+})()
+
+/**
+ * Whether a failed auto-breakeven apply should eventually be parked as
+ * unresolvable. Two variants share the same thrown message shape, but only one
+ * is worth parking: the broker keeps ACCEPTING the modify without ever showing
+ * the stop (retrying every few seconds is pure churn). A read that merely failed
+ * must stay transient forever — a broker blip must not park a protected leg.
+ */
+export function isUnconfirmedStopEscalatable(message: string): boolean {
+  if (/opened-orders read failed/i.test(message)) return false
+  return /breakeven modify not confirmed by broker/i.test(message)
+}
+
 
 /**
  * A failure a retry cannot fix — the stored ticket does not map to a unique live
@@ -398,7 +424,11 @@ export class AutoManagementMonitor {
     const tpIndex = Number(trade.auto_be_tp_index ?? 1)
     const offsetPips = Number(trade.auto_be_offset_pips ?? 0)
     const beType = String(trade.auto_be_type ?? 'sl_only').toLowerCase() as AutoBeType
-    const isBuy = String(trade.direction).toLowerCase() === 'buy'
+    // Trade direction must be explicit: an unknown value would be treated as a
+    // sell by the directional stop checks and could wedge a real leg.
+    const direction = String(trade.direction ?? '').toLowerCase().trim()
+    if (direction !== 'buy' && direction !== 'sell') return null
+    const isBuy = direction === 'buy'
 
     const partialTpFiredIndices = partials
       .filter(p => p.status === 'fired')
@@ -419,19 +449,26 @@ export class AutoManagementMonitor {
     const currentSl = trade.sl != null && Number.isFinite(Number(trade.sl)) ? Number(trade.sl) : null
 
     let brokerSl: number | null = null
+    let brokerRowFound = false
     if (brokerOrders) {
-      for (const raw of brokerOrders) {
-        const o = raw as Record<string, unknown>
-        const t = Number(o.ticket ?? o.Ticket ?? o.order ?? o.Order ?? 0)
-        if (t !== ticketNum && t !== Number(trade.broker_position_ticket ?? ticketNum)) continue
-        const sl = Number(o.stopLoss ?? o.StopLoss ?? o.sl ?? o.SL ?? 0)
-        if (Number.isFinite(sl) && sl > 0) brokerSl = sl
-        break
-      }
+      // Resolve through the same identity logic the modify uses. The old
+      // hand-rolled ticket scan only knew `ticket`/`order`, so on MT5 (where the
+      // position is reported under `positionTicket`) it never matched and the
+      // shortcut below could not fire for a genuinely protected leg.
+      const read = readTradeBrokerStop({ openedOrders: brokerOrders, trade })
+      brokerRowFound = read.found
+      brokerSl = read.stoploss
     }
 
     const effectiveSl = resolveSlForBreakevenCheck(currentSl, brokerSl)
-    if (isSlAtOrBeyondBreakeven(isBuy, effectiveSl, beSl, signalPip)) {
+    // Only skip a leg that IS already at breakeven when the broker itself shows
+    // the stop. A stop present only in our own row (or a snapshot that failed to
+    // read) must keep the trade in the work set: trusting the database here is
+    // how a leg can be marked protected while the broker holds no stop.
+    const brokerConfirmsBreakeven = brokerRowFound
+      && brokerSl != null
+      && isSlAtOrBeyondBreakeven(isBuy, brokerSl, beSl, signalPip)
+    if (isSlAtOrBeyondBreakeven(isBuy, effectiveSl, beSl, signalPip) && brokerConfirmsBreakeven) {
       await this.markApplied(trade.id, { sl: effectiveSl ?? beSl })
       return null
     }
@@ -497,6 +534,42 @@ export class AutoManagementMonitor {
         takeprofit: modifyTp,
       })
 
+      // Prove the broker took the stop before recording it. `orderModify`
+      // returning is not proof: the bridge can accept the call and still leave
+      // the position with no stop, and once we stamp `auto_be_applied_at` the
+      // trade leaves this work set and is never repaired (2026-10-16, legs
+      // 2013291582/2013294086 recorded as protected with S/L "-" at the broker).
+      let appliedSl = modifySl
+      if (VERIFY_AFTER_MODIFY) {
+        let afterOrders: unknown[] | null
+        try {
+          afterOrders = (await api.openedOrders(uuid)) ?? null
+        } catch {
+          afterOrders = null
+        }
+        const confirmation = confirmBrokerStopApplied({
+          openedOrders: afterOrders,
+          trade,
+          ticket: effectiveTicket,
+          expectedSl: modifySl,
+          isBuy,
+          // Match the convention of isSlAtOrBeyondBreakeven (half a signal pip),
+          // widened to at least half a broker point, so a broker that stores the
+          // stop on a coarser grid does not read as a failure.
+          tolerance: Math.max(symEntry.point / 2, signalPip / 2),
+        })
+        if (!confirmation.confirmed) {
+          throw new Error(
+            'breakeven modify not confirmed by broker:'
+            + ` ticket=${effectiveTicket} expected_sl=${modifySl}`
+            + ` broker_sl=${confirmation.stoploss ?? 'none'}`
+            + (afterOrders == null ? ' (opened-orders read failed)' : ''),
+          )
+        }
+        // The broker may hold a tighter stop than we asked for; record the truth.
+        appliedSl = confirmation.stoploss ?? modifySl
+      }
+
       let remainingLots = lots
       if (beType === 'sl_and_close_half' && lots > 0.0001) {
         const closeLots = +(lots * (halfClosePercent / 100)).toFixed(2)
@@ -514,7 +587,7 @@ export class AutoManagementMonitor {
       }
 
       const patch: Record<string, unknown> = {
-        sl: modifySl,
+        sl: appliedSl,
         auto_be_applied_at: new Date().toISOString(),
       }
       if (modifyTp !== tpSanitize) {
@@ -547,14 +620,14 @@ export class AutoManagementMonitor {
           direction: trade.direction,
           mode,
           trigger_value: triggerValue,
-          new_sl: modifySl,
+          new_sl: appliedSl,
           be_type: beType,
           half_close: beType === 'sl_and_close_half',
         } as unknown as Record<string, unknown>,
       })
 
       console.log(
-        `[autoManagementMonitor] applied trade=${trade.id} symbol=${trade.symbol} mode=${mode} sl→${modifySl}`,
+        `[autoManagementMonitor] applied trade=${trade.id} symbol=${trade.symbol} mode=${mode} sl→${appliedSl}`,
       )
       return true
     } catch (err) {
@@ -569,7 +642,16 @@ export class AutoManagementMonitor {
         console.warn(`[autoManagementMonitor] broker identity/close state ambiguous trade=${trade.id}; deferring to reconciliation`)
         return false
       }
-      this.markFailureClass(trade.id, msg)
+      if (isUnconfirmedStopEscalatable(msg)
+        && (this.failureByTrade.get(trade.id)?.count ?? 0) + 1 >= UNRESOLVABLE_QUARANTINE_AFTER) {
+        this.failureClassByTrade.set(trade.id, 'unresolvable')
+        console.warn(
+          `[autoManagementMonitor] breakeven modify unconfirmed repeatedly trade=${trade.id};`
+          + ' parking for reconciliation',
+        )
+      } else {
+        this.markFailureClass(trade.id, msg)
+      }
       console.warn(`[autoManagementMonitor] apply failed trade=${trade.id} ticket=${ticketNum}: ${msg}`)
       const now = Date.now()
       if (now >= (this.failureLogCooldownUntil.get(trade.id) ?? 0)) {
