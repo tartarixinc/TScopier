@@ -15,10 +15,13 @@ interface TscopierLogoProps {
   collapsed?: boolean
   /** Product wordmark. */
   brand?: 'tscopier' | 'unicopier'
+  /** Force the white wordmark (e.g. over a dark hero in light mode). */
+  onDark?: boolean
 }
 
-export function TscopierLogo({ className, collapsed, brand = 'unicopier' }: TscopierLogoProps) {
-  const { isDark } = useTheme()
+export function TscopierLogo({ className, collapsed, brand = 'unicopier', onDark }: TscopierLogoProps) {
+  const { isDark: themeIsDark } = useTheme()
+  const isDark = themeIsDark || onDark === true
 
   if (brand === 'unicopier') {
     return (

@@ -28,13 +28,13 @@ export const landingPl: LandingTranslations = {
     },
   },
   hero: {
-    headline: 'Jedna zunifikowana platforma kopiarki dla',
-    headlinePhrases: ['Sygnałów tradingowych', 'Tradingu społecznościowego', 'Mirroringu kont'],
+    headline: 'Platforma kopiowania nr 1 dla każdego tradera Forex i krypto',
+    headlinePhrases: [],
     subheadline:
       'Automatyzuj transakcje z Telegrama, WhatsApp, Discorda, TradingView lub konta master na ponad 8 platform brokerskich w mniej niż 50 ms. Bez VPS.',
     socialProof: 'TScopier.ai to teraz UniCopier',
     primaryCta: 'Rozpocznij 5-dniowy bezpłatny okres próbny',
-    secondaryCta: 'Zaloguj się',
+    secondaryCta: 'Zobacz, jak to działa',
     imageAlt:
       'UniCopier panel kontrolny z saldem, dziennym zyskiem, wynikami handlu i wykresami wzrostu konta',
     previewUrl: 'app.tscopier.ai/dashboard',
@@ -119,6 +119,27 @@ export const landingPl: LandingTranslations = {
   integrations: {
     eyebrow: 'Integracje',
     title: 'Działa z wiodącymi platformami',
+  },
+  completePicture: {
+    eyebrow: 'Pełny obraz',
+    title: 'Stworzone dla poważnych copy traderów.',
+    description: 'Wszystko, czego potrzebujesz, by niezawodnie kopiować sygnały, od pierwszej wiadomości po ostatnie zamknięcie.',
+    cards: [
+      { title: 'Wiele źródeł sygnałów', description: 'Kopiuj transakcje ze źródła sygnałów, z którego korzysta już Twój dostawca.' },
+      { title: 'Obsługa ponad 8 platform', description: 'UniCopier obsługuje wszystkie popularne platformy, od Forex po krypto.' },
+      { title: 'Płynna integracja z TradingView', description: 'Twórz strategie w TradingView i połącz je z UniCopier przez webhook.' },
+      { title: 'AI w zestawie', description: 'Nasze AI nie tylko podpowiada, ale wykonuje realne działania, pomaga w konfiguracji, analizuje Twoje transakcje i poprawia doświadczenie z copy tradingiem.' },
+    ],
+  },
+  showcase: {
+    eyebrow: 'UniCopier',
+    title: 'Stworzone, by zmniejszyć złożoność nowoczesnego tradingu i wspierać mądrzejsze decyzje',
+    cta: 'Dowiedz się więcej',
+    cards: [
+      { headline: 'Połącz wszystkie konta i ustaw zasady tylko raz.', description: 'Połącz konta MT4, MT5, cTrader, Binance, Bybit i KuCoin, a potem wybierz dla każdego wielkość lota, ryzyko, cele i źródła sygnałów.' },
+      { headline: 'Natychmiast odbijaj transakcje z konta głównego na konta podrzędne.', description: 'Wybierz konto główne i pozwól innym kontom je naśladować ze stałymi lotami, mnożnikami lub wielkością opartą na saldzie, wraz z opcjami ochrony.' },
+      { headline: 'Obserwuj najlepszych traderów i kopiuj ich kilkoma kliknięciami.', description: 'Porównuj ROI, skuteczność i oceny, a następnie kopiuj dostawców za darmo lub za miesięczną opłatą albo dziel się własnymi wynikami.' },
+    ],
   },
   whyChoose: {
     statsCaption: 'Używany przez traderów najpopularniejszych dostawców sygnałów Telegram',

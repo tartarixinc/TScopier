@@ -75,7 +75,7 @@ const GLASS_BAR =
 const GLASS_BAR_SCROLLED =
   'border border-white/80 bg-white/80 shadow-[0_10px_40px_rgba(15,23,42,0.12)] backdrop-blur-2xl dark:border-white/10 dark:bg-neutral-950/70 dark:shadow-[0_10px_40px_rgba(0,0,0,0.55)]'
 
-export function MarketingHeader() {
+export function MarketingHeader({ overDarkHero = false }: { overDarkHero?: boolean }) {
   const l = useT().landing.nav
   const { auth } = useLocale()
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -101,6 +101,8 @@ export function MarketingHeader() {
   }, [])
 
   const closeMobile = () => setMobileOpen(false)
+  // Over a dark hero (before scrolling) the bar renders with dark-theme colours even in light mode.
+  const onDark = overDarkHero && !scrolled && !mobileOpen
 
   const desktopLinkClass =
     'whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-900/[0.06] hover:text-neutral-950 dark:text-neutral-300 dark:hover:bg-white/10 dark:hover:text-white'
@@ -113,6 +115,7 @@ export function MarketingHeader() {
         className={clsx(
           'pointer-events-auto relative mx-auto flex h-14 max-w-6xl items-center gap-2 rounded-full ps-4 pe-2 transition-[background-color,border-color,box-shadow,backdrop-filter] duration-300 sm:ps-5 lg:gap-4',
           scrolled ? GLASS_BAR_SCROLLED : GLASS_BAR,
+          onDark && 'dark',
         )}
       >
         <Link
@@ -121,7 +124,7 @@ export function MarketingHeader() {
           aria-label="UniCopier home"
           onClick={closeMobile}
         >
-          <TscopierLogo className="h-8 w-auto sm:h-9" />
+          <TscopierLogo className="h-8 w-auto sm:h-9" onDark={onDark} />
         </Link>
 
         <nav
