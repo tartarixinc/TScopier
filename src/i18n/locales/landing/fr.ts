@@ -13,13 +13,26 @@ export const landingFr: LandingTranslations = {
     dashboard: 'Tableau de bord',
     menuOpen: 'Ouvrir le menu',
     menuClose: 'Fermer le menu',
+    productMenu: {
+      heading: 'Produits',
+      signalCopier: { title: 'Copieur de signaux', description: 'Copiez les signaux de Telegram, WhatsApp, Discord et TradingView directement vers votre courtier.' },
+      socialTrading: { title: 'Trading social', description: 'Parcourez les meilleurs traders par ROI et taux de réussite, puis copiez-les gratuitement ou pour un abonnement mensuel.' },
+      accountMirroring: { title: 'Miroir de comptes', description: 'Reproduisez en temps réel les trades d’un compte maître sur vos autres comptes.' },
+      featuredTitle: 'Compatible avec plus de 8 plateformes',
+      featuredBody: 'MT4, MT5, cTrader, Binance, Bybit et KuCoin. Aucun VPS requis.',
+      socialPanel: { title: 'Copiez des traders éprouvés', body: 'Comparez les performances et suivez les traders en qui vous avez confiance.' },
+      mirrorPanel: { title: 'Un maître, plusieurs comptes', body: 'Connectez un compte maître et chaque compte esclave suit ses trades automatiquement.' },
+      labels: { roi: 'ROI', winRate: 'Taux de réussite', following: 'Suivi', copyTrader: 'Copier le trader', master: 'Maître', slave: 'Esclave' },
+      exploreFeatures: 'Voir toutes les fonctionnalités',
+      viewPricing: 'Voir les tarifs',
+    },
   },
   hero: {
     headline: 'Une plateforme de copie unifiée pour',
     headlinePhrases: ['Signaux de trading', 'Trading social', 'Miroir de comptes'],
     subheadline:
       'Automatisez vos trades depuis Telegram, WhatsApp, Discord, TradingView ou un compte maître vers plus de 8 plateformes de courtage en moins de 50 ms. Aucun VPS requis.',
-    socialProof: 'Classé n°1 des copieurs de signaux Telegram cloud',
+    socialProof: 'TScopier.ai devient UniCopier',
     primaryCta: 'Commencez votre essai gratuit de 5 jours',
     secondaryCta: 'Se connecter',
     imageAlt:
@@ -102,6 +115,10 @@ export const landingFr: LandingTranslations = {
         },
       ],
     },
+  },
+  integrations: {
+    eyebrow: 'Intégrations',
+    title: 'Compatible avec les plateformes leaders',
   },
   whyChoose: {
     statsCaption: 'Utilisé par des traders des fournisseurs de signaux Telegram les plus populaires',

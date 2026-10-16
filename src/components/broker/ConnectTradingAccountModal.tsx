@@ -8,6 +8,31 @@ import { useSubscription } from '../../context/SubscriptionContext'
 import { fxsocketBroker } from '../../lib/fxsocketBroker'
 import { startCtraderConnect } from '../../lib/ctraderBroker'
 import {
+  BINANCE_API_MANAGEMENT_URL,
+  DEFAULT_BINANCE_SETTINGS_DRAFT,
+  linkBinanceAccount,
+  parseBinanceSettingsDraft,
+  type BinanceEnvironment,
+  type BinanceSettingsDraft,
+} from '../../lib/binanceBroker'
+import {
+  DEFAULT_BYBIT_SETTINGS_DRAFT,
+  linkBybitAccount,
+  parseBybitSettingsDraft,
+  type BybitEnvironment,
+  type BybitSettingsDraft,
+  BYBIT_API_MANAGEMENT_URL,
+} from '../../lib/bybitBroker'
+import {
+  DEFAULT_KUCOIN_SETTINGS_DRAFT,
+  linkKucoinAccount,
+  parseKucoinSettingsDraft,
+  type KucoinSettingsDraft,
+  KUCOIN_API_MANAGEMENT_URL,
+} from '../../lib/kucoinBroker'
+import { ApiKeyHelp } from './ApiKeyHelp'
+import { BinanceSettingsFields } from './BinanceSettingsFields'
+import {
   emptyConnectTradingAccountForm,
   type ConnectTradingAccountForm,
 } from '../../lib/connectTradingAccountForm'
@@ -42,6 +67,10 @@ type ConnectTradingAccountModalProps = {
   onClose: () => void
   onSuccess?: (broker: BrokerAccount) => void
   onBatchSuccess?: (result: BulkConnectResult) => void
+  /** Platform chosen in the Add account picker. Applied each time the modal opens. */
+  initialPlatform?: TradingPlatform | null
+  /** Go back to the platform picker. The button is hidden when omitted. */
+  onChangePlatform?: () => void
 }
 
 type ConnectStep = 0 | 1 | 2
@@ -55,6 +84,8 @@ export function ConnectTradingAccountModal({
   onClose,
   onSuccess,
   onBatchSuccess,
+  initialPlatform,
+  onChangePlatform,
 }: ConnectTradingAccountModalProps) {
   const t = useT()
   const cf = t.accountConfig.connectForm
@@ -76,6 +107,24 @@ export function ConnectTradingAccountModal({
   const [connectStep, setConnectStep] = useState<ConnectStep>(0)
   const [batchRows, setBatchRows] = useState<BulkConnectRowProgress[]>([])
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false)
+  const [binanceKey, setBinanceKey] = useState('')
+  const [binanceSecret, setBinanceSecret] = useState('')
+  const [binanceLabel, setBinanceLabel] = useState('')
+  const [binanceEnv, setBinanceEnv] = useState<BinanceEnvironment>('live')
+  const [binanceDraft, setBinanceDraft] = useState<BinanceSettingsDraft>(DEFAULT_BINANCE_SETTINGS_DRAFT)
+  const [binanceFieldError, setBinanceFieldError] = useState<'margin' | 'leverage' | null>(null)
+  const [bybitKey, setBybitKey] = useState('')
+  const [bybitSecret, setBybitSecret] = useState('')
+  const [bybitLabel, setBybitLabel] = useState('')
+  const [bybitEnv, setBybitEnv] = useState<BybitEnvironment>('live')
+  const [bybitDraft, setBybitDraft] = useState<BybitSettingsDraft>(DEFAULT_BYBIT_SETTINGS_DRAFT)
+  const [bybitFieldError, setBybitFieldError] = useState<'margin' | 'leverage' | null>(null)
+  const [kucoinKey, setKucoinKey] = useState('')
+  const [kucoinSecret, setKucoinSecret] = useState('')
+  const [kucoinPassphrase, setKucoinPassphrase] = useState('')
+  const [kucoinLabel, setKucoinLabel] = useState('')
+  const [kucoinDraft, setKucoinDraft] = useState<KucoinSettingsDraft>(DEFAULT_KUCOIN_SETTINGS_DRAFT)
+  const [kucoinFieldError, setKucoinFieldError] = useState<'margin' | 'leverage' | null>(null)
 
   const reset = useCallback(() => {
     setRows(emptyConnectRows())
@@ -84,6 +133,24 @@ export function ConnectTradingAccountModal({
     setConnectStep(0)
     setBatchRows([])
     setBulkUploadOpen(false)
+    setBinanceKey('')
+    setBinanceSecret('')
+    setBinanceLabel('')
+    setBinanceEnv('live')
+    setBinanceDraft(DEFAULT_BINANCE_SETTINGS_DRAFT)
+    setBinanceFieldError(null)
+    setBybitKey('')
+    setBybitSecret('')
+    setBybitLabel('')
+    setBybitEnv('live')
+    setBybitDraft(DEFAULT_BYBIT_SETTINGS_DRAFT)
+    setBybitFieldError(null)
+    setKucoinKey('')
+    setKucoinSecret('')
+    setKucoinPassphrase('')
+    setKucoinLabel('')
+    setKucoinDraft(DEFAULT_KUCOIN_SETTINGS_DRAFT)
+    setKucoinFieldError(null)
   }, [])
 
   const handleClose = useCallback(() => {
@@ -111,8 +178,14 @@ export function ConnectTradingAccountModal({
   }, [open])
 
   useEffect(() => {
-    if (!open) reset()
-  }, [open, reset])
+    if (!open) {
+      reset()
+      return
+    }
+    if (initialPlatform) {
+      setRows(prev => prev.map(row => ({ ...row, platform: initialPlatform })))
+    }
+  }, [open, reset, initialPlatform])
 
   useEffect(() => {
     if (!saving) return
@@ -173,8 +246,128 @@ export function ConnectTradingAccountModal({
     }
   }
 
+  const startBinance = async () => {
+    setError('')
+    setBinanceFieldError(null)
+    if (!hasActiveSubscription) {
+      setError(pw.subscriptionRequired)
+      return
+    }
+    if (!isAdmin && activeBrokerCount >= limits.maxBrokerAccounts) {
+      setError(interpolate(pw.brokerLimit, { limit: String(limits.maxBrokerAccounts) }))
+      return
+    }
+    if (!binanceKey.trim() || !binanceSecret.trim()) {
+      setError(cf.binanceKeysRequired)
+      return
+    }
+    const parsed = parseBinanceSettingsDraft(binanceDraft)
+    if (!parsed.ok) {
+      setBinanceFieldError(parsed.field === 'margin' ? 'margin' : parsed.field === 'leverage' ? 'leverage' : null)
+      return
+    }
+    setSaving(true)
+    try {
+      const { account } = await linkBinanceAccount({
+        apiKey: binanceKey,
+        apiSecret: binanceSecret,
+        environment: binanceEnv,
+        label: binanceLabel,
+        settings: parsed.settings,
+      })
+      upsertBroker(account)
+      reset()
+      if (onSuccess) onSuccess(account)
+      else onClose()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : cf.connectFailed
+      setError(message || cf.connectFailed)
+      setSaving(false)
+    }
+  }
+
+  const startBybit = async () => {
+    setError('')
+    setBybitFieldError(null)
+    if (!hasActiveSubscription) {
+      setError(pw.subscriptionRequired)
+      return
+    }
+    if (!isAdmin && activeBrokerCount >= limits.maxBrokerAccounts) {
+      setError(interpolate(pw.brokerLimit, { limit: String(limits.maxBrokerAccounts) }))
+      return
+    }
+    if (!bybitKey.trim() || !bybitSecret.trim()) {
+      setError(cf.binanceKeysRequired)
+      return
+    }
+    const parsed = parseBybitSettingsDraft(bybitDraft)
+    if (!parsed.ok) {
+      setBybitFieldError(parsed.field)
+      return
+    }
+    setSaving(true)
+    try {
+      const { account } = await linkBybitAccount({
+        apiKey: bybitKey,
+        apiSecret: bybitSecret,
+        environment: bybitEnv,
+        label: bybitLabel,
+        settings: parsed.settings,
+      })
+      upsertBroker(account)
+      reset()
+      if (onSuccess) onSuccess(account)
+      else onClose()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : cf.connectFailed
+      setError(message || cf.connectFailed)
+      setSaving(false)
+    }
+  }
+
+  const startKucoin = async () => {
+    setError('')
+    setKucoinFieldError(null)
+    if (!hasActiveSubscription) {
+      setError(pw.subscriptionRequired)
+      return
+    }
+    if (!isAdmin && activeBrokerCount >= limits.maxBrokerAccounts) {
+      setError(interpolate(pw.brokerLimit, { limit: String(limits.maxBrokerAccounts) }))
+      return
+    }
+    if (!kucoinKey.trim() || !kucoinSecret.trim() || !kucoinPassphrase.trim()) {
+      setError(cf.kucoinKeysRequired)
+      return
+    }
+    const parsed = parseKucoinSettingsDraft(kucoinDraft)
+    if (!parsed.ok) {
+      setKucoinFieldError(parsed.field === 'margin' || parsed.field === 'leverage' ? parsed.field : null)
+      return
+    }
+    setSaving(true)
+    try {
+      const { account } = await linkKucoinAccount({
+        apiKey: kucoinKey,
+        apiSecret: kucoinSecret,
+        passphrase: kucoinPassphrase,
+        label: kucoinLabel,
+        settings: parsed.settings,
+      })
+      upsertBroker(account)
+      reset()
+      if (onSuccess) onSuccess(account)
+      else onClose()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : cf.connectFailed
+      setError(message || cf.connectFailed)
+      setSaving(false)
+    }
+  }
+
   const connectSingle = async (row: ConnectTradingAccountForm) => {
-    if (row.platform === 'cTrader') return
+    if (row.platform === 'cTrader' || row.platform === 'Binance' || row.platform === 'Bybit' || row.platform === 'KuCoin') return
     const login = row.account_number.trim()
     const server = row.broker_server.trim()
     const platform = row.platform
@@ -204,6 +397,18 @@ export function ConnectTradingAccountModal({
     event.preventDefault()
     if (rows[0]?.platform === 'cTrader') {
       await startCtrader()
+      return
+    }
+    if (rows[0]?.platform === 'Binance') {
+      await startBinance()
+      return
+    }
+    if (rows[0]?.platform === 'Bybit') {
+      await startBybit()
+      return
+    }
+    if (rows[0]?.platform === 'KuCoin') {
+      await startKucoin()
       return
     }
     setError('')
@@ -277,7 +482,11 @@ export function ConnectTradingAccountModal({
   if (!open) return null
 
   const selectedPlatform = rows[0]?.platform ?? 'MT5'
+  const binanceSelected = selectedPlatform === 'Binance'
+  const bybitSelected = selectedPlatform === 'Bybit'
+  const kucoinSelected = selectedPlatform === 'KuCoin'
   const ctraderSelected = selectedPlatform === 'cTrader'
+  const mtFormHidden = ctraderSelected || binanceSelected || bybitSelected || kucoinSelected
   const title = interpolate(cf.title, { platform: selectedPlatform })
   const validCount = countValidRows(rows)
   const isMulti = rows.length > 1 || validCount > 1
@@ -323,7 +532,7 @@ export function ConnectTradingAccountModal({
                 </h2>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                {ctraderSelected ? null : (
+                {mtFormHidden ? null : (
                   <Button
                     type="button"
                     variant="secondary"
@@ -353,30 +562,6 @@ export function ConnectTradingAccountModal({
             {error ? <PaywallErrorAlert message={error} className="mb-4" /> : null}
 
             <form onSubmit={handleSubmit} className={clsx('space-y-4', saving && 'pointer-events-none opacity-60')}>
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
-                  {cf.platformLabel}
-                </p>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  {(['MT5', 'MT4', 'cTrader'] as const).map(option => (
-                    <button
-                      key={option}
-                      type="button"
-                      onClick={() => setPlatform(option)}
-                      aria-pressed={selectedPlatform === option}
-                      className={clsx(
-                        'rounded-xl border px-3 py-2.5 text-left text-sm transition-colors',
-                        selectedPlatform === option
-                          ? 'border-green-400 bg-teal-50 text-teal-900 dark:border-green-400 dark:bg-teal-950/40 dark:text-teal-100'
-                          : 'border-neutral-200/65 bg-white text-neutral-900 hover:border-neutral-300 dark:border-neutral-800/55 dark:bg-neutral-900 dark:text-neutral-50 dark:hover:border-neutral-700',
-                      )}
-                    >
-                      {option === 'MT5' ? cf.platformMt5 : option === 'MT4' ? cf.platformMt4 : cf.platformCtrader}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               {ctraderSelected ? (
                 <div className="space-y-4 rounded-2xl border border-neutral-100 p-4 dark:border-neutral-800">
                   <p className="text-sm text-neutral-900 dark:text-neutral-50">{cf.ctraderConnectHint}</p>
@@ -391,7 +576,205 @@ export function ConnectTradingAccountModal({
                 </div>
               ) : null}
 
-              {serverPlatformMismatch && !ctraderSelected ? (
+              {binanceSelected ? (
+                <div className="space-y-4 rounded-2xl border border-neutral-100 p-4 dark:border-neutral-800">
+                  <p className="text-sm text-neutral-900 dark:text-neutral-50">{cf.binanceConnectHint}</p>
+                  <Input
+                    label={cf.accountLabel}
+                    placeholder={interpolate(cf.accountLabelPlaceholder, { platform: 'Binance' })}
+                    value={binanceLabel}
+                    onChange={event => setBinanceLabel(event.target.value)}
+                  />
+                  <Input
+                    label={cf.binanceApiKeyLabel}
+                    labelAddon={
+                      <ApiKeyHelp
+                        title={cf.binanceApiHelpTitle}
+                        steps={cf.binanceApiHelpSteps}
+                        linkLabel={cf.binanceApiHelpLink}
+                        href={BINANCE_API_MANAGEMENT_URL}
+                      />
+                    }
+                    value={binanceKey}
+                    autoComplete="off"
+                    spellCheck={false}
+                    onChange={event => setBinanceKey(event.target.value)}
+                    required
+                  />
+                  <PasswordInput
+                    label={cf.binanceApiSecretLabel}
+                    value={binanceSecret}
+                    hint={cf.binanceApiSecretHint}
+                    onChange={event => setBinanceSecret(event.target.value)}
+                    required
+                  />
+                  <div className="space-y-1.5">
+                    <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{cf.binanceEnvironmentLabel}</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(['live', 'demo'] as const).map(env => (
+                        <button
+                          key={env}
+                          type="button"
+                          aria-pressed={binanceEnv === env}
+                          onClick={() => setBinanceEnv(env)}
+                          className={clsx(
+                            'rounded-xl border px-3 py-2 text-left text-sm transition-colors',
+                            binanceEnv === env
+                              ? 'border-green-400 bg-teal-50 text-teal-900 dark:border-green-400 dark:bg-teal-950/40 dark:text-teal-100'
+                              : 'border-neutral-200/65 bg-white text-neutral-900 hover:border-neutral-300 dark:border-neutral-800/55 dark:bg-neutral-900 dark:text-neutral-50 dark:hover:border-neutral-700',
+                          )}
+                        >
+                          {env === 'live' ? cf.binanceLive : cf.binanceDemo}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <BinanceSettingsFields
+                    value={binanceDraft}
+                    onChange={setBinanceDraft}
+                    marginError={binanceFieldError === 'margin' ? cf.binanceInvalidMargin : undefined}
+                    leverageError={binanceFieldError === 'leverage' ? cf.binanceInvalidLeverage : undefined}
+                  />
+                  <div className="flex gap-2">
+                    <Button type="submit" size="sm" loading={saving}>
+                      {cf.binanceConnectButton}
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={handleClose} disabled={saving}>
+                      {t.common.cancel}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              {bybitSelected ? (
+                <div className="space-y-4 rounded-2xl border border-neutral-100 p-4 dark:border-neutral-800">
+                  <p className="text-sm text-neutral-900 dark:text-neutral-50">{cf.bybitConnectHint}</p>
+                  <Input
+                    label={cf.accountLabel}
+                    placeholder={interpolate(cf.accountLabelPlaceholder, { platform: 'Bybit' })}
+                    value={bybitLabel}
+                    onChange={event => setBybitLabel(event.target.value)}
+                  />
+                  <Input
+                    label={cf.binanceApiKeyLabel}
+                    labelAddon={
+                      <ApiKeyHelp
+                        title={cf.binanceApiHelpTitle}
+                        steps={cf.bybitApiHelpSteps}
+                        linkLabel={cf.bybitApiHelpLink}
+                        href={BYBIT_API_MANAGEMENT_URL}
+                      />
+                    }
+                    value={bybitKey}
+                    autoComplete="off"
+                    spellCheck={false}
+                    onChange={event => setBybitKey(event.target.value)}
+                    required
+                  />
+                  <PasswordInput
+                    label={cf.binanceApiSecretLabel}
+                    value={bybitSecret}
+                    hint={cf.binanceApiSecretHint}
+                    onChange={event => setBybitSecret(event.target.value)}
+                    required
+                  />
+                  <div className="space-y-1.5">
+                    <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{cf.binanceEnvironmentLabel}</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(['live', 'demo'] as const).map(env => (
+                        <button
+                          key={env}
+                          type="button"
+                          aria-pressed={bybitEnv === env}
+                          onClick={() => setBybitEnv(env)}
+                          className={clsx(
+                            'rounded-xl border px-3 py-2 text-left text-sm transition-colors',
+                            bybitEnv === env
+                              ? 'border-green-400 bg-teal-50 text-teal-900 dark:border-green-400 dark:bg-teal-950/40 dark:text-teal-100'
+                              : 'border-neutral-200/65 bg-white text-neutral-900 hover:border-neutral-300 dark:border-neutral-800/55 dark:bg-neutral-900 dark:text-neutral-50 dark:hover:border-neutral-700',
+                          )}
+                        >
+                          {env === 'live' ? cf.binanceLive : cf.binanceDemo}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <BinanceSettingsFields
+                    value={bybitDraft}
+                    onChange={setBybitDraft}
+                    marginError={bybitFieldError === 'margin' ? cf.binanceInvalidMargin : undefined}
+                    leverageError={bybitFieldError === 'leverage' ? cf.binanceInvalidLeverage : undefined}
+                    showMarginMode={false}
+                  />
+                  <p className="text-xs text-neutral-900 dark:text-neutral-50">{cf.bybitMarginModeNote}</p>
+                  <div className="flex gap-2">
+                    <Button type="submit" size="sm" loading={saving}>
+                      {cf.bybitConnectButton}
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={handleClose} disabled={saving}>
+                      {t.common.cancel}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              {kucoinSelected ? (
+                <div className="space-y-4 rounded-2xl border border-neutral-100 p-4 dark:border-neutral-800">
+                  <p className="text-sm text-neutral-900 dark:text-neutral-50">{cf.kucoinConnectHint}</p>
+                  <Input
+                    label={cf.accountLabel}
+                    placeholder={interpolate(cf.accountLabelPlaceholder, { platform: 'KuCoin' })}
+                    value={kucoinLabel}
+                    onChange={event => setKucoinLabel(event.target.value)}
+                  />
+                  <Input
+                    label={cf.binanceApiKeyLabel}
+                    labelAddon={
+                      <ApiKeyHelp
+                        title={cf.binanceApiHelpTitle}
+                        steps={cf.kucoinApiHelpSteps}
+                        linkLabel={cf.kucoinApiHelpLink}
+                        href={KUCOIN_API_MANAGEMENT_URL}
+                      />
+                    }
+                    value={kucoinKey}
+                    autoComplete="off"
+                    spellCheck={false}
+                    onChange={event => setKucoinKey(event.target.value)}
+                    required
+                  />
+                  <PasswordInput
+                    label={cf.binanceApiSecretLabel}
+                    value={kucoinSecret}
+                    hint={cf.binanceApiSecretHint}
+                    onChange={event => setKucoinSecret(event.target.value)}
+                    required
+                  />
+                  <PasswordInput
+                    label={cf.kucoinApiPassphraseLabel}
+                    value={kucoinPassphrase}
+                    hint={cf.kucoinApiPassphraseHint}
+                    onChange={event => setKucoinPassphrase(event.target.value)}
+                    required
+                  />
+                  <BinanceSettingsFields
+                    value={kucoinDraft}
+                    onChange={setKucoinDraft}
+                    marginError={kucoinFieldError === 'margin' ? cf.binanceInvalidMargin : undefined}
+                    leverageError={kucoinFieldError === 'leverage' ? cf.binanceInvalidLeverage : undefined}
+                  />
+                  <div className="flex gap-2">
+                    <Button type="submit" size="sm" loading={saving}>
+                      {cf.kucoinConnectButton}
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={handleClose} disabled={saving}>
+                      {t.common.cancel}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              {serverPlatformMismatch && !mtFormHidden ? (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
                   <p>
                     {serverPlatformMismatch === 'MT4'
@@ -408,7 +791,7 @@ export function ConnectTradingAccountModal({
                 </div>
               ) : null}
 
-              {ctraderSelected ? null : rows.map((row, index) => (
+              {mtFormHidden ? null : rows.map((row, index) => (
                 <div
                   key={index}
                   className="space-y-3 rounded-2xl border border-neutral-100 p-4 dark:border-neutral-800"
@@ -464,7 +847,7 @@ export function ConnectTradingAccountModal({
                 </div>
               ))}
 
-              {ctraderSelected ? null : (
+              {mtFormHidden ? null : (
                 <>
                   <div className="flex flex-wrap gap-2">
                     <Button type="button" variant="secondary" size="sm" onClick={addRow} disabled={saving}>
@@ -507,6 +890,14 @@ export function ConnectTradingAccountModal({
               </div>
             ) : null}
           </div>
+
+          {onChangePlatform ? (
+            <div className="flex shrink-0 justify-end border-t border-neutral-100 px-6 py-4 dark:border-neutral-800 sm:px-8">
+              <Button type="button" variant="secondary" size="sm" onClick={onChangePlatform} disabled={saving}>
+                {cf.selectAnotherPlatform}
+              </Button>
+            </div>
+          ) : null}
         </div>
       </div>
 

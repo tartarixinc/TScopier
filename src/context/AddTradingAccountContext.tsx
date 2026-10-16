@@ -10,11 +10,13 @@ import {
 import { useLocation, useNavigate } from 'react-router-dom'
 import type { BrokerAccount } from '../types/database'
 import { ConnectTradingAccountModal } from '../components/broker/ConnectTradingAccountModal'
+import { AddAccountPlatformModal } from '../components/broker/AddAccountPlatformModal'
 import { BrokerConnectedSuccessModal } from '../components/broker/BrokerConnectedSuccessModal'
 import { BrokerBulkConnectSummaryModal } from '../components/broker/BrokerBulkConnectSummaryModal'
 import { useBrokerAccounts } from './BrokerAccountsContext'
 import { useT } from './LocaleContext'
 import type { BulkConnectResult } from '../lib/bulkConnectBrokers'
+import type { TradingPlatform } from '../lib/tradingPlatform'
 
 type AddTradingAccountContextValue = {
   openAddTradingAccount: (options?: { asCopySource?: boolean; asDestination?: boolean }) => void
@@ -39,6 +41,8 @@ export function AddTradingAccountProvider({ children }: { children: ReactNode })
   const bl = t.accountConfig.brokerList
 
   const [open, setOpen] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [selectedPlatform, setSelectedPlatform] = useState<TradingPlatform | null>(null)
   const [connectedBroker, setConnectedBroker] = useState<BrokerAccount | null>(null)
   const [pendingSourceBroker, setPendingSourceBroker] = useState<BrokerAccount | null>(null)
   const [pendingDestinationBrokers, setPendingDestinationBrokers] = useState<BrokerAccount[]>([])
@@ -52,7 +56,24 @@ export function AddTradingAccountProvider({ children }: { children: ReactNode })
       : options?.asDestination
         ? 'destination'
         : null
+    setSelectedPlatform(null)
+    setPickerOpen(true)
+  }, [])
+
+  const handlePlatformSelect = useCallback((platform: TradingPlatform) => {
+    setSelectedPlatform(platform)
+    setPickerOpen(false)
     setOpen(true)
+  }, [])
+
+  const handleChangePlatform = useCallback(() => {
+    setOpen(false)
+    setPickerOpen(true)
+  }, [])
+
+  const handlePickerClose = useCallback(() => {
+    placementRef.current = null
+    setPickerOpen(false)
   }, [])
 
   const clearPendingConfigureBroker = useCallback(() => {
@@ -176,8 +197,15 @@ export function AddTradingAccountProvider({ children }: { children: ReactNode })
   return (
     <AddTradingAccountContext.Provider value={value}>
       {children}
+      <AddAccountPlatformModal
+        open={pickerOpen}
+        onClose={handlePickerClose}
+        onSelect={handlePlatformSelect}
+      />
       <ConnectTradingAccountModal
         open={open}
+        initialPlatform={selectedPlatform}
+        onChangePlatform={handleChangePlatform}
         onClose={handleClose}
         onSuccess={handleConnectSuccess}
         onBatchSuccess={handleBatchSuccess}

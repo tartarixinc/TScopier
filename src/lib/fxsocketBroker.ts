@@ -134,11 +134,14 @@ interface CallOpts<T> {
   edgeFn?: string
 }
 
-export type BrokerEdgeProvider = 'fxsocket' | 'mtapi' | 'ctrader'
+export type BrokerEdgeProvider = 'fxsocket' | 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin'
 
 function brokerEdgeFn(provider?: string): string | undefined {
   if (provider === 'mtapi') return 'mtapi-broker'
   if (provider === 'ctrader') return 'ctrader-broker'
+  if (provider === 'binance') return 'binance-broker'
+  if (provider === 'bybit') return 'bybit-broker'
+  if (provider === 'kucoin') return 'kucoin-broker'
   return undefined
 }
 
@@ -715,7 +718,7 @@ export type TradesFetchArgs = {
 }
 
 function isWrongProviderError(message: string): boolean {
-  return /not an MTAPI account|no FxSocket account linked|not a cTrader account/i.test(message)
+  return /not an MTAPI account|no FxSocket account linked|not a cTrader account|not a Binance account|not a Bybit account|not a KuCoin account/i.test(message)
 }
 
 /**
@@ -768,7 +771,8 @@ export async function fetchTradesAcrossProviders(
           return provider === 'fxsocket' && !a.provider ? 'mtapi' : provider
         })
         .filter((provider): provider is BrokerEdgeProvider =>
-          provider === 'mtapi' || provider === 'ctrader' || provider === 'fxsocket'),
+          provider === 'mtapi' || provider === 'ctrader' || provider === 'fxsocket'
+            || provider === 'binance' || provider === 'bybit' || provider === 'kucoin'),
     )
     providers = explicit.size > 0 ? [...explicit] : ['mtapi']
   }

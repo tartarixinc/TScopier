@@ -85,6 +85,16 @@ export interface Database {
         Insert: Omit<UserProfileRow, 'created_at' | 'updated_at'> & { created_at?: string; updated_at?: string }
         Update: Partial<Omit<UserProfileRow, 'user_id' | 'created_at'>>
       }
+      social_profiles: {
+        Row: SocialProfileRow
+        Insert: Omit<SocialProfileRow, 'created_at' | 'updated_at'> & { created_at?: string; updated_at?: string }
+        Update: Partial<Omit<SocialProfileRow, 'user_id' | 'created_at'>>
+      }
+      social_follow_relationships: {
+        Row: SocialFollowRelationshipRow
+        Insert: Omit<SocialFollowRelationshipRow, 'id' | 'created_at' | 'updated_at'> & { id?: string; created_at?: string; updated_at?: string }
+        Update: Partial<Omit<SocialFollowRelationshipRow, 'id' | 'follower_user_id' | 'followed_user_id' | 'created_at'>>
+      }
       affiliate_profiles: {
         Row: AffiliateProfileRow
         Insert: Omit<AffiliateProfileRow, 'created_at' | 'updated_at'> & { created_at?: string; updated_at?: string }
@@ -146,6 +156,24 @@ export interface UserProfileRow {
   copier_paused: boolean
   created_at: string
   updated_at: string
+}
+
+export interface SocialProfileRow {
+  user_id: string
+  access_mode: 'open' | 'private'
+  is_listed: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface SocialFollowRelationshipRow {
+  id: string
+  follower_user_id: string
+  followed_user_id: string
+  status: 'pending' | 'accepted' | 'declined'
+  created_at: string
+  updated_at: string
+  responded_at: string | null
 }
 
 export interface AffiliateProfileRow {
@@ -440,8 +468,8 @@ export interface BrokerAccount {
   fxsocket_account_id?: string | null
   /** FxSocket v1 account status. */
   fxsocket_status?: FxsocketConnectionStatus | null
-  /** Provider routing: 'fxsocket' (default), 'mtapi', or 'ctrader'. */
-  provider?: 'fxsocket' | 'mtapi' | 'ctrader' | null
+  /** Provider routing: 'fxsocket' (default), 'mtapi', 'ctrader', 'binance', or 'bybit'. */
+  provider?: 'fxsocket' | 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin' | null
   /** Monotonic broker-writer fence used to reject stale worker jobs. */
   writer_epoch?: number
   /** Mutations are allowed only while stable. */
@@ -458,6 +486,38 @@ export interface BrokerAccount {
   ctrader_environment?: 'demo' | 'live' | null
   /** cTrader link status shown in the Connection column. */
   ctrader_status?: 'connected' | 'connecting' | 'disconnected' | 'error' | null
+  /** Binance futures key fingerprint. The key and secret stay server-side. */
+  binance_account_id?: string | null
+  /** Binance futures host: demo or live. */
+  binance_environment?: 'demo' | 'live' | null
+  /** Binance link status shown in the Connection column. */
+  binance_status?: 'connected' | 'connecting' | 'disconnected' | 'error' | null
+  /** USDT margin committed to each copied signal. */
+  binance_margin_usdt?: number | null
+  /** Leverage applied to the symbol before each order. */
+  binance_leverage?: number | null
+  /** Cross or isolated margin. */
+  binance_margin_mode?: 'isolated' | 'cross' | null
+  /** Bybit linear futures key fingerprint. The key and secret stay server-side. */
+  bybit_account_id?: string | null
+  /** Bybit host: demo or live. */
+  bybit_environment?: 'demo' | 'live' | null
+  /** Bybit link status shown in the Connection column. */
+  bybit_status?: 'connected' | 'connecting' | 'disconnected' | 'error' | null
+  /** Quote-currency margin committed to each copied signal. */
+  bybit_margin_usdt?: number | null
+  /** Leverage applied to the symbol before each order. */
+  bybit_leverage?: number | null
+  /** KuCoin futures key fingerprint. The key, secret and passphrase stay server-side. */
+  kucoin_account_id?: string | null
+  /** KuCoin link status shown in the Connection column. */
+  kucoin_status?: 'connected' | 'connecting' | 'disconnected' | 'error' | null
+  /** Quote-currency margin committed to each copied signal. */
+  kucoin_margin_usdt?: number | null
+  /** Leverage applied to the symbol before each order. */
+  kucoin_leverage?: number | null
+  /** Cross or isolated margin, applied per symbol before each order. */
+  kucoin_margin_mode?: 'isolated' | 'cross' | null
   /** Auto-reconnect enabled flag. */
   auto_reconnect_enabled?: boolean | null
   /** Error kind classifier (e.g. credential, network, timeout). */

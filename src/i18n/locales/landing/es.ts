@@ -13,13 +13,26 @@ export const landingEs: LandingTranslations = {
     dashboard: 'Panel',
     menuOpen: 'Abrir menú',
     menuClose: 'Cerrar menú',
+    productMenu: {
+      heading: 'Productos',
+      signalCopier: { title: 'Copiador de señales', description: 'Copia señales de Telegram, WhatsApp, Discord y TradingView directamente a tu bróker.' },
+      socialTrading: { title: 'Trading social', description: 'Explora a los mejores traders por ROI y tasa de acierto y cópialos gratis o por una cuota mensual.' },
+      accountMirroring: { title: 'Replicación de cuentas', description: 'Replica en tiempo real las operaciones de una cuenta maestra en tus otras cuentas.' },
+      featuredTitle: 'Compatible con más de 8 plataformas',
+      featuredBody: 'MT4, MT5, cTrader, Binance, Bybit y KuCoin. Sin VPS.',
+      socialPanel: { title: 'Copia a traders con historial', body: 'Compara el rendimiento y sigue a los traders en los que confías.' },
+      mirrorPanel: { title: 'Una maestra, muchas cuentas', body: 'Conecta una cuenta maestra y cada cuenta esclava sigue sus operaciones automáticamente.' },
+      labels: { roi: 'ROI', winRate: 'Tasa de acierto', following: 'Siguiendo', copyTrader: 'Copiar trader', master: 'Maestra', slave: 'Esclava' },
+      exploreFeatures: 'Ver todas las funciones',
+      viewPricing: 'Ver precios',
+    },
   },
   hero: {
     headline: 'Una plataforma de copiado unificada para',
     headlinePhrases: ['Señales de trading', 'Trading social', 'Espejo de cuentas'],
     subheadline:
       'Automatiza tus operaciones desde Telegram, WhatsApp, Discord, TradingView o una cuenta maestra a más de 8 plataformas de bróker en menos de 50 ms. Sin VPS.',
-    socialProof: 'Clasificado #1 copiador de señales Telegram en la nube',
+    socialProof: 'TScopier.ai ahora es UniCopier',
     primaryCta: 'Empieza tu prueba gratuita de 5 días',
     secondaryCta: 'Iniciar sesión',
     imageAlt:
@@ -102,6 +115,10 @@ export const landingEs: LandingTranslations = {
         },
       ],
     },
+  },
+  integrations: {
+    eyebrow: 'Integraciones',
+    title: 'Compatible con las principales plataformas',
   },
   whyChoose: {
     statsCaption: 'Utilizado por traders de los proveedores de señales de Telegram más populares',

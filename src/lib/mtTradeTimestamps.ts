@@ -236,7 +236,7 @@ export async function hydrateMtTradesTimesFromBrokers(
     return { trades, stats }
   }
 
-  const providerByBrokerId = new Map<string, 'fxsocket' | 'mtapi' | 'ctrader'>()
+  const providerByBrokerId = new Map<string, 'fxsocket' | 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin'>()
   for (const account of accounts ?? []) {
     if (!account.id) continue
     providerByBrokerId.set(account.id, resolveProvider(account))
