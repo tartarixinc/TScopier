@@ -43,7 +43,7 @@ export const landingSv: LandingTranslations = {
         {
           key: 'tradesTakenToday',
           value: '12',
-          sub: '8 vann Â· 4 förlorade',
+          sub: '8 vann · 4 förlorade',
           valueTone: 'neutral',
         },
         {
@@ -66,11 +66,11 @@ export const landingSv: LandingTranslations = {
           time: '22 maj, 09:36',
         },
         {
-          message: 'Parsed KÖP XAUUSD Â· 2 TPs från Gold Signals Pro',
+          message: 'Parsed KÖP XAUUSD · 2 TPs från Gold Signals Pro',
           time: '22 maj, 09:37',
         },
         {
-          message: 'Skickade beställningen till MT5 Â· konto #88291',
+          message: 'Skickade beställningen till MT5 · konto #88291',
           time: '22 maj, 09:37',
         },
       ],
@@ -258,7 +258,7 @@ export const landingSv: LandingTranslations = {
       copier: {
         telegramLabel: 'Signalkanal',
         channelName: 'Gold Signals Pro',
-        channelMeta: '3 nya signaler Â· just nu',
+        channelMeta: '3 nya signaler · just nu',
         hubLabel: 'TScopier',
         mt4Label: 'MT4 konto',
         mt4Meta: 'Kopiering · 0,10 lotsregler',
@@ -344,7 +344,7 @@ export const landingSv: LandingTranslations = {
       },
       signalEdit: {
         channelName: 'Gold Signals Pro',
-        channelMeta: 'Telegram Â· meddelande redigerat',
+        channelMeta: 'Telegram · meddelande redigerat',
         editedLabel: 'Redigerat',
         messageBuy: 'KÖP XAUUSD',
         beforeLabel: 'Tidigare',
@@ -352,14 +352,14 @@ export const landingSv: LandingTranslations = {
         beforeTp: 'TP1 4220',
         afterLabel: 'Uppdaterad',
         afterSl: 'SL 4175',
-        afterTp: 'TP1 4230 Â· TP2 4240',
+        afterTp: 'TP1 4230 · TP2 4240',
         workerTitle: 'Kanalarbetare',
         workerMessage: 'Uppdaterad SL/TP på 7 öppna XAUUSD ben (inga nya affärer öppnade)',
         workerTime: 'Just nu',
       },
       backtest: {
         resultsTitle: 'Backtest resultat',
-        resultsSubtitle: 'XAUUSD Â· Kanal',
+        resultsSubtitle: 'XAUUSD · Kanal',
         newRunLabel: 'Ny körning',
         totalPipsLabel: 'Totala kärnor',
         totalPips: '+544,0p',
@@ -507,18 +507,18 @@ export const landingSv: LandingTranslations = {
             name: 'Gold Signals Pro',
             username: 'goldsignalspro',
             active: true,
-            brokers: ['MT5 Â· #88291'],
+            brokers: ['MT5 · #88291'],
           },
           {
             name: 'FX Scalper VIP',
             username: 'fxscalpervip',
             active: true,
-            brokers: ['MT4 Â· #44102'],
+            brokers: ['MT4 · #44102'],
           },
         ],
       },
       configure: {
-        accountName: 'IC Markets Â· MT5',
+        accountName: 'IC Markets · MT5',
         login: 'Logga in #88291',
         lotSize: '0.10',
         rangeLabel: 'Range skiktning',
@@ -537,11 +537,11 @@ export const landingSv: LandingTranslations = {
       copy: {
         workerLogs: [
           {
-            message: 'Parsed KÖP XAUUSD Â· 2 TPs från Gold Signals Pro',
+            message: 'Parsed KÖP XAUUSD · 2 TPs från Gold Signals Pro',
             time: '22 maj, 09:37',
           },
           {
-            message: 'Skickas 0,10 lot till MT5 Â· konto #88291',
+            message: 'Skickas 0,10 lot till MT5 · konto #88291',
             time: '22 maj, 09:37',
           },
         ],
