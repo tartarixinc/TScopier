@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import clsx from 'clsx'
 import { ArrowRight, Megaphone } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -9,56 +8,21 @@ import { useT } from '../../../context/LocaleContext'
 import { useLandingAnnouncement } from '../../../hooks/useLandingAnnouncement'
 import type { LandingAnnouncement } from '../../../lib/landingAnnouncement'
 
-const GLASS =
-  'border border-white/70 bg-white/55 shadow-[0_8px_32px_rgba(15,23,42,0.08)] backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.06] dark:shadow-[0_8px_32px_rgba(0,0,0,0.4)]'
+/** Fractal-noise grain (tiled inline SVG) laid over the dark hero card. */
+const NOISE_BG =
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.9 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")"
 
-function RotatingHeroPhrase({ phrases }: { phrases: string[] }) {
-  const [index, setIndex] = useState(0)
-  const [shown, setShown] = useState(true)
-
-  useEffect(() => {
-    if (phrases.length < 2) return
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    let fadeTimer = 0
-    const timer = window.setInterval(() => {
-      if (reduceMotion) {
-        setIndex(current => (current + 1) % phrases.length)
-        return
-      }
-      setShown(false)
-      fadeTimer = window.setTimeout(() => {
-        setIndex(current => (current + 1) % phrases.length)
-        setShown(true)
-      }, 220)
-    }, 2600)
-    return () => {
-      window.clearInterval(timer)
-      window.clearTimeout(fadeTimer)
-    }
-  }, [phrases])
-
-  return (
-    <span className="mt-1 block min-h-[1.2em] pb-1" aria-live="polite">
-      <span
-        className={clsx(
-          'inline-block bg-gradient-to-r from-green-400 via-emerald-500 to-cyan-400 bg-clip-text text-transparent transition-all duration-200',
-          shown ? 'translate-y-0 opacity-100' : 'translate-y-1 opacity-0',
-        )}
-      >
-        {phrases[index]}
-      </span>
-    </span>
-  )
-}
+/** The announcement tag sits on the dark card in both themes. */
+const TAG_GLASS = 'border border-white/15 bg-white/10 text-neutral-100 backdrop-blur-md'
 
 function AnnouncementTag({ announcement }: { announcement: LandingAnnouncement }) {
   const className = clsx(
-    'inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-medium text-neutral-800 dark:text-neutral-100 sm:text-sm',
-    GLASS,
+    'inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-medium sm:text-sm',
+    TAG_GLASS,
   )
   const content = (
     <>
-      <Megaphone className="h-4 w-4 shrink-0 text-green-500 dark:text-green-400" aria-hidden />
+      <Megaphone className="h-4 w-4 shrink-0 text-green-400" aria-hidden />
       {announcement.message}
       {announcement.linkHref ? <ArrowRight className="h-3.5 w-3.5" aria-hidden /> : null}
     </>
@@ -72,7 +36,7 @@ function AnnouncementTag({ announcement }: { announcement: LandingAnnouncement }
         target="_blank"
         rel="noopener noreferrer"
         aria-label={announcement.linkLabel ?? undefined}
-        className={clsx(className, 'transition-colors hover:bg-white/80 dark:hover:bg-white/10')}
+        className={clsx(className, 'transition-colors hover:bg-white/15')}
       >
         {content}
       </a>
@@ -82,7 +46,7 @@ function AnnouncementTag({ announcement }: { announcement: LandingAnnouncement }
     <Link
       to={href}
       aria-label={announcement.linkLabel ?? undefined}
-      className={clsx(className, 'transition-colors hover:bg-white/80 dark:hover:bg-white/10')}
+      className={clsx(className, 'transition-colors hover:bg-white/15')}
     >
       {content}
     </Link>
@@ -93,61 +57,61 @@ export function HeroSection() {
   const l = useT().landing
   const announcement = useLandingAnnouncement()
 
-  // -mt-16 / pt-16 pulls the hero background up under the (transparent) floating nav, so it runs to the top of the page.
+  // -mt-16 / pt-16 pulls the page glow up under the (transparent) floating nav.
   return (
     <section id="product" className="relative -mt-16 scroll-mt-20 overflow-hidden bg-white pt-16 dark:bg-transparent">
-      {/* Aurora + faint grid. Only decoration, the glass surfaces below pick the colour up. */}
+      {/* Soft aurora + faint grid on the page behind the dark card. */}
       <div className="pointer-events-none absolute inset-0" aria-hidden>
         <div className="marketing-hero-grid hero-grid-pan [mask-image:radial-gradient(ellipse_70%_55%_at_50%_0%,black,transparent)]" />
-        <div className="hero-aurora-blob hero-aurora-blob--a absolute -top-32 left-1/2 h-[26rem] w-[40rem] rounded-full bg-green-300/45 blur-3xl dark:bg-green-400/20" />
-        <div
-          className="hero-aurora-blob hero-aurora-blob--b absolute -top-16 left-1/2 h-[24rem] w-[34rem] rounded-full bg-cyan-200/50 blur-3xl dark:bg-cyan-400/15"
-                  />
-        <div
-          className="hero-aurora-blob hero-aurora-blob--c absolute top-[28rem] left-1/2 h-[22rem] w-[44rem] rounded-full bg-emerald-200/40 blur-3xl dark:bg-emerald-400/10"
-                  />
+        <div className="hero-aurora-blob hero-aurora-blob--a absolute -top-32 left-1/2 h-[26rem] w-[40rem] rounded-full bg-green-300/60 blur-3xl dark:bg-green-400/30" />
+        <div className="hero-aurora-blob hero-aurora-blob--b absolute -top-16 left-1/2 h-[24rem] w-[34rem] rounded-full bg-cyan-300/55 blur-3xl dark:bg-cyan-400/25" />
       </div>
 
-      <div className="relative z-[1] mx-auto flex max-w-6xl flex-col items-center px-5 pb-16 pt-14 text-center sm:px-8 sm:pt-20 lg:pb-24">
-        {announcement ? (
-          <AnnouncementTag announcement={announcement} />
-        ) : null}
-
-        <h1 className="mt-6 max-w-4xl text-4xl font-semibold tracking-tighter text-neutral-950 dark:text-neutral-50 sm:text-6xl lg:text-7xl lg:leading-[1.04]">
-          {l.hero.headline}
-          {l.hero.headlinePhrases && l.hero.headlinePhrases.length > 0 ? (
-            <RotatingHeroPhrase phrases={l.hero.headlinePhrases} />
-          ) : null}
-        </h1>
-
-        <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-neutral-700 dark:text-neutral-300 sm:text-lg">
-          {l.hero.subheadline}
-        </p>
-
-        <div className="mt-9 flex flex-col items-center">
-          <MarketingAuthCta variant="hero" />
-          <MarketingPricingHint
-            basic={l.pricingSnippet.basic}
-            advanced={l.pricingSnippet.advanced}
-            className="mt-4 text-center text-[0.6875rem] leading-relaxed text-neutral-600 dark:text-neutral-400"
-          />
-        </div>
-
-        <div className="relative mt-14 w-full max-w-5xl sm:mt-20">
-          {/* Frosted frame around the product, fading out at the bottom. */}
+      <div className="relative z-[1] mx-auto max-w-[80rem] px-3 pb-10 pt-4 sm:px-8 sm:pb-14 sm:pt-6">
+        {/* Dark card with grain; the product screenshot is cropped by its bottom edge. */}
+        <div className="relative overflow-hidden rounded-[2rem] bg-[#151a21] ring-1 ring-white/10 sm:rounded-[3rem]">
           <div
-            className={clsx(
-              'relative overflow-hidden rounded-[1.75rem] p-2 text-left shadow-[0_40px_90px_-30px_rgba(16,185,129,0.45)] sm:rounded-[2.25rem] sm:p-3',
-              GLASS,
-            )}
-          >
-            <div className="max-h-[22rem] overflow-hidden rounded-[1.25rem] bg-white shadow-sm dark:bg-neutral-950 sm:max-h-[30rem] sm:rounded-[1.75rem] lg:max-h-[36rem]">
+            className="pointer-events-none absolute inset-0 opacity-[0.07] mix-blend-screen"
+            style={{ backgroundImage: NOISE_BG, backgroundSize: '140px 140px' }}
+            aria-hidden
+          />
+
+          <div className="relative px-6 pt-12 sm:px-12 sm:pt-16 lg:px-20 lg:pt-20">
+            {announcement ? (
+              <div className="mb-6">
+                <AnnouncementTag announcement={announcement} />
+              </div>
+            ) : null}
+
+            <div className="grid items-start gap-8 lg:grid-cols-[1.15fr_1fr] lg:gap-16">
+              <h1 className="max-w-xl text-4xl font-semibold tracking-tighter text-white sm:text-5xl lg:text-[3.5rem] lg:leading-[1.05]">
+                {l.hero.headline}
+              </h1>
+
+              <div className="lg:pt-2">
+                <p className="max-w-md text-sm leading-relaxed text-neutral-200 sm:text-base">
+                  {l.hero.subheadline}
+                </p>
+                <div className="mt-6 flex flex-wrap items-center gap-3">
+                  <MarketingAuthCta variant="heroInline" />
+                  <a
+                    href="#how-it-works"
+                    className="inline-flex items-center justify-center rounded-full bg-neutral-300 px-6 py-3 text-sm font-semibold text-neutral-900 transition-colors hover:bg-white sm:px-7 sm:py-3.5 sm:text-base"
+                  >
+                    {l.hero.secondaryCta}
+                  </a>
+                </div>
+                <MarketingPricingHint
+                  basic={l.pricingSnippet.basic}
+                  advanced={l.pricingSnippet.advanced}
+                  className="mt-4 text-[0.6875rem] leading-relaxed text-neutral-400"
+                />
+              </div>
+            </div>
+
+            <div className="mx-auto mt-10 max-h-[20rem] max-w-5xl overflow-hidden rounded-t-[1.25rem] bg-white text-left shadow-[0_-12px_60px_-10px_rgba(74,222,128,0.18)] ring-1 ring-white/10 sm:mt-14 sm:max-h-[26rem] sm:rounded-t-[1.75rem] lg:max-h-[30rem]">
               <HeroDashboardPreview />
             </div>
-            <div
-              className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-white/90 to-transparent dark:from-neutral-950/80"
-              aria-hidden
-            />
           </div>
         </div>
       </div>

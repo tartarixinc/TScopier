@@ -28,13 +28,13 @@ export const landingNl: LandingTranslations = {
     },
   },
   hero: {
-    headline: 'Eén uniform kopieerplatform voor',
-    headlinePhrases: ['Handelssignalen', 'Social trading', 'Account mirroring'],
+    headline: 'Het #1 kopieerplatform voor elke forex- en cryptotrader',
+    headlinePhrases: [],
     subheadline:
       'Automatiseer je trades vanuit Telegram, WhatsApp, Discord, TradingView of een masteraccount naar 8+ brokerplatformen in minder dan 50 ms. Geen VPS nodig.',
     socialProof: 'TScopier.ai is nu UniCopier',
     primaryCta: 'Start je gratis proefperiode van 5 dagen',
-    secondaryCta: 'Inloggen',
+    secondaryCta: 'Zo werkt het',
     imageAlt:
       'UniCopier-dashboard met saldo, dagwinst, trade-resultaten en groeigrafieken van accounts',
     previewUrl: 'app.tscopier.ai/dashboard',

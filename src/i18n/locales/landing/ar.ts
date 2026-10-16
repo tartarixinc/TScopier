@@ -28,13 +28,13 @@ export const landingAr: LandingTranslations = {
     },
   },
   hero: {
-    headline: 'منصة نسخ موحّدة واحدة لـ',
-    headlinePhrases: ['إشارات التداول', 'التداول الاجتماعي', 'مرآة الحسابات'],
+    headline: 'منصة النسخ رقم 1 لكل متداول فوركس وعملات رقمية',
+    headlinePhrases: [],
     subheadline:
       'أتمت تداولاتك من Telegram أو WhatsApp أو Discord أو TradingView أو حساب رئيسي إلى أكثر من 8 منصات وساطة في أقل من 50 مللي ثانية. بدون VPS.',
     socialProof: 'أصبح TScopier.ai الآن UniCopier',
     primaryCta: 'ابدأ تجربتك المجانية لمدة 5 أيام',
-    secondaryCta: 'تسجيل الدخول',
+    secondaryCta: 'شاهد كيف يعمل',
     imageAlt:
       'لوحة تحكم UniCopier تعرض الرصيد والربح اليومي ونتائج التداول ومخططات نمو الحساب',
     previewUrl: 'app.tscopier.ai/dashboard',

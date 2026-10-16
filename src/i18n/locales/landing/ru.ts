@@ -28,13 +28,13 @@ export const landingRu: LandingTranslations = {
     },
   },
   hero: {
-    headline: 'Единая платформа копирования для',
-    headlinePhrases: ['Торговых сигналов', 'Социального трейдинга', 'Зеркалирования счетов'],
+    headline: 'Платформа копирования №1 для каждого трейдера Forex и крипто',
+    headlinePhrases: [],
     subheadline:
       'Автоматизируйте сделки из Telegram, WhatsApp, Discord, TradingView или мастер-счёта на 8+ брокерских платформ менее чем за 50 мс. VPS не требуется.',
     socialProof: 'TScopier.ai теперь UniCopier',
     primaryCta: 'Начните 5-дневный бесплатный пробный период',
-    secondaryCta: 'Войти',
+    secondaryCta: 'Как это работает',
     imageAlt:
       'UniCopier информационная панель с балансом, ежедневной прибылью, результатами торговли и графиками роста счета',
     previewUrl: 'app.tscopier.ai/dashboard',

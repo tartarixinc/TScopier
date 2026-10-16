@@ -28,13 +28,13 @@ export const landingFr: LandingTranslations = {
     },
   },
   hero: {
-    headline: 'Une plateforme de copie unifiée pour',
-    headlinePhrases: ['Signaux de trading', 'Trading social', 'Miroir de comptes'],
+    headline: 'La plateforme de copie n°1 pour tout trader Forex et crypto',
+    headlinePhrases: [],
     subheadline:
       'Automatisez vos trades depuis Telegram, WhatsApp, Discord, TradingView ou un compte maître vers plus de 8 plateformes de courtage en moins de 50 ms. Aucun VPS requis.',
     socialProof: 'TScopier.ai devient UniCopier',
     primaryCta: 'Commencez votre essai gratuit de 5 jours',
-    secondaryCta: 'Se connecter',
+    secondaryCta: 'Voir comment ça marche',
     imageAlt:
       'Tableau de bord UniCopier avec solde, profit du jour, résultats des trades et graphiques de croissance',
     previewUrl: 'app.tscopier.ai/dashboard',

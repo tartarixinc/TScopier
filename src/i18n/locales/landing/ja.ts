@@ -28,13 +28,13 @@ export const landingJa: LandingTranslations = {
     },
   },
   hero: {
-    headline: 'ひとつの統合コピープラットフォーム：',
-    headlinePhrases: ['取引シグナル', 'ソーシャルトレーディング', '口座ミラーリング'],
+    headline: 'すべてのFX・暗号資産トレーダーのためのNo.1コピープラットフォーム',
+    headlinePhrases: [],
     subheadline:
       'Telegram、WhatsApp、Discord、TradingView、またはマスター口座から8以上のブローカーへ、50ms未満で取引を自動化。VPSは不要です。',
     socialProof: 'TScopier.aiは UniCopier になりました',
     primaryCta: '5日間の無料トライアルを始める',
-    secondaryCta: 'ログイン',
+    secondaryCta: '使い方を見る',
     imageAlt: '残高、当日損益、取引結果、口座成長チャートを表示したUniCopierダッシュボード',
     previewUrl: 'app.tscopier.ai/dashboard',
     dashboard: {

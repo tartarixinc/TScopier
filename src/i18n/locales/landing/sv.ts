@@ -28,13 +28,13 @@ export const landingSv: LandingTranslations = {
     },
   },
   hero: {
-    headline: 'En enhetlig kopieringsplattform för',
-    headlinePhrases: ['Handelssignaler', 'Social trading', 'Kontospegling'],
+    headline: 'Kopieringsplattform nr 1 för alla forex- och kryptotraders',
+    headlinePhrases: [],
     subheadline:
       'Automatisera dina affärer från Telegram, WhatsApp, Discord, TradingView eller ett masterkonto till 8+ mäklarplattformar på under 50 ms. Ingen VPS krävs.',
     socialProof: 'TScopier.ai är nu UniCopier',
     primaryCta: 'Starta din 5-dagars gratis provperiod',
-    secondaryCta: 'Logga in',
+    secondaryCta: 'Se hur det fungerar',
     imageAlt:
       'UniCopier instrumentpanel med balans, daglig vinst, handelsresultat och kontotillväxtdiagram',
     previewUrl: 'app.tscopier.ai/dashboard',
