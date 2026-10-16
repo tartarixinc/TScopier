@@ -11,7 +11,7 @@ function Avatar({ name, className }: { name: string; className?: string }) {
   return (
     <span
       className={clsx(
-        'flex h-8 w-8 items-center justify-center rounded-full bg-green-200 text-[0.6875rem] font-semibold text-neutral-950 ring-2 ring-[#0b1410]',
+        'flex h-8 w-8 items-center justify-center rounded-full bg-green-200 text-[0.6875rem] font-semibold text-neutral-950 ring-2 ring-black',
         className,
       )}
     >
@@ -116,11 +116,7 @@ export function ProviderHeroSection() {
   return (
     <section
       className="relative -mt-16 overflow-hidden pt-16 text-white"
-      style={{
-        backgroundColor: '#0b1410',
-        backgroundImage:
-          'radial-gradient(55% 60% at 85% 25%, rgba(74,222,128,0.2), transparent 70%), radial-gradient(40% 45% at 5% 95%, rgba(16,185,129,0.12), transparent 70%)',
-      }}
+      style={{ backgroundColor: '#000' }}
     >
       <Grain className="opacity-[0.16]" />
 
@@ -153,7 +149,7 @@ export function ProviderHeroSection() {
 
         <dl className="mt-14 grid grid-cols-2 gap-px overflow-hidden rounded-3xl bg-white/10 ring-1 ring-white/10 lg:mt-20 lg:grid-cols-4">
           {c.stats.map(stat => (
-            <div key={stat.value} className="bg-[#0d1712] px-5 py-6 sm:px-7">
+            <div key={stat.value} className="bg-neutral-950 px-5 py-6 sm:px-7">
               <dt className="text-xl font-bold tracking-tight text-white sm:text-2xl">{stat.value}</dt>
               <dd className="mt-1 text-xs leading-snug text-neutral-400 sm:text-sm">{stat.label}</dd>
             </div>
