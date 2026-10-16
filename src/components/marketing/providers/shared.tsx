@@ -20,7 +20,7 @@ export function Eyebrow({ children, onDark = false }: { children: ReactNode; onD
   return (
     <p
       className={clsx(
-        'inline-flex items-center gap-2 font-mono text-xs font-medium uppercase tracking-[0.18em]',
+        'inline-flex items-center gap-2  text-xs font-medium uppercase tracking-[0.18em]',
         onDark ? 'text-green-400' : 'text-neutral-900 dark:text-neutral-50',
       )}
     >

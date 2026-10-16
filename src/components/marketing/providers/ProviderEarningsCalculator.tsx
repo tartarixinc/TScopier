@@ -109,13 +109,13 @@ export function ProviderEarningsCalculator() {
 
             <div className="mt-8 grid grid-cols-2 gap-3">
               <div className="rounded-2xl bg-green-400 p-5 text-neutral-950">
-                <p className="font-mono text-[0.625rem] font-medium uppercase tracking-[0.14em] text-neutral-950/70">
+                <p className=" text-[0.625rem] font-medium uppercase tracking-[0.14em] text-neutral-950/70">
                   {c.perMonth}
                 </p>
                 <p className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">{money.format(monthly)}</p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-5">
-                <p className="font-mono text-[0.625rem] font-medium uppercase tracking-[0.14em] text-neutral-400">
+                <p className=" text-[0.625rem] font-medium uppercase tracking-[0.14em] text-neutral-400">
                   {c.perYear}
                 </p>
                 <p className="mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl">

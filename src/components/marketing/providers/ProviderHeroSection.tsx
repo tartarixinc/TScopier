@@ -29,7 +29,7 @@ function ProviderEarningsPreview() {
       <div className={clsx('rounded-3xl p-5 sm:p-6 lg:me-14', GLASS)}>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="font-mono text-[0.625rem] font-medium uppercase tracking-[0.14em] text-neutral-400">
+            <p className=" text-[0.625rem] font-medium uppercase tracking-[0.14em] text-neutral-400">
               {v.monthlyEarnings}
             </p>
             <p className="mt-2 text-4xl font-bold tracking-tight text-white sm:text-5xl">$4,280</p>
@@ -38,7 +38,7 @@ function ProviderEarningsPreview() {
               +18.4% {v.vsLastMonth}
             </p>
           </div>
-          <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 font-mono text-[0.625rem] uppercase tracking-wider text-neutral-400">
+          <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1  text-[0.625rem] uppercase tracking-wider text-neutral-400">
             {v.sampleBadge}
           </span>
         </div>
@@ -67,7 +67,7 @@ function ProviderEarningsPreview() {
 
       <div className="grid grid-cols-[1fr_auto] gap-4 lg:ms-12 lg:-mt-4">
         <div className={clsx('rounded-3xl p-5', GLASS)}>
-          <p className="font-mono text-[0.625rem] font-medium uppercase tracking-[0.14em] text-neutral-400">
+          <p className=" text-[0.625rem] font-medium uppercase tracking-[0.14em] text-neutral-400">
             {v.activeCopiers}
           </p>
           <div className="mt-2 flex items-end justify-between gap-3">
@@ -80,7 +80,7 @@ function ProviderEarningsPreview() {
           </div>
         </div>
         <div className="flex flex-col justify-between rounded-3xl bg-green-400 p-5 text-neutral-950 shadow-[0_24px_60px_-24px_rgba(74,222,128,0.6)]">
-          <p className="font-mono text-[0.625rem] font-medium uppercase tracking-[0.14em] text-neutral-950/70">
+          <p className=" text-[0.625rem] font-medium uppercase tracking-[0.14em] text-neutral-950/70">
             {v.priceSet}
           </p>
           <p className="mt-2 text-3xl font-bold tracking-tight">$50</p>
@@ -88,7 +88,7 @@ function ProviderEarningsPreview() {
       </div>
 
       <div className={clsx('rounded-3xl p-5 lg:me-6 lg:-mt-4', GLASS)}>
-        <p className="font-mono text-[0.625rem] font-medium uppercase tracking-[0.14em] text-neutral-400">
+        <p className=" text-[0.625rem] font-medium uppercase tracking-[0.14em] text-neutral-400">
           {v.recentActivity}
         </p>
         <ul className="mt-3 space-y-3" role="list">
@@ -123,7 +123,7 @@ export function ProviderHeroSection() {
       <div className="relative mx-auto max-w-[80rem] px-5 pb-12 pt-16 sm:px-8 sm:pt-20 lg:px-14 lg:pb-16 lg:pt-24">
         <div className="grid items-center gap-12 lg:grid-cols-[1fr_1.05fr] lg:gap-10">
           <div>
-            <p className="inline-flex items-center gap-2 font-mono text-xs font-medium uppercase tracking-[0.18em] text-green-400">
+            <p className="inline-flex items-center gap-2  text-xs font-medium uppercase tracking-[0.18em] text-green-400">
               <span className="h-2 w-2 bg-green-400" aria-hidden />
               {c.eyebrow}
             </p>

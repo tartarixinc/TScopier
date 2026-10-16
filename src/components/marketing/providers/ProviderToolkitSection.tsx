@@ -158,14 +158,14 @@ function AutomationFlow() {
   return (
     <div className="mt-auto flex flex-col items-stretch gap-3 pt-8 sm:flex-row sm:items-center" dir="ltr" aria-hidden>
       <div className="flex-1 rounded-2xl bg-neutral-950 p-4 text-white">
-        <p className="font-mono text-[0.625rem] uppercase tracking-[0.14em] text-neutral-400">{c.yourTrade}</p>
+        <p className=" text-[0.625rem] uppercase tracking-[0.14em] text-neutral-400">{c.yourTrade}</p>
         <p className="mt-2 text-sm font-semibold">
           <span className="rounded bg-green-400 px-1.5 py-0.5 text-xs text-neutral-950">BUY</span> XAUUSD 0.50
         </p>
       </div>
       <ArrowRight className="mx-auto h-5 w-5 shrink-0 rotate-90 text-neutral-950 sm:rotate-0" aria-hidden />
       <div className="flex-1 rounded-2xl bg-white/70 p-4 ring-1 ring-neutral-950/10">
-        <p className="font-mono text-[0.625rem] uppercase tracking-[0.14em] text-neutral-950/60">{c.engine}</p>
+        <p className=" text-[0.625rem] uppercase tracking-[0.14em] text-neutral-950/60">{c.engine}</p>
         <p className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-neutral-950">
           <Zap className="h-4 w-4" aria-hidden />
           {'<50ms'}
@@ -173,7 +173,7 @@ function AutomationFlow() {
       </div>
       <ArrowRight className="mx-auto h-5 w-5 shrink-0 rotate-90 text-neutral-950 sm:rotate-0" aria-hidden />
       <div className="flex-1 rounded-2xl bg-white/70 p-4 ring-1 ring-neutral-950/10">
-        <p className="font-mono text-[0.625rem] uppercase tracking-[0.14em] text-neutral-950/60">
+        <p className=" text-[0.625rem] uppercase tracking-[0.14em] text-neutral-950/60">
           {c.followerAccounts}
         </p>
         <p className="mt-2 text-sm font-semibold text-neutral-950">86 ✓</p>

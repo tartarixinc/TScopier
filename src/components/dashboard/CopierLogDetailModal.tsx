@@ -309,7 +309,7 @@ function DetailRow({
       <span className={clsx(
         'text-sm text-neutral-900 dark:text-neutral-100 min-w-0 break-words',
         emphasize && 'font-medium',
-        mono && 'font-mono text-xs text-neutral-900 dark:text-neutral-50',
+        mono && ' text-xs text-neutral-900 dark:text-neutral-50',
       )}>
         {value}
       </span>

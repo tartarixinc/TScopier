@@ -86,7 +86,7 @@ function BentoCard({
         </span>
         <p
           className={clsx(
-            'font-mono text-[0.625rem] font-medium uppercase tracking-[0.1em]',
+            ' text-[0.625rem] font-medium uppercase tracking-[0.1em]',
             featured ? 'text-neutral-950/70' : 'text-neutral-500',
           )}
         >
@@ -120,7 +120,7 @@ export function WhyChooseSection() {
   return (
     <section className="mx-auto max-w-6xl px-5 py-16 sm:px-8 sm:py-24">
       <div>
-        <p className="inline-flex items-center gap-2 font-mono text-xs font-medium uppercase tracking-[0.18em] text-neutral-900 dark:text-neutral-50">
+        <p className="inline-flex items-center gap-2  text-xs font-medium uppercase tracking-[0.18em] text-neutral-900 dark:text-neutral-50">
           <span className="h-2 w-2 bg-green-400" aria-hidden />
           {l.eyebrow}
         </p>

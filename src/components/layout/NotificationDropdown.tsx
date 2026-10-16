@@ -139,7 +139,7 @@ export function NotificationDropdown({ open, onClose }: NotificationDropdownProp
                             <p className="text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
                               {item.title}
                               {item.symbol ? (
-                                <span className="ms-1.5 font-mono normal-case tracking-normal text-neutral-900 dark:text-neutral-50">
+                                <span className="ms-1.5  normal-case tracking-normal text-neutral-900 dark:text-neutral-50">
                                   {item.symbol}
                                 </span>
                               ) : null}

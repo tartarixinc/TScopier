@@ -148,7 +148,7 @@ export function AffiliatePayoutsPage() {
                     <p className="font-medium text-neutral-900 dark:text-neutral-100">{row.referred_name}</p>
                     <p className="text-xs text-neutral-900 dark:text-neutral-50">{row.referred_user_id}</p>
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs text-neutral-900 dark:text-neutral-50 sm:px-5">
+                  <td className="px-4 py-3  text-xs text-neutral-900 dark:text-neutral-50 sm:px-5">
                     {row.stripe_invoice_id}
                   </td>
                   <td className="px-4 py-3 text-neutral-900 dark:text-neutral-50 sm:px-5">

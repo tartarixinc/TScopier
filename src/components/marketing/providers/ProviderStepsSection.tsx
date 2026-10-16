@@ -30,7 +30,7 @@ export function ProviderStepsSection() {
               className="relative flex min-h-[15rem] flex-col overflow-hidden rounded-[1.75rem] border border-neutral-200/80 bg-white p-6 shadow-[0_1px_2px_rgba(15,23,42,0.05),0_12px_32px_-16px_rgba(15,23,42,0.18)]"
             >
               <span
-                className="pointer-events-none absolute -end-2 -top-5 select-none font-mono text-[6.5rem] font-bold leading-none text-neutral-100"
+                className="pointer-events-none absolute -end-2 -top-5 select-none  text-[6.5rem] font-bold leading-none text-neutral-100"
                 aria-hidden
               >
                 {String(index + 1).padStart(2, '0')}

@@ -28,7 +28,7 @@ export function SellSignalsSection() {
         />
 
         <div className="flex flex-col justify-center p-7 sm:p-10 lg:p-14">
-          <p className="inline-flex items-center gap-2 font-mono text-xs font-medium uppercase tracking-[0.18em] text-green-400">
+          <p className="inline-flex items-center gap-2  text-xs font-medium uppercase tracking-[0.18em] text-green-400">
             <span className="h-2 w-2 bg-green-400" aria-hidden />
             {p.eyebrow}
           </p>
