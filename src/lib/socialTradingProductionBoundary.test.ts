@@ -11,6 +11,12 @@ test('fixture ratings and performance remain development-only', () => {
   assert.ok(demoGate >= 0, 'demo directory must have an explicit Vite development gate')
   assert.ok(fixtureRows > demoGate, 'fixture-backed rows must remain inside the development gate')
   assert.match(page, /if \(traderId && \(!trader \|\| !import\.meta\.env\.DEV\)\)/)
+
+  const ratingStart = page.indexOf('function TraderRating(')
+  const ratingEnd = page.indexOf('export function SocialTradingPage()', ratingStart)
+  const displayOnlyRating = page.slice(ratingStart, ratingEnd)
+  assert.match(displayOnlyRating, /return \(\s*<p /)
+  assert.doesNotMatch(displayOnlyRating, /<button|onClick=|role="radio"/)
 })
 
 test('production profile uses persisted reviews and the consent-aware real-history boundary', () => {
