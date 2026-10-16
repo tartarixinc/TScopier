@@ -59,7 +59,7 @@ export function HeroSection() {
 
   // -mt-16 / pt-16 pulls the page glow up under the (transparent) floating nav.
   return (
-    <section id="product" className="relative -mt-16 scroll-mt-20 overflow-hidden bg-white pt-16 dark:bg-transparent">
+    <section id="product" className="relative -mt-16 scroll-mt-20 overflow-hidden bg-white pt-16 lg:h-[100svh] lg:min-h-[37.5rem] dark:bg-transparent">
       {/* Soft aurora + faint grid on the page behind the dark card. */}
       <div className="pointer-events-none absolute inset-0" aria-hidden>
         <div className="marketing-hero-grid hero-grid-pan [mask-image:radial-gradient(ellipse_70%_55%_at_50%_0%,black,transparent)]" />
@@ -67,24 +67,24 @@ export function HeroSection() {
         <div className="hero-aurora-blob hero-aurora-blob--b absolute -top-16 left-1/2 h-[24rem] w-[34rem] rounded-full bg-cyan-300/55 blur-3xl dark:bg-cyan-400/25" />
       </div>
 
-      <div className="relative z-[1] mx-auto max-w-[80rem] px-3 pb-10 pt-4 sm:px-8 sm:pb-14 sm:pt-6">
+      <div className="relative z-[1] mx-auto max-w-[80rem] px-3 pb-10 pt-4 sm:px-8 sm:pb-14 sm:pt-6 lg:flex lg:h-full lg:flex-col lg:pb-5 lg:pt-3">
         {/* Dark card with grain; the product screenshot is cropped by its bottom edge. */}
-        <div className="relative overflow-hidden rounded-[2rem] bg-[#151a21] ring-1 ring-white/10 sm:rounded-[3rem]">
+        <div className="relative overflow-hidden rounded-[2rem] bg-[#151a21] ring-1 ring-white/10 sm:rounded-[3rem] lg:min-h-0 lg:flex-1">
           <div
             className="pointer-events-none absolute inset-0 opacity-[0.07] mix-blend-screen"
             style={{ backgroundImage: NOISE_BG, backgroundSize: '140px 140px' }}
             aria-hidden
           />
 
-          <div className="relative px-6 pt-12 sm:px-12 sm:pt-16 lg:px-20 lg:pt-20">
+          <div className="relative px-6 pt-12 sm:px-12 sm:pt-16 lg:flex lg:h-full lg:flex-col lg:px-16 lg:pt-[clamp(1.5rem,5vh,3rem)]">
             {announcement ? (
-              <div className="mb-6">
+              <div className="mb-6 lg:mb-[clamp(0.75rem,2.5vh,1.5rem)]">
                 <AnnouncementTag announcement={announcement} />
               </div>
             ) : null}
 
             <div className="grid items-start gap-8 lg:grid-cols-[1.15fr_1fr] lg:gap-16">
-              <h1 className="max-w-xl text-4xl font-semibold tracking-tighter text-white sm:text-5xl lg:text-[3.5rem] lg:leading-[1.05]">
+              <h1 className="max-w-xl text-4xl font-bold tracking-tighter text-white sm:text-5xl lg:text-[clamp(3.25rem,1vh,1.5rem)] lg:leading-[1.05]">
                 {l.hero.headline}
               </h1>
 
@@ -92,7 +92,7 @@ export function HeroSection() {
                 <p className="max-w-md text-sm leading-relaxed text-neutral-200 sm:text-base">
                   {l.hero.subheadline}
                 </p>
-                <div className="mt-6 flex flex-wrap items-center gap-3">
+                <div className="mt-6 flex flex-wrap items-center gap-3 lg:mt-[clamp(0.875rem,2.5vh,1.5rem)]">
                   <MarketingAuthCta variant="heroInline" />
                   <a
                     href="#how-it-works"
@@ -109,7 +109,7 @@ export function HeroSection() {
               </div>
             </div>
 
-            <div className="mx-auto mt-10 max-h-[20rem] max-w-5xl overflow-hidden rounded-t-[1.25rem] bg-white text-left shadow-[0_-12px_60px_-10px_rgba(74,222,128,0.18)] ring-1 ring-white/10 sm:mt-14 sm:max-h-[26rem] sm:rounded-t-[1.75rem] lg:max-h-[30rem]">
+            <div className="mx-auto mt-10 max-h-[20rem] w-full max-w-5xl overflow-hidden rounded-t-[1.25rem] bg-white text-left shadow-[0_-12px_60px_-10px_rgba(74,222,128,0.18)] ring-1 ring-white/10 sm:mt-14 sm:max-h-[26rem] sm:rounded-t-[1.75rem] lg:mt-[clamp(1rem,3.5vh,2.5rem)] lg:max-h-none lg:min-h-0 lg:flex-1">
               <HeroDashboardPreview />
             </div>
           </div>
