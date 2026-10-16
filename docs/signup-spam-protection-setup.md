@@ -10,11 +10,11 @@ Widget already created. Keys:
 
 | Variable | Where | Value |
 |----------|-------|-------|
-| `VITE_TURNSTILE_SITE_KEY` | Netlify (prod + staging) + local `.env` | `****` |
+| `VITE_TURNSTILE_SITE_KEY` | Netlify (prod + staging) + local `.env` | `<turnstile-site-key>` |
 | Turnstile secret | Supabase Dashboard → Auth → CAPTCHA **and** `supabase secrets set TURNSTILE_SECRET_KEY=...` | From Cloudflare Turnstile widget |
 
 1. Confirm widget hostnames include `app.tscopier.ai`, `staging.tscopier.ai`, and `localhost`
-2. Set Netlify env `VITE_TURNSTILE_SITE_KEY=0x4AAAAAAENwYkTwFMwfAUdc` and redeploy frontend
+2. Set the real public site key as Netlify env `VITE_TURNSTILE_SITE_KEY=<turnstile-site-key>` and redeploy the frontend. It is intentionally not stored in the repository.
 3. Set Supabase secret (staging + prod):
    ```bash
    supabase secrets set TURNSTILE_SECRET_KEY=<turnstile-secret> --project-ref axdcledcyhyvzrnfkwat
