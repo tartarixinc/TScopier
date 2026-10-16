@@ -4,6 +4,9 @@ import type { BrokerProvider, BrokerProviderName } from './brokerProvider'
 import { createFxsocketProvider, type FxsocketProvider } from './fxsocketProvider'
 import { getMtapiProvider, type MtapiProvider } from './mtapiProvider'
 import { getCtraderProvider, type CtraderProvider } from './ctraderProvider'
+import { getBinanceProvider, type BinanceProvider } from './binanceProvider'
+import { getBybitProvider, type BybitProvider } from './bybitProvider'
+import { getKucoinProvider, type KucoinProvider } from './kucoinProvider'
 import {
   type BrokerWriteAuthority,
   brokerWriteAuthorityStoreRegistered,
@@ -15,6 +18,9 @@ export type ResolvedBrokerProvider = BrokerProvider & FxsocketBrokerClient
 let fxsocketProvider: FxsocketProvider | null | undefined
 let mtapiProvider: MtapiProvider | null | undefined
 let ctraderProvider: CtraderProvider | null | undefined
+let binanceProvider: BinanceProvider | null | undefined
+let bybitProvider: BybitProvider | null | undefined
+let kucoinProvider: KucoinProvider | null | undefined
 
 function getFxsocketProvider(): FxsocketProvider | null {
   if (fxsocketProvider === undefined) fxsocketProvider = createFxsocketProvider()
@@ -29,6 +35,21 @@ function resolveMtapiProvider(): MtapiProvider | null {
 function resolveCtraderProvider(): CtraderProvider | null {
   if (ctraderProvider === undefined) ctraderProvider = getCtraderProvider()
   return ctraderProvider
+}
+
+function resolveBinanceProvider(): BinanceProvider | null {
+  if (binanceProvider === undefined) binanceProvider = getBinanceProvider()
+  return binanceProvider
+}
+
+function resolveKucoinProvider(): KucoinProvider | null {
+  if (kucoinProvider === undefined) kucoinProvider = getKucoinProvider()
+  return kucoinProvider
+}
+
+function resolveBybitProvider(): BybitProvider | null {
+  if (bybitProvider === undefined) bybitProvider = getBybitProvider()
+  return bybitProvider
 }
 
 export function apiForBrokerAccount(
@@ -47,6 +68,15 @@ export function apiForBrokerAccount(
   }
   if (value === 'ctrader') {
     resolved = resolveCtraderProvider() as unknown as ResolvedBrokerProvider | null
+  }
+  if (value === 'binance') {
+    resolved = resolveBinanceProvider() as unknown as ResolvedBrokerProvider | null
+  }
+  if (value === 'bybit') {
+    resolved = resolveBybitProvider() as unknown as ResolvedBrokerProvider | null
+  }
+  if (value === 'kucoin') {
+    resolved = resolveKucoinProvider() as unknown as ResolvedBrokerProvider | null
   }
   if (!resolved) return null
   if (!brokerWriteAuthorityStoreRegistered()) return resolved
@@ -75,7 +105,7 @@ export function apiForBrokerAccount(
 export function inferProvider(row: { provider?: string | null }): BrokerProviderName | null {
   if (row.provider == null || row.provider === '') return 'fxsocket'
   const explicit = String(row.provider).trim()
-  if (explicit === 'fxsocket' || explicit === 'mtapi' || explicit === 'ctrader') return explicit
+  if (explicit === 'fxsocket' || explicit === 'mtapi' || explicit === 'ctrader' || explicit === 'binance' || explicit === 'bybit' || explicit === 'kucoin') return explicit
   return null
 }
 
@@ -83,6 +113,9 @@ export function resetProviderResolverForTests(): void {
   fxsocketProvider = undefined
   mtapiProvider = undefined
   ctraderProvider = undefined
+  binanceProvider = undefined
+  bybitProvider = undefined
+  kucoinProvider = undefined
 }
 
 export function setFxsocketProviderForTests(provider: FxsocketProvider | null): void {
@@ -95,4 +128,16 @@ export function setMtapiProviderForResolverTests(provider: MtapiProvider | null)
 
 export function setCtraderProviderForResolverTests(provider: CtraderProvider | null): void {
   ctraderProvider = provider
+}
+
+export function setBinanceProviderForResolverTests(provider: BinanceProvider | null): void {
+  binanceProvider = provider
+}
+
+export function setBybitProviderForResolverTests(provider: BybitProvider | null): void {
+  bybitProvider = provider
+}
+
+export function setKucoinProviderForResolverTests(provider: KucoinProvider | null): void {
+  kucoinProvider = provider
 }

@@ -98,8 +98,9 @@ export function useBrokerReconnect(opts: {
     setReconnectingBrokerIds(prev => new Set(prev).add(brokerId))
     try {
       const broker = opts.brokers.find(b => b.id === brokerId)
-      if (broker && resolveProvider(broker) === 'ctrader') {
-        const { account, status } = await fxsocketBroker.checkStatus(brokerId, 'ctrader')
+      const linkedProvider = broker ? resolveProvider(broker) : null
+      if (broker && (linkedProvider === 'ctrader' || linkedProvider === 'binance' || linkedProvider === 'bybit' || linkedProvider === 'kucoin')) {
+        const { account, status } = await fxsocketBroker.checkStatus(brokerId, linkedProvider)
         upsertBrokerRef.current({
           ...account,
           ...brokerAccountHealthPatchFromMtStatus(status),

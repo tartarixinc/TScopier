@@ -54,6 +54,22 @@ export const BROKER_ACCOUNT_CLIENT_SELECT = [
   'ctrader_account_id',
   'ctrader_environment',
   'ctrader_status',
+  'binance_account_id',
+  'binance_environment',
+  'binance_status',
+  'binance_margin_usdt',
+  'binance_leverage',
+  'binance_margin_mode',
+  'bybit_account_id',
+  'bybit_environment',
+  'bybit_status',
+  'bybit_margin_usdt',
+  'bybit_leverage',
+  'kucoin_account_id',
+  'kucoin_status',
+  'kucoin_margin_usdt',
+  'kucoin_leverage',
+  'kucoin_margin_mode',
   'linked_account_type',
 ].join(',')
 
@@ -72,6 +88,21 @@ export function missingCtraderColumns(message: string): boolean {
     && /schema cache|does not exist|column/i.test(message)
 }
 
+export function missingBinanceColumns(message: string): boolean {
+  return /binance_(account_id|environment|status|margin_usdt|leverage|margin_mode)/i.test(message)
+    && /schema cache|does not exist|column/i.test(message)
+}
+
+export function missingBybitColumns(message: string): boolean {
+  return /bybit_(account_id|environment|status|margin_usdt|leverage)/i.test(message)
+    && /schema cache|does not exist|column/i.test(message)
+}
+
+export function missingKucoinColumns(message: string): boolean {
+  return /kucoin_(account_id|status|margin_usdt|leverage|margin_mode)/i.test(message)
+    && /schema cache|does not exist|column/i.test(message)
+}
+
 function columnsAfterSchemaError(columns: string, message: string): string | null {
   const drop = new Set<string>()
   if (missingCopySourceColumn(message)) drop.add('copy_source')
@@ -79,6 +110,34 @@ function columnsAfterSchemaError(columns: string, message: string): string | nul
     drop.add('ctrader_account_id')
     drop.add('ctrader_environment')
     drop.add('ctrader_status')
+  }
+  if (missingBinanceColumns(message)) {
+    for (const column of [
+      'binance_account_id',
+      'binance_environment',
+      'binance_status',
+      'binance_margin_usdt',
+      'binance_leverage',
+      'binance_margin_mode',
+    ]) drop.add(column)
+  }
+  if (missingBybitColumns(message)) {
+    for (const column of [
+      'bybit_account_id',
+      'bybit_environment',
+      'bybit_status',
+      'bybit_margin_usdt',
+      'bybit_leverage',
+    ]) drop.add(column)
+  }
+  if (missingKucoinColumns(message)) {
+    for (const column of [
+      'kucoin_account_id',
+      'kucoin_status',
+      'kucoin_margin_usdt',
+      'kucoin_leverage',
+      'kucoin_margin_mode',
+    ]) drop.add(column)
   }
   if (drop.size === 0) return null
   const next = columns.split(',').map(column => column.trim()).filter(column => !drop.has(column)).join(',')

@@ -13,13 +13,26 @@ export const landingJa: LandingTranslations = {
     dashboard: 'ダッシュボード',
     menuOpen: 'メニューを開く',
     menuClose: 'メニューを閉じる',
+    productMenu: {
+      heading: '製品',
+      signalCopier: { title: 'シグナルコピー', description: 'Telegram、WhatsApp、Discord、TradingViewのシグナルをブローカーへ直接コピーします。' },
+      socialTrading: { title: 'ソーシャルトレード', description: 'ROIや勝率でトップトレーダーを探し、無料または月額でコピーできます。' },
+      accountMirroring: { title: 'アカウントミラーリング', description: 'マスター口座の取引をリアルタイムで他の口座にミラーリングします。' },
+      featuredTitle: '8以上のプラットフォームに対応',
+      featuredBody: 'MT4、MT5、cTrader、Binance、Bybit、KuCoin。VPS不要。',
+      socialPanel: { title: '実績あるトレーダーをコピー', body: 'パフォーマンスを比較し、信頼できるトレーダーをフォローします。' },
+      mirrorPanel: { title: '1つのマスターで複数の口座へ', body: 'マスター口座を接続すると、すべてのスレーブ口座が取引を自動で追従します。' },
+      labels: { roi: 'ROI', winRate: '勝率', following: 'フォロー中', copyTrader: 'トレーダーをコピー', master: 'マスター', slave: 'スレーブ' },
+      exploreFeatures: 'すべての機能を見る',
+      viewPricing: '料金を見る',
+    },
   },
   hero: {
     headline: 'ひとつの統合コピープラットフォーム：',
     headlinePhrases: ['取引シグナル', 'ソーシャルトレーディング', '口座ミラーリング'],
     subheadline:
       'Telegram、WhatsApp、Discord、TradingView、またはマスター口座から8以上のブローカーへ、50ms未満で取引を自動化。VPSは不要です。',
-    socialProof: 'クラウド型Telegramシグナルコピーで評価#1',
+    socialProof: 'TScopier.aiは UniCopier になりました',
     primaryCta: '5日間の無料トライアルを始める',
     secondaryCta: 'ログイン',
     imageAlt: '残高、当日損益、取引結果、口座成長チャートを表示したUniCopierダッシュボード',
@@ -101,6 +114,10 @@ export const landingJa: LandingTranslations = {
         },
       ],
     },
+  },
+  integrations: {
+    eyebrow: '連携',
+    title: '主要プラットフォームに対応',
   },
   whyChoose: {
     statsCaption: '最も人気のあるTelegramシグナルプロバイダーのトレーダーに利用されています',

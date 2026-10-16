@@ -917,7 +917,7 @@ export function AccountConfigPage() {
   useEffect(() => {
     if (brokersLoading || brokerBalanceRefreshStartedRef.current) return
     const connected = brokers.filter(
-      b => (hasFxsocketBrokerSession(b) || resolveProvider(b) === 'ctrader') && b.connection_status === 'connected',
+      b => (hasFxsocketBrokerSession(b) || resolveProvider(b) === 'ctrader' || resolveProvider(b) === 'binance' || resolveProvider(b) === 'bybit' || resolveProvider(b) === 'kucoin') && b.connection_status === 'connected',
     )
     if (connected.length === 0) return
 

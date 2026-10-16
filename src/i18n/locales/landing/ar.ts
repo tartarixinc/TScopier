@@ -13,13 +13,26 @@ export const landingAr: LandingTranslations = {
     dashboard: 'لوحة التحكم',
     menuOpen: 'فتح القائمة',
     menuClose: 'إغلاق القائمة',
+    productMenu: {
+      heading: 'المنتجات',
+      signalCopier: { title: 'ناسخ الإشارات', description: 'انسخ إشارات Telegram وWhatsApp وDiscord وTradingView مباشرةً إلى وسيطك.' },
+      socialTrading: { title: 'التداول الاجتماعي', description: 'تصفّح أفضل المتداولين حسب العائد ونسبة الربح ثم انسخهم مجانًا أو باشتراك شهري.' },
+      accountMirroring: { title: 'محاكاة الحسابات', description: 'انسخ صفقات الحساب الرئيسي إلى حساباتك الأخرى في الوقت الفعلي.' },
+      featuredTitle: 'يعمل مع أكثر من 8 منصات',
+      featuredBody: 'MT4 وMT5 وcTrader وBinance وBybit وKuCoin. بدون VPS.',
+      socialPanel: { title: 'انسخ متداولين مُثبتين', body: 'قارن الأداء وتابع المتداولين الذين تثق بهم.' },
+      mirrorPanel: { title: 'حساب رئيسي، حسابات عديدة', body: 'اربط حسابًا رئيسيًا وستتبع كل الحسابات التابعة صفقاته تلقائيًا.' },
+      labels: { roi: 'العائد', winRate: 'نسبة الربح', following: 'تتابعه', copyTrader: 'انسخ المتداول', master: 'رئيسي', slave: 'تابع' },
+      exploreFeatures: 'استعرض كل الميزات',
+      viewPricing: 'عرض الأسعار',
+    },
   },
   hero: {
     headline: 'منصة نسخ موحّدة واحدة لـ',
     headlinePhrases: ['إشارات التداول', 'التداول الاجتماعي', 'مرآة الحسابات'],
     subheadline:
       'أتمت تداولاتك من Telegram أو WhatsApp أو Discord أو TradingView أو حساب رئيسي إلى أكثر من 8 منصات وساطة في أقل من 50 مللي ثانية. بدون VPS.',
-    socialProof: 'مصنف رقم 1 كناسخ إشارات Telegram سحابي',
+    socialProof: 'أصبح TScopier.ai الآن UniCopier',
     primaryCta: 'ابدأ تجربتك المجانية لمدة 5 أيام',
     secondaryCta: 'تسجيل الدخول',
     imageAlt:
@@ -102,6 +115,10 @@ export const landingAr: LandingTranslations = {
         },
       ],
     },
+  },
+  integrations: {
+    eyebrow: 'التكاملات',
+    title: 'يعمل مع المنصات الرائدة',
   },
   whyChoose: {
     statsCaption: 'يستخدمه متداولون من أشهر مزوّدي إشارات Telegram',

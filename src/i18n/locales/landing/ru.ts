@@ -13,13 +13,26 @@ export const landingRu: LandingTranslations = {
     dashboard: 'Панель управления',
     menuOpen: 'Открыть меню',
     menuClose: 'Закрыть меню',
+    productMenu: {
+      heading: 'Продукты',
+      signalCopier: { title: 'Копировщик сигналов', description: 'Копируйте сигналы из Telegram, WhatsApp, Discord и TradingView прямо на счёт у брокера.' },
+      socialTrading: { title: 'Социальный трейдинг', description: 'Выбирайте лучших трейдеров по ROI и проценту прибыльных сделок и копируйте их бесплатно или по ежемесячной подписке.' },
+      accountMirroring: { title: 'Зеркалирование счетов', description: 'Зеркалируйте сделки главного счёта на другие ваши счета в реальном времени.' },
+      featuredTitle: 'Работает с 8+ платформами',
+      featuredBody: 'MT4, MT5, cTrader, Binance, Bybit и KuCoin. VPS не нужен.',
+      socialPanel: { title: 'Копируйте проверенных трейдеров', body: 'Сравнивайте результаты и подписывайтесь на трейдеров, которым доверяете.' },
+      mirrorPanel: { title: 'Один главный счёт — много счетов', body: 'Подключите главный счёт, и каждый подчинённый счёт автоматически повторяет его сделки.' },
+      labels: { roi: 'ROI', winRate: 'Винрейт', following: 'Вы подписаны', copyTrader: 'Копировать трейдера', master: 'Главный', slave: 'Подчинённый' },
+      exploreFeatures: 'Все возможности',
+      viewPricing: 'Посмотреть тарифы',
+    },
   },
   hero: {
     headline: 'Единая платформа копирования для',
     headlinePhrases: ['Торговых сигналов', 'Социального трейдинга', 'Зеркалирования счетов'],
     subheadline:
       'Автоматизируйте сделки из Telegram, WhatsApp, Discord, TradingView или мастер-счёта на 8+ брокерских платформ менее чем за 50 мс. VPS не требуется.',
-    socialProof: 'Рейтинг №1 облачный копировщик сигналов Telegram',
+    socialProof: 'TScopier.ai теперь UniCopier',
     primaryCta: 'Начните 5-дневный бесплатный пробный период',
     secondaryCta: 'Войти',
     imageAlt:
@@ -102,6 +115,10 @@ export const landingRu: LandingTranslations = {
         },
       ],
     },
+  },
+  integrations: {
+    eyebrow: 'Интеграции',
+    title: 'Работает с ведущими платформами',
   },
   whyChoose: {
     statsCaption: 'Используется трейдерами самых популярных провайдеров сигналов Telegram',

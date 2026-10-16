@@ -13,13 +13,26 @@ export const landingEn: LandingTranslations = {
     dashboard: 'Dashboard',
     menuOpen: 'Open menu',
     menuClose: 'Close menu',
+    productMenu: {
+      heading: 'Products',
+      signalCopier: { title: 'Signal Copier', description: 'Copy signals from Telegram, WhatsApp, Discord and TradingView straight to your broker.' },
+      socialTrading: { title: 'Social Trading', description: 'Browse top traders by ROI and win rate, then copy them for free or a monthly fee.' },
+      accountMirroring: { title: 'Account Mirroring', description: 'Mirror a master account\'s trades to your other accounts in real time.' },
+      featuredTitle: 'Works with 8+ platforms',
+      featuredBody: 'MT4, MT5, cTrader, Binance, Bybit and KuCoin. No VPS required.',
+      socialPanel: { title: 'Copy proven traders', body: 'Compare performance and follow the traders you trust.' },
+      mirrorPanel: { title: 'One master, many accounts', body: 'Connect a master account and every slave follows its trades automatically.' },
+      labels: { roi: 'ROI', winRate: 'Win rate', following: 'Following', copyTrader: 'Copy Trader', master: 'Master', slave: 'Slave' },
+      exploreFeatures: 'Explore all features',
+      viewPricing: 'View pricing',
+    },
   },
   hero: {
     headline: 'One Unified Copier Platform for',
     headlinePhrases: ['Trading Signals', 'Social Trading', 'Account Mirroring'],
     subheadline:
       'Automate your trades from Telegram, WhatsApp, Discord, TradingView, or a Master Account to 8+ broker platforms in under 50ms. No VPS required.',
-    socialProof: 'Rated #1 Cloud-based Telegram Signal Copier',
+    socialProof: 'TScopier.ai is now UniCopier',
     primaryCta: 'Start your 5-day free trial',
     secondaryCta: 'Sign in',
     imageAlt:
@@ -102,6 +115,10 @@ export const landingEn: LandingTranslations = {
         },
       ],
     },
+  },
+  integrations: {
+    eyebrow: 'Integrations',
+    title: 'Works with leading platforms',
   },
   whyChoose: {
     statsCaption: 'Used by traders from the most popular Telegram signal providers',

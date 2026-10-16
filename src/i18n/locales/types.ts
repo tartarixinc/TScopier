@@ -629,9 +629,11 @@ export interface CopierLogsTranslations {
 export interface AccountConfigAddAccountModalTranslations {
   title: string
   subtitle: string
-  footerHint: string
   comingSoonBadge: string
   comingSoonPlatform: string
+  assetForex: string
+  assetCrypto: string
+  assetFutures: string
 }
 
 export interface AccountConfigConnectFormTranslations {
@@ -650,6 +652,50 @@ export interface AccountConfigConnectFormTranslations {
   ctraderLinkButton: string
   ctraderDemo: string
   ctraderLive: string
+  platformBinance: string
+  platformBybit: string
+  platformKucoin: string
+  selectAnotherPlatform: string
+  binanceConnectHint: string
+  binanceApiKeyLabel: string
+  binanceApiSecretLabel: string
+  binanceApiSecretHint: string
+  /** Popover next to the API key field: title, ordered steps, and the link label. */
+  binanceApiHelpTitle: string
+  binanceApiHelpSteps: string[]
+  binanceApiHelpLink: string
+  /** Same popover for Bybit and KuCoin (the title is shared with Binance). */
+  bybitApiHelpSteps: string[]
+  bybitApiHelpLink: string
+  kucoinApiHelpSteps: string[]
+  kucoinApiHelpLink: string
+  binanceEnvironmentLabel: string
+  binanceLive: string
+  binanceDemo: string
+  binanceMarginLabel: string
+  binanceMarginHint: string
+  binanceLeverageLabel: string
+  binanceLeverageHint: string
+  binanceMarginModeLabel: string
+  binanceIsolated: string
+  binanceCross: string
+  binanceMarginModeHint: string
+  binanceConnectButton: string
+  binanceKeysRequired: string
+  binanceInvalidMargin: string
+  binanceInvalidLeverage: string
+  binanceSettingsTitle: string
+  binanceSettingsSave: string
+  binanceSettingsSaved: string
+  bybitConnectHint: string
+  bybitConnectButton: string
+  bybitMarginModeNote: string
+  bybitPortfolioMargin: string
+  kucoinConnectHint: string
+  kucoinConnectButton: string
+  kucoinApiPassphraseLabel: string
+  kucoinApiPassphraseHint: string
+  kucoinKeysRequired: string
   brokerServerLabel: string
   brokerServerHint: string
   brokerServerPlaceholder: string
@@ -1155,6 +1201,8 @@ export interface ConfigurationsPageTranslations {
   accountTypeDemo: string
   accountTypePropFirm: string
   noChannelsLinked: string
+  noConfigurationsYet: string
+  openConfiguration: string
   emptyTitle: string
   emptyBody: string
   openBrokers: string
