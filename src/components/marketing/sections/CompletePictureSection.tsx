@@ -55,7 +55,7 @@ export function CompletePictureSection() {
   return (
     <section className="relative" aria-labelledby="complete-picture-title">
       <div className="mx-auto max-w-[80rem] px-3 py-6 sm:px-8 sm:py-10">
-        <div className="grid items-center gap-8 rounded-[2rem] bg-neutral-100 p-5 sm:rounded-[2.5rem] sm:p-8 lg:grid-cols-[0.85fr_1.15fr] lg:gap-12 lg:p-12 dark:bg-white/[0.05] dark:ring-1 dark:ring-white/10">
+        <div className="grid items-center gap-8 lg:grid-cols-[0.85fr_1.15fr] lg:gap-12">
           <div className="lg:ps-6">
             <p className="text-base font-medium text-neutral-900 dark:text-neutral-50">{c.eyebrow}</p>
             <h2
@@ -73,7 +73,7 @@ export function CompletePictureSection() {
             {c.cards.map((card, index) => (
               <li
                 key={card.title}
-                className="flex min-h-[13rem] flex-col rounded-3xl bg-white p-6 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:bg-neutral-900 dark:ring-1 dark:ring-white/10"
+                className="flex min-h-[13rem] flex-col rounded-3xl border border-neutral-200/80 bg-white p-6 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-neutral-900"
               >
                 {icons[index]}
                 <h3 className="mt-auto pt-8 text-lg font-semibold leading-snug tracking-tight text-neutral-950 dark:text-white">
