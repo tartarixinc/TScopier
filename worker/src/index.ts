@@ -55,6 +55,7 @@ import { registerOrderCloseAuditSupabase } from './orderCloseAudit'
 import { initializeBrokerExecutionCapability } from './brokerExecutionMode'
 import { testFlagEnabled } from './testFlags'
 import { MtapiSessionManager } from './mtapiSessionManager'
+import { SocialCopyMonitor } from './socialCopyMonitor'
 import {
   createSupabaseBrokerWriteAuthorityStore,
   registerBrokerWriteAuthorityStore,
@@ -157,6 +158,9 @@ function startTradeMonitors(executor: TradeExecutor | null) {
     const copyLimitMonitor = new CopyLimitMonitor(supabase)
     copyLimitMonitor.start()
     trackMonitor(copyLimitMonitor)
+    const socialCopyMonitor = new SocialCopyMonitor(supabase)
+    socialCopyMonitor.start()
+    trackMonitor(socialCopyMonitor)
   }
 
   if (workerConfig.runsManagementMonitors) {

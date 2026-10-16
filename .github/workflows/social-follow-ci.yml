@@ -1,0 +1,180 @@
+name: Social Follow CI
+
+on:
+  pull_request:
+    paths:
+      - "src/components/social/**"
+      - "src/hooks/useSocialFollow.ts"
+      - "src/hooks/useSocialFollow.test.ts"
+      - "src/lib/socialCopy.ts"
+      - "src/lib/socialCopy.test.ts"
+      - "src/lib/socialTradingProductionBoundary.test.ts"
+      - "src/lib/socialReviews.ts"
+      - "src/lib/socialReviews.test.ts"
+      - "src/lib/socialTradeHistory.ts"
+      - "src/lib/socialTradeHistory.test.ts"
+      - "src/lib/socialFollow.ts"
+      - "src/lib/socialFollow.test.ts"
+      - "src/lib/socialCopyPreview.ts"
+      - "src/lib/socialCopyPreview.test.ts"
+      - "src/i18n/locales/**"
+      - "src/pages/dashboard/SocialTradingPage.tsx"
+      - "src/types/database.ts"
+      - "supabase/migrations/**"
+      - "supabase/tests/**"
+      - "supabase/config.toml"
+      - "package.json"
+      - "package-lock.json"
+      - "worker/src/socialCopyMonitor.ts"
+      - "worker/src/socialCopyMonitor.test.ts"
+      - ".github/workflows/social-follow-ci.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "src/components/social/**"
+      - "src/hooks/useSocialFollow.ts"
+      - "src/hooks/useSocialFollow.test.ts"
+      - "src/lib/socialFollow.ts"
+      - "src/lib/socialFollow.test.ts"
+      - "src/lib/socialCopy.ts"
+      - "src/lib/socialCopy.test.ts"
+      - "src/lib/socialTradingProductionBoundary.test.ts"
+      - "src/lib/socialReviews.ts"
+      - "src/lib/socialReviews.test.ts"
+      - "src/lib/socialTradeHistory.ts"
+      - "src/lib/socialTradeHistory.test.ts"
+      - "src/lib/socialCopyPreview.ts"
+      - "src/lib/socialCopyPreview.test.ts"
+      - "src/i18n/locales/**"
+      - "src/pages/dashboard/SocialTradingPage.tsx"
+      - "src/types/database.ts"
+      - "supabase/migrations/**"
+      - "supabase/tests/**"
+      - "supabase/config.toml"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/social-follow-ci.yml"
+      - "worker/src/socialCopyMonitor.ts"
+      - "worker/src/socialCopyMonitor.test.ts"
+permissions:
+  contents: read
+
+jobs:
+  social-follow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Install locked worker dependencies
+        run: npm ci --prefix worker
+
+      - name: Run Social Follow and Copy preview tests
+        run: npx vitest run src/lib/socialFollow.test.ts src/lib/socialCopyPreview.test.ts
+
+      - name: Run Social Follow hook race tests
+        run: npx vitest run src/hooks/useSocialFollow.test.ts
+
+      - name: Run Social Copy persistence tests
+        run: node --import tsx --import ./test/preload.ts --test src/lib/socialCopy.test.ts src/lib/socialReviews.test.ts src/lib/socialTradeHistory.test.ts src/lib/socialTradingProductionBoundary.test.ts
+
+      - name: Run worker tests (including Social Copy lifecycle)
+        run: npm --prefix worker test
+
+      - name: Run copy-risk Node tests
+        run: node --import tsx --import ./test/preload.ts --test src/lib/copyRiskEvaluate.test.ts
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Targeted lint
+        run: >-
+          npx eslint
+          src/components/social/SocialFollowDirectory.tsx
+          src/hooks/useSocialFollow.ts
+          src/hooks/useSocialFollow.test.ts
+          src/lib/socialFollow.ts
+          src/lib/socialFollow.test.ts
+          src/components/social/SocialCopyPanel.tsx
+          src/lib/socialCopy.ts
+          src/lib/socialTradingProductionBoundary.test.ts
+          src/lib/socialCopy.test.ts
+          src/components/social/TraderReviews.tsx
+          src/components/social/SocialTradeHistoryPanel.tsx
+          src/lib/socialReviews.ts
+          src/lib/socialReviews.test.ts
+          src/lib/socialTradeHistory.ts
+          src/lib/socialTradeHistory.test.ts
+          src/pages/dashboard/SocialTradingPage.tsx
+          src/i18n/locales/types.ts
+          src/i18n/locales/en.ts
+          src/i18n/locales/es.ts
+          src/i18n/locales/fr.ts
+          src/types/database.ts
+          worker/src/socialCopyMonitor.ts
+          worker/src/socialCopyMonitor.test.ts
+
+      - name: Production build
+        run: npm run build
+
+      - name: Install pinned Supabase CLI
+        id: setup_supabase_cli
+        uses: supabase/setup-cli@v1
+        with:
+          version: "2.39.2"
+
+      - name: Remove incompatible local Supabase metadata
+        run: rm -f supabase/.temp/storage-version supabase/.temp/postgres-version
+
+      - name: Start isolated Supabase stack
+        run: supabase start
+
+      - name: Apply migrations to isolated database
+        run: supabase db reset --local
+
+      - name: Inspect installed Social Follow security metadata
+        run: >-
+          psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -v ON_ERROR_STOP=1 -c
+          "select p.proname, pg_get_userbyid(p.proowner) as owner,
+          p.prosecdef, p.proconfig
+          from pg_proc p
+          join pg_namespace n on n.oid = p.pronamespace
+          where n.nspname = 'public'
+          and p.proname in ('follow_social_profile', 'register_social_profile',
+          'set_social_profile_access', 'remove_social_follow',
+          'resolve_social_follow_request', 'get_social_directory');"
+
+      - name: Inspect RLS policies and effective grants
+        run: >-
+          psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -v ON_ERROR_STOP=1 -c
+          "select schemaname, tablename, policyname, cmd, roles
+          from pg_policies
+          where tablename in ('social_profiles', 'social_follow_relationships', 'social_copy_sources', 'social_copy_subscriptions', 'social_copy_trade_mappings', 'social_copy_execution_events')
+          order by tablename, policyname;
+          select has_function_privilege('anon',
+          'public.follow_social_profile(uuid)', 'EXECUTE') as anon_follow_execute,
+          has_function_privilege('authenticated',
+          'public.follow_social_profile(uuid)', 'EXECUTE') as authenticated_follow_execute,
+          has_schema_privilege('anon', 'public', 'CREATE') as anon_public_create;"
+      - name: Run Social Follow pgTAP suite
+        shell: bash
+        run: |
+          set -o pipefail
+          supabase test db --debug | tee social-follow-pgtap.log
+          grep -Fx '1..56' social-follow-pgtap.log
+          grep -Fx '1..27' social-follow-pgtap.log
+      - name: Stop isolated Supabase stack
+        if: always() && steps.setup_supabase_cli.outcome == 'success'
+        run: supabase stop --no-backup

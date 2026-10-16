@@ -7,6 +7,7 @@ import clsx from 'clsx'
 import { AccountGrowthChart } from '../../components/dashboard/AccountGrowthChart'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { CopyTraderModal } from '../../components/social/CopyTraderModal'
+import { SocialFollowDirectory, SocialFollowProfile } from '../../components/social/SocialFollowDirectory'
 import { PageShell } from '../../components/layout/PageShell'
 import { PerformanceTradeOutcomeChart } from '../../components/performance/PerformanceTradeOutcomeChart'
 import { Button } from '../../components/ui/Button'
@@ -66,13 +67,8 @@ function TraderAvatar({
   src?: string | null
   size: 'row' | 'profile'
 }) {
-  const [failed, setFailed] = useState(false)
-
-  useEffect(() => {
-    setFailed(false)
-  }, [src])
-
-  const showPhoto = Boolean(src && !failed)
+  const [failedSrc, setFailedSrc] = useState<string | null>(null)
+  const showPhoto = Boolean(src && failedSrc !== src)
 
   return (
     <span
@@ -87,7 +83,7 @@ function TraderAvatar({
           alt=""
           className="h-full w-full object-cover"
           referrerPolicy="no-referrer"
-          onError={() => setFailed(true)}
+          onError={() => setFailedSrc(src ?? null)}
         />
       ) : (
         name.slice(0, 1).toUpperCase()
@@ -386,6 +382,14 @@ export function SocialTradingPage() {
         <DirectoryTab to="/social-trading?view=following" active={view === 'following'}>{copy.tabFollowing}</DirectoryTab>
       </nav>
       <PageHeader title={heading} />
+      <SocialFollowDirectory copy={copy} />
+      {import.meta.env.DEV ? (
+      <>
+      <div className="flex items-center gap-2 pt-2">
+        <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">{copy.demoDirectory}</h2>
+        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">{copy.demoBadge}</span>
+      </div>
+      <p className="text-xs text-neutral-500 dark:text-neutral-400">{copy.sampleNote}</p>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
         <SummaryStat label={copy.open} value={openCount} selected={visibility === 'open'} onClick={() => toggleVisibility('open')} />
         <SummaryStat label={copy.private} value={privateCount} selected={visibility === 'private'} onClick={() => toggleVisibility('private')} />
@@ -512,6 +516,8 @@ export function SocialTradingPage() {
           </div>
         )}
       </Card>
+      </>
+      ) : null}
     </PageShell>
     {setupTrader ? (
       <CopyTraderModal
@@ -641,10 +647,6 @@ function MonthlyPriceChoice({
   const paid = cents > 0
   const [draft, setDraft] = useState(paid ? String(cents / 100) : '50')
 
-  useEffect(() => {
-    if (cents > 0) setDraft(String(cents / 100))
-  }, [cents])
-
   return (
     <div
       className="relative z-10 flex shrink-0 items-end gap-2"
@@ -738,6 +740,19 @@ export function SocialTraderActivityPage() {
   const ownAvatarUrl = useOwnAvatarUrl()
   const [copyModalOpen, setCopyModalOpen] = useState(false)
   const [profileTab, setProfileTab] = useState<'performance' | 'trading' | 'portfolio'>('performance')
+
+  if (traderId && (!trader || !import.meta.env.DEV)) {
+    return (
+      <PageShell maxWidth="xl">
+        <div>
+          <Link to="/social-trading" className="text-sm font-medium text-teal-700 hover:text-teal-800 dark:text-teal-300">
+            {copy.back}
+          </Link>
+        </div>
+        <SocialFollowProfile profileUserId={traderId} copy={copy} />
+      </PageShell>
+    )
+  }
 
   if (!trader) {
     return (
