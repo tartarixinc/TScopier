@@ -2,6 +2,7 @@ import clsx from 'clsx'
 import { ArrowRight, Megaphone } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { HeroDashboardPreview } from '../HeroDashboardPreview'
+import { ContainerScroll } from '../../ui/container-scroll-animation'
 import { MarketingAuthCta } from '../MarketingAuthCta'
 import { MarketingPricingHint } from '../MarketingPricingHint'
 import { useT } from '../../../context/LocaleContext'
@@ -59,53 +60,53 @@ export function HeroSection() {
 
   // -mt-16 / pt-16 runs the dark hero under the (transparent) floating nav, to the top of the page.
   return (
-    <section
-      id="product"
-      className="relative -mt-16 scroll-mt-20 overflow-hidden bg-[#151a21] pt-16 lg:h-[100svh] lg:min-h-[37.5rem]"
-    >
+    <section id="product" className="relative -mt-16 scroll-mt-20 overflow-hidden bg-[#151a21] pt-16">
       <div
         className="pointer-events-none absolute inset-0 opacity-[0.2] mix-blend-screen"
         style={{ backgroundImage: NOISE_BG, backgroundSize: '140px 140px' }}
         aria-hidden
       />
 
-      <div className="relative mx-auto flex w-full max-w-[80rem] flex-col px-6 pt-12 sm:px-12 sm:pt-16 lg:h-full lg:px-16 lg:pt-[clamp(2.5rem,7vh,4.5rem)]">
-        {announcement ? (
-          <div className="mb-6 lg:mb-[clamp(0.75rem,2.5vh,1.5rem)]">
-            <AnnouncementTag announcement={announcement} />
-          </div>
-        ) : null}
+      <div className="relative">
+        <ContainerScroll
+          titleComponent={
+            <div className="text-left">
+              {announcement ? (
+                <div className="mb-6">
+                  <AnnouncementTag announcement={announcement} />
+                </div>
+              ) : null}
 
-        <div className="grid items-start gap-8 lg:grid-cols-[1.15fr_1fr] lg:gap-16">
-          <h1 className="max-w-xl text-4xl font-bold tracking-tight text-white sm:text-5xl lg:text-[clamp(3.25rem,6vh,4.5rem)] lg:leading-[1.05]">
-            {l.hero.headline}
-          </h1>
+              <div className="grid items-start gap-8 lg:grid-cols-[1.15fr_1fr] lg:gap-16">
+                <h1 className="max-w-xl text-4xl font-bold tracking-tight text-white sm:text-5xl lg:text-[clamp(3.25rem,6vh,4.5rem)] lg:leading-[1.05]">
+                  {l.hero.headline}
+                </h1>
 
-          <div className="lg:pt-2">
-            <p className="max-w-md text-sm leading-relaxed text-neutral-200 sm:text-base">
-              {l.hero.subheadline}
-            </p>
-            <div className="mt-6 flex flex-wrap items-center gap-3 lg:mt-[clamp(0.875rem,2.5vh,1.5rem)]">
-              <MarketingAuthCta variant="heroInline" />
-              <a
-                href="#how-it-works"
-                className="inline-flex items-center justify-center rounded-full bg-neutral-300 px-6 py-3 text-sm font-semibold text-neutral-900 transition-colors hover:bg-white sm:px-7 sm:py-3.5 sm:text-base"
-              >
-                {l.hero.secondaryCta}
-              </a>
+                <div className="lg:pt-2">
+                  <p className="max-w-md text-sm leading-relaxed text-neutral-200 sm:text-base">
+                    {l.hero.subheadline}
+                  </p>
+                  <div className="mt-6 flex flex-wrap items-center gap-3">
+                    <MarketingAuthCta variant="heroInline" />
+                    <a
+                      href="#how-it-works"
+                      className="inline-flex items-center justify-center rounded-full bg-neutral-300 px-6 py-3 text-sm font-semibold text-neutral-900 transition-colors hover:bg-white sm:px-7 sm:py-3.5 sm:text-base"
+                    >
+                      {l.hero.secondaryCta}
+                    </a>
+                  </div>
+                  <MarketingPricingHint
+                    basic={l.pricingSnippet.basic}
+                    advanced={l.pricingSnippet.advanced}
+                    className="mt-4 text-[0.6875rem] leading-relaxed text-neutral-400"
+                  />
+                </div>
+              </div>
             </div>
-            <MarketingPricingHint
-              basic={l.pricingSnippet.basic}
-              advanced={l.pricingSnippet.advanced}
-              className="mt-4 text-[0.6875rem] leading-relaxed text-neutral-400"
-            />
-          </div>
-        </div>
-
-        {/* The product screenshot is cropped by the bottom edge of the hero. */}
-        <div className="mx-auto mt-10 max-h-[20rem] w-full max-w-5xl overflow-hidden rounded-t-[1.25rem] bg-white text-left shadow-[0_-12px_60px_-10px_rgba(74,222,128,0.18)] ring-1 ring-white/10 sm:mt-14 sm:max-h-[26rem] sm:rounded-t-[1.75rem] lg:mt-[clamp(1rem,3.5vh,2.5rem)] lg:max-h-none lg:min-h-0 lg:flex-1">
+          }
+        >
           <HeroDashboardPreview />
-        </div>
+        </ContainerScroll>
       </div>
     </section>
   )
