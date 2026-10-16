@@ -59,7 +59,7 @@ export function CompletePictureSection() {
   return (
     <section className="relative isolate overflow-hidden bg-[#151a21]" aria-labelledby="complete-picture-title">
       <div
-        className="pointer-events-none absolute inset-0 -z-10 opacity-[0.2] mix-blend-screen"
+        className="pointer-events-none absolute inset-0 -z-10 opacity-[0.02] mix-blend-screen"
         style={{ backgroundImage: NOISE_BG, backgroundSize: '140px 140px' }}
         aria-hidden
       />

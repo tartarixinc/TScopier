@@ -115,7 +115,7 @@ export function ProviderHeroSection() {
       className="relative -mt-16 overflow-hidden pt-16 text-white"
       style={{ backgroundColor: '#000' }}
     >
-      <Grain className="opacity-[0.16]" />
+      <Grain className="opacity-[0.1]" />
 
       <div className="relative mx-auto max-w-[80rem] px-5 pb-12 pt-16 sm:px-8 sm:pt-20 lg:px-14 lg:pb-16 lg:pt-24">
         <div className="grid items-center gap-12 lg:grid-cols-[1fr_1.05fr] lg:gap-10">
