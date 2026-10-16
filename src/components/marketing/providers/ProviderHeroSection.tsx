@@ -120,7 +120,7 @@ export function ProviderHeroSection() {
       <div className="relative mx-auto max-w-[80rem] px-5 pb-12 pt-16 sm:px-8 sm:pt-20 lg:px-14 lg:pb-16 lg:pt-24">
         <div className="grid items-center gap-12 lg:grid-cols-[1fr_1.05fr] lg:gap-10">
           <div>
-            <h1 className="max-w-xl text-4xl font-bold tracking-tight sm:text-5xl lg:text-[clamp(3rem,5.4vh,4.25rem)] lg:leading-[1.05]">
+            <h1 className="max-w-2xl text-5xl font-bold tracking-tight sm:text-6xl lg:text-[clamp(3.75rem,7.4vh,5.5rem)] lg:leading-[1.02]">
               {c.title}
             </h1>
             <p className="mt-5 max-w-lg text-sm leading-relaxed text-neutral-300 sm:text-base">{c.description}</p>
