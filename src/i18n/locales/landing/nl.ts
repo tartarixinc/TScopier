@@ -150,13 +150,13 @@ export const landingNl: LandingTranslations = {
       { label: 'Geopende trades', value: '500K+' },
     ],
     eyebrow: 'Slim kopieren begint met slimmere tools',
-    title: 'Elke feature in UniCopier is gebouwd voor controle, duidelijkheid en meetbaar resultaat.',
+    title: 'Eindelijk een signaalkopieerder die werkt voor elk type signaal',
     cards: [
       {
         label: 'Executiesnelheid',
-        metric: '<150ms',
+        metric: '<50ms',
         metricVariant: 'teal',
-        description: 'Minder dan 150ms latency van signaal-parse tot broker-dispatch via onze cloud.',
+        description: 'Minder dan 50ms latency van signaal-parse tot broker-dispatch via onze cloud.',
         layout: 'tall',
         icon: 'zap',
       },

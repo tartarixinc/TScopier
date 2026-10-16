@@ -149,13 +149,13 @@ export const landingJa: LandingTranslations = {
       { label: '開始取引', value: '500K+' },
     ],
     eyebrow: '賢いコピーは、賢いツールから',
-    title: 'UniCopierのすべての機能は、コントロール・可視性・成果のために設計されています。',
+    title: 'ついに登場、あらゆるシグナルタイプに対応するシグナルコピー',
     cards: [
       {
         label: '約定スピード',
-        metric: '<150ms',
+        metric: '<50ms',
         metricVariant: 'teal',
-        description: 'シグナル解析からブローカー送信まで、クラウド基盤で150ms未満の低遅延。',
+        description: 'シグナル解析からブローカー送信まで、クラウド基盤で50ms未満の低遅延。',
         layout: 'tall',
         icon: 'zap',
       },

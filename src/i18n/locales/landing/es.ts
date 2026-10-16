@@ -151,13 +151,13 @@ export const landingEs: LandingTranslations = {
     ],
     eyebrow: 'La copia inteligente empieza con herramientas inteligentes',
     title:
-      'Cada función de UniCopier está pensada para darte control, claridad y resultados medibles.',
+      'Por fin, un copiador de señales que funciona con todos los tipos de señal',
     cards: [
       {
         label: 'Velocidad de ejecución',
-        metric: '<150ms',
+        metric: '<50ms',
         metricVariant: 'teal',
-        description: 'Latencia inferior a 150 ms desde el parseo de la señal hasta el broker.',
+        description: 'Latencia inferior a 50 ms desde el parseo de la señal hasta el broker.',
         layout: 'tall',
         icon: 'zap',
       },

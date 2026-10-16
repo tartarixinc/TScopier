@@ -151,13 +151,13 @@ export const landingSv: LandingTranslations = {
     ],
     eyebrow: 'Smartare kopiering börjar med smartare verktyg',
     title:
-      'Varje funktion i UniCopier är byggd för att ge dig kontroll, tydlighet och mätbara resultat.',
+      'Äntligen en signalkopierare som fungerar för alla typer av signaler',
     cards: [
       {
         label: 'Utförandehastighet',
-        metric: '<150 ms',
+        metric: '<50 ms',
         metricVariant: 'teal',
-        description: 'Latens under 150 ms från signalanalys till mäklarutskick på vår molnpipeline.',
+        description: 'Latens under 50 ms från signalanalys till mäklarutskick på vår molnpipeline.',
         layout: 'tall',
         icon: 'zap',
       },

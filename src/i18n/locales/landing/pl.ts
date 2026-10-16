@@ -151,13 +151,13 @@ export const landingPl: LandingTranslations = {
     ],
     eyebrow: 'Inteligentniejsze kopiowanie zaczyna się od inteligentniejszych narzędzi',
     title:
-      'Każda funkcja UniCopier została stworzona, aby zapewnić kontrolę, przejrzystość i wymierne wyniki.',
+      'Nareszcie kopiarka sygnałów, która działa z każdym typem sygnału',
     cards: [
       {
         label: 'Szybkość wykonania',
-        metric: '<150ms',
+        metric: '<50ms',
         metricVariant: 'teal',
-        description: 'Opóźnienie poniżej 150 ms od analizy sygnału do wysłania brokera w naszym potoku w chmurze.',
+        description: 'Opóźnienie poniżej 50 ms od analizy sygnału do wysłania brokera w naszym potoku w chmurze.',
         layout: 'tall',
         icon: 'zap',
       },

@@ -151,13 +151,13 @@ export const landingEn: LandingTranslations = {
     ],
     eyebrow: 'Smarter copying starts with smarter tools',
     title:
-      'Every feature in UniCopier is built to give you control, clarity, and measurable results.',
+      'Finally, a signal copier that works for every signal type',
     cards: [
       {
         label: 'Execution speed',
-        metric: '<150ms',
+        metric: '<50ms',
         metricVariant: 'teal',
-        description: 'Sub-150ms latency from signal parse to broker dispatch on our cloud pipeline.',
+        description: 'Sub-50ms latency from signal parse to broker dispatch on our cloud pipeline.',
         layout: 'tall',
         icon: 'zap',
       },

@@ -151,13 +151,13 @@ export const landingFr: LandingTranslations = {
     ],
     eyebrow: 'Une copie plus intelligente commence par de meilleurs outils',
     title:
-      'Chaque fonction de UniCopier est conçue pour vous donner contrôle, clarté et des résultats mesurables.',
+      'Enfin, un copieur de signaux qui fonctionne avec tous les types de signaux',
     cards: [
       {
         label: 'Vitesse d’exécution',
-        metric: '<150ms',
+        metric: '<50ms',
         metricVariant: 'teal',
-        description: 'Latence inférieure à 150 ms du parsing du signal à l’envoi courtier.',
+        description: 'Latence inférieure à 50 ms du parsing du signal à l’envoi courtier.',
         layout: 'tall',
         icon: 'zap',
       },
