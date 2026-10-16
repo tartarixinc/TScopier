@@ -66,6 +66,10 @@ function profile(id: string, isSelf = true): SocialDirectoryProfile {
     followingCount: 0,
     viewerRelationshipStatus: null,
     followsViewerStatus: null,
+    averageRating: null,
+    reviewCount: 0,
+    viewerRating: null,
+    sharesTradeHistory: false,
   }
 }
 

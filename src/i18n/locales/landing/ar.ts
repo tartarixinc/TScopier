@@ -28,13 +28,13 @@ export const landingAr: LandingTranslations = {
     },
   },
   hero: {
-    headline: 'منصة نسخ موحّدة واحدة لـ',
-    headlinePhrases: ['إشارات التداول', 'التداول الاجتماعي', 'مرآة الحسابات'],
+    headline: 'منصة النسخ رقم 1 لكل متداول فوركس وعملات رقمية',
+    headlinePhrases: [],
     subheadline:
       'أتمت تداولاتك من Telegram أو WhatsApp أو Discord أو TradingView أو حساب رئيسي إلى أكثر من 8 منصات وساطة في أقل من 50 مللي ثانية. بدون VPS.',
     socialProof: 'أصبح TScopier.ai الآن UniCopier',
     primaryCta: 'ابدأ تجربتك المجانية لمدة 5 أيام',
-    secondaryCta: 'تسجيل الدخول',
+    secondaryCta: 'شاهد كيف يعمل',
     imageAlt:
       'لوحة تحكم UniCopier تعرض الرصيد والربح اليومي ونتائج التداول ومخططات نمو الحساب',
     previewUrl: 'app.tscopier.ai/dashboard',
@@ -119,6 +119,27 @@ export const landingAr: LandingTranslations = {
   integrations: {
     eyebrow: 'التكاملات',
     title: 'يعمل مع المنصات الرائدة',
+  },
+  completePicture: {
+    eyebrow: 'الصورة الكاملة',
+    title: 'مصمم لمتداولي النسخ الجادين.',
+    description: 'كل ما تحتاجه لنسخ الإشارات بموثوقية، من أول رسالة حتى الإغلاق النهائي.',
+    cards: [
+      { title: 'مصادر إشارات متعددة', description: 'انسخ الصفقات من مصدر الإشارات الذي يستخدمه مزوّدك بالفعل.' },
+      { title: 'يدعم أكثر من 8 منصات', description: 'يدعم UniCopier كل المنصات الشائعة من الفوركس إلى العملات الرقمية.' },
+      { title: 'تكامل سلس مع TradingView', description: 'ابنِ استراتيجياتك في TradingView واربطها بـ UniCopier عبر Webhook.' },
+      { title: 'ذكاء اصطناعي مدمج', description: 'ذكاؤنا الاصطناعي لا يكتفي بالاقتراح، بل ينفذ إجراءات فعلية ويساعدك في الإعداد ويحلل صفقاتك ويحسّن تجربة نسخ التداول لديك.' },
+    ],
+  },
+  showcase: {
+    eyebrow: 'UniCopier',
+    title: 'صُمم لتقليل تعقيد التداول الحديث ودعم قرارات أذكى',
+    cta: 'اعرف المزيد',
+    cards: [
+      { headline: 'اربط كل حساباتك وحدد قواعدك مرة واحدة.', description: 'اربط حسابات MT4 وMT5 وcTrader وBinance وBybit وKuCoin، ثم اختر حجم اللوت والمخاطرة والأهداف ومصادر الإشارات لكل حساب.' },
+      { headline: 'انسخ الصفقات فورًا من الحساب الرئيسي إلى الحسابات التابعة.', description: 'اختر حسابًا رئيسيًا ودع حساباتك الأخرى تتبعه بلوتات ثابتة أو مضاعفات أو حجم مبني على الرصيد، مع خيارات للحماية.' },
+      { headline: 'تابع أفضل المتداولين وانسخهم ببضع نقرات.', description: 'قارن العائد ونسبة الربح والتقييمات، ثم انسخ المزوّدين مجانًا أو باشتراك شهري، أو شارك أداءك الخاص.' },
+    ],
   },
   whyChoose: {
     statsCaption: 'يستخدمه متداولون من أشهر مزوّدي إشارات Telegram',

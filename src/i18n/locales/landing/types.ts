@@ -372,6 +372,27 @@ export interface LandingTranslations {
     eyebrow: string
     title: string
   }
+  completePicture: {
+    eyebrow: string
+    title: string
+    description: string
+    cards: readonly [
+      { title: string; description: string },
+      { title: string; description: string },
+      { title: string; description: string },
+      { title: string; description: string },
+    ]
+  }
+  showcase: {
+    eyebrow: string
+    title: string
+    cta: string
+    cards: readonly [
+      { headline: string; description: string },
+      { headline: string; description: string },
+      { headline: string; description: string },
+    ]
+  }
   whyChoose: {
     statsCaption: string
     stats: LandingStatItem[]

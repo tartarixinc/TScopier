@@ -28,13 +28,13 @@ export const landingNl: LandingTranslations = {
     },
   },
   hero: {
-    headline: 'Eén uniform kopieerplatform voor',
-    headlinePhrases: ['Handelssignalen', 'Social trading', 'Account mirroring'],
+    headline: 'Het #1 kopieerplatform voor elke forex- en cryptotrader',
+    headlinePhrases: [],
     subheadline:
       'Automatiseer je trades vanuit Telegram, WhatsApp, Discord, TradingView of een masteraccount naar 8+ brokerplatformen in minder dan 50 ms. Geen VPS nodig.',
     socialProof: 'TScopier.ai is nu UniCopier',
     primaryCta: 'Start je gratis proefperiode van 5 dagen',
-    secondaryCta: 'Inloggen',
+    secondaryCta: 'Zo werkt het',
     imageAlt:
       'UniCopier-dashboard met saldo, dagwinst, trade-resultaten en groeigrafieken van accounts',
     previewUrl: 'app.tscopier.ai/dashboard',
@@ -119,6 +119,27 @@ export const landingNl: LandingTranslations = {
   integrations: {
     eyebrow: 'Integraties',
     title: 'Werkt met toonaangevende platforms',
+  },
+  completePicture: {
+    eyebrow: 'Het complete plaatje',
+    title: 'Gebouwd voor serieuze copytraders.',
+    description: 'Alles wat je nodig hebt om signalen betrouwbaar te kopiëren, van het eerste bericht tot de laatste sluiting.',
+    cards: [
+      { title: 'Meerdere signaalbronnen', description: 'Kopieer trades vanuit de signaalbron die je provider al gebruikt.' },
+      { title: 'Ondersteunt 8+ platforms', description: 'UniCopier ondersteunt alle populaire platforms, van forex tot crypto.' },
+      { title: 'Naadloze TradingView-integratie', description: 'Bouw je strategieën in TradingView en koppel ze via webhook aan UniCopier.' },
+      { title: 'AI inbegrepen', description: 'Onze AI geeft niet alleen suggesties, maar voert echte acties uit, helpt bij de installatie, analyseert je trades en verbetert je copytrading-ervaring.' },
+    ],
+  },
+  showcase: {
+    eyebrow: 'UniCopier',
+    title: 'Gebouwd om de complexiteit van modern traden te verminderen en slimmere beslissingen te ondersteunen',
+    cta: 'Meer informatie',
+    cards: [
+      { headline: 'Koppel al je accounts en stel je regels één keer in.', description: 'Koppel je MT4-, MT5-, cTrader-, Binance-, Bybit- en KuCoin-accounts en kies per account lotgrootte, risico, doelen en signaalbronnen.' },
+      { headline: 'Spiegel trades direct van master- naar slave-accounts.', description: 'Kies een masteraccount en laat je andere accounts het volgen met vaste lots, multipliers of saldogebaseerde grootte, plus beveiligingsopties.' },
+      { headline: 'Volg toptraders en kopieer ze in een paar klikken.', description: 'Vergelijk ROI, winstpercentage en beoordelingen en kopieer aanbieders gratis of voor een maandbedrag, of deel je eigen prestaties.' },
+    ],
   },
   whyChoose: {
     statsCaption: 'Gebruikt door traders van de populairste Telegram-signaalaanbieders',

@@ -28,13 +28,13 @@ export const landingJa: LandingTranslations = {
     },
   },
   hero: {
-    headline: 'ひとつの統合コピープラットフォーム：',
-    headlinePhrases: ['取引シグナル', 'ソーシャルトレーディング', '口座ミラーリング'],
+    headline: 'すべてのFX・暗号資産トレーダーのためのNo.1コピープラットフォーム',
+    headlinePhrases: [],
     subheadline:
       'Telegram、WhatsApp、Discord、TradingView、またはマスター口座から8以上のブローカーへ、50ms未満で取引を自動化。VPSは不要です。',
     socialProof: 'TScopier.aiは UniCopier になりました',
     primaryCta: '5日間の無料トライアルを始める',
-    secondaryCta: 'ログイン',
+    secondaryCta: '使い方を見る',
     imageAlt: '残高、当日損益、取引結果、口座成長チャートを表示したUniCopierダッシュボード',
     previewUrl: 'app.tscopier.ai/dashboard',
     dashboard: {
@@ -118,6 +118,27 @@ export const landingJa: LandingTranslations = {
   integrations: {
     eyebrow: '連携',
     title: '主要プラットフォームに対応',
+  },
+  completePicture: {
+    eyebrow: 'トータルな全体像',
+    title: '本気のコピートレーダーのために。',
+    description: '最初のメッセージから最後の決済まで、シグナルを確実にコピーするために必要なすべてを備えています。',
+    cards: [
+      { title: '複数のシグナルソース', description: 'プロバイダーがすでに使っているシグナルソースから取引をコピーできます。' },
+      { title: '8以上のプラットフォームに対応', description: 'UniCopierはFXから暗号資産まで、主要なプラットフォームすべてに対応します。' },
+      { title: 'TradingViewとのシームレスな連携', description: 'TradingViewで戦略を作成し、WebhookでUniCopierに接続できます。' },
+      { title: 'AI搭載', description: '私たちのAIは提案するだけでなく、実際の操作を実行し、設定を支援し、取引を分析して、コピートレード体験を向上させます。' },
+    ],
+  },
+  showcase: {
+    eyebrow: 'UniCopier',
+    title: '現代のトレードの複雑さを減らし、より賢い判断を支えるために作りました',
+    cta: '詳しく見る',
+    cards: [
+      { headline: 'すべての口座をつなぎ、ルールは一度だけ設定。', description: 'MT4、MT5、cTrader、Binance、Bybit、KuCoinの口座を連携し、ロットサイズ、リスク、目標、シグナルソースを口座ごとに設定できます。' },
+      { headline: 'マスターからスレーブ口座へ、取引を即座にミラーリング。', description: 'マスター口座を選び、固定ロット、倍率、残高ベースのサイズで他の口座に追従させます。保護オプションも利用できます。' },
+      { headline: 'トップトレーダーをフォローして、数クリックでコピー。', description: 'ROI、勝率、評価を比較して、無料または月額でプロバイダーをコピーしたり、自分の成績を共有したりできます。' },
+    ],
   },
   whyChoose: {
     statsCaption: '最も人気のあるTelegramシグナルプロバイダーのトレーダーに利用されています',
