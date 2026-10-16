@@ -18,13 +18,13 @@ const PLATFORM_LOGOS = [
 ] as const
 
 const LOGO_CIRCLE =
-  'flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/80 ring-2 ring-white/40'
+  'flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/80 ring-2 ring-white/40'
 
 function LogoStack({ logos }: { logos: readonly { name: string; src: string }[] }) {
   return (
     <div className="flex items-center" aria-hidden>
       {logos.map((logo, index) => (
-        <span key={logo.name} className={`${LOGO_CIRCLE} ${index === 0 ? '' : '-ms-2.5'}`}>
+        <span key={logo.name} className={`${LOGO_CIRCLE} ${index === 0 ? '' : '-ms-4'}`}>
           <img src={logo.src} alt="" draggable={false} className="h-[58%] w-[58%] object-contain" />
         </span>
       ))}
@@ -48,7 +48,7 @@ export function CompletePictureSection() {
     <LogoStack key="platforms" logos={PLATFORM_LOGOS} />,
     <LogoStack key="tradingview" logos={[{ name: 'TradingView', src: '/tradingview-logo.png' }]} />,
     <IconBubble key="ai">
-      <Sparkles className="h-4 w-4" />
+      <Sparkles className="h-6 w-6" />
     </IconBubble>,
   ]
 
