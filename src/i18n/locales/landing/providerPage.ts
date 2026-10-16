@@ -11,7 +11,6 @@ export interface ProviderPageCopy {
     note: string
     stats: readonly { value: string; label: string }[]
     visual: {
-      sampleBadge: string
       monthlyEarnings: string
       activeCopiers: string
       vsLastMonth: string
@@ -107,7 +106,6 @@ export const providerPageEn: ProviderPageCopy = {
       { value: 'Verified', label: 'public performance profile' },
     ],
     visual: {
-      sampleBadge: 'Sample data',
       monthlyEarnings: 'Monthly earnings',
       activeCopiers: 'Active copiers',
       vsLastMonth: 'vs last month',

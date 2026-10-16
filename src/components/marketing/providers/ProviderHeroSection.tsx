@@ -38,9 +38,6 @@ function ProviderEarningsPreview() {
               +18.4% {v.vsLastMonth}
             </p>
           </div>
-          <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1  text-[0.625rem] uppercase tracking-wider text-neutral-400">
-            {v.sampleBadge}
-          </span>
         </div>
         <div className="mt-6" aria-hidden>
           <div className="flex h-24 items-end gap-2 sm:h-28">
@@ -123,11 +120,7 @@ export function ProviderHeroSection() {
       <div className="relative mx-auto max-w-[80rem] px-5 pb-12 pt-16 sm:px-8 sm:pt-20 lg:px-14 lg:pb-16 lg:pt-24">
         <div className="grid items-center gap-12 lg:grid-cols-[1fr_1.05fr] lg:gap-10">
           <div>
-            <p className="inline-flex items-center gap-2  text-xs font-medium uppercase tracking-[0.18em] text-green-400">
-              <span className="h-2 w-2 bg-green-400" aria-hidden />
-              {c.eyebrow}
-            </p>
-            <h1 className="mt-5 max-w-xl text-4xl font-bold tracking-tight sm:text-5xl lg:text-[clamp(3rem,5.4vh,4.25rem)] lg:leading-[1.05]">
+            <h1 className="max-w-xl text-4xl font-bold tracking-tight sm:text-5xl lg:text-[clamp(3rem,5.4vh,4.25rem)] lg:leading-[1.05]">
               {c.title}
             </h1>
             <p className="mt-5 max-w-lg text-sm leading-relaxed text-neutral-300 sm:text-base">{c.description}</p>
