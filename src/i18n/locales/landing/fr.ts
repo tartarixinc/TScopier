@@ -8,6 +8,8 @@ export const landingFr: LandingTranslations = {
     pricing: 'Tarifs',
     faq: 'FAQ',
     docs: 'Docs',
+    forTraders: 'Pour les traders',
+    forProviders: 'Pour les fournisseurs',
     signIn: 'Se connecter',
     getStarted: "S'inscrire",
     dashboard: 'Tableau de bord',
@@ -33,7 +35,7 @@ export const landingFr: LandingTranslations = {
     subheadline:
       'Automatisez vos trades depuis Telegram, WhatsApp, Discord, TradingView ou un compte maître vers plus de 8 plateformes de courtage en moins de 50 ms. Aucun VPS requis.',
     socialProof: 'TScopier.ai devient UniCopier',
-    primaryCta: 'Commencez votre essai gratuit de 5 jours',
+    primaryCta: 'Choisissez votre offre',
     secondaryCta: 'Voir comment ça marche',
     imageAlt:
       'Tableau de bord UniCopier avec solde, profit du jour, résultats des trades et graphiques de croissance',
@@ -235,6 +237,16 @@ export const landingFr: LandingTranslations = {
         layout: 'short',
         icon: 'history',
       },
+    ],
+  },
+  providers: {
+    eyebrow: 'Pour les fournisseurs de signaux',
+    title: 'Vendez votre service de signaux avec UniCopier.',
+    description: 'Fixez votre prix, bâtissez votre communauté et laissez d’autres traders copier vos trades moyennant un abonnement mensuel. Vous gardez 100 % des profits.',
+    points: [
+      { title: 'Fixez votre prix', description: 'Facturez un abonnement mensuel ou proposez la copie gratuite.' },
+      { title: 'Bâtissez votre communauté', description: 'Réunissez des traders qui vous copient automatiquement.' },
+      { title: 'Gardez 100 %', description: 'Tout ce que vos copieurs vous paient vous revient.' },
     ],
   },
   features: {

@@ -8,6 +8,8 @@ export const landingSv: LandingTranslations = {
     pricing: 'Prissättning',
     faq: 'FAQ',
     docs: 'Dokument',
+    forTraders: 'För traders',
+    forProviders: 'För leverantörer',
     signIn: 'Logga in',
     getStarted: 'Registrera dig',
     dashboard: 'Instrumentbräda',
@@ -33,7 +35,7 @@ export const landingSv: LandingTranslations = {
     subheadline:
       'Automatisera dina affärer från Telegram, WhatsApp, Discord, TradingView eller ett masterkonto till 8+ mäklarplattformar på under 50 ms. Ingen VPS krävs.',
     socialProof: 'TScopier.ai är nu UniCopier',
-    primaryCta: 'Starta din 5-dagars gratis provperiod',
+    primaryCta: 'Välj din plan',
     secondaryCta: 'Se hur det fungerar',
     imageAlt:
       'UniCopier instrumentpanel med balans, daglig vinst, handelsresultat och kontotillväxtdiagram',
@@ -235,6 +237,16 @@ export const landingSv: LandingTranslations = {
         layout: 'short',
         icon: 'history',
       },
+    ],
+  },
+  providers: {
+    eyebrow: 'För signalleverantörer',
+    title: 'Sälj din signaltjänst med UniCopier.',
+    description: 'Sätt ditt eget pris, bygg din community och låt andra traders kopiera dina affärer mot en månadsavgift. Du behåller 100 % av vinsten.',
+    points: [
+      { title: 'Sätt ditt pris', description: 'Ta en månadsavgift eller erbjud kopiering gratis.' },
+      { title: 'Bygg din community', description: 'Samla traders som kopierar dig automatiskt.' },
+      { title: 'Behåll 100 %', description: 'Allt dina kopierare betalar är ditt.' },
     ],
   },
   features: {

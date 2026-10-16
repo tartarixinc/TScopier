@@ -8,6 +8,8 @@ export const landingEn: LandingTranslations = {
     pricing: 'Pricing',
     faq: 'FAQ',
     docs: 'Docs',
+    forTraders: 'For Traders',
+    forProviders: 'For Providers',
     signIn: 'Sign in',
     getStarted: 'Sign up',
     dashboard: 'Dashboard',
@@ -33,7 +35,7 @@ export const landingEn: LandingTranslations = {
     subheadline:
       'Copy trades from Telegram, WhatsApp, Discord, TradingView, or a Master Account to 8+ broker platforms in under 50ms. No VPS required.',
     socialProof: 'TScopier.ai is now UniCopier',
-    primaryCta: 'Start your 5-day free trial',
+    primaryCta: 'Choose your plan',
     secondaryCta: 'See how it works',
     imageAlt:
       'UniCopier dashboard with balance, daily profit, trade outcomes, and account growth charts',
@@ -235,6 +237,16 @@ export const landingEn: LandingTranslations = {
         layout: 'short',
         icon: 'history',
       },
+    ],
+  },
+  providers: {
+    eyebrow: 'For signal providers',
+    title: 'Sell your signal service with UniCopier.',
+    description: 'Set your own price, build your community and let other traders copy your trades for a monthly fee. You keep 100% of the profit.',
+    points: [
+      { title: 'Set your price', description: 'Charge a monthly fee or let traders copy you for free.' },
+      { title: 'Build your community', description: 'Gather traders who copy you automatically.' },
+      { title: 'Keep 100% of the profit', description: 'Everything your copiers pay you is yours.' },
     ],
   },
   features: {

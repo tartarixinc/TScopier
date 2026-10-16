@@ -8,6 +8,8 @@ export const landingRu: LandingTranslations = {
     pricing: 'Цены',
     faq: 'FAQ',
     docs: 'Документы',
+    forTraders: 'Для трейдеров',
+    forProviders: 'Для провайдеров',
     signIn: 'Войти',
     getStarted: 'Зарегистрироваться',
     dashboard: 'Панель управления',
@@ -33,7 +35,7 @@ export const landingRu: LandingTranslations = {
     subheadline:
       'Автоматизируйте сделки из Telegram, WhatsApp, Discord, TradingView или мастер-счёта на 8+ брокерских платформ менее чем за 50 мс. VPS не требуется.',
     socialProof: 'TScopier.ai теперь UniCopier',
-    primaryCta: 'Начните 5-дневный бесплатный пробный период',
+    primaryCta: 'Выберите тариф',
     secondaryCta: 'Как это работает',
     imageAlt:
       'UniCopier информационная панель с балансом, ежедневной прибылью, результатами торговли и графиками роста счета',
@@ -235,6 +237,16 @@ export const landingRu: LandingTranslations = {
         layout: 'short',
         icon: 'history',
       },
+    ],
+  },
+  providers: {
+    eyebrow: 'Для поставщиков сигналов',
+    title: 'Продавайте свой сервис сигналов с UniCopier.',
+    description: 'Назначьте собственную цену, стройте сообщество и позвольте другим трейдерам копировать ваши сделки за ежемесячную плату. Вы оставляете себе 100% прибыли.',
+    points: [
+      { title: 'Назначьте цену', description: 'Берите ежемесячную плату или предлагайте копирование бесплатно.' },
+      { title: 'Стройте сообщество', description: 'Соберите трейдеров, которые копируют вас автоматически.' },
+      { title: 'Оставьте себе 100%', description: 'Всё, что платят вам копирующие, принадлежит вам.' },
     ],
   },
   features: {

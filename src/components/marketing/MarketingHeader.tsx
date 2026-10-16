@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import clsx from 'clsx'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { Menu, X } from 'lucide-react'
 import { TscopierLogo } from '../ui/TscopierLogo'
 import { ThemeToggle } from '../ui/ThemeToggle'
@@ -8,6 +8,7 @@ import { LanguageSwitcher } from '../auth/LanguageSwitcher'
 import { useLocale, useT } from '../../context/LocaleContext'
 import { HELP_LINKS } from '../../lib/helpLinks'
 import { marketingUrl } from '../../lib/site'
+import { MarketingAudienceSwitch } from './MarketingAudienceSwitch'
 import { MarketingAuthCta } from './MarketingAuthCta'
 import { MarketingProductMenu, MarketingProductMenuMobile } from './MarketingProductMenu'
 
@@ -19,12 +20,16 @@ type NavItem = {
   external?: boolean
 }
 
-function marketingNavItems(): NavItem[] {
+/** Anchors live on the landing page; the provider page has its own FAQ section. */
+function marketingNavItems(pathname: string): NavItem[] {
+  const onLanding = pathname === '/'
+  const onProviders = pathname.startsWith('/providers')
+  const anchor = (hash: string) => (onLanding ? hash : `${marketingUrl('/')}${hash}`)
   return [
-    { key: 'product', href: '#product' },
-    { key: 'features', href: '#features' },
+    { key: 'product', href: anchor('#product') },
+    { key: 'features', href: anchor('#features') },
     { key: 'pricing', href: marketingUrl('/pricing') },
-    { key: 'faq', href: '#faq' },
+    { key: 'faq', href: onProviders ? '#faq' : anchor('#faq') },
     { key: 'docs', href: HELP_LINKS.documentation, external: true },
   ]
 }
@@ -78,6 +83,8 @@ const GLASS_BAR_SCROLLED =
 export function MarketingHeader({ overDarkHero = false }: { overDarkHero?: boolean }) {
   const l = useT().landing.nav
   const { auth } = useLocale()
+  const { pathname } = useLocation()
+  const navItems = marketingNavItems(pathname)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
 
@@ -113,7 +120,7 @@ export function MarketingHeader({ overDarkHero = false }: { overDarkHero?: boole
     <header className="pointer-events-none fixed inset-x-0 top-0 z-50 px-3 pt-3 sm:px-5 sm:pt-4">
       <div
         className={clsx(
-          'pointer-events-auto relative mx-auto flex h-14 max-w-6xl items-center gap-2 rounded-full ps-4 pe-2 transition-[background-color,border-color,box-shadow,backdrop-filter] duration-300 sm:ps-5 lg:gap-4',
+          'pointer-events-auto relative mx-auto flex h-14 max-w-7xl items-center gap-2 rounded-full ps-4 pe-2 transition-[background-color,border-color,box-shadow,backdrop-filter] duration-300 sm:ps-5 lg:gap-4',
           scrolled ? GLASS_BAR_SCROLLED : GLASS_BAR,
           onDark && 'dark',
         )}
@@ -127,11 +134,13 @@ export function MarketingHeader({ overDarkHero = false }: { overDarkHero?: boole
           <TscopierLogo className="h-8 w-auto sm:h-9" onDark={onDark} />
         </Link>
 
+        <MarketingAudienceSwitch className="hidden xl:inline-flex" />
+
         <nav
           className="hidden min-w-0 flex-1 items-center justify-center gap-0.5 lg:flex"
           aria-label="Main"
         >
-          {marketingNavItems().map(item =>
+          {navItems.map(item =>
             item.key === 'product' ? (
               <MarketingProductMenu key={item.key} triggerClassName={desktopLinkClass} />
             ) : (
@@ -166,12 +175,13 @@ export function MarketingHeader({ overDarkHero = false }: { overDarkHero?: boole
         <nav
           id="marketing-mobile-nav"
           className={clsx(
-            'pointer-events-auto mx-auto mt-2 flex max-w-6xl flex-col gap-1 rounded-3xl px-3 py-3 lg:hidden',
+            'pointer-events-auto mx-auto mt-2 flex max-w-7xl flex-col gap-1 rounded-3xl px-3 py-3 lg:hidden',
             GLASS_BAR_SCROLLED,
           )}
           aria-label="Main mobile"
         >
-          {marketingNavItems().map(item =>
+          <MarketingAudienceSwitch className="mb-1 grid grid-cols-2" onNavigate={closeMobile} />
+          {navItems.map(item =>
             item.key === 'product' ? (
               <MarketingProductMenuMobile key={item.key} linkClassName={mobileLinkClass} onNavigate={closeMobile} />
             ) : (

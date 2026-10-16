@@ -8,6 +8,8 @@ export const landingJa: LandingTranslations = {
     pricing: '料金',
     faq: 'FAQ',
     docs: 'ドキュメント',
+    forTraders: 'トレーダー向け',
+    forProviders: 'プロバイダー向け',
     signIn: 'ログイン',
     getStarted: '新規登録',
     dashboard: 'ダッシュボード',
@@ -33,7 +35,7 @@ export const landingJa: LandingTranslations = {
     subheadline:
       'Telegram、WhatsApp、Discord、TradingView、またはマスター口座から8以上のブローカーへ、50ms未満で取引を自動化。VPSは不要です。',
     socialProof: 'TScopier.aiは UniCopier になりました',
-    primaryCta: '5日間の無料トライアルを始める',
+    primaryCta: 'プランを選ぶ',
     secondaryCta: '使い方を見る',
     imageAlt: '残高、当日損益、取引結果、口座成長チャートを表示したUniCopierダッシュボード',
     previewUrl: 'app.tscopier.ai/dashboard',
@@ -231,6 +233,16 @@ export const landingJa: LandingTranslations = {
         layout: 'short',
         icon: 'history',
       },
+    ],
+  },
+  providers: {
+    eyebrow: 'シグナルプロバイダーの方へ',
+    title: 'UniCopierで、あなたのシグナルサービスを販売しよう。',
+    description: '価格を自分で設定し、コミュニティを育て、他のトレーダーに月額料金であなたの取引をコピーしてもらえます。利益は100%あなたのものです。',
+    points: [
+      { title: '価格を自分で設定', description: '月額料金を設定するか、無料でコピーを提供できます。' },
+      { title: 'コミュニティを育てる', description: '自動でコピーしてくれるトレーダーを集められます。' },
+      { title: '利益は100%あなたに', description: 'コピーしたトレーダーからの支払いはすべてあなたのものです。' },
     ],
   },
   features: {
