@@ -352,3 +352,97 @@ test('mergePlanImmediateOrders: includes limits', () => {
   }
   assert.equal(mergePlanImmediateOrders(plan).length, 1)
 })
+
+function withBundle<T>(fn: () => T): T {
+  process.env.TP_BUNDLE_ENABLED = 'true'
+  try {
+    return fn()
+  } finally {
+    delete process.env.TP_BUNDLE_ENABLED
+  }
+}
+
+const bundlePlan: PlannerResult = {
+  orders: [
+    { symbol: 'XAUUSD', operation: 'Buy', volume: 0.5, price: 0, stoploss: 1800, takeprofit: 1900, slippage: 20, comment: 'tp1', expertID: 1 },
+    { symbol: 'XAUUSD', operation: 'Buy', volume: 0.3, price: 0, stoploss: 1800, takeprofit: 1910, slippage: 20, comment: 'tp2', expertID: 1 },
+    { symbol: 'XAUUSD', operation: 'Buy', volume: 0.2, price: 0, stoploss: 1800, takeprofit: 1920, slippage: 20, comment: 'tp3', expertID: 1 },
+  ],
+  delay_ms: 0,
+  isBuy: true,
+}
+
+const bundleLots = [
+  { label: 'TP1', lot: 0, percent: 50, enabled: true },
+  { label: 'TP2', lot: 0, percent: 30, enabled: true },
+  { label: 'TP3', lot: 0, percent: 20, enabled: true },
+]
+
+test('buildPerLegStopTargets: bundle keeps one TP per leg (no count-weighted repaint)', () => {
+  const targets = withBundle(() => buildPerLegStopTargets({
+    plan: bundlePlan,
+    parsed: { sl: 1800, tp: [1900, 1910, 1920] },
+    openLegCount: 3,
+    totalPlannedLegCount: 3,
+    immediateLegCount: 3,
+    tpLots: bundleLots,
+    currentLegTps: [1900, 1910, 1920],
+  }))
+  assert.deepEqual(targets.map(t => t.takeprofit), [1900, 1910, 1920])
+  assert.deepEqual(targets.map(t => t.stoploss), [1800, 1800, 1800])
+})
+
+test('buildPerLegStopTargets: bundle backfills naked legs positionally', () => {
+  const targets = withBundle(() => buildPerLegStopTargets({
+    plan: bundlePlan,
+    parsed: { sl: 1800, tp: [1900, 1910, 1920] },
+    openLegCount: 3,
+    totalPlannedLegCount: 3,
+    immediateLegCount: 3,
+    tpLots: bundleLots,
+    currentLegTps: [0, 0, 0],
+  }))
+  assert.deepEqual(targets.map(t => t.takeprofit), [1900, 1910, 1920])
+})
+
+test('buildPerLegStopTargets: bundle keeps a surviving leg own TP when a middle level is closed', () => {
+  const targets = withBundle(() => buildPerLegStopTargets({
+    plan: bundlePlan,
+    parsed: { sl: 1800, tp: [1900, 1910, 1920] },
+    openLegCount: 2,
+    totalPlannedLegCount: 2,
+    immediateLegCount: 2,
+    tpLots: bundleLots,
+    currentLegTps: [1900, 1920],
+  }))
+  assert.deepEqual(targets.map(t => t.takeprofit), [1900, 1920])
+})
+
+test('buildPerLegStopTargets: bundle reladder re-maps levels 1:1 by TP order', () => {
+  const targets = withBundle(() => buildPerLegStopTargets({
+    plan: bundlePlan,
+    parsed: { sl: 1800, tp: [1905, 1915] },
+    openLegCount: 2,
+    totalPlannedLegCount: 2,
+    immediateLegCount: 2,
+    tpLots: bundleLots,
+    currentLegTps: [1900, 1920],
+    bundleReladder: true,
+  }))
+  assert.deepEqual(targets.map(t => t.takeprofit), [1905, 1915])
+})
+
+test('buildPerLegStopTargets: flag off stays count-weighted (regression)', () => {
+  delete process.env.TP_BUNDLE_ENABLED
+  const targets = buildPerLegStopTargets({
+    plan: bundlePlan,
+    parsed: { sl: 1800, tp: [1900, 1910, 1920] },
+    openLegCount: 3,
+    totalPlannedLegCount: 3,
+    immediateLegCount: 3,
+    tpLots: bundleLots,
+    currentLegTps: [1900, 1910, 1920],
+  })
+  // Classic 3 legs / 50-30-20 → [TP1, TP1, TP2] (the repaint the bundle avoids).
+  assert.deepEqual(targets.map(t => t.takeprofit), [1900, 1900, 1910])
+})

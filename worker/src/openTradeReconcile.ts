@@ -37,16 +37,135 @@ function mtDate(d: Date): string {
   return d.toISOString().slice(0, 19)
 }
 
-async function loadClosedHistory(api: FxsocketBrokerClient, accountId: string): Promise<unknown[]> {
+/** Minimum gap between `HISTORY_LOAD_FAILED` events per account. */
+const historyLoadAlertCooldownRaw = Number(process.env.OPEN_TRADE_RECONCILE_ALERT_COOLDOWN_MS ?? 30 * 60_000)
+const HISTORY_LOAD_ALERT_COOLDOWN_MS = Math.max(
+  60_000,
+  Number.isFinite(historyLoadAlertCooldownRaw) ? historyLoadAlertCooldownRaw : 30 * 60_000,
+)
+const historyLoadAlertLastAt = new Map<string, number>()
+
+/** Newest-page cap / page size for the paginated fallback after a failed bulk pull. */
+const historyMaxPagesRaw = Number(process.env.OPEN_TRADE_RECONCILE_HISTORY_MAX_PAGES)
+const HISTORY_MAX_PAGES = Number.isFinite(historyMaxPagesRaw) && historyMaxPagesRaw > 0
+  ? Math.min(10, Math.max(1, Math.floor(historyMaxPagesRaw)))
+  : 2
+const historyPageSizeRaw = Number(process.env.OPEN_TRADE_RECONCILE_HISTORY_PAGE_SIZE)
+const HISTORY_PAGE_SIZE = Number.isFinite(historyPageSizeRaw) && historyPageSizeRaw > 0
+  ? Math.min(2000, Math.max(50, Math.floor(historyPageSizeRaw)))
+  : 500
+
+/**
+ * Narrow the history window to the trades we actually need proof for: a ghost
+ * opened today should not pull 30 days of closes (the bulk pull is what
+ * intermittently times out on the bridge). One day of margin covers timezone
+ * and clock skew; clamped to the configured HISTORY_DAYS floor so a long-stuck
+ * row still reaches its close record.
+ */
+function historyFromForTrades(trades: OpenTradeReconcileRow[]): Date | null {
+  let minOpenedMs = Infinity
+  for (const trade of trades) {
+    // Any row without a usable opened_at would silently widen the min past its
+    // possible close record; fall back to the full configured lookback instead
+    // (fail-safe: the pull is bigger, never smaller).
+    if (!trade.opened_at) return null
+    const openedMs = Date.parse(trade.opened_at)
+    if (!Number.isFinite(openedMs)) return null
+    if (openedMs < minOpenedMs) minOpenedMs = openedMs
+  }
+  if (!Number.isFinite(minOpenedMs)) return null
+  const derived = new Date(minOpenedMs - 86_400_000)
+  const floor = new Date(Date.now() - HISTORY_DAYS * 86_400_000)
+  return derived > floor ? derived : floor
+}
+
+/**
+ * Newest-N-pages fallback for a failed bulk history pull: probe page 0 to learn
+ * the page count, then fetch only the last HISTORY_MAX_PAGES pages (the bridge
+ * paginates ascending, so the newest closes live at the end — the probe page's
+ * own rows are the oldest and are discarded when they fall outside the range).
+ * Mirrors `closedOrdersHistoryLite`. Close proof is per-ticket and recent, so
+ * the newest pages are where it lives; anything older defers exactly as a
+ * missing record does today.
+ */
+async function loadClosedHistoryPaged(
+  api: FxsocketBrokerClient,
+  accountId: string,
+  from: string,
+  to: string,
+): Promise<unknown[]> {
+  const first = await api.orderHistoryPage(accountId, from, to, 0, HISTORY_PAGE_SIZE)
+  const start = Math.max(0, first.pagesCount - HISTORY_MAX_PAGES)
+  const orders: unknown[] = []
+  for (let page = start; page < first.pagesCount; page += 1) {
+    const current = page === 0
+      ? first
+      : await api.orderHistoryPage(accountId, from, to, page, HISTORY_PAGE_SIZE)
+    orders.push(...current.orders)
+  }
+  return orders
+}
+
+async function loadClosedHistory(
+  api: FxsocketBrokerClient,
+  accountId: string,
+  forTrades?: OpenTradeReconcileRow[],
+): Promise<unknown[]> {
+  const to = mtDate(new Date())
+  const derivedFrom = forTrades ? historyFromForTrades(forTrades) : null
+  const from = derivedFrom ? mtDate(derivedFrom) : mtDate(new Date(Date.now() - HISTORY_DAYS * 86_400_000))
   try {
-    const to = mtDate(new Date())
-    const from = mtDate(new Date(Date.now() - HISTORY_DAYS * 86_400_000))
     return (await api.orderHistory(accountId, from, to)) ?? []
-  } catch (err) {
+  } catch (bulkErr) {
+    const bulkMsg = bulkErr instanceof Error ? bulkErr.message : String(bulkErr)
     console.warn(
-      `[openTradeReconcile] closed-history load failed account=${accountId}: ${err instanceof Error ? err.message : String(err)}`,
+      `[openTradeReconcile] closed-history bulk load failed account=${accountId}: ${bulkMsg}`
+      + ' — retrying with paginated reads',
     )
-    return []
+    try {
+      const paged = await loadClosedHistoryPaged(api, accountId, from, to)
+      console.warn(
+        `[openTradeReconcile] closed-history paged load ok account=${accountId} rows=${paged.length}`
+        + ` maxPages=${HISTORY_MAX_PAGES} pageSize=${HISTORY_PAGE_SIZE}`,
+      )
+      return paged
+    } catch (pagedErr) {
+      const pagedMsg = pagedErr instanceof Error ? pagedErr.message : String(pagedErr)
+      console.warn(
+        `[openTradeReconcile] closed-history load failed account=${accountId}`
+        + ` (bulk: ${bulkMsg}; paged: ${pagedMsg})`,
+      )
+      // Without a distinct signal this failure is invisible until it shows up as
+      // downstream ABSENT/GHOST_UNCONFIRMED bursts — which is exactly how the
+      // 2026-10-14 "OrderHistory timed out" incident hid from Sentry.
+      if (Date.now() - (historyLoadAlertLastAt.get(accountId) ?? 0) >= HISTORY_LOAD_ALERT_COOLDOWN_MS) {
+        historyLoadAlertLastAt.set(accountId, Date.now())
+        captureBusinessIssue({
+          category: 'reconciliation',
+          event: 'reconciliation_failed',
+          severity: 'warning',
+          reasonCode: 'HISTORY_LOAD_FAILED',
+          message: 'Closed-history load failed while corroborating ghost closes',
+          userImpact: 'delayed',
+          fingerprint: ['reconciliation_failed', 'open_trade_reconcile', 'HISTORY_LOAD_FAILED'],
+          // Per-account dedupe so businessEvents' global cooldown cannot swallow
+          // one account's first failure because another account failed first.
+          dedupeKey: accountId,
+          context: {
+            broker_account_id: accountId,
+            stage: 'open_trade_reconcile',
+            operation: 'load_closed_history',
+            extra: {
+              history_from: from,
+              history_to: to,
+              bulk_error: bulkMsg.slice(0, 120),
+              paged_error: pagedMsg.slice(0, 120),
+            },
+          },
+        })
+      }
+      return []
+    }
   }
 }
 
@@ -60,6 +179,7 @@ export type OpenTradeReconcileRow = {
   direction?: string | null
   lot_size?: number | null
   entry_price?: number | null
+  opened_at?: string | null
 }
 
 /** A session probe may only authorise a close when it resolves. */
@@ -136,7 +256,7 @@ export async function reconcileOpenTradesForBroker(
       let closableIds: string[]
       let unconfirmed: OpenTradeReconcileRow[]
       if (requireClosedHistory()) {
-        const closedOrders = await loadClosedHistory(api, metaapiAccountId)
+        const closedOrders = await loadClosedHistory(api, metaapiAccountId, ghostTrades)
         const closable: string[] = []
         unconfirmed = []
         for (const trade of ghostTrades) {
@@ -283,7 +403,7 @@ export async function reconcileOpenTradesForBroker(
   let closedOrders: unknown[] | null = null
   const hasCloseProof = async (trade: OpenTradeReconcileRow): Promise<boolean> => {
     if (!requireClosedHistory()) return true
-    if (closedOrders == null) closedOrders = await loadClosedHistory(api, metaapiAccountId)
+    if (closedOrders == null) closedOrders = await loadClosedHistory(api, metaapiAccountId, unresolved)
     return historyTicketCloseMatch(trade, closedOrders, provider)
   }
 

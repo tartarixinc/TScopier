@@ -48,6 +48,10 @@ Deno.serve(async (req: Request) => {
     "toggle_broker",
     "override_broker_config",
     "set_admin_access",
+    "acknowledge_alert",
+    "update_alert_rule",
+    "upsert_alert_recipient",
+    "delete_alert_recipient",
   ]);
   const reason = requireReasonActions.has(action) ? requireReason(body) : String(body.reason ?? "").trim() || null;
   if (requireReasonActions.has(action) && !reason) {
@@ -432,6 +436,137 @@ Deno.serve(async (req: Request) => {
       correlation_id: correlationId,
     });
     return Response.json({ ok: true, payout_batch: batch }, { headers: corsHeaders });
+  }
+
+  if (action === "acknowledge_alert") {
+    const eventId = String(body.alert_event_id ?? "").trim();
+    if (!eventId) return bad(400, "alert_event_id is required");
+    const before = await snapshotById(supabase, "alert_events", "id", eventId);
+    if (!before) return bad(404, "Alert event not found");
+    if (before.state !== "firing") return bad(409, "Only firing alerts can be acknowledged");
+    const { data, error } = await supabase
+      .from("alert_events")
+      .update({
+        state: "acknowledged",
+        acknowledged_by: adminUser.id,
+        acknowledged_at: new Date().toISOString(),
+      })
+      .eq("id", eventId)
+      .eq("state", "firing")
+      .select("*")
+      .maybeSingle();
+    if (error) return bad(400, error.message);
+    if (!data) return bad(409, "Alert event changed state, reload and try again");
+    await writeAdminAudit(supabase, {
+      actor_user_id: adminUser.id,
+      action,
+      entity_type: "alert_events",
+      entity_id: eventId,
+      reason,
+      before_state: before,
+      after_state: data as Record<string, unknown>,
+      correlation_id: correlationId,
+    });
+    return Response.json({ ok: true, alert_event: data }, { headers: corsHeaders });
+  }
+
+  if (action === "update_alert_rule") {
+    const code = String(body.code ?? "").trim();
+    if (!code) return bad(400, "code is required");
+    const before = await snapshotById(supabase, "alert_rules", "code", code);
+    if (!before) return bad(404, "Alert rule not found");
+
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (body.enabled !== undefined) patch.enabled = Boolean(body.enabled);
+    if (body.name !== undefined) patch.name = String(body.name).trim().slice(0, 120);
+    if (body.description !== undefined) patch.description = String(body.description).trim().slice(0, 600);
+    if (body.severity !== undefined) {
+      const severity = String(body.severity);
+      if (!["info", "warning", "critical"].includes(severity)) return bad(400, "severity must be info, warning or critical");
+      patch.severity = severity;
+    }
+    if (body.threshold !== undefined) {
+      if (typeof body.threshold !== "object" || body.threshold === null || Array.isArray(body.threshold)) {
+        return bad(400, "threshold must be an object");
+      }
+      patch.threshold = body.threshold;
+    }
+    if (body.window_minutes !== undefined) {
+      const minutes = Number(body.window_minutes);
+      if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) return bad(400, "window_minutes must be 1..1440");
+      patch.window_minutes = minutes;
+    }
+    if (body.cooldown_seconds !== undefined) {
+      const seconds = Number(body.cooldown_seconds);
+      if (!Number.isInteger(seconds) || seconds < 0 || seconds > 86400) return bad(400, "cooldown_seconds must be 0..86400");
+      patch.cooldown_seconds = seconds;
+    }
+
+    const { data, error } = await supabase
+      .from("alert_rules")
+      .update(patch)
+      .eq("code", code)
+      .select("*")
+      .maybeSingle();
+    if (error) return bad(400, error.message);
+    if (!data) return bad(404, "Alert rule not found");
+    await writeAdminAudit(supabase, {
+      actor_user_id: adminUser.id,
+      action,
+      entity_type: "alert_rules",
+      entity_id: code,
+      reason,
+      before_state: before,
+      after_state: data as Record<string, unknown>,
+      correlation_id: correlationId,
+    });
+    return Response.json({ ok: true, rule: data }, { headers: corsHeaders });
+  }
+
+  if (action === "upsert_alert_recipient") {
+    const email = String(body.email ?? "").trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return bad(400, "email is not valid");
+    const minSeverity = String(body.min_severity ?? "warning");
+    if (!["info", "warning", "critical"].includes(minSeverity)) return bad(400, "min_severity must be info, warning or critical");
+    const enabled = body.enabled === undefined ? true : Boolean(body.enabled);
+    const before = await snapshotById(supabase, "alert_recipients", "email", email);
+    const { data, error } = await supabase
+      .from("alert_recipients")
+      .upsert({ email, min_severity: minSeverity, enabled }, { onConflict: "email" })
+      .select("*")
+      .single();
+    if (error) return bad(400, error.message);
+    await writeAdminAudit(supabase, {
+      actor_user_id: adminUser.id,
+      action,
+      entity_type: "alert_recipients",
+      entity_id: String(data.id),
+      reason,
+      before_state: before as Record<string, unknown> | null,
+      after_state: data as Record<string, unknown>,
+      request_payload: { email, min_severity: minSeverity, enabled },
+      correlation_id: correlationId,
+    });
+    return Response.json({ ok: true, recipient: data }, { headers: corsHeaders });
+  }
+
+  if (action === "delete_alert_recipient") {
+    const id = String(body.recipient_id ?? "").trim();
+    if (!id) return bad(400, "recipient_id is required");
+    const before = await snapshotById(supabase, "alert_recipients", "id", id);
+    if (!before) return bad(404, "Recipient not found");
+    const { error } = await supabase.from("alert_recipients").delete().eq("id", id);
+    if (error) return bad(400, error.message);
+    await writeAdminAudit(supabase, {
+      actor_user_id: adminUser.id,
+      action,
+      entity_type: "alert_recipients",
+      entity_id: id,
+      reason,
+      before_state: before,
+      correlation_id: correlationId,
+    });
+    return Response.json({ ok: true }, { headers: corsHeaders });
   }
 
   return bad(400, "Unknown action");

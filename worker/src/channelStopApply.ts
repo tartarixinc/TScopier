@@ -12,7 +12,10 @@ import {
   mtPlatformFrom,
   type FxsocketBrokerClient,
 } from './fxsocketClient'
-import { loadChannelActiveTradeParamsForSymbol } from './channelActiveTradeParams'
+import {
+  loadChannelActiveTradeParamsForSymbol
+} from './channelActiveTradeParams'
+import { bundleTpOrderMap, isBundleBasket } from './manualPlanning/tpBundleIdentity'
 import {
   buildEntryQualityTakeProfitMap,
   type EntryQualityLeg,
@@ -824,7 +827,15 @@ export async function applyChannelStopsToBaskets(
     const frozenDeepestTp = deepestFinalTp(plausibleTpLevels, isBuy)
     const tpMap = slOnly || tpOnly || tpFrozen
       ? new Map<string, number>()
-      : buildEntryQualityTakeProfitMap({
+      : isBundleBasket(broker.manual_settings)
+        // Bundled multi basket: explicit TP change re-maps levels 1:1 by TP
+        // order — never the count-weighted entry-quality slots (D3).
+        ? bundleTpOrderMap({
+            legs: legs.map(tr => ({ id: tr.id, tp: tr.tp })),
+            ladder: plausibleTpLevels,
+            isBuy,
+          })
+        : buildEntryQualityTakeProfitMap({
           legs: legs.map(tr => ({
             id: tr.id,
             entryPrice: Number(tr.entry_price ?? 0),

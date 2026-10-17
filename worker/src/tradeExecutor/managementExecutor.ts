@@ -63,6 +63,8 @@ import { upsertBasketReconcileJob, type BasketOpenLeg } from '../basketSlTpRecon
 import { findStaleBasketKeys, upsertBasketSlTpTarget } from '../basketTargetStore'
 import { isV2 } from '../engine/executionMode'
 import { getFxClient, toMtPlatform } from '../engine/fxClient'
+import { isTpBundleEnabled } from '../manualPlanning/tpBundleRollout'
+import { isBundleBasket } from '../manualPlanning/tpBundleIdentity'
 import type { PerLegStopTarget } from '../multiTradeMerge'
 import { isBenignOrderModifyError, isPositionGoneCloseError } from '../orderModifyBenign'
 import { modifyLegSlTpWithFallback } from '../orderModifySafe'
@@ -1021,6 +1023,70 @@ export async function applyManagement(
       const ticket = Number(tr.metaapi_order_id)
       return Number.isFinite(ticket) && ticket > 0
     })
+
+    // Bundled CLOSE TPn (TP_BUNDLE_ENABLED): the referenced level closes that
+    // leg in full at the broker; the other legs are left untouched. Only
+    // bundle-eligible families (multi style, non-range) are affected — single
+    // and range baskets keep classic partial behaviour. The target leg per
+    // family is the nth by broker TP in trade direction. No match is a no-op
+    // with a log line (the provider's intent is already satisfied).
+    const closeTpIndex = Number(parsed.close_tp_index)
+    const bundleCloseActive =
+      isTpBundleEnabled()
+      && action === 'partial_profit'
+      && Number.isInteger(closeTpIndex)
+      && closeTpIndex > 0
+    const bundleFamilyKeys = new Set<string>()
+    const bundleCloseTargetTradeIds = new Set<string>()
+    if (bundleCloseActive) {
+      const eligibleTradeIds = new Set(eligibleTrades.map(tr => tr.id))
+      for (const [key, brokerRows] of rowsByBrokerSignal) {
+        const brokerId = key.split('|')[0]!
+        const broker = byBroker.get(brokerId)
+        if (!broker) continue
+        const manual = resolveChannelTradingConfig(broker, signal.channel_id).manual_settings
+        if (!isBundleBasket(manual)) continue
+        bundleFamilyKeys.add(key)
+        const withTp = brokerRows.filter(r => {
+          const ticket = Number(r.metaapi_order_id)
+          return Number.isFinite(ticket) && ticket > 0 && Number(r.tp) > 0
+        })
+        if (!withTp.length) {
+          console.log(
+            `[tradeExecutor] CLOSE TP${closeTpIndex} bundle family has no TP legs`
+            + ` signal=${signal.id} broker=${brokerId}`,
+          )
+          continue
+        }
+        const isBuy = !String(withTp[0]?.direction ?? '').toLowerCase().includes('sell')
+        const ordered = [...withTp].sort((a, b) => (isBuy
+          ? Number(a.tp) - Number(b.tp)
+          : Number(b.tp) - Number(a.tp)))
+        const target = ordered[closeTpIndex - 1]
+        if (target && eligibleTradeIds.has(target.id)) {
+          bundleCloseTargetTradeIds.add(target.id)
+        } else {
+          // No matching leg, or the matched leg is not dispatched (unlinked
+          // session / management blocked): a no-op with a log line.
+          console.log(
+            `[tradeExecutor] CLOSE TP${closeTpIndex} has no dispatchable matching leg`
+            + ` signal=${signal.id} broker=${brokerId} legs=${withTp.length}`
+            + `${target ? ' (target ineligible)' : ''}`,
+          )
+        }
+      }
+    }
+    // Non-bundle eligible legs keep the classic partial-close success count.
+    // Bundle no-match families contribute nothing; if they are the only
+    // families, the message is a no-op success rather than a retry.
+    const nonBundleEligibleCount = eligibleTrades.filter(
+      tr => !bundleFamilyKeys.has(`${tr.broker_account_id}|${tr.signal_id}`),
+    ).length
+    const expectedPartialSuccesses = bundleCloseTargetTradeIds.size + nonBundleEligibleCount
+    const bundleNoMatchNoOp = bundleCloseActive
+      && bundleFamilyKeys.size > 0
+      && bundleCloseTargetTradeIds.size === 0
+      && nonBundleEligibleCount === 0
     if (action === 'close' || action === 'breakeven' || action === 'partial_profit' || action === 'partial_breakeven') {
       legsTotal += eligibleTrades.length
     }
@@ -1098,6 +1164,18 @@ export async function applyManagement(
       const api = ctx.apiFor(broker)
       if (!api) return
 
+      // Bundled CLOSE TPn: close only the matched leg, in full. Non-target legs
+      // within a bundle-eligible family are intentionally left open.
+      const inBundleFamily = bundleCloseActive
+        && bundleFamilyKeys.has(`${trade.broker_account_id}|${trade.signal_id}`)
+      if (inBundleFamily && !bundleCloseTargetTradeIds.has(trade.id)) {
+        console.log(
+          `[tradeExecutor] CLOSE TP${closeTpIndex} skipping non-target leg trade=${trade.id} signal=${signal.id}`,
+        )
+        return
+      }
+      const closeFullLeg = inBundleFamily && bundleCloseTargetTradeIds.has(trade.id)
+
       try {
         if (
           action === 'close' || action === 'partial_profit'
@@ -1119,7 +1197,7 @@ export async function applyManagement(
           }
         }
           let closeConfirmed = false
-        if (action === 'close') {
+        if (action === 'close' || closeFullLeg) {
           let lastCloseReason: string | undefined
           if (isV2({ brokerAccountId: broker.id, userId: signal.user_id, provider: broker.provider })) {
             // v2 fast close: strict retcode-validated single call (~200ms live),
@@ -1209,6 +1287,9 @@ export async function applyManagement(
             brokerAccountId: trade.broker_account_id,
             symbol: trade.symbol,
           } satisfies RangePendingCancelScope))
+          // Bundled CLOSE TPn: count the matched leg as the partial-profit
+          // success so the signal is not retried for the untouched legs.
+          if (closeFullLeg) partialProfitSucceeded += 1
         } else if (action === 'partial_profit') {
           const fraction = typeof parsed.partial_close_fraction === 'number' && parsed.partial_close_fraction > 0
             ? Math.min(0.95, parsed.partial_close_fraction)
@@ -2124,10 +2205,11 @@ export async function applyManagement(
       })
     } else if (
       action === 'partial_profit'
+      && !bundleNoMatchNoOp
       && (
-        eligibleTrades.length === 0
-        || partialProfitFailures.length > 0
-        || partialProfitSucceeded !== eligibleTrades.length
+        partialProfitFailures.length > 0
+        || expectedPartialSuccesses === 0
+        || partialProfitSucceeded !== expectedPartialSuccesses
       )
     ) {
       const unavailable = partialProfitFailures.length > 0

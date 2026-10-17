@@ -525,3 +525,79 @@ test('orderSend does not retry a bare 429 without the pre-accept rate_limited co
   )
   assert.equal(sendCalls, 1)
 })
+
+test('orderHistory retries once after a transport failure', async () => {
+  let calls = 0
+  const api = new MtapiProvider({
+    fetchImpl: (async () => {
+      calls++
+      if (calls === 1) throw new TypeError('fetch failed')
+      return new Response(JSON.stringify({ orders: [{ ticket: 9 }] }))
+    }) as typeof fetch,
+    timeoutMs: 2_000,
+  })
+  assert.deepEqual(await api.orderHistory('session', 'from', 'to'), [{ ticket: 9 }])
+  assert.equal(calls, 2)
+})
+
+test('orderHistory does not retry a deterministic 4xx', async () => {
+  let calls = 0
+  const api = new MtapiProvider({
+    fetchImpl: (async () => {
+      calls++
+      return new Response('bad request', { status: 400 })
+    }) as typeof fetch,
+    timeoutMs: 2_000,
+  })
+  await assert.rejects(() => api.orderHistory('session', 'from', 'to'))
+  assert.equal(calls, 1)
+})
+
+test('openedOrders does not retry a transport failure (history retry is scoped to history endpoints)', async () => {
+  let calls = 0
+  const api = new MtapiProvider({
+    fetchImpl: (async () => {
+      calls++
+      throw new TypeError('fetch failed')
+    }) as typeof fetch,
+    timeoutMs: 2_000,
+  })
+  await assert.rejects(() => api.openedOrders('session'))
+  assert.equal(calls, 1)
+})
+
+test('orderHistory on persistent transport failure makes exactly two attempts', async () => {
+  let calls = 0
+  const api = new MtapiProvider({
+    fetchImpl: (async () => {
+      calls++
+      throw new TypeError('fetch failed')
+    }) as typeof fetch,
+    timeoutMs: 2_000,
+  })
+  await assert.rejects(() => api.orderHistory('session', 'from', 'to'))
+  assert.equal(calls, 2)
+})
+
+test('orderHistory recovers a session-gone reply without a second transport retry', async () => {
+  const pathSequence: string[] = []
+  const api = new MtapiProvider({
+    fetchImpl: (async (input: string | URL | Request) => {
+      const raw = input instanceof Request ? input.url : String(input)
+      const url = new URL(raw)
+      pathSequence.push(url.pathname)
+      if (url.pathname === '/OrderHistory' && pathSequence.filter(p => p === '/OrderHistory').length === 1) {
+        return new Response(JSON.stringify({ error: { code: 'INVALID_TOKEN', message: 'INVALID_TOKEN' } }), { status: 401 })
+      }
+      if (url.pathname === '/CheckConnect') return new Response(JSON.stringify('OK'), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+      if (url.pathname === '/OrderHistory') return new Response(JSON.stringify({ orders: [{ ticket: 9 }] }))
+      return new Response('{}', { status: 404 })
+    }) as typeof fetch,
+    timeoutMs: 2_000,
+  })
+  assert.deepEqual(await api.orderHistory('session', 'from', 'to'), [{ ticket: 9 }])
+  assert.deepEqual(pathSequence, ['/OrderHistory', '/CheckConnect', '/OrderHistory'])
+})
