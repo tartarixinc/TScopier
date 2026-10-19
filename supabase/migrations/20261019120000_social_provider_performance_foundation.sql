@@ -29,8 +29,38 @@ create index if not exists trades_social_performance_scope_idx
   on public.trades (broker_account_id, status, opened_at, id)
   where broker_account_id is not null;
 
+-- The initial product contract exposes one selected source account per social
+-- profile. Preserve older source rows for audit/history, but make only the most
+-- recently updated source visible as published before enforcing the invariant.
+with ranked_sources as (
+  select id, row_number() over (
+    partition by trader_user_id
+    order by updated_at desc, created_at desc, id desc
+  ) as source_rank
+  from public.social_copy_sources
+  where status = 'published'
+)
+update public.social_copy_sources source
+set status = 'paused', updated_at = now()
+from ranked_sources ranked
+where source.id = ranked.id and ranked.source_rank > 1;
+
+update public.social_copy_subscriptions subscription
+set desired_status = 'paused', updated_at = now()
+from public.social_copy_sources source
+where source.id = subscription.source_id
+  and source.status = 'paused'
+  and subscription.status in ('pending', 'active');
+
+create unique index if not exists social_copy_sources_one_published_per_trader_idx
+  on public.social_copy_sources (trader_user_id)
+  where status = 'published';
+
 comment on index public.trades_social_performance_scope_idx is
   'Supports source-account-scoped social history and integrity calculations.';
+
+comment on index public.social_copy_sources_one_published_per_trader_idx is
+  'Enforces the initial social-profile contract: one selected published broker account per trader.';
 
 create or replace function public.social_source_performance_eligibility(p_source_id uuid)
 returns table (eligible boolean, reason text)
@@ -618,3 +648,95 @@ $$;
 
 revoke all on function public.get_social_copy_sources(uuid) from public, anon;
 grant execute on function public.get_social_copy_sources(uuid) to authenticated;
+
+-- Selecting a different source account is an explicit replacement, not an
+-- additional published account. Existing subscriptions to the previous source
+-- are paused and still pass through the normal worker acknowledgement path.
+create or replace function public.publish_social_copy_source(
+  p_broker_account_id uuid,
+  p_label text default null
+) returns uuid
+language plpgsql security definer set search_path = pg_catalog, public as $$
+declare v_actor uuid := auth.uid(); v_id uuid;
+begin
+  if v_actor is null then raise exception 'Not authenticated' using errcode = '42501'; end if;
+  if not public.social_follow_actor_is_verified(v_actor) then
+    raise exception 'Social copy source publishing requires a verified account' using errcode = '42501';
+  end if;
+  if not public.social_follow_profile_is_eligible(v_actor) then
+    raise exception 'Join the social directory before publishing a copy source' using errcode = '55000';
+  end if;
+  if not exists (
+    select 1 from public.broker_accounts b
+    where b.id = p_broker_account_id and b.user_id = v_actor
+  ) then
+    raise exception 'Broker account is not owned by the current user' using errcode = '42501';
+  end if;
+
+  update public.social_copy_subscriptions subscription
+  set desired_status = 'paused', updated_at = now()
+  from public.social_copy_sources source
+  where source.id = subscription.source_id
+    and source.trader_user_id = v_actor
+    and source.broker_account_id <> p_broker_account_id
+    and source.status = 'published'
+    and subscription.status in ('pending', 'active');
+
+  update public.social_copy_sources
+  set status = 'paused', updated_at = now()
+  where trader_user_id = v_actor
+    and broker_account_id <> p_broker_account_id
+    and status = 'published';
+
+  insert into public.social_copy_sources (trader_user_id, broker_account_id, status, label)
+  values (v_actor, p_broker_account_id, 'published', nullif(btrim(p_label), ''))
+  on conflict (broker_account_id) do update set
+    status = 'published', label = excluded.label, updated_at = now()
+  where public.social_copy_sources.trader_user_id = v_actor
+  returning id into v_id;
+  if v_id is null then raise exception 'Copy source belongs to another trader' using errcode = '42501'; end if;
+  return v_id;
+end;
+$$;
+
+-- Paused sources can also be reselected through the existing status RPC. Keep
+-- that path consistent with publish_social_copy_source so the partial unique
+-- index never becomes the user-facing mechanism for resolving two selections.
+create or replace function public.set_social_copy_source_status(p_source_id uuid, p_status text)
+returns void language plpgsql security definer set search_path = pg_catalog, public as $$
+declare v_actor uuid := auth.uid();
+begin
+  if v_actor is null then raise exception 'Not authenticated' using errcode = '42501'; end if;
+  if p_status not in ('published', 'paused', 'retired') then
+    raise exception 'Invalid copy source status' using errcode = '22023';
+  end if;
+
+  if p_status = 'published' then
+    update public.social_copy_subscriptions subscription
+    set desired_status = 'paused', updated_at = now()
+    from public.social_copy_sources source
+    where source.id = subscription.source_id
+      and source.trader_user_id = v_actor
+      and source.id <> p_source_id
+      and source.status = 'published'
+      and subscription.status in ('pending', 'active');
+
+    update public.social_copy_sources
+    set status = 'paused', updated_at = now()
+    where trader_user_id = v_actor
+      and id <> p_source_id
+      and status = 'published';
+  end if;
+
+  update public.social_copy_sources
+  set status = p_status, updated_at = now()
+  where id = p_source_id and trader_user_id = v_actor;
+  if not found then raise exception 'Copy source was not found' using errcode = 'P0002'; end if;
+
+  if p_status <> 'published' then
+    update public.social_copy_subscriptions
+    set desired_status = 'paused', updated_at = now()
+    where source_id = p_source_id and status in ('pending', 'active');
+  end if;
+end;
+$$;

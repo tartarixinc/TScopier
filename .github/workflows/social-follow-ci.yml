@@ -9,6 +9,8 @@ on:
       - "src/lib/socialCopy.ts"
       - "src/lib/socialCopy.test.ts"
       - "src/lib/socialTradingProductionBoundary.test.ts"
+      - "src/lib/socialPerformancePresentation.ts"
+      - "src/lib/socialPerformancePresentation.test.ts"
       - "src/lib/socialReviews.ts"
       - "src/lib/socialReviews.test.ts"
       - "src/lib/socialTradeHistory.ts"
@@ -41,6 +43,8 @@ on:
       - "src/lib/socialCopy.ts"
       - "src/lib/socialCopy.test.ts"
       - "src/lib/socialTradingProductionBoundary.test.ts"
+      - "src/lib/socialPerformancePresentation.ts"
+      - "src/lib/socialPerformancePresentation.test.ts"
       - "src/lib/socialReviews.ts"
       - "src/lib/socialReviews.test.ts"
       - "src/lib/socialTradeHistory.ts"
@@ -89,7 +93,7 @@ jobs:
         run: npx vitest run src/hooks/useSocialFollow.test.ts
 
       - name: Run Social Copy persistence tests
-        run: node --import tsx --import ./test/preload.ts --test src/lib/socialCopy.test.ts src/lib/socialReviews.test.ts src/lib/socialTradeHistory.test.ts src/lib/socialTradingProductionBoundary.test.ts
+        run: node --import tsx --import ./test/preload.ts --test src/lib/socialCopy.test.ts src/lib/socialReviews.test.ts src/lib/socialTradeHistory.test.ts src/lib/socialPerformancePresentation.test.ts src/lib/socialTradingProductionBoundary.test.ts
 
       - name: Run worker tests (including Social Copy lifecycle)
         run: npm --prefix worker test
@@ -118,6 +122,8 @@ jobs:
           src/lib/socialReviews.test.ts
           src/lib/socialTradeHistory.ts
           src/lib/socialTradeHistory.test.ts
+          src/lib/socialPerformancePresentation.ts
+          src/lib/socialPerformancePresentation.test.ts
           src/pages/dashboard/SocialTradingPage.tsx
           src/i18n/locales/types.ts
           src/i18n/locales/en.ts

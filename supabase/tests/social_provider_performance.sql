@@ -1,6 +1,6 @@
 begin;
 
-select plan(29);
+select plan(39);
 
 insert into auth.users (id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data)
 values
@@ -33,7 +33,8 @@ insert into public.broker_accounts (
   ('41000000-0000-0000-0000-000000000001', '40000000-0000-0000-0000-000000000001', 'Published A', 'MT5', 'provider-a', 'fxsocket', true, 'connected', 'Demo', now(), 'USD'),
   ('41000000-0000-0000-0000-000000000002', '40000000-0000-0000-0000-000000000001', 'Unrelated B', 'MT5', 'provider-b', 'fxsocket', true, 'connected', 'Demo', now(), 'USD'),
   ('41000000-0000-0000-0000-000000000003', '40000000-0000-0000-0000-000000000002', 'Viewer destination', 'MT5', 'viewer-dst', 'fxsocket', true, 'connected', 'Demo', now(), 'USD'),
-  ('41000000-0000-0000-0000-000000000004', '40000000-0000-0000-0000-000000000003', 'Upstream source', 'MT5', 'upstream-src', 'fxsocket', true, 'connected', 'Demo', now(), 'USD');
+  ('41000000-0000-0000-0000-000000000004', '40000000-0000-0000-0000-000000000003', 'Upstream source', 'MT5', 'upstream-src', 'fxsocket', true, 'connected', 'Demo', now(), 'USD'),
+  ('41000000-0000-0000-0000-000000000005', '40000000-0000-0000-0000-000000000001', 'Empty live account', 'MT5', 'provider-empty', 'fxsocket', true, 'connected', 'Live', now(), 'USD');
 
 insert into public.trades (
   user_id, broker_account_id, metaapi_order_id, symbol, direction,
@@ -49,6 +50,15 @@ select
   case when n % 3 = 0 then -5 else 10 end,
   '2026-01-02T00:00:00Z'::timestamptz + make_interval(secs => n)
 from generate_series(1, 10) n;
+
+insert into public.trades (
+  user_id, broker_account_id, metaapi_order_id, symbol, direction,
+  status, opened_at, profit
+) values (
+  '40000000-0000-0000-0000-000000000001',
+  '41000000-0000-0000-0000-000000000001',
+  'open-1', 'USDJPY', 'buy', 'open', now() - interval '2 hours', null
+);
 
 -- Historical duplicate: pre-cutoff rows are not covered by the later unique
 -- index, so the social query must collapse this ticket itself.
@@ -127,13 +137,14 @@ select lives_ok($$select public.set_social_trade_history_sharing(true)$$, 'provi
 select set_config('request.jwt.claim.sub', '40000000-0000-0000-0000-000000000002', true);
 select is((select count(*)::integer from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), 1, 'one published source produces one performance scope');
 select is((select closed_trade_count::integer from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), 10, 'duplicates, copied trades, and the other account are excluded');
+select is((select open_trade_count::integer from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), 1, 'open trades are reported separately without entering closed performance');
 select is((select realized_profit from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), 55::numeric, 'realized P/L uses complete source-account results only');
 select is((select win_rate from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), 70.00::numeric, 'win rate includes every complete closed trade in the denominator');
 select is((select profit_factor from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), 4.6667::numeric, 'profit factor uses gross profits divided by absolute gross losses');
 select is((select return_percentage from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), null::numeric, 'return remains explicitly unavailable without cash-flow history');
 select is((select maximum_drawdown from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), null::numeric, 'drawdown remains unavailable without equity history');
 select is((select equity_curve_available from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), false, 'equity curve is not claimed');
-select is((select count(*)::integer from public.get_social_source_trade_history((select source_id from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')))), 10, 'source history is deduplicated and account-scoped');
+select is((select count(*)::integer from public.get_social_source_trade_history((select source_id from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')))), 11, 'source history is deduplicated and includes source-account open positions');
 select is((select count(*)::integer from public.get_social_source_trade_history((select source_id from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001'))) where symbol = 'XAUUSD'), 0, 'same-owner unrelated account is isolated');
 select is((select count(*)::integer from public.get_social_source_trade_history((select source_id from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001'))) where symbol = 'GBPUSD'), 0, 'internally copied destination trade is excluded');
 select ok(public.create_social_copy_subscription(
@@ -180,9 +191,17 @@ reset role;
 delete from public.trades where metaapi_order_id = 'missing-result';
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '40000000-0000-0000-0000-000000000001', true);
-select ok(public.publish_social_copy_source('41000000-0000-0000-0000-000000000002', 'Published B') is not null, 'provider can publish a second explicit account without changing source A identity');
-select is((select count(*)::integer from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), 2, 'owner sees each published account as a separate scope');
+select ok(public.publish_social_copy_source('41000000-0000-0000-0000-000000000002', 'Published B') is not null, 'provider can replace the selected source with another owned account');
+select is((select count(*)::integer from public.social_copy_sources where trader_user_id = '40000000-0000-0000-0000-000000000001' and status = 'published'), 1, 'exactly one source account remains selected and published');
+select is((select status from public.social_copy_sources where id = current_setting('test.source_a_id')::uuid), 'paused', 'replaced source is retained but no longer published');
+select is((select desired_status from public.social_copy_subscriptions where source_id = current_setting('test.source_a_id')::uuid and subscriber_user_id = '40000000-0000-0000-0000-000000000002'), 'paused', 'replacing a source pauses existing subscriptions through the worker lifecycle');
+select is((select count(*)::integer from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), 2, 'owner can audit the selected and prior account scopes without mixing them');
 select is((select performance_status from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001') where source_label = 'Published B'), 'available', 'second account reports its own available history');
+select lives_ok($$select public.set_social_copy_source_status(
+  current_setting('test.source_a_id')::uuid,
+  'published')$$, 'status RPC can reselect a prior source without violating the one-selected-account invariant');
+select is((select count(*)::integer from public.social_copy_sources where trader_user_id = '40000000-0000-0000-0000-000000000001' and status = 'published'), 1, 'status RPC leaves exactly one selected source');
+select is((select source_id from public.social_copy_subscriptions where subscriber_user_id = '40000000-0000-0000-0000-000000000002' and desired_status = 'paused'), current_setting('test.source_a_id')::uuid, 'source replacement never resumes a paused subscription implicitly');
 select lives_ok($$select public.set_social_copy_source_status(
   current_setting('test.source_a_id')::uuid,
   'retired')$$, 'provider can unpublish source A');
@@ -198,7 +217,11 @@ select throws_ok(
 
 select set_config('request.jwt.claim.sub', '40000000-0000-0000-0000-000000000001', true);
 select is((select count(*)::integer from public.get_social_source_trade_history(
-  current_setting('test.source_a_id')::uuid)), 10, 'owner retains access to history after unpublishing');
+  current_setting('test.source_a_id')::uuid)), 11, 'owner retains access to source-scoped open and closed history after unpublishing');
+
+select ok(public.publish_social_copy_source('41000000-0000-0000-0000-000000000005', 'Empty live account') is not null, 'provider can select an owned live account without claiming demo status');
+select is((select performance_status from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001') where source_status = 'published'), 'no_history', 'selected account with no trades reports no qualifying history');
+select is((select account_mode from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001') where source_status = 'published'), 'live', 'account environment is derived from the broker account and reported as LIVE');
 
 select * from finish();
 rollback;
