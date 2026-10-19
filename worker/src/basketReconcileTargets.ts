@@ -14,6 +14,8 @@ import {
 } from './basketEffectiveStops'
 import { parseUserOverride } from './signalOverride'
 import { expandPerLegTargetsToCount } from './manualPlanning/tpBucketDistribution'
+import { bundleSteadyLegTps } from './manualPlanning/tpBundleIdentity'
+import { isTpBundleEnabled } from './manualPlanning/tpBundleRollout'
 import type { ManualTpLot } from './manualPlanning/types'
 import {
   resolveChosenTakeProfit,
@@ -213,19 +215,35 @@ export async function resolveFreshBasketReconcileTargets(
   } else {
     const slNum = typeof parsed.sl === 'number' && parsed.sl > 0 ? parsed.sl : 0
     const sl = slNum > 0 ? slNum : (stored[0]?.stoploss ?? 0)
-    const seed = stored.length
-      ? stored.map(t => ({ ...t, stoploss: sl || t.stoploss }))
-      : [{ stoploss: sl, takeprofit: 0 }]
-    perLegTargets = expandPerLegTargetsToCount({
-      targets: seed,
-      openLegCount: args.familyTrades.length,
-      finalTps: signalTps,
-      tpLots: args.manual.tp_lots,
-      chosenTp,
-    }).map(t => ({
-      stoploss: Number(t.stoploss) || 0,
-      takeprofit: Number(t.takeprofit) || 0,
-    }))
+    if (isTpBundleEnabled() && args.manual.trade_style === 'multi') {
+      // Bundled baskets: steady state — legs keep their own TP; naked legs are
+      // backfilled positionally from the ladder. Never count-weighted (D3).
+      const ladder = signalTps.length
+        ? signalTps
+        : stored.map(t => t.takeprofit).filter(tp => typeof tp === 'number' && tp > 0)
+      const tps = bundleSteadyLegTps({
+        currentTps: args.familyTrades.map(tr => tr.tp),
+        ladder,
+      })
+      perLegTargets = args.familyTrades.map((_, i) => ({
+        stoploss: sl,
+        takeprofit: tps[i] ?? 0,
+      }))
+    } else {
+      const seed = stored.length
+        ? stored.map(t => ({ ...t, stoploss: sl || t.stoploss }))
+        : [{ stoploss: sl, takeprofit: 0 }]
+      perLegTargets = expandPerLegTargetsToCount({
+        targets: seed,
+        openLegCount: args.familyTrades.length,
+        finalTps: signalTps,
+        tpLots: args.manual.tp_lots,
+        chosenTp,
+      }).map(t => ({
+        stoploss: Number(t.stoploss) || 0,
+        takeprofit: Number(t.takeprofit) || 0,
+      }))
+    }
   }
 
   if (args.overrideTp != null && args.overrideTp > 0) {
@@ -615,6 +633,7 @@ export async function sweepOpenBasketsForReconcileDrift(
       nImmCwe: 0,
       overrideTp: null,
       lastError: 'Drift sweep: open legs out of sync with channel SL/TP ladder',
+      bundleIdentity: manual.range_trading !== true && manual.trade_style === 'multi',
     })
 
     if (jobId) {

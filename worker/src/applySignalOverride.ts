@@ -22,6 +22,7 @@ import {
   buildEntryQualityTakeProfitMap,
   type EntryQualityLeg,
 } from './manualPlanning/tpBucketDistribution'
+import { bundleTpOrderMap, isBundleBasket } from './manualPlanning/tpBundleIdentity'
 import type { ManualTpLot } from './manualPlanning/types'
 import { isBenignOrderModifyError, stopsAlreadyMatchDb } from './orderModifyBenign'
 import { mgmtBasketConcurrency, parallelMap } from './parallelPool'
@@ -231,7 +232,14 @@ export async function applySignalOverride(
     const isBuy = String(legs[0]?.direction ?? '').toLowerCase() === 'buy'
     const tpLots = broker.manual_settings?.tp_lots ?? null
     const tpMap = targetTps.length > 0
-      ? buildEntryQualityTakeProfitMap({
+      ? isBundleBasket(broker.manual_settings)
+        // Bundled multi basket: user override re-maps levels 1:1 by TP order.
+        ? bundleTpOrderMap({
+            legs: legs.map(tr => ({ id: tr.id, tp: tr.tp })),
+            ladder: targetTps,
+            isBuy,
+          })
+        : buildEntryQualityTakeProfitMap({
           legs: legs.map(tr => ({
             id: tr.id,
             entryPrice: Number(tr.entry_price ?? 0),

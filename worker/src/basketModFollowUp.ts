@@ -3,6 +3,7 @@ import type { FxsocketBrokerClient } from './fxsocketClient'
 import { breakevenStopLossForSymbol } from './autoManagement'
 import type { ManualTpLot } from './manualPlanning/types'
 import { normalizeManualSettingsForExecution } from './manualPlanning/normalizeManualSettings'
+import { isBundleBasket } from './manualPlanning/tpBundleIdentity'
 import { resolveChannelTradingConfig } from './channelTradingConfig'
 import {
   channelParamsPredateBasket,
@@ -72,7 +73,7 @@ type FollowUpLegContext = {
   entryPrice: number | null
   symbol: string
   isBuy: boolean
-  manual: { breakeven_offset_pips?: number; range_trading?: boolean }
+  manual: { breakeven_offset_pips?: number; range_trading?: boolean; trade_style?: string | null }
   tradeRowId?: string
   openLegsForTp?: EntryQualityLeg[]
   tpPhase?: RangeBasketTpPhase
@@ -133,6 +134,10 @@ export function computeFollowUpStops(
         finalTps,
         tpLots: ctx.tpLots,
       })
+    } else if (isBundleBasket(ctx.manual)) {
+      // Bundled basket: a new fill keeps its own TP; only a naked leg is
+      // backfilled positionally. Never count-weighted (D3).
+      if (takeprofit <= 0) takeprofit = finalTps[idx] ?? finalTps[finalTps.length - 1]!
     } else {
       takeprofit = takeProfitForSplitBasketLeg({
         legIndex: idx,

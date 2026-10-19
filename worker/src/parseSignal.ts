@@ -87,6 +87,8 @@ export interface ChannelParsedSignal {
   raw_instruction: string
   open_tp?: boolean
   partial_close_fraction?: number | null
+  /** Referenced TP level on a "CLOSE TPn" message (1-based); null when absent. */
+  close_tp_index?: number | null
   /** Explicit channel intent to open a new trade (not modify existing). */
   re_enter?: boolean
   /** Provider-side trade id (e.g. ForexBro Signal #899). */
@@ -710,6 +712,10 @@ function normalizeParsedFromModel(raw: unknown, fallbackText: string): ChannelPa
     if (Number.isFinite(n) && n > 0 && n <= 1) partial_close_fraction = n
   }
 
+  const ctiRaw = Number(j.close_tp_index)
+  const close_tp_index =
+    Number.isInteger(ctiRaw) && ctiRaw >= 1 && ctiRaw <= 9 ? ctiRaw : undefined
+
   const re_enter = j.re_enter === true || detectReEnterIntent(raw_instruction)
   const provider_signal_number = numOrNull(j.provider_signal_number)
 
@@ -735,6 +741,7 @@ function normalizeParsedFromModel(raw: unknown, fallbackText: string): ChannelPa
     raw_instruction,
     open_tp: Boolean(j.open_tp ?? detectOpenTp(fallbackText)),
     ...(partial_close_fraction != null ? { partial_close_fraction } : {}),
+    ...(close_tp_index != null ? { close_tp_index } : {}),
     ...(re_enter ? { re_enter: true } : {}),
     ...(provider_signal_number != null ? { provider_signal_number } : {}),
   }
@@ -937,6 +944,20 @@ function parseDeterministicManagement(
   const hitCloseHalfKw = hasAnyKeyword(t, kwCloseHalf)
   const hitClosePartialKw = hasAnyKeyword(t, kwClosePartialOnly)
   const hitCloseTpTierKw = hasAnyKeyword(t, kwCloseTpTiers)
+  /** Referenced level on a "CLOSE TPn" message (1-based); lowest tier wins. */
+  const resolveCloseTpIndex = (): number | undefined => {
+    const tiers: Array<[number, string]> = [
+      [1, channelKeywords.update.close_tp1],
+      [2, channelKeywords.update.close_tp2],
+      [3, channelKeywords.update.close_tp3],
+      [4, channelKeywords.update.close_tp4],
+    ]
+    for (const [idx, raw] of tiers) {
+      if (hasAnyKeyword(t, splitKeywordAliases(raw, delim))) return idx
+    }
+    return undefined
+  }
+  const closeTpIndex = resolveCloseTpIndex()
 
   const wantsPartialHalf =
     hitCloseHalfKw ||
@@ -1040,6 +1061,9 @@ function parseDeterministicManagement(
     open_tp: detectOpenTp(message),
     ...((action === "partial_profit" || action === "partial_breakeven") && partial_close_fraction != null
       ? { partial_close_fraction }
+      : {}),
+    ...(action === "partial_profit" && closeTpIndex != null
+      ? { close_tp_index: closeTpIndex }
       : {}),
   }
 }

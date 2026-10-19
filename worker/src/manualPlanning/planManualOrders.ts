@@ -13,6 +13,8 @@ import {
 import { buildRangeEntryWait } from './signalEntryRange'
 import { planMultiManualOrders } from './planMultiManualOrders'
 import { planSingleManualOrders } from './planSingleManualOrders'
+import { planBundleManualOrders } from './planBundleManualOrders'
+import { isTpBundleEnabled } from './tpBundleRollout'
 
 function withinTimeWindow(start: string, end: string, now: Date): boolean {
   const toMinutes = (s: string): number | null => {
@@ -170,7 +172,7 @@ export function planManualOrders(args: {
     return rangeEntryWait ? { ...result, rangeEntryWait } : result
   }
 
-  const result = planMultiManualOrders({
+  const multiArgs = {
     ...singleShared,
     parsed,
     commentPrefix,
@@ -178,6 +180,18 @@ export function planManualOrders(args: {
     slippage,
     minStopDist,
     buildSingleOrder: planSingleManualOrders,
-  })
+  }
+
+  if (isTpBundleEnabled()) {
+    if (manual.range_trading === true) {
+      // Bundling is immediate-legs only; layering keeps the classic split.
+      console.warn('[planManualOrders] tp bundle ignored: range_trading enabled')
+    } else {
+      const bundleResult = planBundleManualOrders(multiArgs)
+      return rangeEntryWait ? { ...bundleResult, rangeEntryWait } : bundleResult
+    }
+  }
+
+  const result = planMultiManualOrders(multiArgs)
   return rangeEntryWait ? { ...result, rangeEntryWait } : result
 }

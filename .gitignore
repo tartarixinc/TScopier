@@ -49,3 +49,9 @@ docs/mtapi-migration-plan.pdf
 
 # Nginx reverse-proxy setup (VPS ops — local only)
 docs/nginx-setup/
+
+# Python bytecode (never commit)
+__pycache__/
+*.pyc
+
+.env*

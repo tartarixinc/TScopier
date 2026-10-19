@@ -38,6 +38,7 @@ import {
 } from './rangePendingFireGuard'
 import { isMtBridgeGlitchMessage } from './brokerConnectError'
 import { modifyLegSlTpWithFallback } from './orderModifySafe'
+import { captureBrokerPositionIdentity } from './captureBrokerPositionIdentity'
 import {
   deleteRangePendingLegsForBasket,
   reconcileBasketFlatFromBroker,
@@ -1370,6 +1371,33 @@ export class VirtualPendingMonitor {
         && Number.isFinite(ticketNum)
         && ticketNum > 0
       ) {
+        // Record the broker's own position ticket while the fill is fresh, as the
+        // immediate-leg path does (orderLegExecution). Without it the range/
+        // virtual legs keep no identity and every later management action falls
+        // back to attribute matching, which cannot tell apart a basket of
+        // identical legs (2026-10-16: runner leg 2013294086 was filled with
+        // broker_position_ticket null, so auto-BE could not identify it).
+        try {
+          const identitySnapshot = (await api.openedOrders(leg.metaapi_account_id)) ?? null
+          await captureBrokerPositionIdentity({
+            supabase: this.supabase,
+            tradeRowId,
+            trade: {
+              id: tradeRowId,
+              metaapi_order_id: String(ticketNum),
+              symbol: leg.symbol,
+              direction: leg.is_buy ? 'buy' : 'sell',
+              lot_size: result.lots ?? args.volume,
+              entry_price: entryPx,
+            },
+            openedOrders: identitySnapshot,
+          })
+        } catch (err) {
+          console.warn(
+            `[virtualPendingMonitor] position identity capture failed leg=${leg.id} ticket=${ticketNum}:`
+            + ` ${err instanceof Error ? err.message : String(err)}`,
+          )
+        }
         // Naked open (invalid-stops fallback or broker ignored stops): assign now.
         if (result.openedNaked && (desiredSl || desiredTp)) {
           try {
