@@ -37,7 +37,7 @@ export function resolveExecutionEngine(
   // MTAPI, cTrader, Binance, Bybit, and KuCoin never use FxClient (FxSocket HTTP). Bypass EXECUTION_ENGINE
   // entirely so OrderSend goes through the provider's own client.
   const provider = String(args.provider ?? '').trim()
-  if (provider === 'mtapi' || provider === 'ctrader' || provider === 'binance' || provider === 'bybit' || provider === 'kucoin') return 'v1'
+  if (provider === 'mtapi' || provider === 'ctrader' || provider === 'binance' || provider === 'bybit' || provider === 'kucoin' || provider === 'dxtrade') return 'v1'
   if ((env.EXECUTION_ENGINE ?? '').trim().toLowerCase() === 'v2') return 'v2'
   const brokers = parseIds(env.EXECUTION_ENGINE_V2_BROKERS)
   if (args.brokerAccountId && brokers.has(args.brokerAccountId)) return 'v2'

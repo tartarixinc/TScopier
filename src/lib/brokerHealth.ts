@@ -21,16 +21,17 @@ function isBrokerLinking(
     binance_status?: string | null
     bybit_status?: string | null
     kucoin_status?: string | null
+    dxtrade_status?: string | null
   },
 ): boolean {
   if (account.live_terminal_health_phase === 'healthy' || account.live_terminal_health_phase === 'unhealthy') {
     return false
   }
   if (account.terminal_connected === true && account.trade_allowed === true) return false
-  if (account.mtapi_status === 'connected' || account.ctrader_status === 'connected' || account.binance_status === 'connected' || account.bybit_status === 'connected' || account.kucoin_status === 'connected') return false
+  if (account.mtapi_status === 'connected' || account.ctrader_status === 'connected' || account.binance_status === 'connected' || account.bybit_status === 'connected' || account.kucoin_status === 'connected' || account.dxtrade_status === 'connected') return false
   if (account.connection_status === 'pending') return true
   const fx = account.fxsocket_status
-  return fx === 'connecting' || account.mtapi_status === 'connecting' || account.ctrader_status === 'connecting' || account.binance_status === 'connecting' || account.bybit_status === 'connecting' || account.kucoin_status === 'connecting'
+  return fx === 'connecting' || account.mtapi_status === 'connecting' || account.ctrader_status === 'connecting' || account.binance_status === 'connecting' || account.bybit_status === 'connecting' || account.kucoin_status === 'connecting' || account.dxtrade_status === 'connecting'
 }
 
 export function brokerTerminalHealthPhase(
@@ -44,6 +45,7 @@ export function brokerTerminalHealthPhase(
     | 'binance_status'
     | 'bybit_status'
     | 'kucoin_status'
+    | 'dxtrade_status'
     | 'terminal_connected'
     | 'trade_allowed'
     | 'live_terminal_health_phase'
@@ -70,6 +72,7 @@ export function brokerTerminalHealthLabel(
     | 'binance_status'
     | 'bybit_status'
     | 'kucoin_status'
+    | 'dxtrade_status'
     | 'terminal_connected'
     | 'trade_allowed'
     | 'live_terminal_health_phase'
@@ -94,6 +97,7 @@ export function brokerTerminalHealthBadgeVariant(
     | 'binance_status'
     | 'bybit_status'
     | 'kucoin_status'
+    | 'dxtrade_status'
     | 'terminal_connected'
     | 'trade_allowed'
     | 'live_terminal_health_phase'

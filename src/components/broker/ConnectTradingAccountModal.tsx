@@ -30,6 +30,13 @@ import {
   type KucoinSettingsDraft,
   KUCOIN_API_MANAGEMENT_URL,
 } from '../../lib/kucoinBroker'
+import {
+  DEFAULT_DXTRADE_DRAFT,
+  linkDxtradeAccount,
+  parseDxtradeDraft,
+  type DxtradeDraftError,
+  type DxtradeLoginDraft,
+} from '../../lib/dxtradeBroker'
 import { ApiKeyHelp } from './ApiKeyHelp'
 import { BinanceSettingsFields } from './BinanceSettingsFields'
 import {
@@ -125,6 +132,8 @@ export function ConnectTradingAccountModal({
   const [kucoinLabel, setKucoinLabel] = useState('')
   const [kucoinDraft, setKucoinDraft] = useState<KucoinSettingsDraft>(DEFAULT_KUCOIN_SETTINGS_DRAFT)
   const [kucoinFieldError, setKucoinFieldError] = useState<'margin' | 'leverage' | null>(null)
+  const [dxtradeDraft, setDxtradeDraft] = useState<DxtradeLoginDraft>(DEFAULT_DXTRADE_DRAFT)
+  const [dxtradeFieldError, setDxtradeFieldError] = useState<DxtradeDraftError | null>(null)
 
   const reset = useCallback(() => {
     setRows(emptyConnectRows())
@@ -151,6 +160,8 @@ export function ConnectTradingAccountModal({
     setKucoinLabel('')
     setKucoinDraft(DEFAULT_KUCOIN_SETTINGS_DRAFT)
     setKucoinFieldError(null)
+    setDxtradeDraft(DEFAULT_DXTRADE_DRAFT)
+    setDxtradeFieldError(null)
   }, [])
 
   const handleClose = useCallback(() => {
@@ -366,8 +377,39 @@ export function ConnectTradingAccountModal({
     }
   }
 
+  const startDxtrade = async () => {
+    setError('')
+    setDxtradeFieldError(null)
+    if (!hasActiveSubscription) {
+      setError(pw.subscriptionRequired)
+      return
+    }
+    if (!isAdmin && activeBrokerCount >= limits.maxBrokerAccounts) {
+      setError(interpolate(pw.brokerLimit, { limit: String(limits.maxBrokerAccounts) }))
+      return
+    }
+    const parsed = parseDxtradeDraft(dxtradeDraft)
+    if (!parsed.ok) {
+      setDxtradeFieldError(parsed.field)
+      if (parsed.field === 'password') setError(cf.dxtradeLoginRequired)
+      return
+    }
+    setSaving(true)
+    try {
+      const { account } = await linkDxtradeAccount(parsed.login)
+      upsertBroker(account)
+      reset()
+      if (onSuccess) onSuccess(account)
+      else onClose()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : cf.connectFailed
+      setError(message || cf.connectFailed)
+      setSaving(false)
+    }
+  }
+
   const connectSingle = async (row: ConnectTradingAccountForm) => {
-    if (row.platform === 'cTrader' || row.platform === 'Binance' || row.platform === 'Bybit' || row.platform === 'KuCoin') return
+    if (row.platform === 'cTrader' || row.platform === 'Binance' || row.platform === 'Bybit' || row.platform === 'KuCoin' || row.platform === 'DXtrade') return
     const login = row.account_number.trim()
     const server = row.broker_server.trim()
     const platform = row.platform
@@ -409,6 +451,10 @@ export function ConnectTradingAccountModal({
     }
     if (rows[0]?.platform === 'KuCoin') {
       await startKucoin()
+      return
+    }
+    if (rows[0]?.platform === 'DXtrade') {
+      await startDxtrade()
       return
     }
     setError('')
@@ -485,8 +531,9 @@ export function ConnectTradingAccountModal({
   const binanceSelected = selectedPlatform === 'Binance'
   const bybitSelected = selectedPlatform === 'Bybit'
   const kucoinSelected = selectedPlatform === 'KuCoin'
+  const dxtradeSelected = selectedPlatform === 'DXtrade'
   const ctraderSelected = selectedPlatform === 'cTrader'
-  const mtFormHidden = ctraderSelected || binanceSelected || bybitSelected || kucoinSelected
+  const mtFormHidden = ctraderSelected || binanceSelected || bybitSelected || kucoinSelected || dxtradeSelected
   const title = interpolate(cf.title, { platform: selectedPlatform })
   const validCount = countValidRows(rows)
   const isMulti = rows.length > 1 || validCount > 1
@@ -766,6 +813,70 @@ export function ConnectTradingAccountModal({
                   <div className="flex gap-2">
                     <Button type="submit" size="sm" loading={saving}>
                       {cf.kucoinConnectButton}
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={handleClose} disabled={saving}>
+                      {t.common.cancel}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              {dxtradeSelected ? (
+                <div className="space-y-4 rounded-2xl border border-neutral-100 p-4 dark:border-neutral-800">
+                  <p className="text-sm text-neutral-900 dark:text-neutral-50">{cf.dxtradeConnectHint}</p>
+                  <Input
+                    label={cf.accountLabel}
+                    placeholder={interpolate(cf.accountLabelPlaceholder, { platform: 'DXtrade' })}
+                    value={dxtradeDraft.label}
+                    onChange={event => setDxtradeDraft(prev => ({ ...prev, label: event.target.value }))}
+                  />
+                  <Input
+                    label={cf.dxtradeServerUrlLabel}
+                    placeholder="https://trade.your-broker.com"
+                    value={dxtradeDraft.serverUrl}
+                    hint={cf.dxtradeServerUrlHint}
+                    error={dxtradeFieldError === 'server' ? cf.dxtradeInvalidServer : undefined}
+                    autoComplete="off"
+                    spellCheck={false}
+                    inputMode="url"
+                    onChange={event => setDxtradeDraft(prev => ({ ...prev, serverUrl: event.target.value }))}
+                    required
+                  />
+                  <Input
+                    label={cf.dxtradeUsernameLabel}
+                    value={dxtradeDraft.username}
+                    error={dxtradeFieldError === 'username' ? cf.dxtradeInvalidUsername : undefined}
+                    autoComplete="off"
+                    spellCheck={false}
+                    onChange={event => setDxtradeDraft(prev => ({ ...prev, username: event.target.value }))}
+                    required
+                  />
+                  <Input
+                    label={cf.dxtradeDomainLabel}
+                    value={dxtradeDraft.domain}
+                    hint={cf.dxtradeDomainHint}
+                    autoComplete="off"
+                    spellCheck={false}
+                    onChange={event => setDxtradeDraft(prev => ({ ...prev, domain: event.target.value }))}
+                  />
+                  <PasswordInput
+                    label={cf.dxtradePasswordLabel}
+                    value={dxtradeDraft.password}
+                    hint={cf.dxtradePasswordHint}
+                    onChange={event => setDxtradeDraft(prev => ({ ...prev, password: event.target.value }))}
+                    required
+                  />
+                  <Input
+                    label={cf.dxtradeAccountCodeLabel}
+                    value={dxtradeDraft.accountCode}
+                    hint={cf.dxtradeAccountCodeHint}
+                    autoComplete="off"
+                    spellCheck={false}
+                    onChange={event => setDxtradeDraft(prev => ({ ...prev, accountCode: event.target.value }))}
+                  />
+                  <div className="flex gap-2">
+                    <Button type="submit" size="sm" loading={saving}>
+                      {cf.dxtradeConnectButton}
                     </Button>
                     <Button type="button" variant="ghost" size="sm" onClick={handleClose} disabled={saving}>
                       {t.common.cancel}

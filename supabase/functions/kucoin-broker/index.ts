@@ -48,6 +48,7 @@ function stripSecrets(row: Record<string, unknown>) {
     kucoin_api_key_encrypted: _apiKey,
     kucoin_api_secret_encrypted: _apiSecret,
     kucoin_passphrase_encrypted: _passphrase,
+    dxtrade_password_encrypted: _dxPassword,
     ...safe
   } = row
   return safe

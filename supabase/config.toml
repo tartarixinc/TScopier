@@ -63,6 +63,9 @@ verify_jwt = true
 [functions.kucoin-broker]
 verify_jwt = true
 
+[functions.dxtrade-broker]
+verify_jwt = true
+
 [functions.reconcile-expired-trials]
 verify_jwt = false
 

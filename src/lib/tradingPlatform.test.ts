@@ -10,6 +10,7 @@ describe('tradingPlatform', () => {
     assert.equal(normalizeTradingPlatform('binance'), 'Binance')
     assert.equal(normalizeTradingPlatform('bybit'), 'Bybit')
     assert.equal(normalizeTradingPlatform('kucoin'), 'KuCoin')
+    assert.equal(normalizeTradingPlatform('dxtrade'), 'DXtrade')
     assert.equal(normalizeTradingPlatform('KuCoin'), 'KuCoin')
     assert.equal(normalizeTradingPlatform('cTrader'), 'cTrader')
   })

@@ -696,6 +696,20 @@ export interface AccountConfigConnectFormTranslations {
   kucoinApiPassphraseLabel: string
   kucoinApiPassphraseHint: string
   kucoinKeysRequired: string
+  dxtradeConnectHint: string
+  dxtradeConnectButton: string
+  dxtradeServerUrlLabel: string
+  dxtradeServerUrlHint: string
+  dxtradeUsernameLabel: string
+  dxtradeDomainLabel: string
+  dxtradeDomainHint: string
+  dxtradePasswordLabel: string
+  dxtradePasswordHint: string
+  dxtradeAccountCodeLabel: string
+  dxtradeAccountCodeHint: string
+  dxtradeInvalidServer: string
+  dxtradeInvalidUsername: string
+  dxtradeLoginRequired: string
   brokerServerLabel: string
   brokerServerHint: string
   brokerServerPlaceholder: string

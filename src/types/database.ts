@@ -469,7 +469,7 @@ export interface BrokerAccount {
   /** FxSocket v1 account status. */
   fxsocket_status?: FxsocketConnectionStatus | null
   /** Provider routing: 'fxsocket' (default), 'mtapi', 'ctrader', 'binance', or 'bybit'. */
-  provider?: 'fxsocket' | 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin' | null
+  provider?: 'fxsocket' | 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin' | 'dxtrade' | null
   /** Monotonic broker-writer fence used to reject stale worker jobs. */
   writer_epoch?: number
   /** Mutations are allowed only while stable. */
@@ -518,6 +518,20 @@ export interface BrokerAccount {
   kucoin_leverage?: number | null
   /** Cross or isolated margin, applied per symbol before each order. */
   kucoin_margin_mode?: 'isolated' | 'cross' | null
+  /** DXtrade login fingerprint (server, login, account code). The password stays server-side. */
+  dxtrade_account_id?: string | null
+  /** Broker DXtrade REST base URL. */
+  dxtrade_server_url?: string | null
+  /** DXtrade login without the domain. */
+  dxtrade_username?: string | null
+  /** DXtrade login domain, usually default. */
+  dxtrade_domain?: string | null
+  /** DXtrade account code in clearing:account format. */
+  dxtrade_account_code?: string | null
+  /** DXtrade link status shown in the Connection column. */
+  dxtrade_status?: 'connected' | 'connecting' | 'disconnected' | 'error' | null
+  /** Only position-based (hedging) accounts can be linked. */
+  dxtrade_is_position_based?: boolean | null
   /** Auto-reconnect enabled flag. */
   auto_reconnect_enabled?: boolean | null
   /** Error kind classifier (e.g. credential, network, timeout). */
