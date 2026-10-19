@@ -26,7 +26,13 @@ import {
   type BrokerApiByAccountId,
 } from './mtApiByAccount'
 import { resolveCurrentLivePosition } from './livePositionIdentity'
-import { confirmBrokerStopApplied, readTradeBrokerStop } from './brokerStopReadback'
+import {
+  confirmBrokerStopApplied,
+  readTradeBrokerStop,
+  type BrokerStopConfirmation,
+} from './brokerStopReadback'
+import type { OrderResult } from './fxsocketClient'
+import { redactBridgeSecrets } from './mtapiRedaction'
 import {
   applyShardToQuery,
   hasWorkOnShard,
@@ -114,6 +120,35 @@ const VERIFY_AFTER_MODIFY = (() => {
 export function isUnconfirmedStopEscalatable(message: string): boolean {
   if (/opened-orders read failed/i.test(message)) return false
   return /breakeven modify not confirmed by broker/i.test(message)
+}
+
+/**
+ * Broker replies are persisted to `trade_execution_logs`, which the trade's owner
+ * can read. The bridge can echo request credentials inside a response body, so
+ * redact every string and cap depth/size before writing. This keeps the evidence
+ * while making sure a secret or an unbounded blob cannot reach the table.
+ */
+export function sanitizeBrokerPayloadForLog(value: unknown, depth = 0): unknown {
+  if (value == null) return null
+  if (typeof value === 'string') return redactBridgeSecrets(value).slice(0, 4_000)
+  if (typeof value === 'number' || typeof value === 'boolean') return value
+  if (depth >= 6) return '[truncated]'
+  if (Array.isArray(value)) {
+    return value.slice(0, 50).map(entry => sanitizeBrokerPayloadForLog(entry, depth + 1))
+  }
+  if (typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    let count = 0
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      if (count++ >= 50) {
+        out._truncated = true
+        break
+      }
+      out[key] = sanitizeBrokerPayloadForLog(entry, depth + 1)
+    }
+    return out
+  }
+  return String(value)
 }
 
 
@@ -516,6 +551,11 @@ export class AutoManagementMonitor {
       }
     }
 
+    // Keep the provider's reply and the read-back so the execution log records
+    // what the broker actually said, not just what we asked for.
+    let modifyResult: OrderResult | null = null
+    let brokerConfirmation: BrokerStopConfirmation | null = null
+
     try {
       const resolution = await resolveCurrentLivePosition({
         supabase: this.supabase,
@@ -528,7 +568,7 @@ export class AutoManagementMonitor {
         throw new Error(`automatic management reconciliation required: ${resolution.reason}`)
       }
       const effectiveTicket = resolution.ticket
-      await api.orderModify(uuid, {
+      modifyResult = await api.orderModify(uuid, {
         ticket: effectiveTicket,
         stoploss: modifySl,
         takeprofit: modifyTp,
@@ -558,6 +598,7 @@ export class AutoManagementMonitor {
           // stop on a coarser grid does not read as a failure.
           tolerance: Math.max(symEntry.point / 2, signalPip / 2),
         })
+        brokerConfirmation = confirmation
         if (!confirmation.confirmed) {
           throw new Error(
             'breakeven modify not confirmed by broker:'
@@ -624,6 +665,10 @@ export class AutoManagementMonitor {
           be_type: beType,
           half_close: beType === 'sl_and_close_half',
         } as unknown as Record<string, unknown>,
+        response_payload: {
+          modify: sanitizeBrokerPayloadForLog(modifyResult),
+          broker_confirmation: sanitizeBrokerPayloadForLog(brokerConfirmation),
+        },
       })
 
       console.log(
@@ -663,6 +708,10 @@ export class AutoManagementMonitor {
           action: 'auto_be',
           status: 'failed',
           request_payload: { ticket: ticketNum, symbol: trade.symbol, attempted_sl: modifySl, mode },
+          response_payload: {
+            modify: sanitizeBrokerPayloadForLog(modifyResult),
+            broker_confirmation: sanitizeBrokerPayloadForLog(brokerConfirmation),
+          },
           error_message: msg,
         })
       }
