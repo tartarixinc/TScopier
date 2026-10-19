@@ -175,11 +175,25 @@ jobs:
       - name: Run Social Copy RLS pgTAP suite
         run: supabase test db supabase/tests/social_copy_rls.sql --debug
 
-      - name: Run Social Reviews and Trade History RLS pgTAP suite
-        run: supabase test db supabase/tests/social_reviews_trade_history_rls.sql --debug
-
       - name: Run Social Provider Performance pgTAP suite
         run: supabase test db supabase/tests/social_provider_performance.sql --debug
+
+      - name: Run Social Reviews and Trade History RLS pgTAP suite
+        shell: bash
+        run: |
+          set -o pipefail
+          status=0
+          supabase test db supabase/tests/social_reviews_trade_history_rls.sql --debug 2>&1 \
+            | tee social-reviews-trade-history-pgtap.log || status=$?
+          if (( status != 0 )); then
+            grep -E 'not ok|Bail out!|ERROR:|Failed test|Dubious' \
+              social-reviews-trade-history-pgtap.log \
+              | tail -n 20 \
+              | while IFS= read -r line; do
+                  echo "::error title=Social Reviews and Trade History pgTAP::$line"
+                done
+          fi
+          exit "$status"
       - name: Stop isolated Supabase stack
         if: always() && steps.setup_supabase_cli.outcome == 'success'
         run: supabase stop --no-backup
