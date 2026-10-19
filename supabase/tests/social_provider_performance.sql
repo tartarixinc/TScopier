@@ -194,14 +194,19 @@ select set_config('request.jwt.claim.sub', '40000000-0000-0000-0000-000000000001
 select ok(public.publish_social_copy_source('41000000-0000-0000-0000-000000000002', 'Published B') is not null, 'provider can replace the selected source with another owned account');
 select is((select count(*)::integer from public.social_copy_sources where trader_user_id = '40000000-0000-0000-0000-000000000001' and status = 'published'), 1, 'exactly one source account remains selected and published');
 select is((select status from public.social_copy_sources where id = current_setting('test.source_a_id')::uuid), 'paused', 'replaced source is retained but no longer published');
+select set_config('request.jwt.claim.sub', '40000000-0000-0000-0000-000000000002', true);
 select is((select desired_status from public.social_copy_subscriptions where source_id = current_setting('test.source_a_id')::uuid and subscriber_user_id = '40000000-0000-0000-0000-000000000002'), 'paused', 'replacing a source pauses existing subscriptions through the worker lifecycle');
+select set_config('request.jwt.claim.sub', '40000000-0000-0000-0000-000000000001', true);
 select is((select count(*)::integer from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), 2, 'owner can audit the selected and prior account scopes without mixing them');
 select is((select performance_status from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001') where source_label = 'Published B'), 'available', 'second account reports its own available history');
 select lives_ok($$select public.set_social_copy_source_status(
   current_setting('test.source_a_id')::uuid,
   'published')$$, 'status RPC can reselect a prior source without violating the one-selected-account invariant');
 select is((select count(*)::integer from public.social_copy_sources where trader_user_id = '40000000-0000-0000-0000-000000000001' and status = 'published'), 1, 'status RPC leaves exactly one selected source');
+select set_config('request.jwt.claim.sub', '40000000-0000-0000-0000-000000000002', true);
 select is((select source_id from public.social_copy_subscriptions where subscriber_user_id = '40000000-0000-0000-0000-000000000002' and desired_status = 'paused'), current_setting('test.source_a_id')::uuid, 'source replacement never resumes a paused subscription implicitly');
+select set_config('request.jwt.claim.sub', '40000000-0000-0000-0000-000000000001', true);
+select public.publish_social_copy_source('41000000-0000-0000-0000-000000000002', 'Published B');
 select lives_ok($$select public.set_social_copy_source_status(
   current_setting('test.source_a_id')::uuid,
   'retired')$$, 'provider can unpublish source A');
