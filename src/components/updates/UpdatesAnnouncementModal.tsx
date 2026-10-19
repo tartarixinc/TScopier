@@ -3,33 +3,18 @@ import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { Sparkles, X } from 'lucide-react'
 import { Button } from '../ui/Button'
-import { PLATFORM_UPDATES, SEEN_UPDATES_KEY, type PlatformUpdate } from '../../lib/platformUpdates'
+import {
+  allPlatformUpdateIds,
+  latestUnseenUpdate,
+  markUpdateIdsSeen,
+  type PlatformUpdate,
+} from '../../lib/platformUpdates'
 import { useT } from '../../context/LocaleContext'
 
 const TYPE_STYLES: Record<string, string> = {
   feature: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400',
   fix: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400',
   improvement: 'bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-400',
-}
-
-function getSeenUpdates(): Set<string> {
-  try {
-    const raw = localStorage.getItem(SEEN_UPDATES_KEY)
-    return raw ? new Set(JSON.parse(raw)) : new Set()
-  } catch {
-    return new Set()
-  }
-}
-
-function markUpdatesSeen(ids: string[]) {
-  const seen = getSeenUpdates()
-  for (const id of ids) seen.add(id)
-  localStorage.setItem(SEEN_UPDATES_KEY, JSON.stringify([...seen]))
-}
-
-function findLatestUnseenUpdate() {
-  const seen = getSeenUpdates()
-  return PLATFORM_UPDATES.find(u => !seen.has(u.id)) ?? null
 }
 
 function typeLabel(type: PlatformUpdate['type'], t: ReturnType<typeof useT>): string {
@@ -45,25 +30,25 @@ function typeLabel(type: PlatformUpdate['type'], t: ReturnType<typeof useT>): st
 export function UpdatesAnnouncementModal() {
   const navigate = useNavigate()
   const t = useT()
-  const [open, setOpen] = useState(() => findLatestUnseenUpdate() !== null)
-  const [current, setCurrent] = useState(() => findLatestUnseenUpdate())
+  const [open, setOpen] = useState(() => latestUnseenUpdate() !== null)
+  const [current, setCurrent] = useState(() => latestUnseenUpdate())
   const backdropRef = useRef<HTMLDivElement>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
   const pointerDownTarget = useRef<EventTarget | null>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
 
   const dismiss = useCallback(() => {
-    if (current) markUpdatesSeen([current.id])
     setOpen(false)
     setCurrent(null)
-  }, [current])
+    markUpdateIdsSeen(allPlatformUpdateIds())
+  }, [])
 
   const viewAll = useCallback(() => {
-    if (current) markUpdatesSeen([current.id])
     setOpen(false)
     setCurrent(null)
+    markUpdateIdsSeen(allPlatformUpdateIds())
     navigate('/updates')
-  }, [current, navigate])
+  }, [navigate])
 
   // Focus trap + Escape to close + body scroll lock
   useEffect(() => {
