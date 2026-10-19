@@ -20,6 +20,12 @@ update public.user_profiles set
   email_verified_at = now()
 where user_id::text like '40000000-%';
 
+insert into public.subscriptions (id, user_id, stripe_customer_id, plan, status)
+values
+  ('40500000-0000-0000-0000-000000000001', '40000000-0000-0000-0000-000000000001', 'cus_socialperformance_provider_001', 'advanced', 'active'),
+  ('40500000-0000-0000-0000-000000000002', '40000000-0000-0000-0000-000000000002', 'cus_socialperformance_viewer_002', 'basic', 'active'),
+  ('40500000-0000-0000-0000-000000000003', '40000000-0000-0000-0000-000000000003', 'cus_socialperformance_upstream_003', 'basic', 'active');
+
 insert into public.broker_accounts (
   id, user_id, label, platform, metaapi_account_id, provider, is_active,
   connection_status, linked_account_type, last_synced_at, last_currency

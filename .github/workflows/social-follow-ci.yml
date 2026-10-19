@@ -176,52 +176,10 @@ jobs:
         run: supabase test db supabase/tests/social_copy_rls.sql --debug
 
       - name: Run Social Provider Performance pgTAP suite
-        id: social_provider_performance_pgtap
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -o pipefail
-          status=0
-          supabase test db supabase/tests/social_provider_performance.sql --debug 2>&1 \
-            | tee social-provider-performance-pgtap.log || status=$?
-          if (( status != 0 )); then
-            grep -E 'not ok|Bail out!|ERROR:|Failed test|Dubious' \
-              social-provider-performance-pgtap.log \
-              | tail -n 20 \
-              | while IFS= read -r line; do
-                  echo "::error title=Social Provider Performance pgTAP::$line"
-                done
-          fi
-          exit "$status"
+        run: supabase test db supabase/tests/social_provider_performance.sql --debug
 
       - name: Run Social Reviews and Trade History RLS pgTAP suite
-        id: social_reviews_trade_history_pgtap
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -o pipefail
-          status=0
-          supabase test db supabase/tests/social_reviews_trade_history_rls.sql --debug 2>&1 \
-            | tee social-reviews-trade-history-pgtap.log || status=$?
-          if (( status != 0 )); then
-            grep -E 'not ok|Bail out!|ERROR:|Failed test|Dubious' \
-              social-reviews-trade-history-pgtap.log \
-              | tail -n 20 \
-              | while IFS= read -r line; do
-                  echo "::error title=Social Reviews and Trade History pgTAP::$line"
-                done
-          fi
-          exit "$status"
-
-      - name: Verify required Social pgTAP suites
-        if: always()
-        shell: bash
-        run: |
-          if [[ "${{ steps.social_provider_performance_pgtap.outcome }}" != "success" \
-             || "${{ steps.social_reviews_trade_history_pgtap.outcome }}" != "success" ]]; then
-            echo "::error::One or more required Social pgTAP suites failed"
-            exit 1
-          fi
+        run: supabase test db supabase/tests/social_reviews_trade_history_rls.sql --debug
       - name: Stop isolated Supabase stack
         if: always() && steps.setup_supabase_cli.outcome == 'success'
         run: supabase stop --no-backup
