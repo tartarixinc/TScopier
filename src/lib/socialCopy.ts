@@ -6,8 +6,10 @@ export type SocialCopySource = {
   label: string
   provider: string
   platform: string
-  accountMode: 'demo' | 'live'
+  accountMode: 'demo' | 'live' | 'unknown'
   connectionHealthy: boolean
+  isCopyEligible: boolean
+  eligibilityReason: string
 }
 
 export type SocialCopySubscriptionStatus = 'pending' | 'active' | 'paused' | 'stopped' | 'error' | 'emergency_stopped'
@@ -35,8 +37,10 @@ type SourceRow = {
   label: string
   provider: string
   platform: string
-  account_mode: 'demo' | 'live'
+  account_mode: 'demo' | 'live' | 'unknown'
   connection_healthy: boolean
+  is_copy_eligible: boolean
+  eligibility_reason: string
 }
 
 type SubscriptionRow = {
@@ -72,6 +76,8 @@ export async function fetchSocialCopySources(client: SupabaseClient, traderUserI
     platform: row.platform,
     accountMode: row.account_mode,
     connectionHealthy: row.connection_healthy,
+    isCopyEligible: row.is_copy_eligible === true,
+    eligibilityReason: row.eligibility_reason,
   }))
 }
 

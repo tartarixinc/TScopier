@@ -31,6 +31,7 @@ on:
   push:
     branches:
       - main
+      - emmanuel/social-trading-completion
     paths:
       - "src/components/social/**"
       - "src/hooks/useSocialFollow.ts"
@@ -175,6 +176,8 @@ jobs:
           supabase test db --debug | tee social-follow-pgtap.log
           grep -Fx '1..56' social-follow-pgtap.log
           grep -Fx '1..27' social-follow-pgtap.log
+          grep -Fx '1..28' social-follow-pgtap.log
+          grep -Fx '1..29' social-follow-pgtap.log
       - name: Stop isolated Supabase stack
         if: always() && steps.setup_supabase_cli.outcome == 'success'
         run: supabase stop --no-backup
