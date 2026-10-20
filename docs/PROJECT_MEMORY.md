@@ -1352,8 +1352,8 @@
 ### 2026-08-12 — Prod “Signup protection is misconfigured”
 
 - **Cause:** Frontend fail-closed (`isTurnstileMisconfigured`) shipped to prod, but Netlify never had `VITE_TURNSTILE_SITE_KEY` at build time → empty site key → signup blocked on purpose.
-- **Immediate ops:** Netlify env `VITE_TURNSTILE_SITE_KEY=0x4AAAAAAENwYkTwFMwfAUdc` + **Clear cache and deploy**. Also set `TURNSTILE_SECRET_KEY` on Supabase or verification email stays fail-closed.
-- **Code:** Bake public site key into `netlify.toml` `[build.environment]` + fallback in `src/lib/turnstile.ts` so a forgotten UI env cannot break prod again.
+- **Immediate ops:** Configure the real public site key in Netlify as `VITE_TURNSTILE_SITE_KEY=<turnstile-site-key>` + **Clear cache and deploy**. Also set `TURNSTILE_SECRET_KEY` on Supabase or verification email stays fail-closed.
+- **Code:** Read the public site key only from `VITE_TURNSTILE_SITE_KEY`; production remains fail-closed when the Netlify environment variable is missing.
 - Scratchpad: `docs/scratchpad-signup-protection-misconfigured-2026-08-12.md`.
 
 ### 2026-08-12 — Legit verify emails blocked by global 20/hour + fake success UX

@@ -8,6 +8,8 @@ export const landingJa: LandingTranslations = {
     pricing: '料金',
     faq: 'FAQ',
     docs: 'ドキュメント',
+    forTraders: 'トレーダー向け',
+    forProviders: 'プロバイダー向け',
     signIn: 'ログイン',
     getStarted: '新規登録',
     dashboard: 'ダッシュボード',
@@ -28,13 +30,13 @@ export const landingJa: LandingTranslations = {
     },
   },
   hero: {
-    headline: 'ひとつの統合コピープラットフォーム：',
-    headlinePhrases: ['取引シグナル', 'ソーシャルトレーディング', '口座ミラーリング'],
+    headline: 'すべてのFX・暗号資産トレーダーのためのNo.1コピープラットフォーム',
+    headlinePhrases: [],
     subheadline:
       'Telegram、WhatsApp、Discord、TradingView、またはマスター口座から8以上のブローカーへ、50ms未満で取引を自動化。VPSは不要です。',
     socialProof: 'TScopier.aiは UniCopier になりました',
-    primaryCta: '5日間の無料トライアルを始める',
-    secondaryCta: 'ログイン',
+    primaryCta: 'プランを選ぶ',
+    secondaryCta: '使い方を見る',
     imageAlt: '残高、当日損益、取引結果、口座成長チャートを表示したUniCopierダッシュボード',
     previewUrl: 'app.tscopier.ai/dashboard',
     dashboard: {
@@ -119,6 +121,27 @@ export const landingJa: LandingTranslations = {
     eyebrow: '連携',
     title: '主要プラットフォームに対応',
   },
+  completePicture: {
+    eyebrow: 'トータルな全体像',
+    title: '本気のコピートレーダーのために。',
+    description: '最初のメッセージから最後の決済まで、シグナルを確実にコピーするために必要なすべてを備えています。',
+    cards: [
+      { title: '複数のシグナルソース', description: 'プロバイダーがすでに使っているシグナルソースから取引をコピーできます。' },
+      { title: '8以上のプラットフォームに対応', description: 'UniCopierはFXから暗号資産まで、主要なプラットフォームすべてに対応します。' },
+      { title: 'TradingViewとのシームレスな連携', description: 'TradingViewで戦略を作成し、WebhookでUniCopierに接続できます。' },
+      { title: 'AI搭載', description: '私たちのAIは提案するだけでなく、実際の操作を実行し、設定を支援し、取引を分析して、コピートレード体験を向上させます。' },
+    ],
+  },
+  showcase: {
+    eyebrow: 'UniCopier',
+    title: '現代のトレードの複雑さを減らし、より賢い判断を支えるために作りました',
+    cta: '詳しく見る',
+    cards: [
+      { headline: 'すべての口座をつなぎ、ルールは一度だけ設定。', description: 'MT4、MT5、cTrader、Binance、Bybit、KuCoinの口座を連携し、ロットサイズ、リスク、目標、シグナルソースを口座ごとに設定できます。' },
+      { headline: 'マスターからスレーブ口座へ、取引を即座にミラーリング。', description: 'マスター口座を選び、固定ロット、倍率、残高ベースのサイズで他の口座に追従させます。保護オプションも利用できます。' },
+      { headline: 'トップトレーダーをフォローして、数クリックでコピー。', description: 'ROI、勝率、評価を比較して、無料または月額でプロバイダーをコピーしたり、自分の成績を共有したりできます。' },
+    ],
+  },
   whyChoose: {
     statsCaption: '最も人気のあるTelegramシグナルプロバイダーのトレーダーに利用されています',
     stats: [
@@ -128,13 +151,13 @@ export const landingJa: LandingTranslations = {
       { label: '開始取引', value: '500K+' },
     ],
     eyebrow: '賢いコピーは、賢いツールから',
-    title: 'UniCopierのすべての機能は、コントロール・可視性・成果のために設計されています。',
+    title: 'ついに登場、あらゆるシグナルタイプに対応するシグナルコピー',
     cards: [
       {
         label: '約定スピード',
-        metric: '<150ms',
+        metric: '<50ms',
         metricVariant: 'teal',
-        description: 'シグナル解析からブローカー送信まで、クラウド基盤で150ms未満の低遅延。',
+        description: 'シグナル解析からブローカー送信まで、クラウド基盤で50ms未満の低遅延。',
         layout: 'tall',
         icon: 'zap',
       },
@@ -210,6 +233,16 @@ export const landingJa: LandingTranslations = {
         layout: 'short',
         icon: 'history',
       },
+    ],
+  },
+  providers: {
+    eyebrow: 'シグナルプロバイダーの方へ',
+    title: 'UniCopierで、あなたのシグナルサービスを販売しよう。',
+    description: '価格を自分で設定し、コミュニティを育て、他のトレーダーに月額料金であなたの取引をコピーしてもらえます。利益は100%あなたのものです。',
+    points: [
+      { title: '価格を自分で設定', description: '月額料金を設定するか、無料でコピーを提供できます。' },
+      { title: 'コミュニティを育てる', description: '自動でコピーしてくれるトレーダーを集められます。' },
+      { title: '利益は100%あなたに', description: 'コピーしたトレーダーからの支払いはすべてあなたのものです。' },
     ],
   },
   features: {

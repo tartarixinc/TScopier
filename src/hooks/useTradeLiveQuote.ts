@@ -35,9 +35,9 @@ type InternalState = TradeLiveQuoteState & { key: string | null }
 const IDLE_INTERNAL: InternalState = { ...IDLE, key: null }
 
 /** Cache provider per broker row so reopening the modal does not re-query. */
-const providerByBrokerId = new Map<string, 'fxsocket' | 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin'>()
+const providerByBrokerId = new Map<string, 'fxsocket' | 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin' | 'dxtrade' | 'tradelocker'>()
 
-async function resolveQuoteProvider(brokerId: string, userId: string): Promise<'fxsocket' | 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin'> {
+async function resolveQuoteProvider(brokerId: string, userId: string): Promise<'fxsocket' | 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin' | 'dxtrade' | 'tradelocker'> {
   const cached = providerByBrokerId.get(brokerId)
   if (cached) return cached
   const { data, error } = await supabase
@@ -47,7 +47,7 @@ async function resolveQuoteProvider(brokerId: string, userId: string): Promise<'
     .eq('user_id', userId)
     .maybeSingle()
   if (error) throw error
-  const provider = data?.provider === 'mtapi' ? 'mtapi' : data?.provider === 'ctrader' ? 'ctrader' : data?.provider === 'binance' ? 'binance' : data?.provider === 'bybit' ? 'bybit' : data?.provider === 'kucoin' ? 'kucoin' : 'fxsocket'
+  const provider = data?.provider === 'mtapi' ? 'mtapi' : data?.provider === 'ctrader' ? 'ctrader' : data?.provider === 'binance' ? 'binance' : data?.provider === 'bybit' ? 'bybit' : data?.provider === 'kucoin' ? 'kucoin' : data?.provider === 'dxtrade' ? 'dxtrade' : data?.provider === 'tradelocker' ? 'tradelocker' : 'fxsocket'
   providerByBrokerId.set(brokerId, provider)
   return provider
 }

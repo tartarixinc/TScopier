@@ -359,7 +359,7 @@ export function AffiliateProgramPage() {
               <tbody>
                 {(data?.commissions ?? []).slice(0, 30).map((row) => (
                   <tr key={row.id} className="border-t border-neutral-200/65 dark:border-neutral-800/55">
-                    <td className="px-5 py-3 font-mono text-xs">{row.stripe_invoice_id}</td>
+                    <td className="px-5 py-3  text-xs">{row.stripe_invoice_id}</td>
                     <td className="px-5 py-3">{centsToMoney(row.invoice_amount_cents, row.currency.toUpperCase(), locale)}</td>
                     <td className="px-5 py-3">
                       <span className="inline-flex items-center gap-1">

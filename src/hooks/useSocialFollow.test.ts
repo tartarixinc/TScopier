@@ -3,7 +3,7 @@ import { act, createElement, useEffect } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SocialDirectoryProfile } from '../lib/socialFollow'
-import { fetchSocialDirectory, followSocialProfile } from '../lib/socialFollow'
+import { fetchSocialDirectory, followSocialProfile, socialFollowErrorFrom } from '../lib/socialFollow'
 import { useSocialFollow } from './useSocialFollow'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -66,6 +66,10 @@ function profile(id: string, isSelf = true): SocialDirectoryProfile {
     followingCount: 0,
     viewerRelationshipStatus: null,
     followsViewerStatus: null,
+    averageRating: null,
+    reviewCount: 0,
+    viewerRating: null,
+    sharesTradeHistory: false,
   }
 }
 
@@ -129,6 +133,36 @@ afterEach(async () => {
 })
 
 describe('useSocialFollow authentication transitions', () => {
+  it('reports safe RPC diagnostics when the directory schema is unavailable', async () => {
+    const cause = {
+      code: 'PGRST202',
+      message: 'raw schema-cache details',
+      details: 'private database details',
+    }
+    fetchDirectoryMock.mockRejectedValueOnce(
+      socialFollowErrorFrom(cause, 'directory', 'get_social_directory'),
+    )
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    await renderFor('A')
+    await flushIdentityTimer()
+
+    expect(hookApi?.error).toMatchObject({
+      kind: 'backend_unavailable',
+      databaseCode: 'PGRST202',
+      rpcName: 'get_social_directory',
+    })
+    expect(consoleError).toHaveBeenCalledWith('[Social Follow request failed]', {
+      rpcName: 'get_social_directory',
+      operation: 'directory',
+      code: 'PGRST202',
+      message: 'Required Supabase RPC is unavailable. Verify migrations and refresh the PostgREST schema cache.',
+    })
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(cause.message)
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(cause.details)
+    consoleError.mockRestore()
+  })
+
   it('clears user A state and ignores a pending directory result after logout', async () => {
     const requestA = deferred<SocialDirectoryProfile[]>()
     fetchDirectoryMock.mockReturnValueOnce(requestA.promise)

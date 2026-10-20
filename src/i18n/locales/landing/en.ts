@@ -8,6 +8,8 @@ export const landingEn: LandingTranslations = {
     pricing: 'Pricing',
     faq: 'FAQ',
     docs: 'Docs',
+    forTraders: 'For Traders',
+    forProviders: 'For Providers',
     signIn: 'Sign in',
     getStarted: 'Sign up',
     dashboard: 'Dashboard',
@@ -28,13 +30,13 @@ export const landingEn: LandingTranslations = {
     },
   },
   hero: {
-    headline: 'One Unified Copier Platform for',
-    headlinePhrases: ['Trading Signals', 'Social Trading', 'Account Mirroring'],
+    headline: '#1 Copier Platform for Every Forex & Crypto Trader',
+    headlinePhrases: [],
     subheadline:
-      'Automate your trades from Telegram, WhatsApp, Discord, TradingView, or a Master Account to 8+ broker platforms in under 50ms. No VPS required.',
+      'Copy trades from Telegram, WhatsApp, Discord, TradingView, or a Master Account to 8+ broker platforms in under 50ms. No VPS required.',
     socialProof: 'TScopier.ai is now UniCopier',
-    primaryCta: 'Start your 5-day free trial',
-    secondaryCta: 'Sign in',
+    primaryCta: 'Choose your plan',
+    secondaryCta: 'See how it works',
     imageAlt:
       'UniCopier dashboard with balance, daily profit, trade outcomes, and account growth charts',
     previewUrl: 'app.tscopier.ai/dashboard',
@@ -120,6 +122,27 @@ export const landingEn: LandingTranslations = {
     eyebrow: 'Integrations',
     title: 'Works with leading platforms',
   },
+  completePicture: {
+    eyebrow: 'The Complete Picture',
+    title: 'Built for serious copy traders.',
+    description: 'Everything you need to copy signals reliably, from the first message to the final close.',
+    cards: [
+      { title: 'Multiple Signal Sources', description: 'Copy trades from the signal source your provider already uses.' },
+      { title: 'Supports 8+ Platforms', description: 'UniCopier supports every popular platform from Forex to Crypto trading.' },
+      { title: 'Seamless TradingView Integration', description: 'Build your strategies in TradingView and connect to UniCopier via webhook.' },
+      { title: 'AI Inclusive', description: 'Our AI doesn’t just suggest. It carries out real actions, helps you set up, analyzes your trades and improves your copy trading experience.' },
+    ],
+  },
+  showcase: {
+    eyebrow: 'UniCopier',
+    title: 'Built to reduce complexity in modern trading and support smarter decisions',
+    cta: 'Learn more',
+    cards: [
+      { headline: 'Connect every account and set your rules once.', description: 'Link your MT4, MT5, cTrader, Binance, Bybit and KuCoin accounts, then choose lot size, risk, targets and signal sources for each one.' },
+      { headline: 'Instantly mirror trades from master to slave accounts.', description: 'Pick a master account and let your other accounts follow it with fixed lots, multipliers or balance-based sizing, plus protection options.' },
+      { headline: 'Follow top traders and copy them in a few clicks.', description: 'Compare ROI, win rate and ratings, then copy providers for free or a monthly fee, or share your own performance.' },
+    ],
+  },
   whyChoose: {
     statsCaption: 'Used by traders from the most popular Telegram signal providers',
     stats: [
@@ -130,13 +153,13 @@ export const landingEn: LandingTranslations = {
     ],
     eyebrow: 'Smarter copying starts with smarter tools',
     title:
-      'Every feature in UniCopier is built to give you control, clarity, and measurable results.',
+      'Finally, a signal copier that works for every signal type',
     cards: [
       {
         label: 'Execution speed',
-        metric: '<150ms',
+        metric: '<50ms',
         metricVariant: 'teal',
-        description: 'Sub-150ms latency from signal parse to broker dispatch on our cloud pipeline.',
+        description: 'Sub-50ms latency from signal parse to broker dispatch on our cloud pipeline.',
         layout: 'tall',
         icon: 'zap',
       },
@@ -214,6 +237,16 @@ export const landingEn: LandingTranslations = {
         layout: 'short',
         icon: 'history',
       },
+    ],
+  },
+  providers: {
+    eyebrow: 'For signal providers',
+    title: 'Sell your signal service with UniCopier.',
+    description: 'Set your own price, build your community and let other traders copy your trades for a monthly fee. You keep 100% of the profit.',
+    points: [
+      { title: 'Set your price', description: 'Charge a monthly fee or let traders copy you for free.' },
+      { title: 'Build your community', description: 'Gather traders who copy you automatically.' },
+      { title: 'Keep 100% of the profit', description: 'Everything your copiers pay you is yours.' },
     ],
   },
   features: {

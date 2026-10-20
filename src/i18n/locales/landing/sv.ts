@@ -8,6 +8,8 @@ export const landingSv: LandingTranslations = {
     pricing: 'Prissättning',
     faq: 'FAQ',
     docs: 'Dokument',
+    forTraders: 'För traders',
+    forProviders: 'För leverantörer',
     signIn: 'Logga in',
     getStarted: 'Registrera dig',
     dashboard: 'Instrumentbräda',
@@ -28,13 +30,13 @@ export const landingSv: LandingTranslations = {
     },
   },
   hero: {
-    headline: 'En enhetlig kopieringsplattform för',
-    headlinePhrases: ['Handelssignaler', 'Social trading', 'Kontospegling'],
+    headline: 'Kopieringsplattform nr 1 för alla forex- och kryptotraders',
+    headlinePhrases: [],
     subheadline:
       'Automatisera dina affärer från Telegram, WhatsApp, Discord, TradingView eller ett masterkonto till 8+ mäklarplattformar på under 50 ms. Ingen VPS krävs.',
     socialProof: 'TScopier.ai är nu UniCopier',
-    primaryCta: 'Starta din 5-dagars gratis provperiod',
-    secondaryCta: 'Logga in',
+    primaryCta: 'Välj din plan',
+    secondaryCta: 'Se hur det fungerar',
     imageAlt:
       'UniCopier instrumentpanel med balans, daglig vinst, handelsresultat och kontotillväxtdiagram',
     previewUrl: 'app.tscopier.ai/dashboard',
@@ -120,6 +122,27 @@ export const landingSv: LandingTranslations = {
     eyebrow: 'Integrationer',
     title: 'Fungerar med ledande plattformar',
   },
+  completePicture: {
+    eyebrow: 'Helheten',
+    title: 'Byggt för seriösa copytraders.',
+    description: 'Allt du behöver för att kopiera signaler pålitligt, från första meddelandet till sista stängningen.',
+    cards: [
+      { title: 'Flera signalkällor', description: 'Kopiera affärer från den signalkälla som din leverantör redan använder.' },
+      { title: 'Stöd för 8+ plattformar', description: 'UniCopier stöder alla populära plattformar, från forex till krypto.' },
+      { title: 'Sömlös TradingView-integration', description: 'Bygg dina strategier i TradingView och koppla dem till UniCopier via webhook.' },
+      { title: 'AI ingår', description: 'Vår AI föreslår inte bara, den utför riktiga åtgärder, hjälper dig med installationen, analyserar dina affärer och förbättrar din copytrading.' },
+    ],
+  },
+  showcase: {
+    eyebrow: 'UniCopier',
+    title: 'Byggt för att minska komplexiteten i modern trading och stödja smartare beslut',
+    cta: 'Läs mer',
+    cards: [
+      { headline: 'Anslut alla konton och ställ in dina regler en gång.', description: 'Länka dina MT4-, MT5-, cTrader-, Binance-, Bybit- och KuCoin-konton och välj lotstorlek, risk, mål och signalkällor för varje konto.' },
+      { headline: 'Spegla affärer direkt från huvud- till slavkonton.', description: 'Välj ett huvudkonto och låt dina andra konton följa det med fasta lots, multiplikatorer eller saldobaserad storlek, plus skyddsalternativ.' },
+      { headline: 'Följ toppnoterade traders och kopiera dem med några klick.', description: 'Jämför ROI, vinstandel och betyg och kopiera leverantörer gratis eller mot en månadsavgift, eller dela din egen prestation.' },
+    ],
+  },
   whyChoose: {
     statsCaption: 'Används av traders från de mest populära Telegram-signalleverantörerna',
     stats: [
@@ -130,13 +153,13 @@ export const landingSv: LandingTranslations = {
     ],
     eyebrow: 'Smartare kopiering börjar med smartare verktyg',
     title:
-      'Varje funktion i UniCopier är byggd för att ge dig kontroll, tydlighet och mätbara resultat.',
+      'Äntligen en signalkopierare som fungerar för alla typer av signaler',
     cards: [
       {
         label: 'Utförandehastighet',
-        metric: '<150 ms',
+        metric: '<50 ms',
         metricVariant: 'teal',
-        description: 'Latens under 150 ms från signalanalys till mäklarutskick på vår molnpipeline.',
+        description: 'Latens under 50 ms från signalanalys till mäklarutskick på vår molnpipeline.',
         layout: 'tall',
         icon: 'zap',
       },
@@ -214,6 +237,16 @@ export const landingSv: LandingTranslations = {
         layout: 'short',
         icon: 'history',
       },
+    ],
+  },
+  providers: {
+    eyebrow: 'För signalleverantörer',
+    title: 'Sälj din signaltjänst med UniCopier.',
+    description: 'Sätt ditt eget pris, bygg din community och låt andra traders kopiera dina affärer mot en månadsavgift. Du behåller 100 % av vinsten.',
+    points: [
+      { title: 'Sätt ditt pris', description: 'Ta en månadsavgift eller erbjud kopiering gratis.' },
+      { title: 'Bygg din community', description: 'Samla traders som kopierar dig automatiskt.' },
+      { title: 'Behåll 100 %', description: 'Allt dina kopierare betalar är ditt.' },
     ],
   },
   features: {

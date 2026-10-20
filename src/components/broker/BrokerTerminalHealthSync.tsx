@@ -9,7 +9,7 @@ import { routeNeedsLiveBrokerConnectivity } from '../../lib/liveBrokerRoutes'
 
 const HEALTH_POLL_INTERVAL_MS = 45_000
 
-/** Poll terminal health for linked FxSocket, MTAPI, cTrader, Binance, Bybit, and KuCoin accounts on live dashboard routes. */
+/** Poll terminal health for linked FxSocket, MTAPI, cTrader, Binance, Bybit, KuCoin, DXtrade, and TradeLocker accounts on live dashboard routes. */
 export function BrokerTerminalHealthSync() {
   const { user } = useAuth()
   const location = useLocation()
@@ -20,7 +20,7 @@ export function BrokerTerminalHealthSync() {
       .filter(b => {
         if (!hasLinkedBrokerForUi(b)) return false
         if (b.connection_status === 'pending') return false
-        if (b.fxsocket_status === 'connecting' || b.mtapi_status === 'connecting' || b.ctrader_status === 'connecting' || b.binance_status === 'connecting' || b.bybit_status === 'connecting' || b.kucoin_status === 'connecting') return false
+        if (b.fxsocket_status === 'connecting' || b.mtapi_status === 'connecting' || b.ctrader_status === 'connecting' || b.binance_status === 'connecting' || b.bybit_status === 'connecting' || b.kucoin_status === 'connecting' || b.dxtrade_status === 'connecting' || b.tradelocker_status === 'connecting') return false
         return true
       })
       .map(b => `${b.id}:${resolveProvider(b)}`)
@@ -48,7 +48,7 @@ export function BrokerTerminalHealthSync() {
         const splitAt = token.lastIndexOf(':')
         const id = token.slice(0, splitAt)
         const suffix = token.slice(splitAt + 1)
-        const provider = suffix === 'mtapi' ? 'mtapi' as const : suffix === 'ctrader' ? 'ctrader' as const : suffix === 'binance' ? 'binance' as const : suffix === 'bybit' ? 'bybit' as const : suffix === 'kucoin' ? 'kucoin' as const : 'fxsocket' as const
+        const provider = suffix === 'mtapi' ? 'mtapi' as const : suffix === 'ctrader' ? 'ctrader' as const : suffix === 'binance' ? 'binance' as const : suffix === 'bybit' ? 'bybit' as const : suffix === 'kucoin' ? 'kucoin' as const : suffix === 'dxtrade' ? 'dxtrade' as const : suffix === 'tradelocker' ? 'tradelocker' as const : 'fxsocket' as const
         if (!id) continue
         try {
           const { account, status } = await fxsocketBroker.checkStatus(id, provider)

@@ -335,6 +335,9 @@ export interface LandingTranslations {
     pricing: string
     faq: string
     docs: string
+    /** Audience switch next to the logo. */
+    forTraders: string
+    forProviders: string
     signIn: string
     getStarted: string
     dashboard: string
@@ -372,12 +375,43 @@ export interface LandingTranslations {
     eyebrow: string
     title: string
   }
+  completePicture: {
+    eyebrow: string
+    title: string
+    description: string
+    cards: readonly [
+      { title: string; description: string },
+      { title: string; description: string },
+      { title: string; description: string },
+      { title: string; description: string },
+    ]
+  }
+  showcase: {
+    eyebrow: string
+    title: string
+    cta: string
+    cards: readonly [
+      { headline: string; description: string },
+      { headline: string; description: string },
+      { headline: string; description: string },
+    ]
+  }
   whyChoose: {
     statsCaption: string
     stats: LandingStatItem[]
     eyebrow: string
     title: string
     cards: LandingBentoCard[]
+  }
+  providers: {
+    eyebrow: string
+    title: string
+    description: string
+    points: readonly [
+      { title: string; description: string },
+      { title: string; description: string },
+      { title: string; description: string },
+    ]
   }
   features: {
     eyebrow: string

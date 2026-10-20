@@ -26,6 +26,7 @@
     "@marsidev/react-turnstile": "^1.6.0",
     "@supabase/supabase-js": "^2.105.3",
     "clsx": "^2.1.1",
+    "framer-motion": "^14.3.0",
     "lightweight-charts": "^5.2.0",
     "lucide-react": "^1.14.0",
     "qrcode.react": "^4.2.0",
