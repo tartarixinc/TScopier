@@ -28,12 +28,12 @@ const HERO_GRADIENT: GradientConfig = {
   scale: 0.6,
   speed: 12,
   distortion: 8,
-  swirl: 45,
+  swirl: 35,
   swirlIterations: 6,
   softness: 100,
   offset: 0,
   shape: 'Checks',
-  shapeSize: 40,
+  shapeSize: 10,
 }
 
 /** The announcement tag sits on the dark card in both themes. */
