@@ -2,6 +2,21 @@
 
 ## Changelog
 
+### 2026-10-20 — Duplicate migration tracking number fixed: social foundation migration renamed
+
+- **Context:** the migration version guard (`scripts/check-migration-versions.py`) was hardened in `60329e43` so it can no longer pass vacuously when run from the wrong directory. Its first run with the fix immediately reported a real collision: two migration files arrived from upstream sharing the same version prefix `20261019120000`. The user chose to rename the social foundation file and to document the change here.
+- **Plain English:** every database update file is named with a tracking number so the system knows which updates have already been run. Two separate updates from the TScopier side were given the exact same number. If they had been applied like that, the second one would have been mistaken for something already done and could have been skipped without anyone noticing — some of its changes would never reach the database. We gave the social-trading update its own unique number, so both updates are now tracked separately and both will run.
+- **Root cause (technical):**
+  - Upstream commit `a2d169a4` added `20261019120000_social_provider_performance_foundation.sql` and upstream commit `3e98febe` added `20261019120000_tradelocker_broker_accounts.sql`; both prefixes are `20261019120000`, so `schema_migrations` (keyed by version) cannot distinguish them — the second file would be recorded as applied without running, or rejected as a duplicate insert, depending on the runner.
+  - The collision entered Unicopier's `migration` branch through the upstream merge (`00f62658` / later `93a328bf` merges) and pre-exists on `upstream/migration` itself; nothing in CI or npm runs the guard automatically (the `migrations:check-versions` npm entry was removed in `69f6fcfb`), so it had gone unnoticed.
+- **Fix (file references):**
+  - `git mv supabase/migrations/20261019120000_social_provider_performance_foundation.sql` → `supabase/migrations/20261019121000_social_provider_performance_foundation.sql` (the TradeLocker file keeps `20261019120000`, as directed). The new prefix `20261019121000` was verified free and keeps the file adjacent to its original slot.
+  - The file's SQL is safe to run under a fresh version: statements are idempotent (`create or replace function`, `create index if not exists`, `drop function` before `create function`), and a repo-wide search found **no** code, workflow, or docs referencing the old filename.
+  - `docs/PROJECT_MEMORY.md` — this entry.
+- **Verification:** `python3 scripts/check-migration-versions.py` now prints `Checked 199 migration file(s); 199 distinct version(s). OK — every migration version is unique.` and exits 0 (it exited 1 before the rename).
+- **Deploy state:** committed on `migration` and pushed to `origin`, `upstream`, and `bzetu` (Netlify source). Only the social foundation file's name changed: it will register under its new number `20261019121000` the next time migrations are applied. The TradeLocker file keeps `20261019120000`, so any database that already recorded that number stays consistent — no existing version row needs rewriting.
+- **Follow-ups:** (1) apply the pending migrations (`20261019120000`, `20261019121000`, `20261020100000`, `20261020120000`, plus the mirror-copy pair if not yet applied) in order and confirm they register; (2) `scripts/check-migrations.py` (the npm `migrations:check` path) still uses a cwd-relative glob and passes vacuously with zero files — give it the same repo-root anchoring; (3) fix `upstream/migration` too so the collision does not come back with the next upstream merge.
+
 ### 2026-10-20 — Mirror copy trading enabled, dashboard activation added, and Netlify deploy source corrected
 
 - **Context:** the mirror-copy engine was built and reviewed; the user asked to enable it on `migration` for real-user testing, to bring `origin`/`upstream` up to date, and then reported that the live site (`migration.tscopier.ai`) was not updating.
