@@ -32,6 +32,34 @@ values
   ('21000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000002', 'Destination demo', 'MT5', 'destination-session', true),
   ('21000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000003', 'Other destination', 'MT5', 'other-session', true);
 
+update public.broker_accounts
+set provider = 'fxsocket',
+    connection_status = 'connected',
+    linked_account_type = 'Demo',
+    last_synced_at = now(),
+    last_currency = 'USD'
+where id in (
+  '21000000-0000-0000-0000-000000000001',
+  '21000000-0000-0000-0000-000000000002',
+  '21000000-0000-0000-0000-000000000003'
+);
+
+insert into public.trades (
+  user_id, broker_account_id, metaapi_order_id, symbol, direction,
+  status, opened_at, closed_at, profit
+)
+select
+  '20000000-0000-0000-0000-000000000001',
+  '21000000-0000-0000-0000-000000000001',
+  'eligible-' || n,
+  'EURUSD',
+  case when n % 2 = 0 then 'buy' else 'sell' end,
+  'closed',
+  now() - make_interval(days => n),
+  now() - make_interval(days => n) + interval '1 hour',
+  case when n % 3 = 0 then -5 else 10 end
+from generate_series(1, 10) n;
+
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000001', true);
 select lives_ok($$select public.register_social_profile()$$, 'source trader can join social directory');

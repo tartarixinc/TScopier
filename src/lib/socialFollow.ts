@@ -67,18 +67,27 @@ export class SocialFollowError extends Error {
   readonly kind: SocialFollowErrorKind
   readonly operation: SocialFollowOperation
   readonly databaseCode: string | null
+  readonly rpcName: string | null
+  readonly diagnosticMessage: string
 
   constructor(
     kind: SocialFollowErrorKind,
     operation: SocialFollowOperation,
     databaseCode: string | null,
     cause?: unknown,
+    rpcName: string | null = null,
   ) {
     super(`Social Follow ${operation} failed`, { cause })
     this.name = 'SocialFollowError'
     this.kind = kind
     this.operation = operation
     this.databaseCode = databaseCode
+    this.rpcName = rpcName
+    this.diagnosticMessage = databaseCode === 'PGRST202'
+      ? 'Required Supabase RPC is unavailable. Verify migrations and refresh the PostgREST schema cache.'
+      : kind === 'backend_unavailable'
+        ? 'Supabase could not complete the request. Check connectivity and the PostgREST schema cache.'
+        : 'Supabase rejected the Social Follow request.'
   }
 }
 
@@ -89,6 +98,7 @@ function includes(message: string, value: string): boolean {
 export function socialFollowErrorFrom(
   cause: unknown,
   operation: SocialFollowOperation,
+  rpcName: string | null = null,
 ): SocialFollowError {
   if (cause instanceof SocialFollowError) return cause
 
@@ -108,11 +118,11 @@ export function socialFollowErrorFrom(
     kind = 'backend_unavailable'
   }
 
-  return new SocialFollowError(kind, operation, code, cause)
+  return new SocialFollowError(kind, operation, code, cause, rpcName)
 }
 
-function throwRpcError(error: unknown, operation: SocialFollowOperation): never {
-  throw socialFollowErrorFrom(error, operation)
+function throwRpcError(error: unknown, operation: SocialFollowOperation, rpcName: string): never {
+  throw socialFollowErrorFrom(error, operation, rpcName)
 }
 
 function count(value: number | string): number {
@@ -143,13 +153,13 @@ export async function fetchSocialDirectory(
   client: SupabaseClient,
 ): Promise<SocialDirectoryProfile[]> {
   const { data, error } = await client.rpc('get_social_directory')
-  if (error) throwRpcError(error, 'directory')
+  if (error) throwRpcError(error, 'directory', 'get_social_directory')
   return ((data ?? []) as SocialDirectoryRow[]).map(mapProfile)
 }
 
 export async function registerSocialProfile(client: SupabaseClient): Promise<void> {
   const { error } = await client.rpc('register_social_profile')
-  if (error) throwRpcError(error, 'register')
+  if (error) throwRpcError(error, 'register', 'register_social_profile')
 }
 
 export async function setSocialProfileAccess(
@@ -157,7 +167,7 @@ export async function setSocialProfileAccess(
   access: SocialProfileAccess,
 ): Promise<void> {
   const { error } = await client.rpc('set_social_profile_access', { p_access_mode: access })
-  if (error) throwRpcError(error, 'access')
+  if (error) throwRpcError(error, 'access', 'set_social_profile_access')
 }
 
 export async function followSocialProfile(
@@ -167,9 +177,9 @@ export async function followSocialProfile(
   const { data, error } = await client.rpc('follow_social_profile', {
     p_profile_user_id: profileUserId,
   })
-  if (error) throwRpcError(error, 'follow')
+  if (error) throwRpcError(error, 'follow', 'follow_social_profile')
   if (data !== 'pending' && data !== 'accepted' && data !== 'declined') {
-    throw new SocialFollowError('unknown', 'follow', null)
+    throw new SocialFollowError('unknown', 'follow', null, undefined, 'follow_social_profile')
   }
   return data
 }
@@ -181,7 +191,7 @@ export async function removeSocialFollow(
   const { error } = await client.rpc('remove_social_follow', {
     p_profile_user_id: profileUserId,
   })
-  if (error) throwRpcError(error, 'remove')
+  if (error) throwRpcError(error, 'remove', 'remove_social_follow')
 }
 
 export async function resolveSocialFollowRequest(
@@ -193,7 +203,7 @@ export async function resolveSocialFollowRequest(
     p_follower_user_id: followerUserId,
     p_decision: decision,
   })
-  if (error) throwRpcError(error, 'resolve')
+  if (error) throwRpcError(error, 'resolve', 'resolve_social_follow_request')
 }
 
 /**

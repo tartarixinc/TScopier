@@ -1,6 +1,6 @@
 begin;
 
-select plan(27);
+select plan(28);
 
 insert into auth.users (id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data)
 values
@@ -20,14 +20,32 @@ update public.user_profiles set
   email_verified_at = now()
 where user_id::text like '30000000-%';
 
-insert into public.trades (id, user_id, symbol, direction, status, opened_at, closed_at, profit)
+insert into public.subscriptions (id, user_id, stripe_customer_id, plan, status)
+values (
+  '30500000-0000-0000-0000-000000000002',
+  '30000000-0000-0000-0000-000000000001',
+  'cus_socialreviews_trader_001', 'basic', 'active'
+);
+
+insert into public.broker_accounts (
+  id, user_id, label, platform, metaapi_account_id, provider, is_active,
+  connection_status, linked_account_type, last_synced_at, last_currency
+) values (
+  '30500000-0000-0000-0000-000000000001',
+  '30000000-0000-0000-0000-000000000001',
+  'Rated source', 'MT5', 'rated-source-session', 'fxsocket', true,
+  'connected', 'Demo', now(), 'USD'
+);
+
+insert into public.trades (id, user_id, broker_account_id, metaapi_order_id, symbol, direction, status, opened_at, closed_at, profit)
 values
-  ('31000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', 'EURUSD', 'buy', 'open', now() - interval '1 hour', null, null),
-  ('31000000-0000-0000-0000-000000000002', '30000000-0000-0000-0000-000000000001', 'XAUUSD', 'sell', 'closed', now() - interval '2 days', now() - interval '1 day', 42.50);
+  ('31000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', '30500000-0000-0000-0000-000000000001', 'rated-open', 'EURUSD', 'buy', 'open', now() - interval '1 hour', null, null),
+  ('31000000-0000-0000-0000-000000000002', '30000000-0000-0000-0000-000000000001', '30500000-0000-0000-0000-000000000001', 'rated-closed', 'XAUUSD', 'sell', 'closed', now() - interval '2 days', now() - interval '1 day', 42.50);
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '30000000-0000-0000-0000-000000000001', true);
 select lives_ok($$select public.register_social_profile()$$, 'trader can join the directory');
+select ok(public.publish_social_copy_source('30500000-0000-0000-0000-000000000001', 'Rated source') is not null, 'trader publishes the exact source account used by history');
 select is((select count(*)::integer from public.get_social_trade_history('30000000-0000-0000-0000-000000000001')), 2, 'owner can always view own real history');
 select is((select sharing_enabled from public.get_social_trade_history_access('30000000-0000-0000-0000-000000000001')), false, 'trade-history sharing defaults off');
 
