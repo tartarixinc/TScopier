@@ -2,6 +2,18 @@ import { testimonialsEn } from '../../testimonials/en'
 import type { LandingTranslations } from './types'
 
 export const landingEn: LandingTranslations = {
+  promo: {
+    regionLabel: 'Promotion',
+    days: 'Days',
+    hours: 'Hours',
+    minutes: 'Mins',
+    seconds: 'Secs',
+    endsIn: 'Offer ends in',
+    couponLabel: 'Coupon code',
+    copyCoupon: 'Copy coupon code',
+    copied: 'Copied',
+    dismiss: 'Dismiss promotion',
+  },
   nav: {
     product: 'Product',
     features: 'Features',

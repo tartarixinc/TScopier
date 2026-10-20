@@ -3,6 +3,8 @@ import { useState } from 'react'
 import { LiveChatWidget, type LiveChatVisibility } from '../layout/LiveChatWidget'
 import { MarketingHeader } from './MarketingHeader'
 import { MarketingFooter } from './MarketingFooter'
+import { MarketingPromoBanner } from './MarketingPromoBanner'
+import { MarketingPromoOffsetProvider } from './MarketingPromoOffset'
 
 interface MarketingLayoutProps {
   children: ReactNode
@@ -17,7 +19,10 @@ export function MarketingLayout({ children, darkHero }: MarketingLayoutProps) {
     <div className="marketing-hero-bg marketing-page-bg relative flex min-h-screen flex-col">
       <div className="trustpilot-panel-radial pointer-events-none absolute inset-0 hidden dark:block" aria-hidden />
       <LiveChatWidget visibility={chatVisibility} onVisibilityChanged={setChatVisibility} />
-      <MarketingHeader overDarkHero={darkHero} />
+      <MarketingPromoOffsetProvider>
+        <MarketingPromoBanner />
+        <MarketingHeader overDarkHero={darkHero} />
+      </MarketingPromoOffsetProvider>
 
       <main className="relative z-10 flex-1 pt-16">{children}</main>
 

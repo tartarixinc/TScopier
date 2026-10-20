@@ -53,6 +53,7 @@ function stripSecrets(row: Record<string, unknown>) {
     kucoin_passphrase_encrypted: _kcPassphrase,
     dxtrade_password_encrypted: _dxPassword,
     tradelocker_password_encrypted: _tlPassword,
+    matchtrader_password_encrypted: _mtPassword,
     ...safe
   } = row
   return safe
@@ -210,6 +211,8 @@ Deno.serve(async (req: Request) => {
           tradelocker_password_encrypted: passwordEncrypted,
           tradelocker_account_ref: chosen.accountId,
           tradelocker_acc_num: chosen.accNum,
+          // The Account column and the assistant read account_login, so show the TradeLocker account number there.
+          account_login: chosen.accountId,
           tradelocker_status: "connected",
           broker_name: server,
           connection_status: "connected",

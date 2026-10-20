@@ -82,6 +82,11 @@ export const BROKER_ACCOUNT_CLIENT_SELECT = [
   'tradelocker_server',
   'tradelocker_account_ref',
   'tradelocker_status',
+  'matchtrader_account_id',
+  'matchtrader_server_url',
+  'matchtrader_broker_id',
+  'matchtrader_trading_account_uuid',
+  'matchtrader_status',
   'linked_account_type',
 ].join(',')
 
@@ -122,6 +127,11 @@ export function missingDxtradeColumns(message: string): boolean {
 
 export function missingTradelockerColumns(message: string): boolean {
   return /tradelocker_(account_id|environment|server|account_ref|status)/i.test(message)
+    && /schema cache|does not exist|column/i.test(message)
+}
+
+export function missingMatchtraderColumns(message: string): boolean {
+  return /matchtrader_(account_id|server_url|broker_id|trading_account_uuid|status)/i.test(message)
     && /schema cache|does not exist|column/i.test(message)
 }
 
@@ -179,6 +189,15 @@ function columnsAfterSchemaError(columns: string, message: string): string | nul
       'tradelocker_server',
       'tradelocker_account_ref',
       'tradelocker_status',
+    ]) drop.add(column)
+  }
+  if (missingMatchtraderColumns(message)) {
+    for (const column of [
+      'matchtrader_account_id',
+      'matchtrader_server_url',
+      'matchtrader_broker_id',
+      'matchtrader_trading_account_uuid',
+      'matchtrader_status',
     ]) drop.add(column)
   }
   if (drop.size === 0) return null

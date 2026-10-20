@@ -9,6 +9,8 @@
  * Reads are paced because GET orders, positions and ordersHistory allow about one request per second.
  * A 401 triggers one refresh (or re-login). Writes are never retried blindly: a timeout or 5xx on a
  * write surfaces as an "uncertain" error so the caller can reconcile by `strategyId`.
+ * A 429 is different: TradeLocker refused the request before acting on it, so reads and writes alike
+ * are retried a few times after a back-off, and the whole client pauses while the limit clears.
  */
 import type { TradelockerInstrument, TradelockerInstrumentDetails } from './symbols'
 
@@ -33,10 +35,13 @@ export interface TradelockerCredential {
 
 export class TradelockerApiError extends Error {
   status: number
-  constructor(message: string, status: number) {
+  /** From the `Retry-After` header of a 429, when TradeLocker sent one. */
+  retryAfterMs?: number
+  constructor(message: string, status: number, retryAfterMs?: number) {
     super(message)
     this.name = 'TradelockerApiError'
     this.status = status
+    this.retryAfterMs = retryAfterMs
   }
   /** True when the server may have processed the request (no answer, or a 5xx). */
   get uncertain(): boolean {
@@ -60,6 +65,10 @@ const DEFAULT_TIMEOUT_MS = 15_000
 const LIST_GAP_MS = 1100
 const REQUEST_GAP_MS = 150
 const LOGIN_GAP_MS = 700
+/** Rate-limited (429) requests are retried this many times before the error is surfaced. */
+const RATE_LIMIT_RETRIES = 3
+const RATE_LIMIT_BACKOFF_MS = 1000
+const RATE_LIMIT_MAX_WAIT_MS = 8000
 const CONFIG_TTL_MS = 30 * 60_000
 const INSTRUMENT_TTL_MS = 10 * 60_000
 
@@ -80,6 +89,16 @@ export function finite(value: unknown): number | undefined {
   if (value === null || value === undefined || value === '') return undefined
   const n = typeof value === 'number' ? value : Number(value)
   return Number.isFinite(n) ? n : undefined
+}
+
+/** `Retry-After` is either whole seconds or an HTTP date. */
+function parseRetryAfterMs(value: string | null, now: number): number | undefined {
+  const raw = value?.trim()
+  if (!raw) return undefined
+  const seconds = Number(raw)
+  if (Number.isFinite(seconds)) return seconds >= 0 ? seconds * 1000 : undefined
+  const date = Date.parse(raw)
+  return Number.isFinite(date) ? Math.max(0, date - now) : undefined
 }
 
 export function friendlyTradelockerError(error: unknown): string {
@@ -121,6 +140,8 @@ export class TradelockerClient {
   private session: Session | null = null
   private loginInFlight: Promise<void> | null = null
   private paceChain: Promise<void> = Promise.resolve()
+  /** After a 429 no request leaves this client before this time. */
+  private cooldownUntil = 0
   private readonly lastAt = new Map<string, number>()
   private configCache: { at: number; config: Json } | null = null
   private instrumentCache: { at: number; list: TradelockerInstrument[] } | null = null
@@ -212,7 +233,7 @@ export class TradelockerClient {
 
   private async pace(key: string, gap: number): Promise<void> {
     const turn = this.paceChain.then(async () => {
-      const wait = (this.lastAt.get(key) ?? 0) + gap - this.now()
+      const wait = Math.max((this.lastAt.get(key) ?? 0) + gap, this.cooldownUntil) - this.now()
       if (wait > 0) await this.sleep(wait)
       this.lastAt.set(key, this.now())
     })
@@ -272,7 +293,11 @@ export class TradelockerClient {
     const payload = asRecord(data)
     if (!response.ok || payload.s === 'error') {
       const message = String(payload.errmsg ?? payload.message ?? payload.error ?? payload.description ?? '').trim()
-      throw new TradelockerApiError(message || `TradeLocker request failed (${response.status})`, response.ok ? 400 : response.status)
+      const status = response.ok ? 400 : response.status
+      const fallback = status === 429
+        ? 'TradeLocker is rate limiting requests (429)'
+        : `TradeLocker request failed (${status})`
+      throw new TradelockerApiError(message || fallback, status, status === 429 ? parseRetryAfterMs(response.headers.get('retry-after'), this.now()) : undefined)
     }
     return data
   }
@@ -292,19 +317,28 @@ export class TradelockerClient {
       await this.pace(key, gap)
       return this.send(method, path, { ...init, accNum: withAccNum, token: this.session?.accessToken })
     }
-    try {
-      return await run()
-    } catch (error) {
-      if (error instanceof TradelockerApiError && error.status === 401) {
-        this.session = null
-        await this.login()
-        return run()
+    let reloggedIn = false
+    for (let rateLimited = 0; ;) {
+      try {
+        return await run()
+      } catch (error) {
+        if (error instanceof TradelockerApiError) {
+          if (error.status === 401 && !reloggedIn) {
+            reloggedIn = true
+            this.session = null
+            await this.login()
+            continue
+          }
+          // A 429 means the request was refused unprocessed, so repeating it (even an order) cannot duplicate it.
+          if (error.status === 429 && rateLimited < RATE_LIMIT_RETRIES) {
+            const backoff = error.retryAfterMs ?? RATE_LIMIT_BACKOFF_MS * 2 ** rateLimited
+            this.cooldownUntil = Math.max(this.cooldownUntil, this.now() + Math.min(RATE_LIMIT_MAX_WAIT_MS, Math.max(backoff, 500)))
+            rateLimited += 1
+            continue
+          }
+        }
+        throw error
       }
-      if (error instanceof TradelockerApiError && error.status === 429 && method === 'GET') {
-        await this.sleep(1200)
-        return run()
-      }
-      throw error
     }
   }
 

@@ -27,6 +27,7 @@ import {
   type BrokerCopyLinkRow,
 } from '../../lib/brokerCopyLink'
 import { DEFAULT_MANUAL_SETTINGS } from '../../lib/defaultManualSettings'
+import { platformIconSrc } from '../../lib/activityRoute'
 import {
   fetchBrokerChannelTradingConfigRows,
   fetchBrokerChannelTradingConfigRowsForBrokers,
@@ -82,12 +83,11 @@ interface CardDrag {
 
 function PlatformLogo({ platform }: { platform: string }) {
   const [failed, setFailed] = useState(false)
-  const raw = platform.trim()
-  const key = /^mt[45]$/i.test(raw) ? raw.toUpperCase() : raw
-  if (!key || failed) return null
+  const src = platformIconSrc(platform)
+  if (!src || failed) return null
   return (
     <img
-      src={`/${key}.png`}
+      src={src}
       alt=""
       aria-hidden
       className="h-8 w-8 shrink-0 object-contain"

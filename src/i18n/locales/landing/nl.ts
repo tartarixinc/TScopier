@@ -2,6 +2,18 @@ import { testimonialsNl } from '../../testimonials/nl'
 import type { LandingTranslations } from './types'
 
 export const landingNl: LandingTranslations = {
+  promo: {
+    regionLabel: 'Promotie',
+    days: 'Dagen',
+    hours: 'Uren',
+    minutes: 'Min',
+    seconds: 'Sec',
+    endsIn: 'Aanbieding eindigt over',
+    couponLabel: 'Couponcode',
+    copyCoupon: 'Couponcode kopiëren',
+    copied: 'Gekopieerd',
+    dismiss: 'Promotie sluiten',
+  },
   nav: {
     product: 'Product',
     features: 'Functies',
