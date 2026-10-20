@@ -2,6 +2,18 @@ import { testimonialsSv } from '../../testimonials/sv'
 import type { LandingTranslations } from './types'
 
 export const landingSv: LandingTranslations = {
+  promo: {
+    regionLabel: 'Kampanj',
+    days: 'Dagar',
+    hours: 'Timmar',
+    minutes: 'Min',
+    seconds: 'Sek',
+    endsIn: 'Erbjudandet slutar om',
+    couponLabel: 'Kuponkod',
+    copyCoupon: 'Kopiera kuponkod',
+    copied: 'Kopierad',
+    dismiss: 'Stäng kampanjen',
+  },
   nav: {
     product: 'Produkt',
     features: 'Drag',

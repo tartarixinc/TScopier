@@ -13,6 +13,8 @@ describe('tradingPlatform', () => {
     assert.equal(normalizeTradingPlatform('dxtrade'), 'DXtrade')
     assert.equal(normalizeTradingPlatform('tradelocker'), 'TradeLocker')
     assert.equal(normalizeTradingPlatform('TradeLocker'), 'TradeLocker')
+    assert.equal(normalizeTradingPlatform('matchtrader'), 'MatchTrader')
+    assert.equal(normalizeTradingPlatform('Match-Trader'), 'MatchTrader')
     assert.equal(normalizeTradingPlatform('KuCoin'), 'KuCoin')
     assert.equal(normalizeTradingPlatform('cTrader'), 'cTrader')
   })

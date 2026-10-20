@@ -723,6 +723,22 @@ export interface AccountConfigConnectFormTranslations {
   tradelockerInvalidEmail: string
   tradelockerInvalidAccountId: string
   tradelockerLoginRequired: string
+  matchtraderConnectHint: string
+  matchtraderConnectButton: string
+  matchtraderUrlLabel: string
+  matchtraderUrlHint: string
+  matchtraderEmailLabel: string
+  matchtraderPasswordLabel: string
+  matchtraderPasswordHint: string
+  matchtraderAccountIdLabel: string
+  matchtraderAccountIdHint: string
+  matchtraderBrokerIdLabel: string
+  matchtraderBrokerIdHint: string
+  matchtraderInvalidUrl: string
+  matchtraderInvalidEmail: string
+  matchtraderInvalidAccountId: string
+  matchtraderInvalidBrokerId: string
+  matchtraderLoginRequired: string
   brokerServerLabel: string
   brokerServerHint: string
   brokerServerPlaceholder: string

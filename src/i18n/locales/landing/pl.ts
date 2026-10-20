@@ -2,6 +2,18 @@ import { testimonialsPl } from '../../testimonials/pl'
 import type { LandingTranslations } from './types'
 
 export const landingPl: LandingTranslations = {
+  promo: {
+    regionLabel: 'Promocja',
+    days: 'Dni',
+    hours: 'Godz.',
+    minutes: 'Min',
+    seconds: 'Sek',
+    endsIn: 'Oferta kończy się za',
+    couponLabel: 'Kod kuponu',
+    copyCoupon: 'Skopiuj kod kuponu',
+    copied: 'Skopiowano',
+    dismiss: 'Zamknij promocję',
+  },
   nav: {
     product: 'Produkt',
     features: 'Funkcje',

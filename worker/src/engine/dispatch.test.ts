@@ -109,6 +109,16 @@ describe('resolveExecutionEngine (cutover flag)', () => {
       false,
     )
   })
+  it('MatchTrader provider bypasses EXECUTION_ENGINE and stays on v1', () => {
+    assert.equal(
+      resolveExecutionEngine({ brokerAccountId: 'b1', userId: 'u1', provider: 'matchtrader' }, { EXECUTION_ENGINE: 'v2' }),
+      'v1',
+    )
+    assert.equal(
+      isV2({ brokerAccountId: 'b1', userId: 'u1', provider: 'matchtrader' }, { EXECUTION_ENGINE: 'v2' }),
+      false,
+    )
+  })
   it('KuCoin provider bypasses EXECUTION_ENGINE and stays on v1', () => {
     assert.equal(
       resolveExecutionEngine({ brokerAccountId: 'b1', userId: 'u1', provider: 'kucoin' }, { EXECUTION_ENGINE: 'v2' }),

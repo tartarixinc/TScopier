@@ -105,6 +105,14 @@ describe('brokerLink — MTAPI provider', () => {
     assert.equal(isFxsocketLinkedBroker({ provider: 'tradelocker', fxsocket_account_id: SESSION_UUID }), false)
   })
 
+  it('resolveProvider returns matchtrader and treats the row as linked', () => {
+    assert.equal(resolveProvider({ provider: 'matchtrader' }), 'matchtrader')
+    assert.equal(hasLinkedBrokerForUi({ provider: 'matchtrader' }), true)
+    assert.equal(hasAnyBrokerSession({ provider: 'matchtrader', matchtrader_account_id: '5d0e1234ef561234' }), true)
+    assert.equal(isBrokerCopyEnabledForUi({ provider: 'matchtrader', is_active: true }), true)
+    assert.equal(isFxsocketLinkedBroker({ provider: 'matchtrader', fxsocket_account_id: SESSION_UUID }), false)
+  })
+
   it('resolveProvider returns kucoin and treats the row as linked', () => {
     assert.equal(resolveProvider({ provider: 'kucoin' }), 'kucoin')
     assert.equal(hasLinkedBrokerForUi({ provider: 'kucoin' }), true)

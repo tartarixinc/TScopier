@@ -2,6 +2,18 @@ import { testimonialsJa } from '../../testimonials/ja'
 import type { LandingTranslations } from './types'
 
 export const landingJa: LandingTranslations = {
+  promo: {
+    regionLabel: 'プロモーション',
+    days: '日',
+    hours: '時間',
+    minutes: '分',
+    seconds: '秒',
+    endsIn: '終了まで',
+    couponLabel: 'クーポンコード',
+    copyCoupon: 'クーポンコードをコピー',
+    copied: 'コピーしました',
+    dismiss: 'プロモーションを閉じる',
+  },
   nav: {
     product: '製品',
     features: '機能',

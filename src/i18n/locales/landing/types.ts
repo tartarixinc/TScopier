@@ -329,6 +329,19 @@ export interface LandingHeroDashboardCopy {
 }
 
 export interface LandingTranslations {
+  /** Promo banner above the marketing nav. The campaign copy itself comes from the database. */
+  promo: {
+    regionLabel: string
+    days: string
+    hours: string
+    minutes: string
+    seconds: string
+    endsIn: string
+    couponLabel: string
+    copyCoupon: string
+    copied: string
+    dismiss: string
+  }
   nav: {
     product: string
     features: string
