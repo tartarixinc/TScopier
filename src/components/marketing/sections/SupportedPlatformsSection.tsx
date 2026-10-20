@@ -25,7 +25,7 @@ export function SupportedPlatformsSection() {
       className="border-b border-neutral-200/70 bg-white dark:border-white/10 dark:bg-[#151a21]"
       aria-labelledby="supported-platforms-title"
     >
-      <div className="mx-auto max-w-[80rem] px-5 py-10 sm:px-10 sm:py-12 lg:px-14">
+      <div className="mx-auto max-w-7xl px-5 py-10 sm:px-10 sm:py-12 lg:px-14">
         <h2
           id="supported-platforms-title"
           className="text-sm font-medium tracking-tight text-neutral-700 dark:text-neutral-300"
@@ -36,7 +36,7 @@ export function SupportedPlatformsSection() {
         {/* dir="ltr" keeps the right-to-left scroll the same in right-to-left languages. */}
         <div
           dir="ltr"
-          className="logo-marquee mt-3 overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_6%,black_94%,transparent)]"
+          className="logo-marquee mt-3 overflow-hidden mask-[linear-gradient(to_right,transparent,black_6%,black_94%,transparent)]"
         >
           <ul className="logo-marquee-track flex items-center" role="list">
             {[...LOGOS, ...LOGOS].map((logo, index) => {
