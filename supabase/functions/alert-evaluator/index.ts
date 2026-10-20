@@ -38,6 +38,12 @@
  *   executions_failing     { max_failed: number }            // windowed
  *   dead_letters_high      { max_open: number }
  *   telegram_gap           { max_not_listening: number }
+ *   openai_credits_exhausted { grace_seconds: number }
+ *
+ * OpenAI credits are the one external dependency this evaluator probes
+ * itself: every run makes a one-token request and writes the outcome to
+ * system_probe_state target 'openai_api'. That row also powers the admin
+ * Systems Health page, so the screen and the email always agree.
  *
  * Principles: never treat unknown as healthy (a stale probe row fires), never
  * invent an outage from an unreadable table (skip and log instead), and keep
@@ -83,6 +89,7 @@ const NEXT_ACTION: Record<string, string> = {
   executions_failing: "Open the Execution logs page and filter by failure reason.",
   dead_letters_high: "Open the dead-letter view and replay or discard the parked messages.",
   telegram_gap: "Linked accounts without a listener are not being copied — check worker leases on the Systems Health page.",
+  openai_credits_exhausted: "Add OpenAI credits now (Billing → Add credits). Until then AI parsing is refused and only the regex parser runs, so complex signals may be missed.",
 };
 
 const EMAIL_BATCH_LIMIT = 25;
@@ -164,6 +171,119 @@ async function headCount(
   const { count, error } = await q;
   if (error) return null;
   return count ?? 0;
+}
+
+// ---------------------------------------------------------------------------
+// OpenAI credit probe.
+//
+// A one-token chat request is the only reliable way to learn that the
+// organization can no longer spend: OpenAI's billing errors (429
+// credit_balance_exhausted / insufficient_quota, spend limits) are returned
+// only when a real request is made. The outcome is written to
+// system_probe_state target 'openai_api' so the alert rule and the admin
+// Systems Health page read the exact same fact.
+//
+// Other failures are deliberately NOT treated as "credits exhausted":
+//   - 401/403 (bad key)            -> down, detail "auth:…"  (page shows warn)
+//   - 429 without a billing code   -> up,   detail "rate_limited:…"
+//   - 5xx / timeout / network      -> unknown (never a false all-clear)
+// ---------------------------------------------------------------------------
+
+const OPENAI_CREDITS_PROBE_MODEL = Deno.env.get("OPENAI_CREDITS_PROBE_MODEL") || "gpt-4o-mini";
+const OPENAI_CREDITS_PROBE_TIMEOUT_MS = 8_000;
+const OPENAI_BILLING_CODES = new Set([
+  "credit_balance_exhausted",
+  "insufficient_quota",
+  "billing_hard_limit_reached",
+  "organization_spend_limit_exceeded",
+  "project_spend_limit_exceeded",
+  "organization_usage_limit_exceeded",
+]);
+
+interface OpenAiProbeResult {
+  ran: boolean;
+  state?: "up" | "down" | "unknown";
+  detail?: string;
+}
+
+async function recordOpenAiProbe(
+  sb: any,
+  state: "up" | "down" | "unknown",
+  latencyMs: number | null,
+  detail: string,
+): Promise<void> {
+  const { error } = await sb.rpc("record_probe_result", {
+    p_target: "openai_api",
+    p_state: state,
+    p_latency_ms: latencyMs,
+    p_detail: detail.slice(0, 300),
+  });
+  if (error) console.warn(`[alert-evaluator] openai probe write failed err=${error.message}`);
+}
+
+async function probeOpenAiCredits(sb: any): Promise<OpenAiProbeResult> {
+  const apiKey = Deno.env.get("OPENAI_API_KEY") ?? "";
+  if (!apiKey) {
+    // Record the gap so the page cannot show an old green row forever.
+    const detail = "probe_error:OPENAI_API_KEY not configured";
+    await recordOpenAiProbe(sb, "unknown", null, detail);
+    return { ran: true, state: "unknown", detail };
+  }
+
+  const startedAt = Date.now();
+  try {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: OPENAI_CREDITS_PROBE_MODEL,
+        messages: [{ role: "user", content: "ping" }],
+        max_tokens: 1,
+        temperature: 0,
+      }),
+      signal: AbortSignal.timeout(OPENAI_CREDITS_PROBE_TIMEOUT_MS),
+    });
+    const latencyMs = Date.now() - startedAt;
+    const body = await res.json().catch(() => ({}) as Record<string, unknown>);
+    const err = (body as { error?: { code?: string; type?: string; message?: string } }).error;
+
+    if (res.ok) {
+      const detail = `credits ok (${OPENAI_CREDITS_PROBE_MODEL})`;
+      await recordOpenAiProbe(sb, "up", latencyMs, detail);
+      return { ran: true, state: "up", detail };
+    }
+
+    const code = String(err?.code ?? err?.type ?? "");
+    const message = String(err?.message ?? `HTTP ${res.status}`).slice(0, 160);
+
+    if (res.status === 429 && OPENAI_BILLING_CODES.has(code)) {
+      const detail = `billing:${code || "insufficient_quota"} — ${message}`;
+      await recordOpenAiProbe(sb, "down", latencyMs, detail);
+      return { ran: true, state: "down", detail };
+    }
+    if (res.status === 401 || res.status === 403) {
+      const detail = `auth:${code || `HTTP_${res.status}`} — ${message}`;
+      await recordOpenAiProbe(sb, "down", latencyMs, detail);
+      return { ran: true, state: "down", detail };
+    }
+    if (res.status === 429) {
+      // Rate limited, but the account can still spend: not a credits outage.
+      const detail = `rate_limited:${code || `HTTP_429`}`;
+      await recordOpenAiProbe(sb, "up", latencyMs, detail);
+      return { ran: true, state: "up", detail };
+    }
+
+    const detail = `probe_error:HTTP_${res.status}${code ? `:${code}` : ""} — ${message}`;
+    await recordOpenAiProbe(sb, "unknown", latencyMs, detail);
+    return { ran: true, state: "unknown", detail };
+  } catch (err) {
+    const detail = `probe_error:${err instanceof Error ? err.message : String(err)}`;
+    await recordOpenAiProbe(sb, "unknown", null, detail);
+    return { ran: true, state: "unknown", detail };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -411,6 +531,39 @@ async function evalTelegramGap(sb: any, rule: RuleRow, nowMs: number): Promise<E
   };
 }
 
+/**
+ * OpenAI credits — reads the probe row written by probeOpenAiCredits on this
+ * same run. Only a billing-coded down state fires; auth/probe errors are
+ * surfaced on the Systems Health page but must not claim credits ran out.
+ */
+async function evalOpenAiCredits(sb: any, rule: RuleRow, nowMs: number): Promise<EvalOutcome> {
+  const graceMs = num(rule.threshold.grace_seconds, 60) * 1000;
+  const { data, error } = await sb
+    .from("system_probe_state")
+    .select("state, down_since, detail, updated_at")
+    .eq("target", "openai_api")
+    .maybeSingle();
+  if (error) return { kind: "skip", reason: error.message };
+  if (!data) return { kind: "skip", reason: "openai_api probe has not reported yet" };
+  if (data.state !== "down") return { kind: "ok", fired: false, value: null, message: "" };
+
+  const detail = String(data.detail ?? "");
+  if (!detail.startsWith("billing:")) {
+    return { kind: "skip", reason: `openai probe down for a non-billing reason: ${detail}` };
+  }
+  const since = data.down_since ? Date.parse(data.down_since) : NaN;
+  const ageMs = Number.isFinite(since) ? nowMs - since : graceMs;
+  if (ageMs >= graceMs) {
+    return {
+      kind: "ok",
+      fired: true,
+      value: Math.round(ageMs / 1000),
+      message: `OpenAI is refusing requests: ${detail}`,
+    };
+  }
+  return { kind: "ok", fired: false, value: 0, message: "" };
+}
+
 async function evaluate(sb: any, rule: RuleRow, nowMs: number): Promise<EvalOutcome> {
   switch (rule.code) {
     case "bridge_down": return evalBridgeDown(sb, rule, nowMs);
@@ -423,6 +576,7 @@ async function evaluate(sb: any, rule: RuleRow, nowMs: number): Promise<EvalOutc
     case "executions_failing": return evalExecutionsFailing(sb, rule, nowMs);
     case "dead_letters_high": return evalDeadLettersHigh(sb, rule);
     case "telegram_gap": return evalTelegramGap(sb, rule, nowMs);
+    case "openai_credits_exhausted": return evalOpenAiCredits(sb, rule, nowMs);
     default:
       return { kind: "skip", reason: `no evaluator for rule ${rule.code}` };
   }
@@ -592,6 +746,13 @@ Deno.serve(async (req) => {
     const rules = (rulesRes.data ?? []) as RuleRow[];
     summary.rules = rules.length;
     const codes = rules.map(r => r.code);
+
+    // Probe before evaluating so the openai_credits_exhausted rule always sees
+    // this run's fresh result. Failures are recorded as unknown, never thrown.
+    const openaiProbe = await probeOpenAiCredits(sb);
+    if (openaiProbe.ran && openaiProbe.state !== "up") {
+      summary.warnings.push(`openai probe: ${openaiProbe.state} — ${openaiProbe.detail ?? ""}`);
+    }
 
     const openRes = await sb
       .from("alert_events")
