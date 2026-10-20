@@ -469,7 +469,7 @@ export interface BrokerAccount {
   /** FxSocket v1 account status. */
   fxsocket_status?: FxsocketConnectionStatus | null
   /** Provider routing: 'fxsocket' (default), 'mtapi', 'ctrader', 'binance', or 'bybit'. */
-  provider?: 'fxsocket' | 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin' | 'dxtrade' | 'tradelocker' | null
+  provider?: 'fxsocket' | 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin' | 'dxtrade' | 'tradelocker' | 'matchtrader' | null
   /** Monotonic broker-writer fence used to reject stale worker jobs. */
   writer_epoch?: number
   /** Mutations are allowed only while stable. */
@@ -542,6 +542,18 @@ export interface BrokerAccount {
   tradelocker_account_ref?: string | null
   /** TradeLocker link status shown in the Connection column. */
   tradelocker_status?: 'connected' | 'connecting' | 'disconnected' | 'error' | null
+  /** Match-Trader platform + login + trading account fingerprint. The password stays server-side. */
+  matchtrader_account_id?: string | null
+  /** Validated https platform URL of the broker's Match-Trader server. */
+  matchtrader_server_url?: string | null
+  /** Match-Trader brokerId (partnerId) used at login. */
+  matchtrader_broker_id?: string | null
+  /** Match-Trader trading account uuid. */
+  matchtrader_trading_account_uuid?: string | null
+  /** Match-Trader system uuid (path segment of the trading API). */
+  matchtrader_system_uuid?: string | null
+  /** Match-Trader link status shown in the Connection column. */
+  matchtrader_status?: 'connected' | 'connecting' | 'disconnected' | 'error' | null
   /** Auto-reconnect enabled flag. */
   auto_reconnect_enabled?: boolean | null
   /** Error kind classifier (e.g. credential, network, timeout). */

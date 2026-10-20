@@ -26,7 +26,7 @@ const PLATFORM_TILES: readonly PlatformTile[] = [
   { id: 'dxtrade', name: 'DX-Trade', logo: '/DX-trade.png', asset: 'forex', platform: 'DXtrade' },
   { id: 'tradovate', name: 'Tradovate', logo: '/Tradovate.png', asset: 'futures' },
   { id: 'tradelocker', name: 'TradeLocker', logo: '/Trade_locker.png', asset: 'forex', platform: 'TradeLocker' },
-  { id: 'matchtrader', name: 'MatchTrader', logo: '/Match-Trader.png', asset: 'forex' },
+  { id: 'matchtrader', name: 'MatchTrader', logo: '/Match-Trader.png', asset: 'forex', platform: 'MatchTrader' },
 ]
 
 type AddAccountPlatformModalProps = {

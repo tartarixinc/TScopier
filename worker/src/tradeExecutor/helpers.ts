@@ -22,7 +22,7 @@ export function isMtUuid(s: string | null | undefined): boolean {
 /**
  * Session id the copier uses for this broker.
  * FxSocket and MTAPI ids are UUIDs. cTrader uses the numeric ctidTraderAccountId.
- * Binance, Bybit and KuCoin use the stored API-key fingerprint. DXtrade and TradeLocker use their login fingerprint.
+ * Binance, Bybit and KuCoin use the stored API-key fingerprint. DXtrade, TradeLocker and MatchTrader use their login fingerprint.
  */
 export function brokerSessionUuid(broker: {
   provider?: string | null
@@ -35,10 +35,11 @@ export function brokerSessionUuid(broker: {
   kucoin_account_id?: string | null
   dxtrade_account_id?: string | null
   tradelocker_account_id?: string | null
+  matchtrader_account_id?: string | null
 }): string | null {
   const id = brokerSessionId(broker)
   if (!id) return null
-  if (broker.provider === 'ctrader' || broker.provider === 'binance' || broker.provider === 'bybit' || broker.provider === 'kucoin' || broker.provider === 'dxtrade' || broker.provider === 'tradelocker') return id
+  if (broker.provider === 'ctrader' || broker.provider === 'binance' || broker.provider === 'bybit' || broker.provider === 'kucoin' || broker.provider === 'dxtrade' || broker.provider === 'tradelocker' || broker.provider === 'matchtrader') return id
   return isMtUuid(id) ? id : null
 }
 
@@ -53,6 +54,7 @@ export function brokerHasLinkedSession(broker: {
   kucoin_account_id?: string | null
   dxtrade_account_id?: string | null
   tradelocker_account_id?: string | null
+  matchtrader_account_id?: string | null
 }): boolean {
   return brokerSessionUuid(broker) != null
 }

@@ -96,6 +96,8 @@ export interface BrokerRow {
   dxtrade_account_id?: string | null
   /** TradeLocker login + account fingerprint. Not a UUID. */
   tradelocker_account_id?: string | null
+  /** MatchTrader platform + login + trading account fingerprint. Not a UUID. */
+  matchtrader_account_id?: string | null
   metaapi_account_id: string | null
   account_login: string | null
   broker_server: string | null

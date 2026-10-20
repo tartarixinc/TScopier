@@ -69,6 +69,9 @@ verify_jwt = true
 [functions.tradelocker-broker]
 verify_jwt = true
 
+[functions.matchtrader-broker]
+verify_jwt = true
+
 [functions.reconcile-expired-trials]
 verify_jwt = false
 
