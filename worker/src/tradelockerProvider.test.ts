@@ -70,6 +70,9 @@ class FakeTradeLocker {
   dropAfterPlacing = 0
   /** Drop the request before it reaches the server. */
   dropBeforePlacing = 0
+  /** The next N placements are refused with 429 before they reach the server. */
+  rateLimitPlace = 0
+  retryAfter: string | null = null
   /** Placing answers a 400 with this message. */
   rejectPlace: string | null = null
   /** Market orders are rejected with this reason. */
@@ -86,6 +89,13 @@ class FakeTradeLocker {
     this.calls.push({ method, path, query: url.searchParams, headers, body })
     const isPlace = method === 'POST' && path === `${BASE}/orders`
     if (isPlace) {
+      if (this.rateLimitPlace > 0) {
+        this.rateLimitPlace -= 1
+        return new Response(JSON.stringify({ s: 'error' }), {
+          status: 429,
+          headers: this.retryAfter ? { 'Retry-After': this.retryAfter } : undefined,
+        })
+      }
       if (this.dropBeforePlacing > 0) {
         this.dropBeforePlacing -= 1
         throw new TypeError('fetch failed')
@@ -480,6 +490,50 @@ test('an order whose answer was lost is found by its strategyId and never sent t
   assert.equal(fake.callsTo('POST', `${BASE}/orders`).length, 1)
   assert.equal(fake.positions.length, 1)
   assert.equal(result.positionTicket, Number(fake.positions[0]!.id))
+})
+
+function providerRecordingSleeps(sleeps: number[]): TradelockerProvider {
+  return new TradelockerProvider({
+    loadCredentials: async () => CREDENTIAL,
+    fetchImpl: fake.fetchImpl,
+    now: () => NOW,
+    sleep: async ms => { sleeps.push(ms) },
+    clientOptions: { developerKey: '' },
+  })
+}
+
+test('an order refused with 429 is retried after a back-off and opens exactly one position', async () => {
+  const sleeps: number[] = []
+  const tl = providerRecordingSleeps(sleeps)
+  fake.rateLimitPlace = 2
+  const result = await tl.orderSend('fp-1', { symbol: 'EURUSD', operation: 'Buy', volume: 0.1, comment: COMMENT })
+  assert.equal(fake.callsTo('POST', `${BASE}/orders`).length, 3)
+  assert.equal(fake.positions.length, 1)
+  assert.equal(result.positionTicket, Number(fake.positions[0]!.id))
+  // 1s then 2s, taken as a pause for the whole client.
+  assert.ok(sleeps.includes(1000), `sleeps ${sleeps.join(',')}`)
+  assert.ok(sleeps.includes(2000), `sleeps ${sleeps.join(',')}`)
+})
+
+test('a 429 Retry-After is honoured', async () => {
+  const sleeps: number[] = []
+  const tl = providerRecordingSleeps(sleeps)
+  fake.rateLimitPlace = 1
+  fake.retryAfter = '3'
+  await tl.orderSend('fp-1', { symbol: 'EURUSD', operation: 'Buy', volume: 0.1, comment: COMMENT })
+  assert.ok(sleeps.includes(3000), `sleeps ${sleeps.join(',')}`)
+  assert.equal(fake.positions.length, 1)
+})
+
+test('a persistent 429 gives up after the retries with a rate-limit message and opens nothing', async () => {
+  const tl = provider()
+  fake.rateLimitPlace = 99
+  await assert.rejects(
+    tl.orderSend('fp-1', { symbol: 'EURUSD', operation: 'Buy', volume: 0.1, comment: COMMENT }),
+    /rate limiting requests/,
+  )
+  assert.equal(fake.callsTo('POST', `${BASE}/orders`).length, 4)
+  assert.equal(fake.positions.length, 0)
 })
 
 test('an order that never arrived is reported as unconfirmed, and a repeat is reconciled before it is sent', async () => {
