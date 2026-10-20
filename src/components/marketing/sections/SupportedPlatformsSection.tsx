@@ -25,35 +25,34 @@ export function SupportedPlatformsSection() {
       className="border-b border-neutral-200/70 bg-white dark:border-white/10 dark:bg-[#151a21]"
       aria-labelledby="supported-platforms-title"
     >
-      <div className="mx-auto max-w-[80rem] px-3 pt-12 sm:px-8 sm:pt-16">
+      <div className="mx-auto max-w-[80rem] px-5 py-10 sm:px-10 sm:py-12 lg:px-14">
         <h2
           id="supported-platforms-title"
-          className="text-center text-2xl font-semibold tracking-tighter text-neutral-950 sm:text-3xl dark:text-white"
+          className="text-sm font-medium tracking-tight text-neutral-700 dark:text-neutral-300"
         >
           {title}
         </h2>
-      </div>
 
-      <div className="mt-8 pb-12 sm:mt-10 sm:pb-16">
         {/* dir="ltr" keeps the right-to-left scroll the same in right-to-left languages. */}
         <div
           dir="ltr"
-          className="logo-marquee overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_8%,black_92%,transparent)]"
+          className="logo-marquee mt-3 overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_6%,black_94%,transparent)]"
         >
-          <ul className="logo-marquee-track flex" role="list">
+          <ul className="logo-marquee-track flex items-center" role="list">
             {[...LOGOS, ...LOGOS].map((logo, index) => {
               const duplicate = index >= LOGOS.length
               return (
                 <li
                   key={`${logo.name}-${index}`}
                   aria-hidden={duplicate || undefined}
-                  className="me-3 flex h-16 w-44 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-neutral-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.05)] sm:me-4 sm:h-20 sm:w-56 dark:border-white/10"
+                  className="shrink-0"
                 >
+                  {/* The files carry built-in padding, so the logo art is about half the image height. */}
                   <img
                     src={logo.src}
                     alt={duplicate ? '' : logo.name}
                     draggable={false}
-                    className="h-full w-full object-contain"
+                    className="h-12 w-auto max-w-none dark:rounded-xl dark:bg-white sm:h-14"
                   />
                 </li>
               )
