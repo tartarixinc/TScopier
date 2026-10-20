@@ -133,6 +133,9 @@ export const landingJa: LandingTranslations = {
     eyebrow: '連携',
     title: '主要プラットフォームに対応',
   },
+  supportedPlatforms: {
+    title: '対応シグナル＆取引プラットフォーム',
+  },
   completePicture: {
     eyebrow: 'トータルな全体像',
     title: '本気のコピートレーダーのために。',

@@ -134,6 +134,9 @@ export const landingAr: LandingTranslations = {
     eyebrow: 'التكاملات',
     title: 'يعمل مع المنصات الرائدة',
   },
+  supportedPlatforms: {
+    title: 'منصات الإشارات والتداول المدعومة',
+  },
   completePicture: {
     eyebrow: 'الصورة الكاملة',
     title: 'مصمم لمتداولي النسخ الجادين.',

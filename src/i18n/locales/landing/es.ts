@@ -134,6 +134,9 @@ export const landingEs: LandingTranslations = {
     eyebrow: 'Integraciones',
     title: 'Compatible con las principales plataformas',
   },
+  supportedPlatforms: {
+    title: 'Plataformas de señales y trading compatibles',
+  },
   completePicture: {
     eyebrow: 'La visión completa',
     title: 'Hecho para copiadores de trading serios.',

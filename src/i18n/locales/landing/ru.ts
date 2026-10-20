@@ -134,6 +134,9 @@ export const landingRu: LandingTranslations = {
     eyebrow: 'Интеграции',
     title: 'Работает с ведущими платформами',
   },
+  supportedPlatforms: {
+    title: 'Поддерживаемые платформы сигналов и торговли',
+  },
   completePicture: {
     eyebrow: 'Полная картина',
     title: 'Создано для серьёзных копи-трейдеров.',
