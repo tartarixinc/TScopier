@@ -106,7 +106,7 @@ function CouponChip({ code }: { code: string }) {
 }
 
 const ctaClass =
-  'inline-flex shrink-0 items-center justify-center rounded-lg bg-amber-400 px-4 py-2 text-sm font-bold text-neutral-950 shadow-sm transition-colors hover:bg-amber-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white'
+  'inline-flex shrink-0 items-center justify-center rounded-full bg-green-400 px-5 py-2 text-sm font-semibold text-neutral-950 shadow-sm transition-colors hover:bg-green-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white'
 
 function PromoCta({ promo }: { promo: MarketingPromo }) {
   if (!promo.ctaHref || !promo.ctaLabel) return null
