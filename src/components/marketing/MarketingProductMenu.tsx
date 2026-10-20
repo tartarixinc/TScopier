@@ -37,7 +37,7 @@ const PLATFORMS = [
 ] as const
 
 const PANEL_GLASS =
-  'border border-white/80 bg-white/80 shadow-[0_24px_70px_-12px_rgba(15,23,42,0.25)] backdrop-blur-2xl dark:border-white/10 dark:bg-neutral-950/80 dark:shadow-[0_24px_70px_-12px_rgba(0,0,0,0.7)]'
+  'border border-neutral-200 bg-white shadow-[0_24px_70px_-12px_rgba(15,23,42,0.25)] dark:border-white/10 dark:bg-neutral-950 dark:shadow-[0_24px_70px_-12px_rgba(0,0,0,0.7)]'
 
 function SourceDots() {
   return (

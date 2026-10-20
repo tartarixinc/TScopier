@@ -31,6 +31,25 @@ function statusLabel(subscription: SocialCopySubscription): string {
   return `Error${subscription.errorCode ? ` · ${subscription.errorCode}` : ''}`
 }
 
+function eligibilityMessage(reason: string): string {
+  const messages: Record<string, string> = {
+    source_missing: 'The published source account is missing.',
+    source_not_published: 'The provider has not published this source.',
+    source_unsupported: 'Performance verification is not supported for this broker connection.',
+    account_mode_unknown: 'Reconnect the source so its demo/live mode can be verified.',
+    demo_only: 'Phase 1 copy eligibility is limited to demo source accounts.',
+    source_inactive: 'The provider must activate the source account.',
+    sync_failed: 'The source synchronization failed. The provider must reconnect it.',
+    source_disconnected: 'The provider source is disconnected.',
+    sync_pending: 'Waiting for the first successful source synchronization.',
+    history_stale: 'Source data is stale. The provider must restore synchronization.',
+    history_incomplete: 'Some closed trades are still missing verified broker results.',
+    minimum_trades_not_met: 'At least 10 complete closed trades are required.',
+    minimum_period_not_met: 'Closed-trade history must span at least 7 days.',
+  }
+  return messages[reason] ?? 'This provider does not currently meet copy eligibility requirements.'
+}
+
 export function SocialCopyPanel({ traderUserId, isSelf }: { traderUserId: string; isSelf: boolean }) {
   const { brokers } = useBrokerAccounts()
   const [sources, setSources] = useState<SocialCopySource[]>([])
@@ -151,7 +170,7 @@ export function SocialCopyPanel({ traderUserId, isSelf }: { traderUserId: string
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-xs text-neutral-500">Published source
               <select className="mt-1 block w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900" value={sourceId} onChange={event => setSourceId(event.target.value)}>
-                {sources.map(source => <option key={source.sourceId} value={source.sourceId}>{source.label} · {source.platform} · {source.accountMode} · {source.connectionHealthy ? 'healthy' : 'offline'}</option>)}
+                {sources.map(source => <option key={source.sourceId} value={source.sourceId}>{source.label} · {source.platform} · {source.accountMode} · {source.isCopyEligible ? 'eligible' : 'not eligible'}</option>)}
               </select>
             </label>
             <label className="text-xs text-neutral-500">Destination account
@@ -174,12 +193,15 @@ export function SocialCopyPanel({ traderUserId, isSelf }: { traderUserId: string
               <input type="number" min="0.01" step="0.01" className="mt-1 block w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900" value={maxLot} onChange={event => setMaxLot(event.target.value)} />
             </label>
           </div>
+          {selectedSource && !selectedSource.isCopyEligible ? (
+            <Alert variant="warning">Provider not eligible for copying: {eligibilityMessage(selectedSource.eligibilityReason)}</Alert>
+          ) : null}
           <label className="flex gap-2 text-xs text-neutral-600 dark:text-neutral-300">
             <input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} />
             I understand this persists a {selectedExecutionMode} subscription and can place real broker orders only after the worker acknowledges it.
           </label>
           {!configurationValid ? <p className="text-xs text-red-600 dark:text-red-400">Enter positive sizing values; fixed lot cannot exceed maximum lot.</p> : null}
-          <Button type="button" size="sm" disabled={Boolean(pending) || !confirmed || !configurationValid || !selectedSource?.connectionHealthy || !selectedDestination} onClick={() => {
+          <Button type="button" size="sm" disabled={Boolean(pending) || !confirmed || !configurationValid || !selectedSource?.connectionHealthy || !selectedSource?.isCopyEligible || !selectedDestination} onClick={() => {
             if (!selectedSource || !selectedDestination) return
             void run('create', () => createSocialCopySubscription(supabase, {
               sourceId: selectedSource.sourceId, destinationBrokerAccountId: selectedDestination.id,

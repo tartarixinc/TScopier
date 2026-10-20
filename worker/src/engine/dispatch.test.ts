@@ -89,6 +89,26 @@ describe('resolveExecutionEngine (cutover flag)', () => {
       false,
     )
   })
+  it('DXtrade provider bypasses EXECUTION_ENGINE and stays on v1', () => {
+    assert.equal(
+      resolveExecutionEngine({ brokerAccountId: 'b1', userId: 'u1', provider: 'dxtrade' }, { EXECUTION_ENGINE: 'v2' }),
+      'v1',
+    )
+    assert.equal(
+      isV2({ brokerAccountId: 'b1', userId: 'u1', provider: 'dxtrade' }, { EXECUTION_ENGINE: 'v2' }),
+      false,
+    )
+  })
+  it('TradeLocker provider bypasses EXECUTION_ENGINE and stays on v1', () => {
+    assert.equal(
+      resolveExecutionEngine({ brokerAccountId: 'b1', userId: 'u1', provider: 'tradelocker' }, { EXECUTION_ENGINE: 'v2' }),
+      'v1',
+    )
+    assert.equal(
+      isV2({ brokerAccountId: 'b1', userId: 'u1', provider: 'tradelocker' }, { EXECUTION_ENGINE: 'v2' }),
+      false,
+    )
+  })
   it('KuCoin provider bypasses EXECUTION_ENGINE and stays on v1', () => {
     assert.equal(
       resolveExecutionEngine({ brokerAccountId: 'b1', userId: 'u1', provider: 'kucoin' }, { EXECUTION_ENGINE: 'v2' }),

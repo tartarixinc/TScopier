@@ -28,7 +28,7 @@ export function ContainerScroll({
   }, [])
 
   const rotate = useTransform(scrollYProgress, [0, 1], [20, 0])
-  const scale = useTransform(scrollYProgress, [0, 1], isMobile ? [0.85, 1.95] : [0.95, 1.2])
+  const scale = useTransform(scrollYProgress, [0, 1], isMobile ? [0.9, 1] : [0.95, 1.2])
   const translate = useTransform(scrollYProgress, [0, 1], [0, -90])
 
   return (

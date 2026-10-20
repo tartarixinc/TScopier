@@ -61,6 +61,23 @@ describe('socialFollow client', () => {
 })
 
 describe('socialFollowErrorFrom', () => {
+  it('captures safe diagnostics for a missing directory RPC', async () => {
+    const cause = {
+      code: 'PGRST202',
+      message: 'Could not find the function public.get_social_directory without parameters in the schema cache',
+      details: 'database details must not be logged',
+    }
+    const { client } = clientWithRpc({ error: cause })
+
+    await expect(fetchSocialDirectory(client)).rejects.toMatchObject({
+      kind: 'backend_unavailable',
+      operation: 'directory',
+      databaseCode: 'PGRST202',
+      rpcName: 'get_social_directory',
+      diagnosticMessage: 'Required Supabase RPC is unavailable. Verify migrations and refresh the PostgREST schema cache.',
+    })
+  })
+
   it.each([
     [{ code: '42501', message: 'Social Follow requires a verified account' }, 'verification_required'],
     [{ code: '55000', message: 'Following requires a registered, listed social profile with a public identity' }, 'profile_required'],

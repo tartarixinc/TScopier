@@ -2015,21 +2015,21 @@ export function DashboardPage() {
   useEffect(() => {
     const accounts = linkedAccounts.filter(account => {
       const provider = resolveProvider(account)
-      if (provider === 'mtapi' || provider === 'ctrader' || provider === 'binance' || provider === 'bybit' || provider === 'kucoin') return hasLinkedBrokerForUi(account)
+      if (provider === 'mtapi' || provider === 'ctrader' || provider === 'binance' || provider === 'bybit' || provider === 'kucoin' || provider === 'dxtrade' || provider === 'tradelocker') return hasLinkedBrokerForUi(account)
       return isFxsocketLinkedBroker(account)
     })
     if (accounts.length === 0) return
 
     let cancelled = false
     const throttleUntilById: Record<string, number> = {}
-    const cursors = { mtapi: 0, ctrader: 0, binance: 0, bybit: 0, kucoin: 0, fxsocket: 0 }
-    const inflight = { mtapi: false, ctrader: false, binance: false, bybit: false, kucoin: false, fxsocket: false }
+    const cursors = { mtapi: 0, ctrader: 0, binance: 0, bybit: 0, kucoin: 0, dxtrade: 0, tradelocker: 0, fxsocket: 0 }
+    const inflight = { mtapi: false, ctrader: false, binance: false, bybit: false, kucoin: false, dxtrade: false, tradelocker: false, fxsocket: false }
 
-    const pollGroup = async (group: 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin' | 'fxsocket') => {
+    const pollGroup = async (group: 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin' | 'dxtrade' | 'tradelocker' | 'fxsocket') => {
       if (cancelled || inflight[group]) return
       const groupAccounts = accounts.filter(account => {
         const provider = resolveProvider(account)
-        if (group === 'fxsocket') return provider !== 'mtapi' && provider !== 'ctrader' && provider !== 'binance' && provider !== 'bybit' && provider !== 'kucoin'
+        if (group === 'fxsocket') return provider !== 'mtapi' && provider !== 'ctrader' && provider !== 'binance' && provider !== 'bybit' && provider !== 'kucoin' && provider !== 'dxtrade' && provider !== 'tradelocker'
         return provider === group
       })
       if (groupAccounts.length === 0) return
@@ -2044,7 +2044,7 @@ export function DashboardPage() {
           const provider = resolveProvider(account)
           const rawProvider: BrokerProvider = provider
           const lastWs = lastWsTickRef.current[account.id] ?? 0
-          if (provider !== 'mtapi' && provider !== 'ctrader' && provider !== 'binance' && provider !== 'bybit' && provider !== 'kucoin' && now - lastWs < 2500) continue
+          if (provider !== 'mtapi' && provider !== 'ctrader' && provider !== 'binance' && provider !== 'bybit' && provider !== 'kucoin' && provider !== 'dxtrade' && provider !== 'tradelocker' && now - lastWs < 2500) continue
           try {
             if (provider === 'ctrader' || provider === 'binance' || provider === 'bybit' || provider === 'kucoin') {
               const { trades } = await fxsocketBroker.trades({
@@ -2080,7 +2080,7 @@ export function DashboardPage() {
                   if (refreshed.account) replaceBroker(refreshed.account)
                   return refreshed.pending ? undefined : refreshed.summary
                 })()
-              : (await fxsocketBroker.liveSnapshot(account.id, rawProvider === 'ctrader' ? 'ctrader' : undefined)).summary
+              : (await fxsocketBroker.liveSnapshot(account.id, rawProvider === 'ctrader' || rawProvider === 'dxtrade' || rawProvider === 'tradelocker' ? rawProvider : undefined)).summary
             if (cancelled || !summary) return
             const snap = parseFxsocketAccountStreamData(summary as Record<string, unknown>)
             const summaryOpenTrades = typeof summary.open_trades === 'number' && Number.isFinite(summary.open_trades)
@@ -2131,10 +2131,10 @@ export function DashboardPage() {
     }
 
     const timers: number[] = []
-    const schedule = (group: 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin' | 'fxsocket', intervalMs: number, startDelayMs: number) => {
+    const schedule = (group: 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin' | 'dxtrade' | 'tradelocker' | 'fxsocket', intervalMs: number, startDelayMs: number) => {
       if (!accounts.some(account => {
         const provider = resolveProvider(account)
-        if (group === 'fxsocket') return provider !== 'mtapi' && provider !== 'ctrader' && provider !== 'binance' && provider !== 'bybit' && provider !== 'kucoin'
+        if (group === 'fxsocket') return provider !== 'mtapi' && provider !== 'ctrader' && provider !== 'binance' && provider !== 'bybit' && provider !== 'kucoin' && provider !== 'dxtrade' && provider !== 'tradelocker'
         return provider === group
       })) return
       timers.push(window.setInterval(() => {
@@ -2157,9 +2157,14 @@ export function DashboardPage() {
     schedule('bybit', 5_000, 1_600)
     // KuCoin marks open positions from the exchange on each trades call, like Binance and Bybit.
     schedule('kucoin', 5_000, 2_000)
+    // DXtrade reads balance, equity and open P&L from account metrics. Brokers cap each session at about
+    // ten requests a second, so poll gently.
+    schedule('dxtrade', 8_000, 2_400)
+    // TradeLocker allows about one read a second on its state routes, so poll slower still.
+    schedule('tradelocker', 10_000, 3_200)
     const fxCount = accounts.filter(account => {
       const provider = resolveProvider(account)
-      return provider !== 'mtapi' && provider !== 'ctrader' && provider !== 'binance' && provider !== 'bybit' && provider !== 'kucoin'
+      return provider !== 'mtapi' && provider !== 'ctrader' && provider !== 'binance' && provider !== 'bybit' && provider !== 'kucoin' && provider !== 'dxtrade' && provider !== 'tradelocker'
     }).length
     if (fxCount > 0) {
       schedule('fxsocket', Math.min(15_000, Math.max(4_000, 2_000 * Math.ceil(fxCount / 2))), 0)

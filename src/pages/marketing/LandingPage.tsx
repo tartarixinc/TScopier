@@ -6,6 +6,7 @@ import { HeroSection } from '../../components/marketing/sections/HeroSection'
 import { CompletePictureSection } from '../../components/marketing/sections/CompletePictureSection'
 // import { IntegrationsSection } from '../../components/marketing/sections/IntegrationsSection'
 import { ProductShowcaseSection } from '../../components/marketing/sections/ProductShowcaseSection'
+import { SellSignalsSection } from '../../components/marketing/sections/SellSignalsSection'
 import { WhyChooseSection } from '../../components/marketing/sections/WhyChooseSection'
 import { ComparisonSection } from '../../components/marketing/sections/ComparisonSection'
 import { FeaturesSection } from '../../components/marketing/sections/FeaturesSection'
@@ -25,6 +26,14 @@ export function LandingPage() {
     })
   }, [location.search])
 
+  // Arriving from another marketing page via "For Providers" (/#providers).
+  useEffect(() => {
+    if (!location.hash) return
+    const id = decodeURIComponent(location.hash.slice(1))
+    const t = window.setTimeout(() => document.getElementById(id)?.scrollIntoView({ block: 'start' }), 150)
+    return () => window.clearTimeout(t)
+  }, [location.hash])
+
   return (
     <MarketingLayout darkHero>
       <HeroSection />
@@ -33,6 +42,7 @@ export function LandingPage() {
       {/* <StatsSection /> */}
       <ProductShowcaseSection />
       <WhyChooseSection />
+      <SellSignalsSection />
       <FeaturesSection />
       <ComparisonSection />
       <StepsSection />

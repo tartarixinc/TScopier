@@ -23,7 +23,7 @@ function renderInline(text: string, variant: Variant): ReactNode[] {
         <code
           key={key++}
           className={clsx(
-            'rounded px-1 py-0.5 font-mono text-[0.85em]',
+            'rounded px-1 py-0.5  text-[0.85em]',
             variant === 'user'
               ? 'bg-white/20 text-white'
               : 'bg-neutral-100 text-teal-800 dark:bg-neutral-800 dark:text-teal-200',

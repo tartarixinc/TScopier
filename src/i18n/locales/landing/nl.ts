@@ -8,6 +8,8 @@ export const landingNl: LandingTranslations = {
     pricing: 'Prijzen',
     faq: 'FAQ',
     docs: 'Docs',
+    forTraders: 'Voor traders',
+    forProviders: 'Voor providers',
     signIn: 'Inloggen',
     getStarted: 'Aanmelden',
     dashboard: 'Dashboard',
@@ -33,7 +35,7 @@ export const landingNl: LandingTranslations = {
     subheadline:
       'Automatiseer je trades vanuit Telegram, WhatsApp, Discord, TradingView of een masteraccount naar 8+ brokerplatformen in minder dan 50 ms. Geen VPS nodig.',
     socialProof: 'TScopier.ai is nu UniCopier',
-    primaryCta: 'Start je gratis proefperiode van 5 dagen',
+    primaryCta: 'Kies je abonnement',
     secondaryCta: 'Zo werkt het',
     imageAlt:
       'UniCopier-dashboard met saldo, dagwinst, trade-resultaten en groeigrafieken van accounts',
@@ -150,13 +152,13 @@ export const landingNl: LandingTranslations = {
       { label: 'Geopende trades', value: '500K+' },
     ],
     eyebrow: 'Slim kopieren begint met slimmere tools',
-    title: 'Elke feature in UniCopier is gebouwd voor controle, duidelijkheid en meetbaar resultaat.',
+    title: 'Eindelijk een signaalkopieerder die werkt voor elk type signaal',
     cards: [
       {
         label: 'Executiesnelheid',
-        metric: '<150ms',
+        metric: '<50ms',
         metricVariant: 'teal',
-        description: 'Minder dan 150ms latency van signaal-parse tot broker-dispatch via onze cloud.',
+        description: 'Minder dan 50ms latency van signaal-parse tot broker-dispatch via onze cloud.',
         layout: 'tall',
         icon: 'zap',
       },
@@ -234,6 +236,16 @@ export const landingNl: LandingTranslations = {
         layout: 'short',
         icon: 'history',
       },
+    ],
+  },
+  providers: {
+    eyebrow: 'Voor signaalaanbieders',
+    title: 'Verkoop je signaaldienst met UniCopier.',
+    description: 'Bepaal je eigen prijs, bouw je community en laat andere traders je trades kopiëren voor een maandbedrag. Je houdt 100% van de winst.',
+    points: [
+      { title: 'Bepaal je prijs', description: 'Vraag een maandbedrag of laat gratis kopiëren toe.' },
+      { title: 'Bouw je community', description: 'Verzamel traders die je automatisch kopiëren.' },
+      { title: 'Houd 100%', description: 'Alles wat je kopieerders betalen is van jou.' },
     ],
   },
   features: {

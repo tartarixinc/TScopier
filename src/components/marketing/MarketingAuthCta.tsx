@@ -2,7 +2,7 @@ import clsx from 'clsx'
 import { ArrowRight } from 'lucide-react'
 import { useMarketingAuthState } from '../../hooks/useMarketingAuthState'
 import { useT } from '../../context/LocaleContext'
-import { appUrl, withQuery } from '../../lib/site'
+import { appUrl, marketingUrl, withQuery } from '../../lib/site'
 import { trackMarketingEvent } from '../../lib/analytics'
 
 type MarketingAuthCtaVariant = 'hero' | 'heroInline' | 'header' | 'headerMobile'
@@ -32,7 +32,9 @@ export function MarketingAuthCta({ variant, onNavigate }: MarketingAuthCtaProps)
   })()
   const signupHref = withQuery(appUrl('/signup'), { ref: referralRef })
   const loginHref = withQuery(appUrl('/login'), { ref: referralRef })
-  const onCtaClick = (action: 'signup' | 'login' | 'dashboard') => {
+  // The hero's primary button ("Choose your plan") goes to the pricing page.
+  const pricingHref = withQuery(marketingUrl('/pricing'), { ref: referralRef })
+  const onCtaClick = (action: 'signup' | 'login' | 'dashboard' | 'pricing') => {
     trackMarketingEvent('marketing_cta_click', {
       action,
       variant,
@@ -81,7 +83,7 @@ export function MarketingAuthCta({ variant, onNavigate }: MarketingAuthCtaProps)
 
   if (variant === 'heroInline') {
     return (
-      <a href={signupHref} onClick={() => onCtaClick('signup')} className={heroInlineCtaClass}>
+      <a href={pricingHref} onClick={() => onCtaClick('pricing')} className={heroInlineCtaClass}>
         {hero.primaryCta}
       </a>
     )
@@ -91,8 +93,8 @@ export function MarketingAuthCta({ variant, onNavigate }: MarketingAuthCtaProps)
     return (
       <div className="flex w-full flex-col items-center">
         <a
-          href={signupHref}
-          onClick={() => onCtaClick('signup')}
+          href={pricingHref}
+          onClick={() => onCtaClick('pricing')}
           className={heroCtaClass}
         >
           {hero.primaryCta}

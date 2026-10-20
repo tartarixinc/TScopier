@@ -696,6 +696,33 @@ export interface AccountConfigConnectFormTranslations {
   kucoinApiPassphraseLabel: string
   kucoinApiPassphraseHint: string
   kucoinKeysRequired: string
+  dxtradeConnectHint: string
+  dxtradeConnectButton: string
+  dxtradeServerUrlLabel: string
+  dxtradeServerUrlHint: string
+  dxtradeUsernameLabel: string
+  dxtradeDomainLabel: string
+  dxtradeDomainHint: string
+  dxtradePasswordLabel: string
+  dxtradePasswordHint: string
+  dxtradeAccountCodeLabel: string
+  dxtradeAccountCodeHint: string
+  dxtradeInvalidServer: string
+  dxtradeInvalidUsername: string
+  dxtradeLoginRequired: string
+  tradelockerConnectHint: string
+  tradelockerConnectButton: string
+  tradelockerServerLabel: string
+  tradelockerServerHint: string
+  tradelockerEmailLabel: string
+  tradelockerPasswordLabel: string
+  tradelockerPasswordHint: string
+  tradelockerAccountIdLabel: string
+  tradelockerAccountIdHint: string
+  tradelockerInvalidServer: string
+  tradelockerInvalidEmail: string
+  tradelockerInvalidAccountId: string
+  tradelockerLoginRequired: string
   brokerServerLabel: string
   brokerServerHint: string
   brokerServerPlaceholder: string

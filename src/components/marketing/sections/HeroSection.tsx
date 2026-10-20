@@ -60,9 +60,9 @@ export function HeroSection() {
 
   // -mt-16 / pt-16 runs the dark hero under the (transparent) floating nav, to the top of the page.
   return (
-    <section id="product" className="relative -mt-16 scroll-mt-20 overflow-hidden bg-[#151a21] pt-16">
+    <section id="product" className="relative -mt-16 scroll-mt-20 overflow-hidden bg-green-900 pt-16">
       <div
-        className="pointer-events-none absolute inset-0 opacity-[0.2] mix-blend-screen"
+        className="pointer-events-none absolute inset-0 opacity-[0.09] mix-blend-screen"
         style={{ backgroundImage: NOISE_BG, backgroundSize: '140px 140px' }}
         aria-hidden
       />
@@ -70,23 +70,23 @@ export function HeroSection() {
       <div className="relative">
         <ContainerScroll
           titleComponent={
-            <div className="text-left">
+            <div className="text-center lg:text-left">
               {announcement ? (
-                <div className="mb-6">
+                <div className="mb-6 flex justify-center lg:justify-start">
                   <AnnouncementTag announcement={announcement} />
                 </div>
               ) : null}
 
               <div className="grid items-start gap-8 lg:grid-cols-[1.15fr_1fr] lg:gap-16">
-                <h1 className="max-w-xl text-4xl font-bold tracking-tight text-white sm:text-5xl lg:text-[clamp(3.25rem,6vh,4.5rem)] lg:leading-[1.05]">
+                <h1 className="mx-auto max-w-xl text-4xl font-bold tracking-tight text-white sm:text-5xl lg:mx-0 lg:text-[clamp(3.25rem,6vh,4.5rem)] lg:leading-[1.05]">
                   {l.hero.headline}
                 </h1>
 
                 <div className="lg:pt-2">
-                  <p className="max-w-md text-sm leading-relaxed text-neutral-200 sm:text-base">
+                  <p className="mx-auto max-w-md text-sm leading-relaxed text-neutral-200 sm:text-base lg:mx-0">
                     {l.hero.subheadline}
                   </p>
-                  <div className="mt-6 flex flex-wrap items-center gap-3">
+                  <div className="mt-6 flex flex-wrap items-center justify-center gap-3 lg:justify-start">
                     <MarketingAuthCta variant="heroInline" />
                     <a
                       href="#how-it-works"
@@ -98,7 +98,7 @@ export function HeroSection() {
                   <MarketingPricingHint
                     basic={l.pricingSnippet.basic}
                     advanced={l.pricingSnippet.advanced}
-                    className="mt-4 text-[0.6875rem] leading-relaxed text-neutral-400"
+                    className="mt-4 text-center text-[0.6875rem] leading-relaxed text-green-100/80 lg:text-left"
                   />
                 </div>
               </div>

@@ -35,6 +35,15 @@ interface NoticeSnapshot {
 const EMPTY_PROFILES: SocialDirectoryProfile[] = []
 const EMPTY_PENDING_KEYS: ReadonlySet<string> = new Set()
 
+function reportSocialFollowError(error: SocialFollowError): void {
+  console.error('[Social Follow request failed]', {
+    rpcName: error.rpcName,
+    operation: error.operation,
+    code: error.databaseCode,
+    message: error.diagnosticMessage,
+  })
+}
+
 export function useSocialFollow() {
   const { user } = useAuth()
   const userId = user?.id ?? null
@@ -80,11 +89,13 @@ export function useSocialFollow() {
       setSnapshot({ identity, profiles, loading: false, error: null })
     } catch (cause) {
       if (!isCurrent(identity, generation, request)) return
+      const error = socialFollowErrorFrom(cause, 'directory')
+      reportSocialFollowError(error)
       setSnapshot(previous => ({
         identity,
         profiles: previous.identity === identity ? previous.profiles : [],
         loading: false,
-        error: socialFollowErrorFrom(cause, 'directory'),
+        error,
       }))
     }
   }, [isCurrent])
@@ -149,11 +160,13 @@ export function useSocialFollow() {
       }
     } catch (cause) {
       if (isCurrent(identity, generation)) {
+        const error = socialFollowErrorFrom(cause, 'mutation')
+        reportSocialFollowError(error)
         setSnapshot(previous => ({
           identity,
           profiles: previous.identity === identity ? previous.profiles : [],
           loading: false,
-          error: socialFollowErrorFrom(cause, 'mutation'),
+          error,
         }))
       }
     } finally {

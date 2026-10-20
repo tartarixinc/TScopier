@@ -151,11 +151,13 @@ export function authorityFromBrokerRow(row: {
   binance_account_id?: string | null
   bybit_account_id?: string | null
   kucoin_account_id?: string | null
+  dxtrade_account_id?: string | null
+  tradelocker_account_id?: string | null
   writer_epoch?: number | null
   provider_transition_state?: string | null
 }): BrokerWriteAuthority | null {
   const provider = row.provider == null || row.provider === '' ? 'fxsocket' : row.provider
-  if (provider !== 'fxsocket' && provider !== 'mtapi' && provider !== 'ctrader' && provider !== 'binance' && provider !== 'bybit' && provider !== 'kucoin') return null
+  if (provider !== 'fxsocket' && provider !== 'mtapi' && provider !== 'ctrader' && provider !== 'binance' && provider !== 'bybit' && provider !== 'kucoin' && provider !== 'dxtrade' && provider !== 'tradelocker') return null
   const sessionId = provider === 'mtapi'
     ? String(row.mtapi_session_id ?? '').trim()
     : provider === 'ctrader'
@@ -166,7 +168,11 @@ export function authorityFromBrokerRow(row: {
           ? String(row.bybit_account_id ?? '').trim()
           : provider === 'kucoin'
             ? String(row.kucoin_account_id ?? '').trim()
-            : String(row.fxsocket_account_id ?? row.metaapi_account_id ?? '').trim()
+            : provider === 'dxtrade'
+              ? String(row.dxtrade_account_id ?? '').trim()
+              : provider === 'tradelocker'
+                ? String(row.tradelocker_account_id ?? '').trim()
+                : String(row.fxsocket_account_id ?? row.metaapi_account_id ?? '').trim()
   const brokerAccountId = String(row.id ?? '').trim()
   const writerEpoch = Number(row.writer_epoch)
   const transitionState = row.provider_transition_state ?? 'stable'

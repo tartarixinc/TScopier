@@ -295,7 +295,7 @@ export function PopularChannelsPage() {
                       <div>
                         <span className="text-xs text-neutral-900 dark:text-neutral-50">Username</span>
                         <div className="flex items-center gap-1">
-                          <p className="text-sm text-neutral-900 dark:text-neutral-50 font-mono truncate">
+                          <p className="text-sm text-neutral-900 dark:text-neutral-50  truncate">
                             @{highlightText(ch.channel_username ?? '', searchQuery)}
                           </p>
                           <CopyButton text={`@${ch.channel_username}`} />
@@ -304,7 +304,7 @@ export function PopularChannelsPage() {
                       <div>
                         <span className="text-xs text-neutral-900 dark:text-neutral-50">Channel ID</span>
                         <div className="flex items-center gap-1">
-                          <p className="text-sm text-neutral-900 dark:text-neutral-50 font-mono truncate">
+                          <p className="text-sm text-neutral-900 dark:text-neutral-50  truncate">
                             {ch.telegram_chat_id}
                           </p>
                           <CopyButton text={ch.telegram_chat_id} />
