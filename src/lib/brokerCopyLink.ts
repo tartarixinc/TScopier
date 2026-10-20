@@ -136,3 +136,60 @@ export async function updateBrokerCopyLinkSettings(
     .eq('user_id', userId)
   return { error: error?.message ?? null }
 }
+
+/** What the user wants the mirror engine to do with this link. */
+export type MirrorCopyDesiredStatus = 'active' | 'paused' | 'stopped'
+
+/** Worker-owned lifecycle state for a mirror link. */
+export interface MirrorCopyLinkStateRow {
+  link_id: string
+  desired_status: MirrorCopyDesiredStatus
+  status: string
+  error_code: string | null
+  error_detail: string | null
+}
+
+/** Read the lifecycle state for the user's links. Missing table = no rows yet. */
+export async function fetchMirrorCopyLinkStates(
+  supabase: SupabaseClient,
+  linkIds: string[],
+): Promise<{ states: Record<string, MirrorCopyLinkStateRow>; error: string | null }> {
+  if (linkIds.length === 0) return { states: {}, error: null }
+  const { data, error } = await supabase
+    .from('mirror_copy_link_state')
+    .select('link_id,desired_status,status,error_code,error_detail')
+    .in('link_id', linkIds)
+  if (error) {
+    if (/mirror_copy_link_state/i.test(error.message) && /schema cache|does not exist|could not find/i.test(error.message)) {
+      return { states: {}, error: null }
+    }
+    return { states: {}, error: error.message }
+  }
+  const states: Record<string, MirrorCopyLinkStateRow> = {}
+  for (const row of (data ?? []) as MirrorCopyLinkStateRow[]) states[row.link_id] = row
+  return { states, error: null }
+}
+
+/** Activate, pause, or stop copying for one link. */
+export async function setMirrorCopyLinkStatus(
+  supabase: SupabaseClient,
+  linkId: string,
+  status: MirrorCopyDesiredStatus,
+): Promise<{ error: string | null }> {
+  const { error } = await supabase.rpc('set_mirror_copy_link_status', {
+    p_link_id: linkId,
+    p_status: status,
+  })
+  return { error: error?.message ?? null }
+}
+
+/** Badge tone for a link's lifecycle state. */
+export function mirrorCopyStatusTone(
+  state: MirrorCopyLinkStateRow | undefined,
+): 'success' | 'warning' | 'error' | 'neutral' {
+  if (!state) return 'neutral'
+  if (state.status === 'error' || state.status === 'unsupported_provider' || state.error_code) return 'error'
+  if (state.status === 'active') return 'success'
+  if (state.status === 'stopped' || state.desired_status === 'stopped') return 'neutral'
+  return 'warning'
+}

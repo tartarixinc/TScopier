@@ -461,6 +461,12 @@ broker: {
     back: 'Back',
     next: 'Next',
     loadError: 'Could not save this change.',
+    startCopying: 'Start copying',
+    pauseCopying: 'Pause copying',
+    statusActive: 'Copying',
+    statusPaused: 'Paused',
+    statusStopped: 'Stopped',
+    statusError: 'Copy error',
     setup: {
       title: 'Configure {account}',
       preview: 'Preview setup',

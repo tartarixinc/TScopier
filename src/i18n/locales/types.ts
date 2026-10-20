@@ -987,6 +987,12 @@ export interface MirrorTradingPageTranslations {
   back: string
   next: string
   loadError: string
+  startCopying?: string
+  pauseCopying?: string
+  statusActive?: string
+  statusPaused?: string
+  statusStopped?: string
+  statusError?: string
   setup: {
     title: string
     preview: string
