@@ -134,6 +134,9 @@ export const landingSv: LandingTranslations = {
     eyebrow: 'Integrationer',
     title: 'Fungerar med ledande plattformar',
   },
+  supportedPlatforms: {
+    title: 'Plattformar för signaler och handel som stöds',
+  },
   completePicture: {
     eyebrow: 'Helheten',
     title: 'Byggt för seriösa copytraders.',

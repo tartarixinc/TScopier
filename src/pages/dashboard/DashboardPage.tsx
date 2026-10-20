@@ -2160,8 +2160,9 @@ export function DashboardPage() {
     // DXtrade reads balance, equity and open P&L from account metrics. Brokers cap each session at about
     // ten requests a second, so poll gently.
     schedule('dxtrade', 8_000, 2_400)
-    // TradeLocker allows about one read a second on its state routes, so poll slower still.
-    schedule('tradelocker', 10_000, 3_200)
+    // TradeLocker allows about one read a second on its state routes. A snapshot is two reads, so every
+    // six seconds stays well under that while keeping Open PnL close to live.
+    schedule('tradelocker', 6_000, 2_400)
     // Match-Trader allows 500 requests a minute per login; each snapshot is a few reads.
     schedule('matchtrader', 10_000, 3_600)
     const fxCount = accounts.filter(account => {

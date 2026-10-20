@@ -388,6 +388,9 @@ export interface LandingTranslations {
     eyebrow: string
     title: string
   }
+  supportedPlatforms: {
+    title: string
+  }
   completePicture: {
     eyebrow: string
     title: string

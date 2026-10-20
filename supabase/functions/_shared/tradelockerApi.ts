@@ -239,6 +239,18 @@ function columnsOf(config: Json, name: string): string[] {
   return (Array.isArray(panel.columns) ? panel.columns as Column[] : []).map(column => String(record(column).id ?? ""))
 }
 
+/** Read a column ignoring letter case (TradeLocker spells these `openNetPnL`, `openNetPNL`, ...). */
+export function pickColumn(row: Json, ...names: string[]): unknown {
+  for (const name of names) {
+    if (row[name] !== undefined && row[name] !== null) return row[name]
+  }
+  const wanted = new Set(names.map(name => name.toLowerCase()))
+  for (const key of Object.keys(row)) {
+    if (wanted.has(key.toLowerCase()) && row[key] !== undefined && row[key] !== null) return row[key]
+  }
+  return undefined
+}
+
 export function rowsToObjects(columns: string[], list: unknown): Json[] {
   if (!Array.isArray(list)) return []
   return list.map(row => {
@@ -328,7 +340,7 @@ export async function tradelockerSnapshot(
   const values = record(record(data).d).accountDetailsData
   const state = rowsToObjects(columns, [Array.isArray(values) ? values : []])[0] ?? {}
   const balance = finite(state.balance) ?? info.balance
-  const profit = finite(state.openNetPnL) ?? finite(state.openGrossPnL)
+  const profit = finite(pickColumn(state, "openNetPnL")) ?? finite(pickColumn(state, "openGrossPnL"))
   const equity = finite(state.projectedBalance) ?? (balance !== undefined && profit !== undefined ? balance + profit : balance)
   const canTrade = info.status === "ACTIVE"
   return {
@@ -437,6 +449,8 @@ export interface TradelockerPosition {
   stopLoss: number | undefined
   takeProfit: number | undefined
   openedAt: string | undefined
+  /** Floating P/L from the positions table (`unrealizedPl`), account currency. */
+  profit: number | undefined
   comment: string
 }
 
@@ -490,6 +504,7 @@ export async function tradelockerPositions(creds: TradelockerCredentials, ref: T
       stopLoss: slPrice && slPrice > 0 ? slPrice : undefined,
       takeProfit: tpPrice && tpPrice > 0 ? tpPrice : undefined,
       openedAt: isoFromMs(row.openDate) ?? undefined,
+      profit: finite(pickColumn(row, "unrealizedPl")),
       comment: String(row.strategyId ?? "").trim(),
     })
   }
@@ -506,6 +521,7 @@ export async function tradelockerOpenedOrders(creds: TradelockerCredentials, ref
     openPrice: position.openPrice || undefined,
     stopLoss: position.stopLoss,
     takeProfit: position.takeProfit,
+    profit: position.profit,
     comment: position.comment,
   }))
 }
@@ -638,7 +654,7 @@ export async function tradelockerAccountTrades(args: {
         sl: position.stopLoss ?? null,
         tp: position.takeProfit ?? null,
         close_price: null,
-        profit: null,
+        profit: position.profit ?? null,
         swap: null,
         commission: null,
         comment: position.comment || null,

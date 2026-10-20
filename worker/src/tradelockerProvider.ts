@@ -407,7 +407,11 @@ export class TradelockerProvider implements BrokerProvider {
     const account = await this.accountInfo(st)
     const state = await st.client.accountState()
     const balance = finite(state.balance)
-    const profit = finite(state.openNetPnL) ?? finite(state.openGrossPnL)
+    const stateValue = (name: string): unknown => {
+      const key = Object.keys(state).find(k => k.toLowerCase() === name.toLowerCase())
+      return key === undefined ? undefined : (state as Record<string, unknown>)[key]
+    }
+    const profit = finite(stateValue('openNetPnL')) ?? finite(stateValue('openGrossPnL'))
     return {
       balance,
       equity: finite(state.projectedBalance) ?? (balance !== undefined && profit !== undefined ? balance + profit : balance),
