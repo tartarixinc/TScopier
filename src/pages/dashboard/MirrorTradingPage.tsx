@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, ChevronUp, OctagonAlert, Pause, Play, Plus, Settings, Trash2, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, OctagonAlert, Pause, Play, Plus, Settings, Square, Trash2, X } from 'lucide-react'
 import clsx from 'clsx'
 import { SlaveConfigureModal } from '../../components/configure/SlaveConfigureModal'
 import { useAuth } from '../../context/AuthContext'
@@ -10,9 +10,10 @@ import { useT } from '../../context/LocaleContext'
 import { getBrokerDisplayLabel } from '../../lib/brokerChannelLink'
 import {
   connectBrokerCopyLink,
-  disconnectBrokerCopyLink,
+  disconnectBrokerCopyLinkSafely,
   fetchBrokerCopyLinks,
   fetchMirrorCopyLinkStates,
+  humanizeMirrorDeleteError,
   mirrorCopyStatusTone,
   setBrokerCopySource,
   setMirrorCopyLinkStatus,
@@ -37,6 +38,10 @@ import { Toggle } from '../../components/ui/Toggle'
 
 const DISMISSED_DESTINATION_KEY = 'tscopier:configurations:dismissed-destinations:'
 const SLAVE_KEY = 'tscopier:mirror-trading:slaves:'
+const REMOVE_SLAVE_CONFIRM_FALLBACK =
+  'Remove this slave account? Any copied trades still open on it will be closed first.'
+const STOP_COPYING_CONFIRM_FALLBACK =
+  'Stop copying and close all copied trades on this slave account? Copying stays off until you start it again.'
 
 function readIds(key: string): string[] {
   try {
@@ -191,6 +196,7 @@ export function MirrorTradingPage() {
   const [configSaveError, setConfigSaveError] = useState<string | null>(null)
   const [linkStates, setLinkStates] = useState<Record<string, MirrorCopyLinkStateRow>>({})
   const [busyLinkId, setBusyLinkId] = useState<string | null>(null)
+  const [removingSlaveId, setRemovingSlaveId] = useState<string | null>(null)
   const assignAfterConnectRef = useRef<string | null>(null)
   const chainRef = useRef(Promise.resolve())
   const settingsSaveRef = useRef(Promise.resolve())
@@ -260,6 +266,12 @@ export function MirrorTradingPage() {
     })
   }, [user?.id, busyLinkId])
 
+  // Link removals can be refused by the database while copied trades are still
+  // open; the refusal text carries a marker the user should never see.
+  const fail = useCallback((message: string | null) => {
+    setError(humanizeMirrorDeleteError(message))
+  }, [])
+
   const dismissDestination = useCallback((brokerId: string) => {
     if (!user?.id) return
     const key = `${DISMISSED_DESTINATION_KEY}${user.id}`
@@ -284,14 +296,14 @@ export function MirrorTradingPage() {
       setError(null)
       const { broker, error: saveError } = await setBrokerCopySource(supabase, user.id, brokerId, true)
       if (saveError || !broker) {
-        setError(saveError ?? copy.loadError)
+        fail(saveError ?? copy.loadError)
         return
       }
       replaceBroker(broker)
       setLinks(prev => prev.filter(link => link.destination_broker_account_id !== brokerId))
       setSlaveIds(prev => prev.filter(id => id !== brokerId))
     })
-  }, [copy.loadError, enqueue, replaceBroker, user?.id])
+  }, [copy.loadError, enqueue, fail, replaceBroker, user?.id])
 
   const addSlave = useCallback((brokerId: string) => {
     enqueue(async () => {
@@ -301,7 +313,7 @@ export function MirrorTradingPage() {
       if (current?.copy_source === true) {
         const { broker, error: saveError } = await setBrokerCopySource(supabase, user.id, brokerId, false)
         if (saveError || !broker) {
-          setError(saveError ?? copy.loadError)
+          fail(saveError ?? copy.loadError)
           return
         }
         replaceBroker(broker)
@@ -310,7 +322,7 @@ export function MirrorTradingPage() {
       undismissDestination(brokerId)
       setSlaveIds(prev => (prev.includes(brokerId) ? prev : [...prev, brokerId]))
     })
-  }, [copy.loadError, enqueue, replaceBroker, undismissDestination, user?.id])
+  }, [copy.loadError, enqueue, fail, replaceBroker, undismissDestination, user?.id])
 
   const removeMaster = useCallback((brokerId: string) => {
     enqueue(async () => {
@@ -318,68 +330,83 @@ export function MirrorTradingPage() {
       setError(null)
       const { broker, error: saveError } = await setBrokerCopySource(supabase, user.id, brokerId, false)
       if (saveError || !broker) {
-        setError(saveError ?? copy.loadError)
+        fail(saveError ?? copy.loadError)
         return
       }
       replaceBroker(broker)
       setLinks(prev => prev.filter(link => link.source_broker_account_id !== brokerId))
       dismissDestination(brokerId)
     })
-  }, [copy.loadError, dismissDestination, enqueue, replaceBroker, user?.id])
+  }, [copy.loadError, dismissDestination, enqueue, fail, replaceBroker, user?.id])
 
+  // Removing a slave (or moving it to another master) now flattens first when
+  // copied trades are still open: the helper asks the worker to stop the link,
+  // waits for the confirmation, and only then deletes. On a failed stop the link
+  // stays, so nothing is left unmanaged at the broker.
   const removeSlave = useCallback((brokerId: string) => {
+    if (!window.confirm(copy.removeSlaveConfirm ?? REMOVE_SLAVE_CONFIRM_FALLBACK)) return
     enqueue(async () => {
       if (!user?.id) return
       setError(null)
-      const existing = linksRef.current.filter(link => link.destination_broker_account_id === brokerId)
-      for (const link of existing) {
-        const { error: saveError } = await disconnectBrokerCopyLink(
-          supabase,
-          user.id,
-          link.source_broker_account_id,
-          brokerId,
-        )
-        if (saveError) {
-          setError(saveError)
-          return
+      setRemovingSlaveId(brokerId)
+      try {
+        const existing = linksRef.current.filter(link => link.destination_broker_account_id === brokerId)
+        for (const link of existing) {
+          setBusyLinkId(link.id)
+          try {
+            const result = await disconnectBrokerCopyLinkSafely(supabase, user.id, link)
+            if (result.error) {
+              fail(result.error)
+              return
+            }
+          } finally {
+            setBusyLinkId(null)
+          }
         }
+        setLinks(prev => prev.filter(link => link.destination_broker_account_id !== brokerId))
+        setSlaveIds(prev => prev.filter(id => id !== brokerId))
+      } finally {
+        setRemovingSlaveId(null)
       }
-      setLinks(prev => prev.filter(link => link.destination_broker_account_id !== brokerId))
-      setSlaveIds(prev => prev.filter(id => id !== brokerId))
     })
-  }, [enqueue, user?.id])
+  }, [copy.removeSlaveConfirm, enqueue, fail, user?.id])
 
   const assignMaster = useCallback((slaveId: string, masterId: string) => {
     enqueue(async () => {
       if (!user?.id) return
       setError(null)
-      const existing = linksRef.current.filter(link => link.destination_broker_account_id === slaveId)
-      for (const link of existing) {
-        if (link.source_broker_account_id === masterId) continue
-        const { error: saveError } = await disconnectBrokerCopyLink(
-          supabase,
-          user.id,
-          link.source_broker_account_id,
-          slaveId,
-        )
-        if (saveError) {
-          setError(saveError)
+      setRemovingSlaveId(slaveId)
+      try {
+        const existing = linksRef.current.filter(link => link.destination_broker_account_id === slaveId)
+        for (const link of existing) {
+          if (link.source_broker_account_id === masterId) continue
+          setBusyLinkId(link.id)
+          try {
+            const result = await disconnectBrokerCopyLinkSafely(supabase, user.id, link)
+            if (result.error) {
+              fail(result.error)
+              return
+            }
+          } finally {
+            setBusyLinkId(null)
+          }
+        }
+        setLinks(prev => prev.filter(link =>
+          link.destination_broker_account_id !== slaveId || link.source_broker_account_id === masterId,
+        ))
+        if (!masterId || existing.some(link => link.source_broker_account_id === masterId)) return
+        const { link, error: saveError } = await connectBrokerCopyLink(supabase, user.id, masterId, slaveId)
+        if (saveError || !link) {
+          fail(saveError ?? copy.loadError)
           return
         }
+        undismissDestination(slaveId)
+        setLinks(prev => (prev.some(item => item.id === link.id) ? prev : [...prev, link]))
+      } finally {
+        setRemovingSlaveId(null)
       }
-      setLinks(prev => prev.filter(link =>
-        link.destination_broker_account_id !== slaveId || link.source_broker_account_id === masterId,
-      ))
-      if (!masterId || existing.some(link => link.source_broker_account_id === masterId)) return
-      const { link, error: saveError } = await connectBrokerCopyLink(supabase, user.id, masterId, slaveId)
-      if (saveError || !link) {
-        setError(saveError ?? copy.loadError)
-        return
-      }
-      undismissDestination(slaveId)
-      setLinks(prev => (prev.some(item => item.id === link.id) ? prev : [...prev, link]))
     })
-  }, [copy.loadError, enqueue, undismissDestination, user?.id])
+  }, [copy.loadError, enqueue, fail, undismissDestination, user?.id])
 
   useEffect(() => {
     if (!pendingSourceBroker || !user?.id) return
@@ -554,6 +581,7 @@ export function MirrorTradingPage() {
                           link={link}
                           linkState={link ? linkStates[link.id] : undefined}
                           copyBusy={link != null && busyLinkId === link.id}
+                          removing={removingSlaveId === slave.id}
                           copy={copy}
                           modes={t.copyRisk.modes}
                           emergencyLabel={link?.manual_settings.copy_risk?.protection.emergency_stop ? t.copyRisk.resumeEmergency : t.copyRisk.emergencyStop}
@@ -803,6 +831,7 @@ function SlaveRow({
   link,
   linkState,
   copyBusy,
+  removing,
   copy,
   modes,
   emergencyLabel,
@@ -817,6 +846,7 @@ function SlaveRow({
   link?: BrokerCopyLinkRow
   linkState?: MirrorCopyLinkStateRow
   copyBusy: boolean
+  removing: boolean
   copy: {
     slave: string
     configure: string
@@ -827,9 +857,13 @@ function SlaveRow({
     riskBalancePercent: string
     startCopying?: string
     pauseCopying?: string
+    stopCopying?: string
+    stopCopyingConfirm?: string
+    closingCopies?: string
     statusActive?: string
     statusPaused?: string
     statusStopped?: string
+    statusStopping?: string
     statusError?: string
   }
   modes: CopyRiskTranslations['modes']
@@ -847,15 +881,21 @@ function SlaveRow({
   const copyingActive = desired === 'active'
   const startLabel = copy.startCopying ?? 'Start copying'
   const pauseLabel = copy.pauseCopying ?? 'Pause copying'
+  const stopLabel = copy.stopCopying ?? 'Stop copying'
+  const stopConfirm = copy.stopCopyingConfirm ?? STOP_COPYING_CONFIRM_FALLBACK
+  const removingLabel = copy.closingCopies ?? 'Closing copied trades…'
+  const stopping = desired === 'stopped' && linkState != null && linkState.status !== 'stopped'
   const statusLabel = linkState?.status === 'error'
     || linkState?.status === 'unsupported_provider'
     || linkState?.error_code
     ? (copy.statusError ?? 'Copy error')
-    : desired === 'active'
-      ? (copy.statusActive ?? 'Copying')
-      : desired === 'stopped'
-        ? (copy.statusStopped ?? 'Stopped')
-        : (copy.statusPaused ?? 'Paused')
+    : stopping
+      ? (copy.statusStopping ?? 'Stopping…')
+      : desired === 'active'
+        ? (copy.statusActive ?? 'Copying')
+        : desired === 'stopped'
+          ? (copy.statusStopped ?? 'Stopped')
+          : (copy.statusPaused ?? 'Paused')
   return (
     <tr>
       <td className="border-y border-l border-dashed border-amber-300/80 bg-amber-50/70 px-4 py-3 dark:border-amber-700/50 dark:bg-amber-950/20">
@@ -892,33 +932,46 @@ function SlaveRow({
         {risk.setting}
       </td>
       <td className="border-y border-dashed border-amber-300/80 bg-amber-50/70 px-3 py-3 dark:border-amber-700/50 dark:bg-amber-950/20">
-        <Toggle checked={active} onChange={onActiveChange} />
+        <Toggle checked={active} onChange={onActiveChange} disabled={removing} />
       </td>
       <td className="border-y border-r border-dashed border-amber-300/80 bg-amber-50/70 px-4 py-3 dark:border-amber-700/50 dark:bg-amber-950/20">
         <div className="flex flex-wrap items-center gap-1.5">
           <RowAction
             label={copyingActive ? pauseLabel : startLabel}
-            disabled={!link || copyBusy}
+            disabled={!link || copyBusy || removing}
             onClick={() => onCopyingChange(copyingActive ? 'paused' : 'active')}
           >
             {copyingActive ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
             {copyingActive ? pauseLabel : startLabel}
           </RowAction>
-          <RowAction label={copy.configure} disabled={!link} onClick={onConfigure}>
+          {link && desired !== 'stopped' ? (
+            <RowAction
+              label={stopLabel}
+              danger
+              disabled={copyBusy || removing}
+              onClick={() => {
+                if (window.confirm(stopConfirm)) onCopyingChange('stopped')
+              }}
+            >
+              <Square className="h-3.5 w-3.5" />
+              {stopLabel}
+            </RowAction>
+          ) : null}
+          <RowAction label={copy.configure} disabled={!link || removing} onClick={onConfigure}>
             <Settings className="h-3.5 w-3.5" />
             {copy.configure}
           </RowAction>
-          <RowAction label={emergencyLabel} disabled={!link} danger={link?.manual_settings.copy_risk?.protection.emergency_stop === true} onClick={onEmergency}>
+          <RowAction label={emergencyLabel} disabled={!link || removing} danger={link?.manual_settings.copy_risk?.protection.emergency_stop === true} onClick={onEmergency}>
             <OctagonAlert className="h-3.5 w-3.5" />
             {emergencyLabel}
           </RowAction>
-          <RowAction label={active ? copy.pause : copy.resume} onClick={() => onActiveChange(!active)}>
+          <RowAction label={active ? copy.pause : copy.resume} disabled={removing} onClick={() => onActiveChange(!active)}>
             {active ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
             {active ? copy.pause : copy.resume}
           </RowAction>
-          <RowAction label={copy.delete} danger onClick={onDelete}>
+          <RowAction label={removing ? removingLabel : copy.delete} danger disabled={removing} onClick={onDelete}>
             <Trash2 className="h-3.5 w-3.5" />
-            {copy.delete}
+            {removing ? removingLabel : copy.delete}
           </RowAction>
         </div>
       </td>

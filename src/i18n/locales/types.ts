@@ -1005,9 +1005,14 @@ export interface MirrorTradingPageTranslations {
   loadError: string
   startCopying?: string
   pauseCopying?: string
+  stopCopying?: string
+  stopCopyingConfirm?: string
+  closingCopies?: string
+  removeSlaveConfirm?: string
   statusActive?: string
   statusPaused?: string
   statusStopped?: string
+  statusStopping?: string
   statusError?: string
   setup: {
     title: string

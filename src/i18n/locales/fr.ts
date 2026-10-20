@@ -464,6 +464,11 @@ export const fr: Translations = {
     back: 'Retour',
     next: 'Suivant',
     loadError: 'Impossible d’enregistrer cette modification.',
+    stopCopying: 'Arrêter la copie',
+    stopCopyingConfirm: 'Arrêter la copie et clôturer toutes les opérations copiées sur ce compte esclave ? La copie restera arrêtée jusqu’à ce que vous la relanciez.',
+    closingCopies: 'Clôture des opérations copiées…',
+    removeSlaveConfirm: 'Retirer ce compte esclave ? Toutes les opérations copiées encore ouvertes seront d’abord clôturées.',
+    statusStopping: 'Arrêt en cours…',
     setup: {
       title: 'Configurer {account}',
       preview: 'Aperçu',

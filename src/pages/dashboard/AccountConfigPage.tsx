@@ -10,6 +10,7 @@ import {
 import clsx from 'clsx'
 import { supabase } from '../../lib/supabase'
 import { platformIconSrc } from '../../lib/activityRoute'
+import { humanizeMirrorDeleteError } from '../../lib/brokerCopyLink'
 import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
 import { interpolate } from '../../i18n/interpolate'
@@ -2714,7 +2715,7 @@ export function AccountConfigPage() {
           if (prev.some(b => b.id === id)) return prev
           return sortBrokerAccountsNewestFirst([...prev, removed])
         })
-        setError(/unauthorized/i.test(msg) ? bl.deleteSessionExpired : msg)
+        setError(/unauthorized/i.test(msg) ? bl.deleteSessionExpired : humanizeMirrorDeleteError(msg) ?? msg)
       }
     } finally {
       setDeleteInProgress(false)

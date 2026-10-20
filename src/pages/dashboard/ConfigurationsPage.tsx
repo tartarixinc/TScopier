@@ -21,7 +21,9 @@ import { connectChannelToBroker, disconnectChannelFromBroker, getBrokerDisplayLa
 import {
   connectBrokerCopyLink,
   disconnectBrokerCopyLink,
+  disconnectBrokerCopyLinkSafely,
   fetchBrokerCopyLinks,
+  humanizeMirrorDeleteError,
   setBrokerCopySource,
   updateBrokerCopyLinkSettings,
   type BrokerCopyLinkRow,
@@ -120,6 +122,8 @@ const PLACED_CHANNEL_KEY = 'tscopier:configurations:placed-channels:'
 const BROKER_ORDER_KEY = 'tscopier:configurations:broker-order:'
 const DESTINATION_KEY = 'tscopier:configurations:placed-destinations:'
 const DISMISSED_DESTINATION_KEY = 'tscopier:configurations:dismissed-destinations:'
+const REMOVE_LINK_CONFIRM_FALLBACK =
+  'Remove this slave account? Any copied trades still open on it will be closed first.'
 
 function readStoredOrder(key: string): string[] {
   try {
@@ -501,7 +505,7 @@ export function ConfigurationsPage() {
       const { broker, error } = await setBrokerCopySource(supabase, user.id, brokerId, true)
       linkingRef.current = false
       if (error || !broker) {
-        setLinkError(error ?? copy.loadError)
+        setLinkError(humanizeMirrorDeleteError(error ?? copy.loadError))
         return
       }
       latestBrokersRef.current = latestBrokersRef.current.map(item =>
@@ -702,15 +706,27 @@ export function ConfigurationsPage() {
     const task = linkChainRef.current.then(async () => {
       if (!user?.id) return false
       const previous = copyLinksRef.current
+      const existing = previous.find(item =>
+        item.source_broker_account_id === sourceId && item.destination_broker_account_id === destinationId,
+      )
+      // Removing a link with open copied trades flattens them first (the safe
+      // helper below); ask before closing live trades, same as the mirror page.
+      if (existing && !window.confirm(t.mirrorTradingPage.removeSlaveConfirm ?? REMOVE_LINK_CONFIRM_FALLBACK)) {
+        return false
+      }
       setCopyLinks(prev => prev.filter(link =>
         link.source_broker_account_id !== sourceId || link.destination_broker_account_id !== destinationId,
       ))
       linkingRef.current = true
-      const { error } = await disconnectBrokerCopyLink(supabase, user.id, sourceId, destinationId)
+      // The safe helper flattens first when copied trades are still open (the
+      // guard refuses the delete, the worker closes the copies, then it retries).
+      const { error } = existing
+        ? await disconnectBrokerCopyLinkSafely(supabase, user.id, existing)
+        : await disconnectBrokerCopyLink(supabase, user.id, sourceId, destinationId)
       linkingRef.current = false
       if (!error) return true
       setCopyLinks(previous)
-      setLinkError(error)
+      setLinkError(humanizeMirrorDeleteError(error))
       return false
     })
     linkChainRef.current = task.then(() => undefined, () => undefined)
@@ -738,7 +754,7 @@ export function ConfigurationsPage() {
         setChannelOrder(previousOrder)
         setPlacedDestinationIds(previousDestinations)
         setDismissedDestinationIds(previousDismissed)
-        setLinkError(error ?? copy.loadError)
+        setLinkError(humanizeMirrorDeleteError(error ?? copy.loadError))
         return
       }
       latestBrokersRef.current = latestBrokersRef.current.map(item =>

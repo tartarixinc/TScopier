@@ -464,6 +464,11 @@ export const es: Translations = {
     back: 'Atrás',
     next: 'Siguiente',
     loadError: 'No se pudo guardar este cambio.',
+    stopCopying: 'Detener la copia',
+    stopCopyingConfirm: '¿Detener la copia y cerrar todas las operaciones copiadas en esta cuenta esclava? La copia seguirá detenida hasta que la inicies de nuevo.',
+    closingCopies: 'Cerrando operaciones copiadas…',
+    removeSlaveConfirm: '¿Eliminar esta cuenta esclava? Cualquier operación copiada que siga abierta se cerrará primero.',
+    statusStopping: 'Deteniendo…',
     setup: {
       title: 'Configurar {account}',
       preview: 'Vista previa',
