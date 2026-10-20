@@ -584,13 +584,56 @@ test('orders on one account are written one at a time', async () => {
   assert.equal(fake.positions.find(p => p.tradableInstrumentId === 12)!.side, 'sell')
 })
 
+function providerWithClock(clock: { now: number }): TradelockerProvider {
+  return new TradelockerProvider({
+    loadCredentials: async () => CREDENTIAL,
+    fetchImpl: fake.fetchImpl,
+    now: () => clock.now,
+    sleep: async () => {},
+    clientOptions: { developerKey: '' },
+  })
+}
+
 test('a 401 triggers one re-login and the request is retried', async () => {
-  const tl = provider()
+  const clock = { now: NOW }
+  const tl = providerWithClock(clock)
   await tl.openedOrders('fp-1')
   assert.equal(fake.logins, 1)
   fake.expireToken = true
+  clock.now += 5_000
   await tl.openedOrders('fp-1')
   assert.equal(fake.logins, 2)
+})
+
+test('book reads a moment apart share one fetch, and a write or the passing of time makes the next one fresh', async () => {
+  const clock = { now: NOW }
+  const tl = providerWithClock(clock)
+  const reads = () => fake.callsTo('GET', `${BASE}/positions`).length
+  await tl.openedOrders('fp-1')
+  await tl.openedOrders('fp-1')
+  assert.equal(reads(), 1)
+
+  clock.now += 2_000
+  await tl.openedOrders('fp-1')
+  assert.equal(reads(), 2)
+
+  await tl.orderSend('fp-1', { symbol: 'EURUSD', operation: 'Buy', volume: 0.1, comment: COMMENT })
+  const afterWrite = reads()
+  const book = await tl.openedOrders('fp-1')
+  assert.equal(reads(), afterWrite + 1)
+  assert.equal(book.length, 1)
+})
+
+test('closing a position reuses the book read that just came before it and reads fresh afterwards', async () => {
+  const clock = { now: NOW }
+  const tl = providerWithClock(clock)
+  const sent = await tl.orderSend('fp-1', { symbol: 'EURUSD', operation: 'Buy', volume: 0.1, comment: COMMENT })
+  const ticket = sent.positionTicket!
+  await tl.openedOrders('fp-1')
+  const before = fake.callsTo('GET', `${BASE}/positions`).length
+  await tl.orderClose('fp-1', { ticket })
+  assert.equal(fake.callsTo('GET', `${BASE}/positions`).length, before)
+  assert.equal((await tl.openedOrders('fp-1')).length, 0)
 })
 
 test('a token near expiry is refreshed instead of logging in again', async () => {

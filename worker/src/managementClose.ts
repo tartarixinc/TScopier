@@ -72,8 +72,9 @@ export async function closeWithVerification(
       }
     }
     effectiveTicket = resolved.ticket
-  } catch {
-    return { confirmed: false, reason: 'close pre-readback failed', attempts: 0, ticket, reconciliationRequired: true }
+  } catch (error) {
+    const cause = error instanceof Error ? error.message.trim().slice(0, 160) : ''
+    return { confirmed: false, reason: cause ? `close pre-readback failed: ${cause}` : 'close pre-readback failed', attempts: 0, ticket, reconciliationRequired: true }
   }
 
     const slippage = 20 + (attempt - 1) * slippageStep
