@@ -13,6 +13,7 @@ const MAX_HISTORY = 500
  */
 const CONFIG_ERROR_CODES = new Set([
   'BROKER_SYMBOL_NOT_FOUND',
+  'BROKER_SYMBOL_TRADE_DISABLED',
   'SYMBOL_UNSUPPORTED',
 ])
 
@@ -36,6 +37,7 @@ export interface TradeOutcomeLike {
   openedOrMerged?: boolean
   finalizeSkipReason?: string
   failureReason?: string
+  failureReasonCode?: string
 }
 
 /**

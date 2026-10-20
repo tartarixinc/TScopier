@@ -2,6 +2,23 @@
 
 ## Changelog
 
+### 2026-10-20 — Trading-disabled failures now keep the real reason and the right message
+
+- **Context:** a customer (`najpztah@gmail.com`, MT5 login 927824 now, old account 1387714) reported gold signals failing with `entry_not_opened` and “your broker does not offer GOLD/XAUUSD”. The old account listed `XAUUSD.crp`, plain `XAUUSD` was absent, and the broker rejected every order with `Trading is disabled for symbol XAUUSD.crp (:1387714)`. The platform classified that as `BROKER_SYMBOL_NOT_FOUND` and, on two signals, replaced the broker text with `entry_not_opened`. His current account trades plain `XAUUSD` normally.
+- **Root causes found:**
+  1. A dispatcher that lost the signal+broker claim (or found the send already in flight) returned an outcome with no reason. The aggregator then filled in `entry_not_opened` and wrote it over the real failure. This happened on the two revision signals; it was not the pending-order path.
+  2. `tradeFailureReasonFromBrokerMessage` and `classifyBrokerFailureReason` checked “symbol … disabled” before “trading disabled”, so a disabled symbol was reported as a missing instrument. The FxSocket v2 HTTP formatter could also rewrite “Symbol disabled” as “Symbol not found”.
+  3. The trade monitor was given the raw message, not a code, so its existing per-account exclusion set never matched.
+- **What changed:**
+  - `SendOrderOutcome` now has `deferredToOtherDispatcher` and `failureReasonCode`. Claim-lost and in-flight returns are marked deferred. `dispatch` ignores deferred outcomes for counts and events, and never finalizes a signal when any outcome is deferred; the claim holder or the parsed sweep owns the final state.
+  - Dispatch claims are now a lease (`SIGNAL_DISPATCH_CLAIM_LEASE_MS`, default 120s). A stale claim is deleted with a guarded `created_at` match and retried once; a live send renews the lease every `max(15s, lease/3)` while the broker call is pending (including the per-account send gate). Explicit retries clear the signal’s claims first.
+  - Added `BROKER_SYMBOL_TRADE_DISABLED` with a specific, non-retryable message (symbol or account restriction, not a missing instrument). The disabled check runs first and uses one shared `isTradingDisabledMessage` helper (also used by the business-event classifier). Long-only/short-only are deliberately not treated as fully disabled.
+  - Only the trading-disabled failure writes a stable code to `signals.skip_reason`; other failures keep the raw broker message as before. The code is sent to the trade monitor and added to `CONFIG_ERROR_CODES`, so a per-account disabled symbol does not page the team.
+  - Product display, retry gate and admin explainer/health classifier now know the code.
+- **Tests/verification:** `npm --prefix worker run build` clean; full worker suite **2481/2481, 0 failures**; targeted resolver/dispatch/claim/reason tests green; product `npm run build` green; admin `typecheck`, `lint` (0 errors) and `build` green. Three code-review rounds; the final round was PASS_WITH_NOTES after fixing a renewal that could abort a send and four tests that caught it.
+- **Deploy state:** uncommitted local changes on the `staging` worktree, not committed or pushed. No database migration. The working tree also contains unrelated uncommitted alert-evaluator work and untracked migrations from another session; those were not touched.
+- **Not included:** the entry-only symbol planner (candidate list + trade-mode check) is **not implemented**. It waits for a real `/SymbolParams` reply for a blocked symbol on both MTAPI and FxSocket, and must stay behind a kill switch. Also not included: send-time symbol fallback, owner-token fencing for claims, and an end-to-end test for the mixed opened/deferred dispatch case.
+
 ### 2026-10-20 — Alert when OpenAI credits are exhausted
 
 - **Context:** when the OpenAI organization cannot spend, AI signal parsing stops and only the regex parser remains. Nothing surfaced that condition quickly. The admin Systems Health page needed a live source of truth for it.

@@ -27,7 +27,13 @@ import {
   LightConfigCache,
 } from '../lightConfigCache'
 import { manualDispatchAlreadyMaterialized } from './basketMerge/helpers'
-import { claimSignalBrokerDispatch, releaseSignalBrokerDispatchClaim, shouldTakeOverStaleClaim } from './signalBrokerDispatchClaim'
+import {
+  claimSignalBrokerDispatch,
+  releaseSignalBrokerDispatchClaim,
+  releaseSignalBrokerDispatchClaimIfStale,
+  shouldTakeOverStaleClaim,
+  SIGNAL_DISPATCH_CLAIM_LEASE_MS,
+} from './signalBrokerDispatchClaim'
 import { hasActiveSignalRangeEntryWait, SIGNAL_RANGE_WAKE_DISPATCH_SOURCE } from '../signalRangeEntryHelpers'
 import { MESSAGE_REVISION_DISPATCH_SOURCE } from '../signalRevision'
 import {
@@ -132,6 +138,8 @@ export class TradeExecutor {
   private sessionHeartbeatInFlight = false
   private sessionHeartbeatSkipped = 0
   private symbolCacheKeepaliveTimer: NodeJS.Timeout | null = null
+  /** Avoid re-dispatching a signal every sweep tick while another worker holds its claim. */
+  private deferredClaimRetryAfter = new Map<string, number>()
   private signalsChannel: RealtimeChannel | null = null
   private brokersChannel: RealtimeChannel | null = null
   private channelTradingConfigsChannel: RealtimeChannel | null = null
@@ -685,7 +693,11 @@ export class TradeExecutor {
   }
 
   private async sweep() {
-    const since = new Date(Date.now() - EXECUTOR_REPLAY_MAX_AGE_MS).toISOString()
+    const now = Date.now()
+    for (const [id, until] of this.deferredClaimRetryAfter) {
+      if (until <= now) this.deferredClaimRetryAfter.delete(id)
+    }
+    const since = new Date(now - EXECUTOR_REPLAY_MAX_AGE_MS).toISOString()
     const signalsQ = await applyShardToQuery(
       this.supabase,
       this.supabase
@@ -706,6 +718,7 @@ export class TradeExecutor {
         await this.markSignalExecuted(row.id)
         continue
       }
+      if ((this.deferredClaimRetryAfter.get(row.id) ?? 0) > now) continue
       const action = parsedAction(row.parsed_data)
       if (isManagementAction(action) && !this.mgmtSweepAllowed(row.id)) continue
       this.acceptDispatchSignal(row, {
@@ -786,6 +799,13 @@ export class TradeExecutor {
   /**
    * HTTP push from listener (split deploy) or in-process callback after parse.
    */
+  private deferClaimRetry(signalId: string): void {
+    this.deferredClaimRetryAfter.set(
+      signalId,
+      Date.now() + SIGNAL_DISPATCH_CLAIM_LEASE_MS + 5_000,
+    )
+  }
+
   acceptDispatchSignal(
     row: SignalRow,
     opts?: { priority?: 'high' | 'normal'; source?: string },
@@ -1466,7 +1486,8 @@ export class TradeExecutor {
           path: liveFast ? 'live_fast' : 'queued',
           extra: { materialized },
         })
-        return { openedOrMerged: materialized }
+        if (!materialized) this.deferClaimRetry(signal.id)
+        return { openedOrMerged: materialized, deferredToOtherDispatcher: !materialized }
       }
     }
 
@@ -1539,18 +1560,35 @@ export class TradeExecutor {
             if (shouldTakeOverStaleClaim({
               isRevisionRefresh: true,
               materialized: false,
-              entryInFlight: this.entryBrokerInflight.has(entryKey),
+              // This process added entryKey just above, so checking the map here
+              // would always be true and make the takeover unreachable. The
+              // top-of-function wait already covers a local in-flight entry;
+              // the stale-only release protects a remote one.
+              entryInFlight: false,
             })) {
-              await releaseSignalBrokerDispatchClaim(this.supabase, signal.id, effectiveBroker.id)
-              claimed = await claimSignalBrokerDispatch(
+              // Never delete a fresh claim: the original sender may still be
+              // running in another process. Only an expired lease is takeable.
+              const released = await releaseSignalBrokerDispatchClaimIfStale(
                 this.supabase,
                 signal.id,
                 effectiveBroker.id,
-                signal.user_id,
               )
-              if (claimed) {
+              if (released) {
+                claimed = await claimSignalBrokerDispatch(
+                  this.supabase,
+                  signal.id,
+                  effectiveBroker.id,
+                  signal.user_id,
+                )
+                if (claimed) {
+                  console.warn(
+                    `[tradeExecutor] message revision took over stale dispatch claim signal=${signal.id} broker=${effectiveBroker.id}`,
+                  )
+                }
+              } else {
                 console.warn(
-                  `[tradeExecutor] message revision took over stale dispatch claim signal=${signal.id} broker=${effectiveBroker.id}`,
+                  `[tradeExecutor] message revision claim is still fresh signal=${signal.id}`
+                  + ` broker=${effectiveBroker.id}; deferring`,
                 )
               }
             }
@@ -1576,7 +1614,8 @@ export class TradeExecutor {
               path: liveFast ? 'live_fast' : 'queued',
               extra: { materialized },
             })
-            return { openedOrMerged: materialized }
+            if (!materialized) this.deferClaimRetry(signal.id)
+        return { openedOrMerged: materialized, deferredToOtherDispatcher: !materialized }
           }
         }
         setPipelineTimestamp(signal.pipeline_ts, 'execution_claim_acquired_at', Date.now())
@@ -1656,12 +1695,15 @@ export class TradeExecutor {
   }
 
   private recordTradeExecutionOutcome(brokerId: string, outcome: SendOrderOutcome): void {
+    // A deferred duplicate never reached the broker; counting it as a failure
+    // inflates the systemic failure rate and is not this dispatcher's result.
+    if (outcome.deferredToOtherDispatcher === true) return
     const forcedFailure = testFlagEnabled(process.env, 'TRADE_PIPELINE_TEST_FORCE_FAILURE')
     const succeeded = !forcedFailure && tradeOutcomeIsSuccess(outcome)
     getTradeExecutionMonitor().recordExecution(
       succeeded,
       brokerId,
-      forcedFailure ? 'TEST_FORCED_TRADE_FAILURE' : outcome.failureReason,
+      forcedFailure ? 'TEST_FORCED_TRADE_FAILURE' : (outcome.failureReasonCode ?? outcome.failureReason),
     )
   }
 

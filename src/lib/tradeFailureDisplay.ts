@@ -82,6 +82,19 @@ function displayFromCode(reasonCode: string, context: Record<string, unknown>): 
       safeContext: context,
     }
   }
+  if (code === 'BROKER_SYMBOL_TRADE_DISABLED') {
+    const brokerSymbol = cleanSymbol(context.brokerSymbol) ?? requestedSymbol
+    const shown = displayInstrument(brokerSymbol)
+    return {
+      reasonCode: code,
+      title: 'Trade not copied - trading disabled by your broker',
+      explanation: `Your broker has trading disabled for ${shown}. The symbol exists on your account, but the broker does not allow new orders on it. This is not a missing instrument.`,
+      recommendedAction: 'Ask your broker to enable trading for this symbol, or set a symbol mapping to an enabled symbol in Account Configuration.',
+      retryable: false,
+      userActionRequired: true,
+      safeContext: context,
+    }
+  }
   if (code === 'INSUFFICIENT_MARGIN') {
     return {
       reasonCode: code,
