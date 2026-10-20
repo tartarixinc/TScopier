@@ -22,6 +22,8 @@ const RATING_TONES: Record<number, string> = {
   5: 'text-green-500 dark:text-green-400',
 }
 
+const REVIEW_LOAD_ERROR = 'Unable to load reviews. Please try again.'
+
 function Stars({ rating, label }: { rating: number; label: string }) {
   const rounded = Math.round(rating)
   return (
@@ -151,14 +153,16 @@ export function TraderReviews({ traderUserId, traderName, isSelf, averageRating,
 
   const refresh = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
       const next = await fetchSocialTraderReviews(supabase, traderUserId)
       setReviews(next)
       setSummary({ average: next.length ? next.reduce((sum, review) => sum + review.rating, 0) / next.length : null, count: next.length })
       setError(null)
       return true
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Unable to load reviews.')
+    } catch {
+      setReviews([])
+      setError(REVIEW_LOAD_ERROR)
       return false
     } finally {
       setLoading(false)
@@ -179,27 +183,34 @@ export function TraderReviews({ traderUserId, traderName, isSelf, averageRating,
   }
 
   const action = (
-    <button type="button" disabled={isSelf || opening} onClick={() => void openReview()}
+    <button type="button" disabled={isSelf || opening} aria-busy={opening} onClick={() => void openReview()}
       className="inline-flex items-center gap-2 rounded-lg px-2 py-1 text-sm hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400 disabled:cursor-not-allowed disabled:opacity-70 dark:hover:bg-neutral-800"
       aria-label={isSelf ? `Your rating: ${summary.average?.toFixed(1) ?? 'not rated'}` : `${ownReview ? 'Edit rating for' : 'Rate'} ${traderName}`}>
       <Stars rating={summary.average ?? 0} label={summary.average == null ? 'Not rated' : `${summary.average.toFixed(1)} out of 5`} />
       <span>{summary.average == null ? 'No ratings' : summary.average.toFixed(1)} ({summary.count})</span>
-      {!isSelf ? <span className="font-medium text-teal-700 dark:text-teal-300">{ownReview ? 'Edit review' : 'Rate trader'}</span> : null}
+      {!isSelf ? <span className="font-medium text-teal-700 dark:text-teal-300">{opening ? 'Loading reviews…' : ownReview ? 'Edit review' : 'Rate trader'}</span> : null}
     </button>
   )
+
+  const loadError = error ? (
+    <div className="mt-2 space-y-2">
+      <Alert variant="error">{error}</Alert>
+      {!isSelf ? <Button type="button" size="sm" variant="secondary" loading={opening} onClick={() => void openReview()}>Retry loading reviews</Button> : null}
+    </div>
+  ) : null
 
   return (
     <>
       {expanded ? <Card>
         <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-sm font-semibold">Trader reviews</h2>{action}</div>
         {loading ? <p className="mt-4 text-sm text-neutral-500">Loading reviews…</p> : null}
-        {error ? <div className="mt-4"><Alert variant="error">{error}</Alert></div> : null}
+        {loadError}
         {!loading && !error && reviews.length === 0 ? <p className="mt-4 text-sm text-neutral-500">No written reviews yet.</p> : null}
         {!loading && reviews.length ? <ul className="mt-4 divide-y divide-neutral-100 dark:divide-neutral-800">{reviews.map(review => <li key={review.reviewId} className="py-3">
           <div className="flex flex-wrap items-center gap-2"><Stars rating={review.rating} label={`${review.rating} out of 5`} /><span className="text-sm font-medium">{review.reviewerDisplayName ?? 'Private reviewer'}</span>{review.reviewerUsername ? <span className="text-xs text-neutral-500">@{review.reviewerUsername}</span> : null}{review.isOwn ? <span className="text-xs text-neutral-500">Your review</span> : null}</div>
           <p className="mt-2 whitespace-pre-wrap text-sm text-neutral-700 dark:text-neutral-300">{review.reviewText}</p>
         </li>)}</ul> : null}
-      </Card> : action}
+      </Card> : <div>{action}{loadError}</div>}
       {modalOpen && !isSelf ? <ReviewModal traderName={traderName} traderUserId={traderUserId} existing={ownReview} onClose={() => setModalOpen(false)} onSaved={async () => { await refresh() }} /> : null}
     </>
   )
