@@ -200,7 +200,7 @@ const BrokerServerPickerModal = memo(function BrokerServerPickerModal({
   const modal = (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-6"
+      className="fixed inset-0 z-70 flex items-end sm:items-center justify-center p-0 sm:p-6"
       onMouseDown={onOverlayMouseDown}
       onClick={onOverlayClick}
     >
@@ -237,20 +237,20 @@ const BrokerServerPickerModal = memo(function BrokerServerPickerModal({
           <>
             <div className="border-b border-neutral-100 px-4 py-3 dark:border-neutral-800">
               <div className="relative">
-                <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-900 dark:text-neutral-50" />
+                <Search className="absolute inset-s-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-900 dark:text-neutral-50" />
                 <input
                   ref={searchInputRef}
                   type="text"
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   placeholder={cf.brokerCompanySearchPlaceholder}
-                  className="w-full rounded-xl border border-neutral-200/65 bg-neutral-50 py-2.5 ps-9 pe-9 text-sm text-neutral-900 placeholder:text-neutral-900 dark:placeholder:text-neutral-50 focus:outline-none focus:ring-2 focus:ring-green-400 dark:border-neutral-800/55 dark:bg-neutral-800/50 dark:text-neutral-50"
+                  className="w-full rounded-xl border border-neutral-200/65 bg-neutral-50 py-2.5 ps-9 pe-9 text-sm text-neutral-900 placeholder:text-neutral-900 dark:placeholder:text-neutral-50 focus:outline-hidden focus:ring-2 focus:ring-green-400 dark:border-neutral-800/55 dark:bg-neutral-800/50 dark:text-neutral-50"
                 />
                 {searchQuery ? (
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
-                    className="absolute end-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50"
+                    className="absolute inset-e-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50"
                     aria-label={t.common.cancel}
                   >
                     <X className="h-4 w-4" />
@@ -469,7 +469,7 @@ export function MtCompanyServerPicker({
             required={required}
             onChange={e => setManualServer(e.target.value)}
             placeholder={cf.brokerServerManualLabel}
-            className="w-full rounded-lg border border-neutral-200/65 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-900 dark:placeholder:text-neutral-50 hover:border-neutral-300 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-green-400 dark:border-neutral-800/55 dark:bg-neutral-900 dark:text-neutral-50"
+            className="w-full rounded-lg border border-neutral-200/65 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-900 dark:placeholder:text-neutral-50 hover:border-neutral-300 focus:border-transparent focus:outline-hidden focus:ring-2 focus:ring-green-400 dark:border-neutral-800/55 dark:bg-neutral-900 dark:text-neutral-50"
           />
           <button
             type="button"
@@ -491,7 +491,7 @@ export function MtCompanyServerPicker({
             'flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-start text-sm transition-colors',
             'border-neutral-200/65 bg-white dark:border-neutral-800/55 dark:bg-neutral-900',
             'hover:border-neutral-300 dark:hover:border-neutral-700',
-            'focus:border-transparent focus:outline-none focus:ring-2 focus:ring-green-400',
+            'focus:border-transparent focus:outline-hidden focus:ring-2 focus:ring-green-400',
           )}
         >
           <span className={clsx(value ? 'text-neutral-900 dark:text-neutral-50' : 'text-neutral-900 dark:text-neutral-50')}>

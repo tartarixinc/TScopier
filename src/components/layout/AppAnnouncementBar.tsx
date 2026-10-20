@@ -77,7 +77,7 @@ export function AppAnnouncementBar() {
         type="button"
         onClick={hide}
         aria-label={t.nav.updatesAnnouncement.dismiss}
-        className="absolute inset-y-0 end-1 my-auto flex h-7 w-7 items-center justify-center rounded-md text-teal-900 transition-colors hover:bg-teal-100 dark:text-teal-100 dark:hover:bg-teal-900/70"
+        className="absolute inset-y-0 inset-e-1 my-auto flex h-7 w-7 items-center justify-center rounded-md text-teal-900 transition-colors hover:bg-teal-100 dark:text-teal-100 dark:hover:bg-teal-900/70"
       >
         <X className="h-4 w-4" aria-hidden />
       </button>

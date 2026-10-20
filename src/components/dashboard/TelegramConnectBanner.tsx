@@ -81,7 +81,7 @@ export function TelegramConnectBanner({ className }: TelegramConnectBannerProps)
         <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">{d.telegramNotConnectedTitle}</p>
         <Link
           to="/channels"
-          className="inline-flex shrink-0 items-center justify-center rounded-lg bg-green-400 px-3 py-1.5 text-sm font-medium text-neutral-950 shadow-sm transition-all hover:bg-green-500 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2 focus:ring-offset-amber-50 dark:focus:ring-offset-amber-950"
+          className="inline-flex shrink-0 items-center justify-center rounded-lg bg-green-400 px-3 py-1.5 text-sm font-medium text-neutral-950 shadow-xs transition-all hover:bg-green-500 focus:outline-hidden focus:ring-2 focus:ring-green-400 focus:ring-offset-2 focus:ring-offset-amber-50 dark:focus:ring-offset-amber-950"
         >
           {d.connectTelegram}
         </Link>

@@ -43,13 +43,13 @@ export function NotificationBell({ open, onOpen, onClose }: NotificationBellProp
         )}
         {pendingReviews.length > 0 ? (
           <span
-            className="absolute -start-0.5 -top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-400"
+            className="absolute -inset-s-0.5 -top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-400"
             title={nn.reviewPending}
             aria-label={nn.reviewPending}
           />
         ) : null}
         {badge ? (
-          <span className="absolute -end-0.5 -top-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-green-400 px-1 text-[10px] font-bold leading-none text-neutral-950">
+          <span className="absolute -inset-e-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-green-400 px-1 text-[10px] font-bold leading-none text-neutral-950">
             {badge}
           </span>
         ) : null}

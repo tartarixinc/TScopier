@@ -41,7 +41,7 @@ export function ProductShowcaseSection() {
       id="showcase"
       className="relative scroll-mt-24 bg-[#F4F5F8] py-16 sm:py-24 dark:bg-transparent"
     >
-      <div className="mx-auto max-w-[80rem] px-3 sm:px-5">
+      <div className="mx-auto max-w-7xl px-3 sm:px-5">
         <div className="px-2 sm:px-6">
           <p className="inline-flex items-center gap-2  text-xs font-medium uppercase tracking-[0.18em] text-neutral-900 dark:text-neutral-50">
             <span className="h-2 w-2 bg-green-400" aria-hidden />
@@ -62,7 +62,7 @@ export function ProductShowcaseSection() {
                 key={card.key}
                 onMouseEnter={() => setActive(index)}
                 onFocus={() => setActive(index)}
-                className="group relative isolate flex h-[36rem] flex-col justify-end overflow-hidden rounded-[2rem] ring-1 ring-black/5 dark:ring-white/10"
+                className="group relative isolate flex h-144 flex-col justify-end overflow-hidden rounded-4xl ring-1 ring-black/5 dark:ring-white/10"
                 style={{ backgroundColor: CARD_BG }}
               >
                 <div
@@ -71,7 +71,7 @@ export function ProductShowcaseSection() {
                   aria-hidden
                 />
                 <div
-                  className="pointer-events-none absolute inset-0 z-[1] opacity-[0.07] mix-blend-screen"
+                  className="pointer-events-none absolute inset-0 z-1 opacity-[0.07] mix-blend-screen"
                   style={{ backgroundImage: NOISE_BG, backgroundSize: '140px 140px' }}
                   aria-hidden
                 />
@@ -79,14 +79,14 @@ export function ProductShowcaseSection() {
                 <div className="absolute left-[38%] top-[10%] w-[150%]">{card.preview}</div>
 
                 <div
-                  className="pointer-events-none absolute inset-x-0 bottom-0 z-[2] h-[55%]"
+                  className="pointer-events-none absolute inset-x-0 bottom-0 z-2 h-[55%]"
                   style={{
                     background: `linear-gradient(to top, ${CARD_BG} 0%, ${CARD_BG} 30%, rgba(16,21,28,0.85) 58%, rgba(16,21,28,0) 100%)`,
                   }}
                   aria-hidden
                 />
 
-                <div className="relative z-[3] p-7">
+                <div className="relative z-3 p-7">
                   <p className="inline-flex items-center gap-2  text-xs font-medium uppercase tracking-[0.16em] text-green-400">
                     <Icon className="h-4 w-4" aria-hidden />
                     {labels[card.key]}
@@ -106,7 +106,7 @@ export function ProductShowcaseSection() {
                   </div>
                   <a
                     href={card.href}
-                    className="mt-5 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-2.5 text-sm font-medium text-white backdrop-blur-md transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400"
+                    className="mt-5 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-2.5 text-sm font-medium text-white backdrop-blur-md transition-colors hover:bg-white/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400"
                   >
                     {s.cta}
                     <ArrowRight className="h-4 w-4 rtl:rotate-180" aria-hidden />

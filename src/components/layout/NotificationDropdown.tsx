@@ -78,7 +78,7 @@ export function NotificationDropdown({ open, onClose }: NotificationDropdownProp
       role="menu"
       aria-label={nn.title}
       className={clsx(
-        'absolute end-0 top-full z-50 mt-1 w-[min(22rem,calc(100vw-1.5rem))] rounded-xl border border-neutral-200 bg-white shadow-lg',
+        'absolute inset-e-0 top-full z-50 mt-1 w-[min(22rem,calc(100vw-1.5rem))] rounded-xl border border-neutral-200 bg-white shadow-lg',
         'before:absolute before:-top-1 before:inset-x-0 before:h-1 before:content-[""]',
         'dark:border-neutral-700 dark:bg-neutral-900',
       )}
@@ -110,7 +110,7 @@ export function NotificationDropdown({ open, onClose }: NotificationDropdownProp
           <div>
             {dayGroups.map(group => (
               <section key={group.dayKey} aria-label={group.label}>
-                <p className="sticky top-0 z-10 border-b border-neutral-100 bg-neutral-50/95 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-900 backdrop-blur-sm dark:border-neutral-800 dark:bg-neutral-900/95 dark:text-neutral-50">
+                <p className="sticky top-0 z-10 border-b border-neutral-100 bg-neutral-50/95 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-900 backdrop-blur-xs dark:border-neutral-800 dark:bg-neutral-900/95 dark:text-neutral-50">
                   {group.label}
                 </p>
                 <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">

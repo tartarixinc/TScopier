@@ -239,7 +239,7 @@ function CopierLogRow({
 
   return (
     <div
-      className="grid grid-cols-[1.5fr_1.2fr_1fr_1.2fr_1fr_1fr_auto_auto] gap-3 min-w-[48rem] px-4 sm:px-5 py-3.5 items-center hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors cursor-pointer"
+      className="grid grid-cols-[1.5fr_1.2fr_1fr_1.2fr_1fr_1fr_auto_auto] gap-3 min-w-3xl px-4 sm:px-5 py-3.5 items-center hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors cursor-pointer"
       onClick={onOpenDetail}
       onKeyDown={e => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -472,11 +472,11 @@ export function CopierLogsPage() {
               {[...Array(4)].map((_, i) => (
                 <div key={i} className="px-4 py-4 space-y-3">
                   <div className="flex justify-between gap-3">
-                    <div className="h-5 w-20 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
-                    <div className="h-5 w-16 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
+                    <div className="h-5 w-20 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
+                    <div className="h-5 w-16 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
                   </div>
-                  <div className="h-4 w-full bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
-                  <div className="h-4 w-3/4 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
+                  <div className="h-4 w-full bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
+                  <div className="h-4 w-3/4 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
                 </div>
               ))}
             </div>
@@ -484,7 +484,7 @@ export function CopierLogsPage() {
               {[...Array(pageSize > 6 ? 6 : pageSize)].map((_, i) => (
                 <div key={i} className="px-5 py-3.5 grid grid-cols-7 gap-3">
                   {[...Array(7)].map((_, j) => (
-                    <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
+                    <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
                   ))}
                 </div>
               ))}
@@ -523,7 +523,7 @@ export function CopierLogsPage() {
               ))}
             </div>
             <div className="hidden md:block overflow-x-auto">
-              <div className="grid grid-cols-[1.5fr_1.2fr_1fr_1.2fr_1fr_1fr_auto_auto] gap-3 min-w-[48rem] px-4 sm:px-5 py-3 border-b border-neutral-100 dark:border-neutral-800 text-xs font-semibold text-neutral-900 dark:text-neutral-50 uppercase tracking-wide">
+              <div className="grid grid-cols-[1.5fr_1.2fr_1fr_1.2fr_1fr_1fr_auto_auto] gap-3 min-w-3xl px-4 sm:px-5 py-3 border-b border-neutral-100 dark:border-neutral-800 text-xs font-semibold text-neutral-900 dark:text-neutral-50 uppercase tracking-wide">
                 <span>{t.copierLogs.colStatus}</span>
                 <span>{t.copierLogs.colReason}</span>
                 <span>{t.copierLogs.colChannel}</span>
@@ -644,7 +644,7 @@ function CopierLogsPagination({
           <select
             value={pageSize}
             onChange={e => onPageSizeChange(Number(e.target.value) as PageSizeOption)}
-            className="h-8 min-w-[4.5rem] rounded-md border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 px-2 text-sm text-neutral-900 dark:text-neutral-50 tabular-nums focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent"
+            className="h-8 min-w-18 rounded-md border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 px-2 text-sm text-neutral-900 dark:text-neutral-50 tabular-nums focus:outline-hidden focus:ring-2 focus:ring-green-400 focus:border-transparent"
             aria-label="Results per page"
           >
             {PAGE_SIZE_OPTIONS.map(n => (
@@ -710,7 +710,7 @@ function PageButton({ n, active, onClick }: { n: number; active: boolean; onClic
       type="button"
       onClick={onClick}
       aria-current={active ? 'page' : undefined}
-      className={`min-w-[2rem] px-2 py-1.5 text-sm rounded-md font-medium tabular-nums transition-colors ${
+      className={`min-w-8 px-2 py-1.5 text-sm rounded-md font-medium tabular-nums transition-colors ${
         active
           ? 'bg-green-400 text-neutral-950'
           : 'text-neutral-900 dark:text-neutral-50 hover:bg-white dark:hover:bg-neutral-900 border border-transparent hover:border-neutral-200 dark:hover:border-neutral-800'

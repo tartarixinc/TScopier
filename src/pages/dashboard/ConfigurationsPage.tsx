@@ -889,9 +889,9 @@ export function ConfigurationsPage() {
 
       {loading ? (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_160px_minmax(0,1fr)]" aria-hidden>
-          <Card padding="sm"><div className="h-12 animate-pulse rounded bg-neutral-100 dark:bg-white/5" /></Card>
+          <Card padding="sm"><div className="h-12 animate-pulse rounded-sm bg-neutral-100 dark:bg-white/5" /></Card>
           <div className="hidden lg:block" />
-          <Card padding="sm"><div className="h-12 animate-pulse rounded bg-neutral-100 dark:bg-white/5" /></Card>
+          <Card padding="sm"><div className="h-12 animate-pulse rounded-sm bg-neutral-100 dark:bg-white/5" /></Card>
         </div>
       ) : (
         <>
@@ -1052,7 +1052,7 @@ function draggedCard(
 function CardDragGhost({ drag, children }: { drag: CardDrag; children: ReactNode }) {
   return createPortal(
     <div
-      className="pointer-events-none fixed z-[80]"
+      className="pointer-events-none fixed z-80"
       style={{
         left: drag.x - drag.offsetX,
         top: drag.y - drag.offsetY,
@@ -1535,7 +1535,7 @@ function ConfigurationMap({
                 )}
                 <button
                   type="button"
-                  className="absolute end-0 top-1/2 z-30 h-3.5 w-3.5 -translate-y-1/2 translate-x-1/2 cursor-grab touch-none rounded-full bg-green-400 ring-2 ring-white hover:scale-110 active:cursor-grabbing dark:ring-neutral-950"
+                  className="absolute inset-e-0 top-1/2 z-30 h-3.5 w-3.5 -translate-y-1/2 translate-x-1/2 cursor-grab touch-none rounded-full bg-green-400 ring-2 ring-white hover:scale-110 active:cursor-grabbing dark:ring-neutral-950"
                   aria-label={interpolate(copy.dragToConnect, { channel: name })}
                   onPointerDown={event => onPortPointerDown(channelId, event)}
                   onPointerMove={onPortPointerMove}
@@ -1585,7 +1585,7 @@ function ConfigurationMap({
               <div className={`relative min-h-0 rounded-2xl ${connectTarget ? 'ring-2 ring-green-400' : ''}`}>
                 {normalizeSignalChannelIds(broker.signal_channel_ids).length === 0
                   && !brokerLinks.some(link => link.destinationId === broker.id) ? (
-                  <span className="absolute start-0 top-1/2 z-30 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-green-400 ring-2 ring-white dark:ring-neutral-950" />
+                  <span className="absolute inset-s-0 top-1/2 z-30 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-green-400 ring-2 ring-white dark:ring-neutral-950" />
                 ) : null}
                 <BrokerNode broker={broker} copy={copy} />
               </div>
@@ -1659,7 +1659,7 @@ function ConfigurationMap({
           <button
             key={`${curve.channelId}:${curve.brokerId}`}
             type="button"
-            className="pointer-events-auto absolute z-40 flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-teal-200 bg-white text-green-500 shadow-sm hover:bg-teal-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400 dark:border-teal-800 dark:bg-neutral-950 dark:text-teal-300 dark:hover:bg-teal-950"
+            className="pointer-events-auto absolute z-40 flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-teal-200 bg-white text-green-500 shadow-xs hover:bg-teal-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400 dark:border-teal-800 dark:bg-neutral-950 dark:text-teal-300 dark:hover:bg-teal-950"
             style={{ left: curve.gear.x, top: curve.gear.y }}
             aria-label={interpolate(copy.viewConfiguration, {
               channel: channelName,
@@ -1885,7 +1885,7 @@ function ConfigurationStack({
                   <div className="h-4 w-0.5 bg-green-400" />
                   <button
                     type="button"
-                    className="flex h-8 w-8 items-center justify-center rounded-full border border-teal-200 bg-white text-green-500 shadow-sm dark:border-teal-800 dark:bg-neutral-950 dark:text-teal-300"
+                    className="flex h-8 w-8 items-center justify-center rounded-full border border-teal-200 bg-white text-green-500 shadow-xs dark:border-teal-800 dark:bg-neutral-950 dark:text-teal-300"
                     aria-label={interpolate(copy.viewConfiguration, { channel: name, broker: broker.label })}
                     onClick={() => onOpen({ brokerId: broker.id, channelId })}
                   >

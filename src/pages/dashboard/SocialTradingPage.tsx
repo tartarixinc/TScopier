@@ -455,7 +455,7 @@ export function SocialTradingPage() {
                       role="link"
                       tabIndex={0}
                       aria-label={name}
-                      className="cursor-pointer border-t border-neutral-100 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-green-400 dark:border-neutral-800 dark:hover:bg-neutral-900"
+                      className="cursor-pointer border-t border-neutral-100 hover:bg-neutral-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-green-400 dark:border-neutral-800 dark:hover:bg-neutral-900"
                       onClick={() => navigate(`/social-trading/${trader.id}`)}
                       onKeyDown={event => {
                         if (event.key === 'Enter' || event.key === ' ') {

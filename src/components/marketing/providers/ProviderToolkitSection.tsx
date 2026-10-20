@@ -160,7 +160,7 @@ function AutomationFlow() {
       <div className="flex-1 rounded-2xl bg-neutral-950 p-4 text-white">
         <p className=" text-[0.625rem] uppercase tracking-[0.14em] text-neutral-400">{c.yourTrade}</p>
         <p className="mt-2 text-sm font-semibold">
-          <span className="rounded bg-green-400 px-1.5 py-0.5 text-xs text-neutral-950">BUY</span> XAUUSD 0.50
+          <span className="rounded-sm bg-green-400 px-1.5 py-0.5 text-xs text-neutral-950">BUY</span> XAUUSD 0.50
         </p>
       </div>
       <ArrowRight className="mx-auto h-5 w-5 shrink-0 rotate-90 text-neutral-950 sm:rotate-0" aria-hidden />

@@ -16,7 +16,7 @@ export function CookieConsentBanner() {
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-50 px-3 pb-3 sm:px-6 sm:pb-6">
-      <div className="mx-auto max-w-5xl rounded-xl border border-neutral-200 bg-white/95 p-4 shadow-lg backdrop-blur dark:border-neutral-700 dark:bg-neutral-900/95">
+      <div className="mx-auto max-w-5xl rounded-xl border border-neutral-200 bg-white/95 p-4 shadow-lg backdrop-blur-sm dark:border-neutral-700 dark:bg-neutral-900/95">
         <p key={locale} className="text-sm text-neutral-900 dark:text-neutral-50">
           {c.message}{' '}
           <a

@@ -63,7 +63,7 @@ export function CompletePictureSection() {
         style={{ backgroundImage: NOISE_BG, backgroundSize: '140px 140px' }}
         aria-hidden
       />
-      <div className="mx-auto max-w-[80rem] px-3 py-12 sm:px-8 sm:py-20">
+      <div className="mx-auto max-w-7xl px-3 py-12 sm:px-8 sm:py-20">
         <div className="grid items-center gap-8 lg:grid-cols-[0.85fr_1.15fr] lg:gap-12">
           <div className="lg:ps-6">
             <p className="inline-flex items-center gap-2  text-xs font-medium uppercase tracking-[0.18em] text-neutral-900 dark:text-green-400">
@@ -85,7 +85,7 @@ export function CompletePictureSection() {
             {c.cards.map((card, index) => (
               <li
                 key={card.title}
-                className="flex min-h-[13rem] flex-col rounded-3xl border border-neutral-200/80 bg-neutral-50 p-6 shadow-[0_1px_2px_rgba(15,23,42,0.05),0_12px_32px_-16px_rgba(15,23,42,0.18)] dark:border-white/10 dark:bg-white/[0.06] dark:shadow-[0_8px_32px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.08)] dark:backdrop-blur-xl"
+                className="flex min-h-52 flex-col rounded-3xl border border-neutral-200/80 bg-neutral-50 p-6 shadow-[0_1px_2px_rgba(15,23,42,0.05),0_12px_32px_-16px_rgba(15,23,42,0.18)] dark:border-white/10 dark:bg-white/6 dark:shadow-[0_8px_32px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.08)] dark:backdrop-blur-xl"
               >
                 {icons[index]}
                 <h3 className="mt-auto pt-8 text-lg font-semibold leading-snug tracking-tight text-neutral-950 dark:text-white">

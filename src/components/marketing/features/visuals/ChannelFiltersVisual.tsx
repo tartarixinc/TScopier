@@ -27,9 +27,9 @@ function FilterCategoryCard({
       >
         <span
           className={clsx(
-            'rounded px-2.5 py-1 text-xs',
+            'rounded-sm px-2.5 py-1 text-xs',
             decision === 'allow'
-              ? 'bg-white text-neutral-900 shadow-sm dark:bg-neutral-900 dark:text-neutral-50'
+              ? 'bg-white text-neutral-900 shadow-xs dark:bg-neutral-900 dark:text-neutral-50'
               : 'text-neutral-900 dark:text-neutral-50',
           )}
         >
@@ -37,9 +37,9 @@ function FilterCategoryCard({
         </span>
         <span
           className={clsx(
-            'rounded px-2.5 py-1 text-xs',
+            'rounded-sm px-2.5 py-1 text-xs',
             decision === 'ignore'
-              ? 'bg-amber-50 text-amber-700 shadow-sm'
+              ? 'bg-amber-50 text-amber-700 shadow-xs'
               : 'text-neutral-900 dark:text-neutral-50',
           )}
         >

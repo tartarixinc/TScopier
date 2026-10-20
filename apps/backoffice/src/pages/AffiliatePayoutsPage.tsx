@@ -133,7 +133,7 @@ export function AffiliatePayoutsPage() {
                   <tr key={i}>
                     {[...Array(5)].map((__, j) => (
                       <td key={j} className="px-4 py-4 sm:px-5">
-                        <div className="h-4 animate-pulse rounded bg-neutral-100 dark:bg-neutral-800" />
+                        <div className="h-4 animate-pulse rounded-sm bg-neutral-100 dark:bg-neutral-800" />
                       </td>
                     ))}
                   </tr>

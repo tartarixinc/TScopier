@@ -360,7 +360,7 @@ export function TelegramLinkStep({ onDone }: Props) {
             type="checkbox"
             checked={twoFaConfirmed}
             onChange={e => setTwoFaConfirmed(e.target.checked)}
-            className="mt-0.5 w-4 h-4 rounded border-neutral-300 text-green-400 focus:ring-green-400"
+            className="mt-0.5 w-4 h-4 rounded-sm border-neutral-300 text-green-400 focus:ring-green-400"
           />
           <span className="text-sm text-neutral-900 dark:text-neutral-50">
             I have set a Two-Step Verification password on this Telegram account.

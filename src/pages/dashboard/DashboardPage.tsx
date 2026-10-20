@@ -2606,8 +2606,8 @@ export function DashboardPage() {
             <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
               {[...Array(5)].map((_, i) => (
                 <div key={i} className="px-5 py-3">
-                  <div className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse w-3/4 mb-1.5" />
-                  <div className="h-3 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse w-1/3" />
+                  <div className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse w-3/4 mb-1.5" />
+                  <div className="h-3 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse w-1/3" />
                 </div>
               ))}
             </div>
@@ -2642,7 +2642,7 @@ export function DashboardPage() {
           <div className="overflow-x-auto">
           {/* Table header */}
           <div
-            className={`${DASHBOARD_COPIER_LOG_GRID} min-w-[28rem] border-b border-neutral-100 px-5 py-2.5 text-xs font-regular uppercase tracking-[0.06em] text-neutral-900 dark:text-neutral-50 dark:border-neutral-800/80`}
+            className={`${DASHBOARD_COPIER_LOG_GRID} min-w-md border-b border-neutral-100 px-5 py-2.5 text-xs font-regular uppercase tracking-[0.06em] text-neutral-900 dark:text-neutral-50 dark:border-neutral-800/80`}
           >
             <span>{t.copierLogs.colStatus}</span>
             <span className="min-w-0">{t.copierLogs.colChannel}</span>
@@ -2656,7 +2656,7 @@ export function DashboardPage() {
               {[...Array(4)].map((_, i) => (
                 <div key={i} className={`${DASHBOARD_COPIER_LOG_GRID} px-5 py-3`}>
                   {[...Array(5)].map((_, j) => (
-                    <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse min-w-0" />
+                    <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse min-w-0" />
                   ))}
                 </div>
               ))}
@@ -2666,7 +2666,7 @@ export function DashboardPage() {
               <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{t.dashboard.noData}</p>
             </div>
           ) : (
-            <div className="divide-y divide-neutral-100 dark:divide-neutral-800 max-h-80 overflow-y-auto min-w-[28rem]">
+            <div className="divide-y divide-neutral-100 dark:divide-neutral-800 max-h-80 overflow-y-auto min-w-md">
               {copierLogs.map(log => (
                 <LogRow
                   key={log.id}
@@ -2714,7 +2714,7 @@ export function DashboardPage() {
         ) : null}
 
         <div className="overflow-x-auto">
-        <div className="min-w-[52rem] lg:min-w-0">
+        <div className="min-w-208 lg:min-w-0">
         <div className="hidden lg:grid grid-cols-9 gap-2 border-b border-neutral-100 px-5 py-2.5 text-[11px] font-medium uppercase tracking-[0.06em] text-neutral-900 dark:text-neutral-50 dark:border-neutral-800/80">
           <LinkedAccountSortHeader
             label={la.colAccount}
@@ -2789,7 +2789,7 @@ export function DashboardPage() {
             {[...Array(3)].map((_, i) => (
               <div key={i} className="hidden lg:flex px-4 sm:px-5 py-3 gap-4">
                 {[...Array(9)].map((_, j) => (
-                  <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse flex-1" />
+                  <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse flex-1" />
                 ))}
               </div>
             ))}
@@ -2849,7 +2849,7 @@ function StatBlock({ label, labelHint, value, sub, subColor, valueColor = 'text-
   valueColor?: string
 }) {
   return (
-    <div className="rounded-2xl bg-[#F7F8FA] px-4 py-4 sm:px-5 dark:bg-white/[0.03] dark:ring-1 dark:ring-inset dark:ring-white/[0.06]">
+    <div className="rounded-2xl bg-[#F7F8FA] px-4 py-4 sm:px-5 dark:bg-white/3 dark:ring-1 dark:ring-inset dark:ring-white/6">
       <p className="inline-flex items-center gap-1 text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-900 dark:text-neutral-50">
         {label}
         {labelHint ? <InfoTooltip text={labelHint} /> : null}
@@ -2911,7 +2911,7 @@ function LogRow({ signal, channelName, symbol, sourceKind }: { signal: Signal; c
 
   const statusConfig: Record<string, { color: string; label: string }> = {
     executed: { color: 'bg-green-100 text-neutral-950 dark:bg-green-100 dark:text-neutral-950', label: t.copierLogs.statusExecuted },
-    skipped:  { color: 'text-warning-800 bg-warning-50 dark:!text-amber-100 dark:!bg-amber-900', label: t.copierLogs.statusSkipped },
+    skipped:  { color: 'text-warning-800 bg-warning-50 dark:text-amber-100! dark:bg-amber-900!', label: t.copierLogs.statusSkipped },
     failed:   { color: 'text-error-800 bg-error-50 dark:text-error-300 dark:bg-error-950/70', label: t.copierLogs.statusFailed },
     pending:  { color: 'text-neutral-900 bg-neutral-100 dark:text-neutral-50 dark:bg-neutral-800', label: t.copierLogs.statusPending },
     parsed:   { color: 'text-green-500 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60', label: t.copierLogs.statusParsed },
@@ -2924,7 +2924,7 @@ function LogRow({ signal, channelName, symbol, sourceKind }: { signal: Signal; c
   const channelTitle = sourceKind ? `${SIGNAL_SOURCE_MARKS[sourceKind].label} · ${channelName}` : channelName
 
   return (
-    <div className={`${DASHBOARD_COPIER_LOG_GRID} px-5 py-3 transition-colors hover:bg-[#F7F8FA] dark:hover:bg-white/[0.03]`}>
+    <div className={`${DASHBOARD_COPIER_LOG_GRID} px-5 py-3 transition-colors hover:bg-[#F7F8FA] dark:hover:bg-white/3`}>
       <span className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-sm font-regular ${s.color}`}>
         {s.label}
       </span>
@@ -3099,7 +3099,7 @@ function LinkedAccountRow({
           onOpenStats()
         }
       }}
-      className="grid cursor-pointer grid-cols-9 items-center gap-2 px-5 py-3.5 transition-colors hover:bg-[#F7F8FA] dark:hover:bg-white/[0.03]"
+      className="grid cursor-pointer grid-cols-9 items-center gap-2 px-5 py-3.5 transition-colors hover:bg-[#F7F8FA] dark:hover:bg-white/3"
     >
       <div className="flex flex-col min-w-0">
         <span

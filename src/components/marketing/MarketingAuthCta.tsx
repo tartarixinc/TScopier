@@ -13,7 +13,7 @@ interface MarketingAuthCtaProps {
 }
 
 const primaryBtnClass =
-  'inline-flex max-w-[11rem] shrink-0 items-center justify-center truncate rounded-full border border-green-400 bg-green-400 px-4 py-2 text-xs font-semibold text-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_6px_18px_-8px_rgba(74,222,128,0.7)] transition-all hover:border-green-400 hover:bg-green-400 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_0_20px_rgba(74,222,128,0.5)] focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2 xl:max-w-[16rem] xl:text-sm 2xl:max-w-none dark:focus:ring-offset-neutral-950'
+  'inline-flex max-w-44 shrink-0 items-center justify-center truncate rounded-full border border-green-400 bg-green-400 px-4 py-2 text-xs font-semibold text-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_6px_18px_-8px_rgba(74,222,128,0.7)] transition-all hover:border-green-400 hover:bg-green-400 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_0_20px_rgba(74,222,128,0.5)] focus:outline-hidden focus:ring-2 focus:ring-green-400 focus:ring-offset-2 xl:max-w-[16rem] xl:text-sm 2xl:max-w-none dark:focus:ring-offset-neutral-950'
 
 const heroCtaClass =
   'group inline-flex w-fit self-center items-center justify-center gap-2 rounded-full border border-green-400 bg-green-400 px-8 py-3.5 text-base font-semibold text-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_12px_32px_-10px_rgba(74,222,128,0.7)] transition-all duration-300 hover:-translate-y-0.5 hover:border-green-400 hover:bg-green-400 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_0_28px_rgba(74,222,128,0.55),0_0_56px_rgba(74,222,128,0.22)] sm:px-10 sm:py-4 sm:text-lg'
@@ -129,7 +129,7 @@ export function MarketingAuthCta({ variant, onNavigate }: MarketingAuthCtaProps)
       <a
         href={loginHref}
         onClick={() => onCtaClick('login')}
-        className="hidden whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-900/[0.06] hover:text-neutral-950 dark:text-neutral-300 dark:hover:bg-white/10 dark:hover:text-white xl:inline-block"
+        className="hidden whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-900/6 hover:text-neutral-950 dark:text-neutral-300 dark:hover:bg-white/10 dark:hover:text-white xl:inline-block"
       >
         {nav.signIn}
       </a>

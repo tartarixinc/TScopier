@@ -12,7 +12,7 @@ import { SignalSourcePreview } from './SignalSourcePreview'
 
 /** Lets the compact app panels fill the page width of the preview instead of staying phone-sized. */
 const FILL_PAGE =
-  '[&_.max-w-lg]:max-w-none [&_.max-w-md]:max-w-none [&>div]:min-h-0 [&>div]:items-start [&>div]:!p-0'
+  '[&_.max-w-lg]:max-w-none [&_.max-w-md]:max-w-none [&>div]:min-h-0 [&>div]:items-start [&>div]:p-0!'
 
 function Page({ route, title, children }: { route: string; title: string; children: ReactNode }) {
   return (

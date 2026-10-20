@@ -112,9 +112,9 @@ export function MarketingHeader({ overDarkHero = false }: { overDarkHero?: boole
   const onDark = overDarkHero && !scrolled && !mobileOpen
 
   const desktopLinkClass =
-    'whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-900/[0.06] hover:text-neutral-950 dark:text-neutral-300 dark:hover:bg-white/10 dark:hover:text-white'
+    'whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-900/6 hover:text-neutral-950 dark:text-neutral-300 dark:hover:bg-white/10 dark:hover:text-white'
   const mobileLinkClass =
-    'rounded-xl px-3 py-2.5 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-900/[0.06] dark:text-neutral-50 dark:hover:bg-white/10'
+    'rounded-xl px-3 py-2.5 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-900/6 dark:text-neutral-50 dark:hover:bg-white/10'
 
   return (
     <header className="pointer-events-none fixed inset-x-0 top-0 z-50 px-3 pt-3 sm:px-5 sm:pt-4">
@@ -160,7 +160,7 @@ export function MarketingHeader({ overDarkHero = false }: { overDarkHero?: boole
           <MarketingAuthCta variant="header" />
           <button
             type="button"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-neutral-900 transition-colors hover:bg-neutral-900/[0.06] lg:hidden dark:text-neutral-50 dark:hover:bg-white/10"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-neutral-900 transition-colors hover:bg-neutral-900/6 lg:hidden dark:text-neutral-50 dark:hover:bg-white/10"
             aria-expanded={mobileOpen}
             aria-controls="marketing-mobile-nav"
             aria-label={mobileOpen ? l.menuClose : l.menuOpen}

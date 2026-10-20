@@ -176,7 +176,7 @@ export function AffiliateProgramPage() {
                     setCustomCode(data?.profile.referral_code ?? '')
                     setIsEditingCode(prev => !prev)
                   }}
-                  className="inline-flex items-center justify-center rounded p-1 text-neutral-900 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-50"
+                  className="inline-flex items-center justify-center rounded-sm p-1 text-neutral-900 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-50"
                   aria-label={at.editReferralCode}
                   title={at.editReferralCode}
                 >
@@ -261,7 +261,7 @@ export function AffiliateProgramPage() {
                     setWalletAddress(savedWalletAddress)
                     setIsEditingWallet(prev => !prev)
                   }}
-                  className="inline-flex items-center justify-center rounded p-1 text-neutral-900 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-50"
+                  className="inline-flex items-center justify-center rounded-sm p-1 text-neutral-900 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-50"
                   aria-label={at.editWalletAddress}
                   title={at.editWalletAddress}
                 >

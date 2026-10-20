@@ -167,7 +167,7 @@ export function BulkUploadAccountsModal({ open, onClose, onBatchComplete }: Bulk
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-8"
+      className="fixed inset-0 z-60 flex items-center justify-center p-4 sm:p-8"
       onMouseDown={onOverlayMouseDown}
       onClick={onOverlayClick}
     >

@@ -9,7 +9,7 @@ export function StepConfigureVisual() {
 
   return (
     <div className="flex h-full min-h-[220px] items-stretch p-3 sm:p-4">
-      <div className="flex w-full flex-col overflow-hidden rounded-xl border border-neutral-200/65 bg-white shadow-sm dark:border-neutral-800/55 dark:bg-neutral-900">
+      <div className="flex w-full flex-col overflow-hidden rounded-xl border border-neutral-200/65 bg-white shadow-xs dark:border-neutral-800/55 dark:bg-neutral-900">
         <div className="flex items-center justify-between gap-2 border-b border-neutral-100 px-4 py-3 dark:border-neutral-800">
           <div className="flex min-w-0 items-center gap-2">
             <img src="/MT5.png" alt="" className="h-8 w-8 object-contain" aria-hidden />
@@ -66,9 +66,9 @@ export function StepConfigureVisual() {
                 >
                   <span
                     className={clsx(
-                      'rounded px-1.5 py-0.5 text-[10px]',
+                      'rounded-sm px-1.5 py-0.5 text-[10px]',
                       rule.decision === 'allow'
-                        ? 'bg-white text-neutral-900 shadow-sm dark:bg-neutral-900 dark:text-neutral-50'
+                        ? 'bg-white text-neutral-900 shadow-xs dark:bg-neutral-900 dark:text-neutral-50'
                         : 'text-neutral-900 dark:text-neutral-50',
                     )}
                   >
@@ -76,9 +76,9 @@ export function StepConfigureVisual() {
                   </span>
                   <span
                     className={clsx(
-                      'rounded px-1.5 py-0.5 text-[10px]',
+                      'rounded-sm px-1.5 py-0.5 text-[10px]',
                       rule.decision === 'ignore'
-                        ? 'bg-amber-50 text-amber-700 shadow-sm'
+                        ? 'bg-amber-50 text-amber-700 shadow-xs'
                         : 'text-neutral-900 dark:text-neutral-50',
                     )}
                   >

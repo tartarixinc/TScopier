@@ -29,7 +29,7 @@ createRoot(document.getElementById('root')!).render(
       <Suspense
         fallback={
           isAppHost() && isDashboardBootPath(window.location.pathname) ? (
-            <div className="flex h-[100dvh] min-h-0">
+            <div className="flex h-dvh min-h-0">
               <DashboardBootSkeleton />
             </div>
           ) : (

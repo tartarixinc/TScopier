@@ -301,7 +301,7 @@ export function SettingsPage() {
               <div className="mb-6 flex items-center gap-4">
                 <UserAvatar user={user} profile={profile} email={user?.email} size="lg" />
                 <div className="min-w-0">
-                  <label className="inline-flex cursor-pointer items-center rounded-lg bg-green-400 px-3 py-1.5 text-sm font-medium text-neutral-950 shadow-sm hover:bg-green-500">
+                  <label className="inline-flex cursor-pointer items-center rounded-lg bg-green-400 px-3 py-1.5 text-sm font-medium text-neutral-950 shadow-xs hover:bg-green-500">
                     <input
                       ref={photoInputRef}
                       type="file"
@@ -370,7 +370,7 @@ export function SettingsPage() {
                     value={profile.address}
                     onChange={e => patchProfile({ address: e.target.value })}
                     rows={3}
-                    className="mt-1.5 w-full px-3 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-900 dark:placeholder:text-neutral-50 focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent resize-y min-h-[88px]"
+                    className="mt-1.5 w-full px-3 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-900 dark:placeholder:text-neutral-50 focus:outline-hidden focus:ring-2 focus:ring-green-400 focus:border-transparent resize-y min-h-[88px]"
                     placeholder={t.settings.placeholders.address}
                   />
                 </div>

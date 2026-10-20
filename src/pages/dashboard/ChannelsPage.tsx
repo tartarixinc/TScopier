@@ -274,7 +274,7 @@ function ChannelCard({
   return (
     <Card padding="none">
       <div className="px-4 py-3.5 flex items-center gap-3">
-        <div className="w-9 h-9 bg-primary-50 rounded-lg flex items-center justify-center flex-shrink-0">
+        <div className="w-9 h-9 bg-primary-50 rounded-lg flex items-center justify-center shrink-0">
           <Radio className="w-4 h-4 text-green-400" />
         </div>
         <div className="flex-1 min-w-0">
@@ -286,7 +286,7 @@ function ChannelCard({
             <p className="text-xs text-neutral-900 dark:text-neutral-50">@{channel.channel_username}</p>
           )}
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           <Toggle checked={channel.is_active} onChange={onToggle} />
           <button
             type="button"

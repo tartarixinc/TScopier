@@ -20,14 +20,14 @@ export function MarketNewsCard({ article, readArticle }: MarketNewsCardProps) {
       <NewsArticleImage
         image={article.image}
         alt={headline}
-        className="aspect-[16/9] w-full"
+        className="aspect-video w-full"
         iconClassName="h-8 w-8"
       />
       <div className="flex flex-1 flex-col p-4">
         <div className="mb-2 flex items-center justify-between gap-2 text-xs text-neutral-900 dark:text-neutral-50">
           <span className="flex min-w-0 items-center gap-2 truncate">
             {pairLabel ? (
-              <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 font-semibold tabular-nums text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50">
+              <span className="shrink-0 rounded-sm bg-neutral-100 px-1.5 py-0.5 font-semibold tabular-nums text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50">
                 {pairLabel}
               </span>
             ) : null}
@@ -54,7 +54,7 @@ export function MarketNewsCard({ article, readArticle }: MarketNewsCardProps) {
   )
 
   const className =
-    'flex h-full flex-col overflow-hidden rounded-xl border border-neutral-200/55 bg-white shadow-sm transition-all hover:border-teal-200/80 hover:shadow-md dark:border-neutral-800/55 dark:bg-neutral-950 dark:hover:border-teal-800/50'
+    'flex h-full flex-col overflow-hidden rounded-xl border border-neutral-200/55 bg-white shadow-xs transition-all hover:border-teal-200/80 hover:shadow-md dark:border-neutral-800/55 dark:bg-neutral-950 dark:hover:border-teal-800/50'
 
   if (article.url) {
     return (

@@ -44,7 +44,7 @@ export function AppWarningBanner() {
         type="button"
         onClick={hide}
         aria-label={t.nav.updatesAnnouncement.dismiss}
-        className="absolute inset-y-0 end-1 my-auto flex h-7 w-7 items-center justify-center rounded-md text-amber-900 transition-colors hover:bg-amber-100 dark:text-amber-100 dark:hover:bg-amber-900/70"
+        className="absolute inset-y-0 inset-e-1 my-auto flex h-7 w-7 items-center justify-center rounded-md text-amber-900 transition-colors hover:bg-amber-100 dark:text-amber-100 dark:hover:bg-amber-900/70"
       >
         <X className="h-4 w-4" aria-hidden />
       </button>

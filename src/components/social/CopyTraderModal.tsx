@@ -40,7 +40,7 @@ function AccountLogo({ platform }: { platform: string }) {
     )
   }
   return (
-    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-neutral-100 dark:bg-neutral-900 dark:ring-neutral-800">
+    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white shadow-xs ring-1 ring-neutral-100 dark:bg-neutral-900 dark:ring-neutral-800">
       <img
         src={`/${normalized}.png`}
         alt=""
@@ -381,12 +381,12 @@ export function CopyTraderModal({
             <section aria-labelledby="copy-preview-heading" className="self-start rounded-2xl border border-neutral-200/80 bg-neutral-50/70 p-4 dark:border-neutral-800 dark:bg-neutral-900/60 sm:p-5 lg:sticky lg:top-0">
               <div className="flex items-center justify-between gap-3">
                 <h3 id="copy-preview-heading" className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{c.setupPreview}</h3>
-                <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-green-500 dark:text-teal-300">{c.previewLabel}</span>
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-green-500 dark:text-teal-300">{c.previewLabel}</span>
               </div>
               {previewTrade ? (
                 <div className="mt-4">
                   <div className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-950">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-neutral-900 dark:text-neutral-50">{c.traderAction}</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-neutral-900 dark:text-neutral-50">{c.traderAction}</p>
                     <div className="mt-1 flex items-center justify-between gap-3">
                       <p className="flex items-center gap-2 text-base font-semibold text-neutral-900 dark:text-neutral-50">
                         <span>{previewTrade.symbol}</span>
@@ -403,7 +403,7 @@ export function CopyTraderModal({
                   </div>
                   <div className="flex justify-center py-2 text-green-400 dark:text-green-400"><ArrowDown className="h-5 w-5" aria-hidden /></div>
                   <div className="rounded-xl border border-teal-200 bg-white p-4 dark:border-teal-900 dark:bg-neutral-950">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-green-500 dark:text-teal-300">{c.yourAccount}</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-green-500 dark:text-teal-300">{c.yourAccount}</p>
                     {selectedBroker ? (
                       <>
                         <div className="mt-2 flex items-center gap-3">

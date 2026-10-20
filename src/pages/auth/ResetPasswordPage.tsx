@@ -24,7 +24,7 @@ function ResetCard({
   return (
     <div
       className={clsx(
-        'rounded-2xl border border-neutral-200/65 bg-neutral-50/90 p-6 shadow-sm dark:border-neutral-800/55 dark:bg-neutral-900/60 sm:p-8',
+        'rounded-2xl border border-neutral-200/65 bg-neutral-50/90 p-6 shadow-xs dark:border-neutral-800/55 dark:bg-neutral-900/60 sm:p-8',
         className,
       )}
     >
@@ -228,7 +228,7 @@ export function ResetPasswordPage() {
             autoComplete="new-password"
           />
 
-          <Button type="submit" loading={loading} className="w-full !mt-6" size="lg">
+          <Button type="submit" loading={loading} className="w-full mt-6!" size="lg">
             {t.submit}
           </Button>
         </form>

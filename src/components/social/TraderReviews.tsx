@@ -97,12 +97,12 @@ function ReviewModal({ traderName, traderUserId, existing, onClose, onSaved }: {
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[70] flex items-end justify-center p-0 sm:items-center sm:p-6" role="dialog" aria-modal="true" aria-labelledby="trader-review-title">
+    <div className="fixed inset-0 z-70 flex items-end justify-center p-0 sm:items-center sm:p-6" role="dialog" aria-modal="true" aria-labelledby="trader-review-title">
       <button type="button" className="absolute inset-0 bg-neutral-950/60" aria-label="Close review dialog" disabled={submitting} onClick={onClose} />
       <div ref={dialogRef} className="relative max-h-[92vh] w-full overflow-y-auto rounded-t-2xl border border-neutral-200 bg-white shadow-2xl dark:border-neutral-800 dark:bg-neutral-900 sm:max-w-lg sm:rounded-2xl">
         <div className="flex items-start justify-between gap-3 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
           <div><h2 id="trader-review-title" className="text-lg font-semibold">{existing ? 'Edit your review' : 'Rate trader'}</h2><p className="mt-1 text-sm text-neutral-500">{traderName}</p></div>
-          <button ref={closeRef} type="button" className="rounded-lg p-2 hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400 dark:hover:bg-neutral-800" aria-label="Close" disabled={submitting} onClick={onClose}><X className="h-5 w-5" /></button>
+          <button ref={closeRef} type="button" className="rounded-lg p-2 hover:bg-neutral-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400 dark:hover:bg-neutral-800" aria-label="Close" disabled={submitting} onClick={onClose}><X className="h-5 w-5" /></button>
         </div>
         <div className="space-y-4 p-5">
           {saved ? <Alert variant="success">Your review was saved.</Alert> : null}
@@ -113,7 +113,7 @@ function ReviewModal({ traderName, traderUserId, existing, onClose, onSaved }: {
               {[1, 2, 3, 4, 5].map(star => (
                 <button key={star} type="button" role="radio" aria-checked={rating === star} aria-label={`${star} star${star === 1 ? '' : 's'}`}
                   onClick={() => setRating(star)} onKeyDown={event => selectByKeyboard(event, star)}
-                  className={clsx('rounded-lg p-2 transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400', rating > 0 ? RATING_TONES[rating] : RATING_TONES[star], rating === star && 'bg-neutral-100 ring-2 ring-current dark:bg-neutral-800')}>
+                  className={clsx('rounded-lg p-2 transition-transform hover:scale-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400', rating > 0 ? RATING_TONES[rating] : RATING_TONES[star], rating === star && 'bg-neutral-100 ring-2 ring-current dark:bg-neutral-800')}>
                   <Star className={clsx('h-7 w-7', rating >= star && 'fill-current')} />
                 </button>
               ))}
@@ -121,7 +121,7 @@ function ReviewModal({ traderName, traderUserId, existing, onClose, onSaved }: {
           </fieldset>
           <label className="block text-sm font-medium">Written review
             <textarea rows={5} maxLength={SOCIAL_REVIEW_MAX_LENGTH} disabled={submitting || saved} value={text} onChange={event => setText(event.target.value)}
-              className="mt-2 w-full resize-y rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 dark:border-neutral-700 dark:bg-neutral-950" placeholder="Describe your experience with this trader." />
+              className="mt-2 w-full resize-y rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-green-400 dark:border-neutral-700 dark:bg-neutral-950" placeholder="Describe your experience with this trader." />
             <span className="mt-1 block text-end text-xs text-neutral-500">{text.length}/{SOCIAL_REVIEW_MAX_LENGTH}</span>
           </label>
           {!saved && validation && (rating > 0 || text.length > 0) ? <p className="text-sm text-red-600 dark:text-red-400">{validation}</p> : null}
@@ -184,7 +184,7 @@ export function TraderReviews({ traderUserId, traderName, isSelf, averageRating,
 
   const action = (
     <button type="button" disabled={isSelf || opening} aria-busy={opening} onClick={() => void openReview()}
-      className="inline-flex items-center gap-2 rounded-lg px-2 py-1 text-sm hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400 disabled:cursor-not-allowed disabled:opacity-70 dark:hover:bg-neutral-800"
+      className="inline-flex items-center gap-2 rounded-lg px-2 py-1 text-sm hover:bg-neutral-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400 disabled:cursor-not-allowed disabled:opacity-70 dark:hover:bg-neutral-800"
       aria-label={isSelf ? `Your rating: ${summary.average?.toFixed(1) ?? 'not rated'}` : `${ownReview ? 'Edit rating for' : 'Rate'} ${traderName}`}>
       <Stars rating={summary.average ?? 0} label={summary.average == null ? 'Not rated' : `${summary.average.toFixed(1)} out of 5`} />
       <span>{summary.average == null ? 'No ratings' : summary.average.toFixed(1)} ({summary.count})</span>

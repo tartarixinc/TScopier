@@ -86,7 +86,7 @@ export function BacktestVisual() {
               >
                 <div
                   className={clsx(
-                    'w-1 min-h-[2.5rem] shrink-0 self-stretch rounded-full',
+                    'w-1 min-h-10 shrink-0 self-stretch rounded-full',
                     toneBarClass(signal.pipsTone),
                   )}
                 />

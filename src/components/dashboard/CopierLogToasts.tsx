@@ -159,7 +159,7 @@ export function CopierLogToasts({ userId }: { userId: string | undefined }) {
 
   return (
     <div
-      className="pointer-events-none fixed bottom-4 end-4 z-[70] flex w-[min(100vw-2rem,22rem)] flex-col gap-2"
+      className="pointer-events-none fixed bottom-4 inset-e-4 z-70 flex w-[min(100vw-2rem,22rem)] flex-col gap-2"
       aria-live="polite"
     >
       {toasts.map(toast => (

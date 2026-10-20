@@ -65,9 +65,9 @@ export function ProviderEarningsCalculator() {
   const monthly = copiers * price
 
   return (
-    <section className="mx-auto max-w-[80rem] px-3 py-8 sm:px-5 sm:py-12">
+    <section className="mx-auto max-w-7xl px-3 py-8 sm:px-5 sm:py-12">
       <article
-        className="relative isolate overflow-hidden rounded-[2rem] ring-1 ring-black/5 dark:ring-white/10"
+        className="relative isolate overflow-hidden rounded-4xl ring-1 ring-black/5 dark:ring-white/10"
         style={{ backgroundImage: 'linear-gradient(160deg, #161d26 0%, #0c1015 75%)' }}
       >
         <Grain className="-z-10 opacity-[0.1]" />
@@ -83,7 +83,7 @@ export function ProviderEarningsCalculator() {
             </div>
           </div>
 
-          <div className="rounded-3xl border border-white/10 bg-white/[0.05] p-6 backdrop-blur-xl sm:p-8">
+          <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl sm:p-8">
             <div className="space-y-8">
               <Slider
                 id={`${uid}-copiers`}
@@ -114,7 +114,7 @@ export function ProviderEarningsCalculator() {
                 </p>
                 <p className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">{money.format(monthly)}</p>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-5">
+              <div className="rounded-2xl border border-white/10 bg-white/6 p-5">
                 <p className=" text-[0.625rem] font-medium uppercase tracking-[0.14em] text-neutral-400">
                   {c.perYear}
                 </p>
@@ -124,7 +124,7 @@ export function ProviderEarningsCalculator() {
               </div>
             </div>
 
-            <div className="mt-3 flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-3.5">
+            <div className="mt-3 flex items-center justify-between rounded-2xl border border-white/10 bg-white/4 px-5 py-3.5">
               <span className="text-sm text-neutral-300">{c.keep}</span>
               <span className="text-lg font-bold text-green-400">{c.keepValue}</span>
             </div>

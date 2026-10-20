@@ -122,7 +122,7 @@ export function MarketingFooter() {
               <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
                 <a
                   href={appUrl('/signup')}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-green-400 bg-green-400 px-5 py-2.5 text-sm font-medium text-neutral-950 transition-colors hover:border-green-500 hover:bg-green-500 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2 dark:focus:ring-offset-neutral-950"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-green-400 bg-green-400 px-5 py-2.5 text-sm font-medium text-neutral-950 transition-colors hover:border-green-500 hover:bg-green-500 focus:outline-hidden focus:ring-2 focus:ring-green-400 focus:ring-offset-2 dark:focus:ring-offset-neutral-950"
                 >
                   {f.cta.primary}
                   <ArrowRight className="h-4 w-4" aria-hidden />
@@ -161,7 +161,7 @@ export function MarketingFooter() {
                 {FOOTER_PLATFORMS.map((platform) => (
                   <span
                     key={platform.src}
-                    className="marketing-footer-platform flex h-10 w-10 items-center justify-center rounded-lg border border-neutral-200/90 bg-white shadow-sm dark:border-neutral-700 dark:bg-neutral-900"
+                    className="marketing-footer-platform flex h-10 w-10 items-center justify-center rounded-lg border border-neutral-200/90 bg-white shadow-xs dark:border-neutral-700 dark:bg-neutral-900"
                     title={platform.alt}
                   >
                     <img

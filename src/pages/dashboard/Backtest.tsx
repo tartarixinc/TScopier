@@ -414,7 +414,7 @@ export function Backtest() {
       ) : null}
 
       {step === 'configure' ? (
-        <section className="rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 p-6 space-y-6 shadow-sm">
+        <section className="rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 p-6 space-y-6 shadow-xs">
           <div>
             <p className="text-sm text-neutral-900 dark:text-neutral-50 mt-1">{bt.configureHint}</p>
           </div>
@@ -440,7 +440,7 @@ export function Backtest() {
                     className={clsx(
                       'px-3 py-2 rounded-xl text-sm border transition-all disabled:opacity-50',
                       selectedChannelId === ch.id
-                        ? 'border-green-400 bg-green-400 text-neutral-950 shadow-sm'
+                        ? 'border-green-400 bg-green-400 text-neutral-950 shadow-xs'
                         : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300',
                     )}
                   >
@@ -503,7 +503,7 @@ export function Backtest() {
       ) : null}
 
       {step === 'symbol' ? (
-        <section className="rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 p-6 space-y-6 shadow-sm">
+        <section className="rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 p-6 space-y-6 shadow-xs">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">{bt.readyTitle}</h2>
@@ -667,7 +667,7 @@ export function Backtest() {
             ) : null}
           </div>
 
-          <div className="rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 overflow-hidden shadow-sm">
+          <div className="rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 overflow-hidden shadow-xs">
             <div className="px-4 py-3 border-b border-neutral-100 dark:border-neutral-800">
               <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                 {signalListLabel}

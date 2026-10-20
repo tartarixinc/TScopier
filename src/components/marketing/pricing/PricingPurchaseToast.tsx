@@ -24,7 +24,7 @@ export function PricingPurchaseToast({ message, timeAgo, flag, visible, reduceMo
       aria-live="polite"
       aria-atomic="true"
     >
-      <div className="flex max-w-sm items-start gap-3 rounded-xl border border-teal-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur dark:border-teal-900/50 dark:bg-neutral-900/95">
+      <div className="flex max-w-sm items-start gap-3 rounded-xl border border-teal-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur-sm dark:border-teal-900/50 dark:bg-neutral-900/95">
         <span
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-100 text-xl leading-none dark:bg-teal-950/60"
           aria-hidden

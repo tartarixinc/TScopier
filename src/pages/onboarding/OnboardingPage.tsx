@@ -25,7 +25,7 @@ export function OnboardingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-950 via-primary-900 to-primary-800 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-linear-to-br from-primary-950 via-primary-900 to-primary-800 flex items-center justify-center p-4">
       <div className="w-full max-w-lg">
         <div className="text-center mb-8">
           <h1 className="text-white font-semibold text-2xl">Set up UniCopier</h1>

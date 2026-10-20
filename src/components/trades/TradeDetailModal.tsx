@@ -459,7 +459,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                       })}
                     </span>
                     <span
-                      className="text-error-700 dark:text-error-300 min-w-0 break-words"
+                      className="text-error-700 dark:text-error-300 min-w-0 wrap-break-word"
                       title={failure.error_message ?? undefined}
                     >
                       {formatBrokerFailureRow(failure, t.copierLogs)}

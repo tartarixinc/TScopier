@@ -62,7 +62,7 @@ export function AwaitingApprovalSection({
                   onClick={() => onOpenSignal(signal)}
                   className="min-w-0 flex-1 text-left group"
                 >
-                  <p className="line-clamp-2 whitespace-pre-wrap break-words text-sm text-neutral-900 dark:text-neutral-50">
+                  <p className="line-clamp-2 whitespace-pre-wrap wrap-break-word text-sm text-neutral-900 dark:text-neutral-50">
                     {messageText}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
@@ -97,7 +97,7 @@ export function AwaitingApprovalSection({
                     <ChevronRight className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
                   </p>
                   {error ? (
-                    <p className="mt-1 break-words text-xs text-red-600 dark:text-red-400">{error}</p>
+                    <p className="mt-1 wrap-break-word text-xs text-red-600 dark:text-red-400">{error}</p>
                   ) : null}
                 </button>
                 <div className="flex shrink-0 items-center gap-2">

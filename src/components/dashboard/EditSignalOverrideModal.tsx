@@ -418,7 +418,7 @@ export function EditSignalOverrideModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-6"
+      className="fixed inset-0 z-60 flex items-end sm:items-center justify-center p-0 sm:p-6"
       role="dialog"
       aria-modal="true"
       aria-labelledby="edit-signal-override-title"
@@ -485,7 +485,7 @@ export function EditSignalOverrideModal({
                 <p className="pt-1 font-medium text-neutral-900 dark:text-neutral-50">{channelName}</p>
               ) : null}
               {channelMessage ? (
-                <p className="whitespace-pre-wrap break-words">
+                <p className="whitespace-pre-wrap wrap-break-word">
                   {sh.channelMessageLabel}: {channelMessage}
                 </p>
               ) : null}
@@ -554,7 +554,7 @@ export function EditSignalOverrideModal({
                 <p className="pt-1 font-medium text-neutral-900 dark:text-neutral-50">{channelName}</p>
               ) : null}
               {channelMessage ? (
-                <p className="whitespace-pre-wrap break-words">
+                <p className="whitespace-pre-wrap wrap-break-word">
                   {sh.channelMessageLabel}: {channelMessage}
                 </p>
               ) : null}

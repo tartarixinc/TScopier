@@ -29,7 +29,7 @@ export function LiveFeedDegradedBanner({ className }: LiveFeedDegradedBannerProp
         className,
       )}
     >
-      <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
       <div>
         <p className="font-medium">{t.common.brokerFeedDegraded}</p>
         <p className="text-xs mt-0.5 opacity-90">{t.common.brokerFeedDegradedHint}</p>

@@ -156,7 +156,7 @@ export function ApiKeyHelp({
         onMouseLeave={closeSoon}
         onFocus={openNow}
         onClick={() => (open ? setOpen(false) : openNow())}
-        className="shrink-0 rounded text-xs font-medium text-green-500 underline underline-offset-2 transition-colors hover:text-green-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 dark:text-green-400 dark:hover:text-green-300"
+        className="shrink-0 rounded-sm text-xs font-medium text-green-500 underline underline-offset-2 transition-colors hover:text-green-600 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400 dark:text-green-400 dark:hover:text-green-300"
       >
         {title}
       </button>

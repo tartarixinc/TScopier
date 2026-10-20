@@ -174,7 +174,7 @@ export function PreviewToggle({ on = true }: { on?: boolean }) {
     >
       <span
         className={clsx(
-          'absolute top-0.5 h-4 w-4 rounded-full bg-white shadow',
+          'absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm',
           on ? 'right-0.5' : 'left-0.5',
         )}
       />
