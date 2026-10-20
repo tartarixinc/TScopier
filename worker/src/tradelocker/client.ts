@@ -67,8 +67,16 @@ const REQUEST_GAP_MS = 150
 const LOGIN_GAP_MS = 700
 /** Rate-limited (429) requests are retried this many times before the error is surfaced. */
 const RATE_LIMIT_RETRIES = 3
+/** Reads change nothing, so they are worth more patience than orders. */
+const RATE_LIMIT_READ_RETRIES = 6
 const RATE_LIMIT_BACKOFF_MS = 1000
 const RATE_LIMIT_MAX_WAIT_MS = 8000
+/**
+ * Position and order lists are shared by callers that run back to back (for example the read before a
+ * close, the lookup inside it and the read after it). Any write clears them, so a read that follows a
+ * change is always fresh; this only drops duplicate reads, which TradeLocker rate limits hard.
+ */
+const LIST_CACHE_MS = 1500
 const CONFIG_TTL_MS = 30 * 60_000
 const INSTRUMENT_TTL_MS = 10 * 60_000
 
@@ -143,6 +151,9 @@ export class TradelockerClient {
   /** After a 429 no request leaves this client before this time. */
   private cooldownUntil = 0
   private readonly lastAt = new Map<string, number>()
+  private readonly listCache = new Map<string, { at: number; rows: Json[] }>()
+  private readonly listInFlight = new Map<string, Promise<Json[]>>()
+  private listGeneration = 0
   private configCache: { at: number; config: Json } | null = null
   private instrumentCache: { at: number; list: TradelockerInstrument[] } | null = null
   private readonly detailsCache = new Map<number, { at: number; details: TradelockerInstrumentDetails }>()
@@ -330,7 +341,7 @@ export class TradelockerClient {
             continue
           }
           // A 429 means the request was refused unprocessed, so repeating it (even an order) cannot duplicate it.
-          if (error.status === 429 && rateLimited < RATE_LIMIT_RETRIES) {
+          if (error.status === 429 && rateLimited < (method === 'GET' ? RATE_LIMIT_READ_RETRIES : RATE_LIMIT_RETRIES)) {
             const backoff = error.retryAfterMs ?? RATE_LIMIT_BACKOFF_MS * 2 ** rateLimited
             this.cooldownUntil = Math.max(this.cooldownUntil, this.now() + Math.min(RATE_LIMIT_MAX_WAIT_MS, Math.max(backoff, 500)))
             rateLimited += 1
@@ -428,16 +439,48 @@ export class TradelockerClient {
     return details
   }
 
-  async positions(): Promise<Json[]> {
-    const config = await this.config()
-    const data = await this.request('GET', `${this.accountPath}/positions`)
-    return rowsToObjects(columnsOf(config, 'positionsConfig'), asRecord(asRecord(data).d).positions)
+  /** Drop cached lists. Called around every write so the next read sees the change. */
+  private invalidateLists(): void {
+    this.listGeneration += 1
+    this.listCache.clear()
+    this.listInFlight.clear()
   }
 
-  async orders(): Promise<Json[]> {
-    const config = await this.config()
-    const data = await this.request('GET', `${this.accountPath}/orders`)
-    return rowsToObjects(columnsOf(config, 'ordersConfig'), asRecord(asRecord(data).d).orders)
+  private cachedList(name: string, load: () => Promise<Json[]>): Promise<Json[]> {
+    const hit = this.listCache.get(name)
+    if (hit && this.now() - hit.at < LIST_CACHE_MS) return Promise.resolve([...hit.rows])
+    const pending = this.listInFlight.get(name)
+    if (pending) return pending.then(rows => [...rows])
+    const generation = this.listGeneration
+    const run = load().then(rows => {
+      if (generation === this.listGeneration) this.listCache.set(name, { at: this.now(), rows })
+      return rows
+    })
+    this.listInFlight.set(name, run)
+    const clear = () => {
+      if (this.listInFlight.get(name) === run) this.listInFlight.delete(name)
+    }
+    run.then(clear, clear)
+    return run.then(rows => [...rows])
+  }
+
+  /** `cached` accepts a list read less than a second and a half ago (never older than the last write). */
+  async positions(opts: { cached?: boolean } = {}): Promise<Json[]> {
+    const load = async () => {
+      const config = await this.config()
+      const data = await this.request('GET', `${this.accountPath}/positions`)
+      return rowsToObjects(columnsOf(config, 'positionsConfig'), asRecord(asRecord(data).d).positions)
+    }
+    return opts.cached ? this.cachedList('positions', load) : load()
+  }
+
+  async orders(opts: { cached?: boolean } = {}): Promise<Json[]> {
+    const load = async () => {
+      const config = await this.config()
+      const data = await this.request('GET', `${this.accountPath}/orders`)
+      return rowsToObjects(columnsOf(config, 'ordersConfig'), asRecord(asRecord(data).d).orders)
+    }
+    return opts.cached ? this.cachedList('orders', load) : load()
   }
 
   async ordersHistory(from?: number, to?: number): Promise<Json[]> {
@@ -460,27 +503,42 @@ export class TradelockerClient {
 
   // ── writes ───────────────────────────────────────────────────────────────
 
+  private async writing<T>(fn: () => Promise<T>): Promise<T> {
+    this.invalidateLists()
+    try {
+      return await fn()
+    } finally {
+      this.invalidateLists()
+    }
+  }
+
   async placeOrder(body: Json): Promise<string> {
-    const data = await this.request('POST', `${this.accountPath}/orders`, { body })
+    this.invalidateLists()
+    let data: unknown
+    try {
+      data = await this.request('POST', `${this.accountPath}/orders`, { body })
+    } finally {
+      this.invalidateLists()
+    }
     const orderId = String(asRecord(asRecord(data).d).orderId ?? '').trim()
     if (!orderId) throw new TradelockerApiError('TradeLocker did not return an order id', 0)
     return orderId
   }
 
   async modifyPosition(positionId: string, body: Json): Promise<void> {
-    await this.request('PATCH', `/trade/positions/${encodeURIComponent(positionId)}`, { body })
+    await this.writing(() => this.request('PATCH', `/trade/positions/${encodeURIComponent(positionId)}`, { body }))
   }
 
   async modifyOrder(orderId: string, body: Json): Promise<void> {
-    await this.request('PATCH', `/trade/orders/${encodeURIComponent(orderId)}`, { body })
+    await this.writing(() => this.request('PATCH', `/trade/orders/${encodeURIComponent(orderId)}`, { body }))
   }
 
   /** `qty` of 0 closes the whole position. */
   async closePosition(positionId: string, qty: number): Promise<void> {
-    await this.request('DELETE', `/trade/positions/${encodeURIComponent(positionId)}`, { body: { qty } })
+    await this.writing(() => this.request('DELETE', `/trade/positions/${encodeURIComponent(positionId)}`, { body: { qty } }))
   }
 
   async cancelOrder(orderId: string): Promise<void> {
-    await this.request('DELETE', `/trade/orders/${encodeURIComponent(orderId)}`)
+    await this.writing(() => this.request('DELETE', `/trade/orders/${encodeURIComponent(orderId)}`))
   }
 }

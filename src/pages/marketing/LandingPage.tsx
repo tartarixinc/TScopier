@@ -3,7 +3,8 @@ import { useLocation } from 'react-router-dom'
 import { MarketingLayout } from '../../components/marketing/MarketingLayout'
 import { HeroSection } from '../../components/marketing/sections/HeroSection'
 // import { StatsSection } from '../../components/marketing/sections/StatsSection'
-import { CompletePictureSection } from '../../components/marketing/sections/CompletePictureSection'
+import { SupportedPlatformsSection } from '../../components/marketing/sections/SupportedPlatformsSection'
+// import { CompletePictureSection } from '../../components/marketing/sections/CompletePictureSection'
 // import { IntegrationsSection } from '../../components/marketing/sections/IntegrationsSection'
 import { ProductShowcaseSection } from '../../components/marketing/sections/ProductShowcaseSection'
 import { SellSignalsSection } from '../../components/marketing/sections/SellSignalsSection'
@@ -37,7 +38,8 @@ export function LandingPage() {
   return (
     <MarketingLayout darkHero>
       <HeroSection />
-      <CompletePictureSection />
+      <SupportedPlatformsSection />
+      {/* <CompletePictureSection /> */}
       {/* <IntegrationsSection /> */}
       {/* <StatsSection /> */}
       <ProductShowcaseSection />

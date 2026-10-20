@@ -208,17 +208,28 @@ export class TradelockerProvider implements BrokerProvider {
   async orderModify(id: string, args: OrderModifyArgs): Promise<OrderResult> {
     const st = await this.state(id)
     return this.serialize(st, async () => {
-      const found = await this.findTicket(st, args.ticket)
-      const { instrument, details } = await this.instrumentFor(st, found.symbol)
-      if (found.kind === 'position') return this.modifyPosition(st, found, details, args)
-      return this.modifyPending(st, found, instrument, details, args)
+      const attempt = async (cached: boolean): Promise<OrderResult> => {
+        const found = await this.findTicket(st, args.ticket, cached)
+        const { instrument, details } = await this.instrumentFor(st, found.symbol)
+        try {
+          if (found.kind === 'position') return await this.modifyPosition(st, found, details, args)
+          return await this.modifyPending(st, found, instrument, details, args)
+        } catch (error) {
+          // A pending order seen in a cached list may have filled since: look again, fresh.
+          if (cached && found.kind === 'order' && /not found/i.test(error instanceof Error ? error.message : '')) return attempt(false)
+          throw error
+        }
+      }
+      return attempt(true)
     })
   }
 
   async orderClose(id: string, args: OrderCloseArgs): Promise<OrderResult> {
     const st = await this.state(id)
     return this.serialize(st, async () => {
-      const found = await this.findTicket(st, args.ticket)
+      let found = await this.findTicket(st, args.ticket, true)
+      // Positions are safe to act on from a recent read; a pending order may have filled, so confirm it fresh.
+      if (found.kind === 'order') found = await this.findTicket(st, args.ticket, false)
       if (found.kind === 'order') {
         await st.client.cancelOrder(found.id)
         return {
@@ -276,8 +287,8 @@ export class TradelockerProvider implements BrokerProvider {
   async openedOrders(id: string): Promise<unknown[]> {
     const st = await this.state(id)
     const names = await this.nameIndex(st)
-    const positions = await st.client.positions()
-    const orders = await st.client.orders()
+    const positions = await st.client.positions({ cached: true })
+    const orders = await st.client.orders({ cached: true })
     const byId = new Map(orders.map(order => [String(order.id ?? ''), order]))
     const protectionIds = new Set<string>()
     for (const position of positions) {
@@ -407,7 +418,11 @@ export class TradelockerProvider implements BrokerProvider {
     const account = await this.accountInfo(st)
     const state = await st.client.accountState()
     const balance = finite(state.balance)
-    const profit = finite(state.openNetPnL) ?? finite(state.openGrossPnL)
+    const stateValue = (name: string): unknown => {
+      const key = Object.keys(state).find(k => k.toLowerCase() === name.toLowerCase())
+      return key === undefined ? undefined : (state as Record<string, unknown>)[key]
+    }
+    const profit = finite(stateValue('openNetPnL')) ?? finite(stateValue('openGrossPnL'))
     return {
       balance,
       equity: finite(state.projectedBalance) ?? (balance !== undefined && profit !== undefined ? balance + profit : balance),
@@ -744,7 +759,11 @@ export class TradelockerProvider implements BrokerProvider {
 
   // ── Positions and protection ────────────────────────────────────────────
 
-  private async findTicket(st: AccountState, ticket: number): Promise<Found> {
+  /**
+   * Locates a position or pending order. With `cached` the lists may be up to a second and a half old, which
+   * saves the reads a basket close would otherwise repeat for every leg; a miss is always rechecked fresh.
+   */
+  private async findTicket(st: AccountState, ticket: number, cached = false): Promise<Found> {
     const names = await this.nameIndex(st)
     const nameOf = (row: Json) => names.get(Number(row.tradableInstrumentId)) ?? String(row.tradableInstrumentId ?? '')
     const asPosition = (row: Json): Found => ({
@@ -755,11 +774,11 @@ export class TradelockerProvider implements BrokerProvider {
       side: sideOf(row.side),
     })
 
-    const positions = await st.client.positions()
+    const positions = await st.client.positions({ cached })
     const direct = positions.find(row => hasId(row.id) && ticketFromId(row.id) === ticket)
     if (direct) return asPosition(direct)
 
-    const orders = await st.client.orders()
+    const orders = await st.client.orders({ cached })
     const protectionIds = new Set<string>()
     for (const position of positions) {
       if (hasId(position.stopLossId)) protectionIds.add(String(position.stopLossId))
@@ -777,6 +796,8 @@ export class TradelockerProvider implements BrokerProvider {
         type: String(pending.type ?? '').toLowerCase(),
       }
     }
+
+    if (cached) return this.findTicket(st, ticket, false)
 
     // A pending order that filled became a position with a different id: follow it through history.
     const history = await st.client.ordersHistory(this.now() - 30 * DAY_MS)

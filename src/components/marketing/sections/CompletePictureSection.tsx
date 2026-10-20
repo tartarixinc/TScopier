@@ -8,13 +8,21 @@ const SOURCE_LOGOS = [
   { name: 'Telegram', src: '/Telegram.svg' },
 ] as const
 
-const PLATFORM_LOGOS = [
-  { name: 'MetaTrader 4', src: '/MT4.png' },
-  { name: 'MetaTrader 5', src: '/MT5.png' },
-  { name: 'cTrader', src: '/cTrader.png' },
-  { name: 'Binance', src: '/Binance.png' },
-  { name: 'Bybit', src: '/Bybit.png' },
-  { name: 'KuCoin', src: '/Kucoin.png' },
+/** Nine logos do not fit one overlapping row inside a card, so they are shown as two rows. */
+const PLATFORM_LOGO_ROWS = [
+  [
+    { name: 'MetaTrader 4', src: '/MT4.png' },
+    { name: 'MetaTrader 5', src: '/MT5.png' },
+    { name: 'cTrader', src: '/cTrader.png' },
+    { name: 'Binance', src: '/Binance.png' },
+    { name: 'Bybit', src: '/Bybit.png' },
+  ],
+  [
+    { name: 'KuCoin', src: '/Kucoin.png' },
+    { name: 'DX-Trade', src: '/DX-trade.png' },
+    { name: 'TradeLocker', src: '/Trade_locker.png' },
+    { name: 'MatchTrader', src: '/Match-Trader.png' },
+  ],
 ] as const
 
 /** Fractal-noise grain (tiled inline SVG) laid over the dark surface. */
@@ -49,7 +57,11 @@ export function CompletePictureSection() {
 
   const icons: ReactNode[] = [
     <LogoStack key="sources" logos={SOURCE_LOGOS} />,
-    <LogoStack key="platforms" logos={PLATFORM_LOGOS} />,
+    <div key="platforms" className="flex flex-col gap-1.5">
+      {PLATFORM_LOGO_ROWS.map(row => (
+        <LogoStack key={row[0].name} logos={row} />
+      ))}
+    </div>,
     <LogoStack key="tradingview" logos={[{ name: 'TradingView', src: '/tradingview-logo.png' }]} />,
     <IconBubble key="ai">
       <Sparkles className="h-6 w-6" />
