@@ -781,7 +781,7 @@ export async function fetchTradesAcrossProviders(
     const anyExplicit = args.accounts.some(
       a => a.provider === 'mtapi' || a.provider === 'fxsocket' || a.provider === 'ctrader' || a.provider === 'binance' || a.provider === 'bybit' || a.provider === 'kucoin' || a.provider === 'dxtrade' || a.provider === 'tradelocker' || a.provider === 'matchtrader',
     )
-    providers = anyExplicit && set.size > 0 ? [...set] : ['fxsocket', 'mtapi']
+    providers = anyExplicit && explicit.size > 0 ? [...explicit] : ['fxsocket', 'mtapi']
   }
   if (!providers) providers = ['mtapi']
   if (providers.length === 0) return { trades: [] }
