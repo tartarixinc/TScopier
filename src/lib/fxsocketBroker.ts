@@ -134,7 +134,7 @@ interface CallOpts<T> {
   edgeFn?: string
 }
 
-export type BrokerEdgeProvider = 'fxsocket' | 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin'
+export type BrokerEdgeProvider = 'fxsocket' | 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin' | 'dxtrade' | 'tradelocker'
 
 function brokerEdgeFn(provider?: string): string | undefined {
   if (provider === 'mtapi') return 'mtapi-broker'
@@ -142,6 +142,8 @@ function brokerEdgeFn(provider?: string): string | undefined {
   if (provider === 'binance') return 'binance-broker'
   if (provider === 'bybit') return 'bybit-broker'
   if (provider === 'kucoin') return 'kucoin-broker'
+  if (provider === 'dxtrade') return 'dxtrade-broker'
+  if (provider === 'tradelocker') return 'tradelocker-broker'
   return undefined
 }
 
@@ -718,7 +720,7 @@ export type TradesFetchArgs = {
 }
 
 function isWrongProviderError(message: string): boolean {
-  return /not an MTAPI account|no FxSocket account linked|not a cTrader account|not a Binance account|not a Bybit account|not a KuCoin account/i.test(message)
+  return /not an MTAPI account|no FxSocket account linked|not a cTrader account|not a Binance account|not a Bybit account|not a KuCoin account|not a DXtrade account|not a TradeLocker account/i.test(message)
 }
 
 /**
@@ -740,12 +742,12 @@ export async function fetchTradesAcrossProviders(
       args.accounts
         .map(account => resolveProvider(account))
         .filter((provider): provider is BrokerEdgeProvider =>
-          provider === 'fxsocket' || provider === 'mtapi' || provider === 'ctrader' || provider === 'binance' || provider === 'bybit' || provider === 'kucoin'),
+          provider === 'fxsocket' || provider === 'mtapi' || provider === 'ctrader' || provider === 'binance' || provider === 'bybit' || provider === 'kucoin' || provider === 'dxtrade' || provider === 'tradelocker'),
     )
     // Anchors without a provider field resolve to fxsocket — if nothing was
     // explicitly marked, still query both so MTAPI-only data is not dropped.
     const anyExplicit = args.accounts.some(
-      a => a.provider === 'mtapi' || a.provider === 'fxsocket' || a.provider === 'ctrader' || a.provider === 'binance' || a.provider === 'bybit' || a.provider === 'kucoin',
+      a => a.provider === 'mtapi' || a.provider === 'fxsocket' || a.provider === 'ctrader' || a.provider === 'binance' || a.provider === 'bybit' || a.provider === 'kucoin' || a.provider === 'dxtrade' || a.provider === 'tradelocker',
     )
     providers = anyExplicit && set.size > 0 ? [...set] : ['fxsocket', 'mtapi']
   }

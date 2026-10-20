@@ -311,7 +311,7 @@ export class TradeExecutor {
   private async loadBrokers() {
     const brokersQ = await applyShardToQuery(
       this.supabase,
-      this.supabase.from('broker_accounts').select('*').or('mtapi_session_id.neq.,fxsocket_account_id.neq.,metaapi_account_id.neq.,ctrader_account_id.neq.,binance_account_id.neq.,bybit_account_id.neq.,kucoin_account_id.neq.'),
+      this.supabase.from('broker_accounts').select('*').or('mtapi_session_id.neq.,fxsocket_account_id.neq.,metaapi_account_id.neq.,ctrader_account_id.neq.,binance_account_id.neq.,bybit_account_id.neq.,kucoin_account_id.neq.,dxtrade_account_id.neq.,tradelocker_account_id.neq.'),
     )
     if (!brokersQ) {
       this.brokersByUser.clear()
@@ -319,7 +319,7 @@ export class TradeExecutor {
       return
     }
     let { data, error } = await brokersQ
-    if (error && /ctrader_account_id|binance_account_id|bybit_account_id|kucoin_account_id/i.test(error.message)) {
+    if (error && /ctrader_account_id|binance_account_id|bybit_account_id|kucoin_account_id|dxtrade_account_id|tradelocker_account_id/i.test(error.message)) {
       const retry = await applyShardToQuery(
         this.supabase,
         this.supabase.from('broker_accounts').select('*').or('mtapi_session_id.neq.,fxsocket_account_id.neq.,metaapi_account_id.neq.'),

@@ -12,6 +12,7 @@ import { ReferralLandingRedirect } from './pages/marketing/ReferralLandingRedire
 import { appUrl } from './lib/site'
 import { GoogleAnalyticsRouteTracker } from './components/analytics/GoogleAnalyticsRouteTracker'
 import { CookieConsentBanner } from './components/marketing/CookieConsentBanner'
+import { ScrollToTop } from './components/marketing/ScrollToTop'
 
 function MarketingCatchAll() {
   if (typeof window !== 'undefined') {
@@ -25,6 +26,7 @@ export default function MarketingApp() {
     <AuthProvider>
       <LocaleProvider>
         <BrowserRouter>
+          <ScrollToTop />
           <GoogleAnalyticsRouteTracker />
           <CookieConsentBanner />
           <Routes>

@@ -47,6 +47,8 @@ function platformLogo(platform: string): string | null {
   if (platform === 'Binance') return '/Binance.png'
   if (platform === 'Bybit') return '/Bybit.png'
   if (platform === 'KuCoin') return '/Kucoin.png'
+  if (platform === 'DXtrade') return '/DX-trade.png'
+  if (platform === 'TradeLocker') return '/Trade_locker.png'
   return null
 }
 
