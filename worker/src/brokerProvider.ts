@@ -20,7 +20,7 @@ import type {
 } from './fxsocketClient'
 import type { MtHistoryProfile } from './mtTradeFields'
 
-export type BrokerProviderName = 'fxsocket' | 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin' | 'dxtrade'
+export type BrokerProviderName = 'fxsocket' | 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin' | 'dxtrade' | 'tradelocker'
 
 export type {
   AccountSummary as BrokerAccountSummary,

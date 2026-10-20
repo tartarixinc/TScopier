@@ -94,6 +94,8 @@ export interface BrokerRow {
   /** KuCoin key fingerprint. Not a UUID. */
   kucoin_account_id?: string | null
   dxtrade_account_id?: string | null
+  /** TradeLocker login + account fingerprint. Not a UUID. */
+  tradelocker_account_id?: string | null
   metaapi_account_id: string | null
   account_login: string | null
   broker_server: string | null

@@ -25,7 +25,7 @@ const PLATFORM_TILES: readonly PlatformTile[] = [
   { id: 'kucoin', name: 'KuCoin Futures', logo: '/Kucoin.png', asset: 'crypto', platform: 'KuCoin' },
   { id: 'dxtrade', name: 'DX-Trade', logo: '/DX-trade.png', asset: 'forex', platform: 'DXtrade' },
   { id: 'tradovate', name: 'Tradovate', logo: '/Tradovate.png', asset: 'futures' },
-  { id: 'tradelocker', name: 'TradeLocker', logo: '/Trade_locker.png', asset: 'forex' },
+  { id: 'tradelocker', name: 'TradeLocker', logo: '/Trade_locker.png', asset: 'forex', platform: 'TradeLocker' },
   { id: 'matchtrader', name: 'MatchTrader', logo: '/Match-Trader.png', asset: 'forex' },
 ]
 

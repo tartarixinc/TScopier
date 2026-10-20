@@ -469,7 +469,7 @@ export interface BrokerAccount {
   /** FxSocket v1 account status. */
   fxsocket_status?: FxsocketConnectionStatus | null
   /** Provider routing: 'fxsocket' (default), 'mtapi', 'ctrader', 'binance', or 'bybit'. */
-  provider?: 'fxsocket' | 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin' | 'dxtrade' | null
+  provider?: 'fxsocket' | 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin' | 'dxtrade' | 'tradelocker' | null
   /** Monotonic broker-writer fence used to reject stale worker jobs. */
   writer_epoch?: number
   /** Mutations are allowed only while stable. */
@@ -532,6 +532,16 @@ export interface BrokerAccount {
   dxtrade_status?: 'connected' | 'connecting' | 'disconnected' | 'error' | null
   /** Only position-based (hedging) accounts can be linked. */
   dxtrade_is_position_based?: boolean | null
+  /** TradeLocker login + account fingerprint. The password stays server-side. */
+  tradelocker_account_id?: string | null
+  /** TradeLocker environment (fixed API host per environment). */
+  tradelocker_environment?: 'demo' | 'live' | null
+  /** TradeLocker broker server name used at login. */
+  tradelocker_server?: string | null
+  /** TradeLocker account id (not the login fingerprint). */
+  tradelocker_account_ref?: string | null
+  /** TradeLocker link status shown in the Connection column. */
+  tradelocker_status?: 'connected' | 'connecting' | 'disconnected' | 'error' | null
   /** Auto-reconnect enabled flag. */
   auto_reconnect_enabled?: boolean | null
   /** Error kind classifier (e.g. credential, network, timeout). */

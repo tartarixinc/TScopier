@@ -77,6 +77,11 @@ export const BROKER_ACCOUNT_CLIENT_SELECT = [
   'dxtrade_account_code',
   'dxtrade_status',
   'dxtrade_is_position_based',
+  'tradelocker_account_id',
+  'tradelocker_environment',
+  'tradelocker_server',
+  'tradelocker_account_ref',
+  'tradelocker_status',
   'linked_account_type',
 ].join(',')
 
@@ -112,6 +117,11 @@ export function missingKucoinColumns(message: string): boolean {
 
 export function missingDxtradeColumns(message: string): boolean {
   return /dxtrade_(account_id|server_url|username|domain|account_code|status|is_position_based)/i.test(message)
+    && /schema cache|does not exist|column/i.test(message)
+}
+
+export function missingTradelockerColumns(message: string): boolean {
+  return /tradelocker_(account_id|environment|server|account_ref|status)/i.test(message)
     && /schema cache|does not exist|column/i.test(message)
 }
 
@@ -160,6 +170,15 @@ function columnsAfterSchemaError(columns: string, message: string): string | nul
       'dxtrade_account_code',
       'dxtrade_status',
       'dxtrade_is_position_based',
+    ]) drop.add(column)
+  }
+  if (missingTradelockerColumns(message)) {
+    for (const column of [
+      'tradelocker_account_id',
+      'tradelocker_environment',
+      'tradelocker_server',
+      'tradelocker_account_ref',
+      'tradelocker_status',
     ]) drop.add(column)
   }
   if (drop.size === 0) return null

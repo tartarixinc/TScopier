@@ -25,6 +25,7 @@ export function brokerSessionId(row: {
   bybit_account_id?: string | null
   kucoin_account_id?: string | null
   dxtrade_account_id?: string | null
+  tradelocker_account_id?: string | null
 }): string {
   const provider = row.provider == null || row.provider === '' ? 'fxsocket' : row.provider
   if (provider === 'mtapi') {
@@ -51,6 +52,10 @@ export function brokerSessionId(row: {
     const dxtrade = String(row.dxtrade_account_id ?? '').trim()
     return dxtrade && !dxtrade.includes('|') ? dxtrade : ''
   }
+  if (provider === 'tradelocker') {
+    const tradelocker = String(row.tradelocker_account_id ?? '').trim()
+    return tradelocker && !tradelocker.includes('|') ? tradelocker : ''
+  }
   if (provider !== 'fxsocket') return ''
   const fx = String(row.fxsocket_account_id ?? '').trim()
   if (fx && !fx.includes('|')) return fx
@@ -60,7 +65,7 @@ export function brokerSessionId(row: {
 }
 
 function missingCtraderColumn(message: string): boolean {
-  return /ctrader_account_id|binance_account_id|bybit_account_id|kucoin_account_id|dxtrade_account_id/i.test(message)
+  return /ctrader_account_id|binance_account_id|bybit_account_id|kucoin_account_id|dxtrade_account_id|tradelocker_account_id/i.test(message)
 }
 
 export async function loadPlatformByFxsocketId(
@@ -74,8 +79,8 @@ export async function loadPlatformByFxsocketId(
   const idList = ids.join(',')
   const withCtrader = await supabase
     .from('broker_accounts')
-    .select(`${base},ctrader_account_id,binance_account_id,bybit_account_id,kucoin_account_id,dxtrade_account_id`)
-    .or(`mtapi_session_id.in.(${idList}),fxsocket_account_id.in.(${idList}),metaapi_account_id.in.(${idList}),ctrader_account_id.in.(${idList}),binance_account_id.in.(${idList}),bybit_account_id.in.(${idList}),kucoin_account_id.in.(${idList}),dxtrade_account_id.in.(${idList})`)
+    .select(`${base},ctrader_account_id,binance_account_id,bybit_account_id,kucoin_account_id,dxtrade_account_id,tradelocker_account_id`)
+    .or(`mtapi_session_id.in.(${idList}),fxsocket_account_id.in.(${idList}),metaapi_account_id.in.(${idList}),ctrader_account_id.in.(${idList}),binance_account_id.in.(${idList}),bybit_account_id.in.(${idList}),kucoin_account_id.in.(${idList}),dxtrade_account_id.in.(${idList}),tradelocker_account_id.in.(${idList})`)
   const { data, error } = withCtrader.error && missingCtraderColumn(withCtrader.error.message)
     ? await supabase
       .from('broker_accounts')
@@ -97,6 +102,7 @@ export async function loadPlatformByFxsocketId(
       bybit_account_id?: string
       kucoin_account_id?: string
       dxtrade_account_id?: string
+      tradelocker_account_id?: string
     })
     if (!id) continue
     out.set(id, {
@@ -127,7 +133,7 @@ export async function loadBrokerApiByAccountId(
   const base = 'id,mtapi_session_id,fxsocket_account_id,metaapi_account_id,platform,provider,writer_epoch,provider_transition_state,manual_settings'
   const withCtrader = await supabase
     .from('broker_accounts')
-    .select(`${base},ctrader_account_id,binance_account_id,bybit_account_id,kucoin_account_id,dxtrade_account_id`)
+    .select(`${base},ctrader_account_id,binance_account_id,bybit_account_id,kucoin_account_id,dxtrade_account_id,tradelocker_account_id`)
     .in('id', ids)
   const { data, error } = withCtrader.error && missingCtraderColumn(withCtrader.error.message)
     ? await supabase.from('broker_accounts').select(base).in('id', ids)
