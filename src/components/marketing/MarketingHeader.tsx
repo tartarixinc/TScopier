@@ -11,6 +11,7 @@ import { marketingUrl } from '../../lib/site'
 import { MarketingAudienceSwitch } from './MarketingAudienceSwitch'
 import { MarketingAuthCta } from './MarketingAuthCta'
 import { MarketingProductMenu, MarketingProductMenuMobile } from './MarketingProductMenu'
+import { useMarketingHeaderTop } from '../../hooks/useMarketingPromoOffset'
 
 type NavItemKey = 'product' | 'features' | 'pricing' | 'faq' | 'docs'
 
@@ -87,6 +88,8 @@ export function MarketingHeader({ overDarkHero = false }: { overDarkHero?: boole
   const navItems = marketingNavItems(pathname)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
+  // Starts below the promo banner (if any) and slides to the top edge as the page scrolls.
+  const top = useMarketingHeaderTop()
 
   // Close the drawer when the viewport can show the desktop nav (avoids stuck open state).
   useEffect(() => {
@@ -117,7 +120,7 @@ export function MarketingHeader({ overDarkHero = false }: { overDarkHero?: boole
     'rounded-xl px-3 py-2.5 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-900/[0.06] dark:text-neutral-50 dark:hover:bg-white/10'
 
   return (
-    <header className="pointer-events-none fixed inset-x-0 top-0 z-50 px-3 pt-3 sm:px-5 sm:pt-4">
+    <header className="pointer-events-none fixed inset-x-0 z-50 px-3 pt-3 sm:px-5 sm:pt-4" style={{ top }}>
       <div
         className={clsx(
           'pointer-events-auto relative mx-auto flex h-14 max-w-7xl items-center gap-2 rounded-full ps-4 pe-2 transition-[background-color,border-color,box-shadow,backdrop-filter] duration-300 sm:ps-5 lg:gap-4',

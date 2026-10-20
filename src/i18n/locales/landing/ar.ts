@@ -2,6 +2,18 @@ import { testimonialsAr } from '../../testimonials/ar'
 import type { LandingTranslations } from './types'
 
 export const landingAr: LandingTranslations = {
+  promo: {
+    regionLabel: 'عرض ترويجي',
+    days: 'أيام',
+    hours: 'ساعات',
+    minutes: 'دقائق',
+    seconds: 'ثوانٍ',
+    endsIn: 'ينتهي العرض خلال',
+    couponLabel: 'رمز القسيمة',
+    copyCoupon: 'نسخ رمز القسيمة',
+    copied: 'تم النسخ',
+    dismiss: 'إغلاق العرض',
+  },
   nav: {
     product: 'المنتج',
     features: 'الميزات',
