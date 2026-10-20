@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import clsx from 'clsx'
 import { supabase } from '../../lib/supabase'
+import { platformIconSrc } from '../../lib/activityRoute'
 import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
 import { interpolate } from '../../i18n/interpolate'
@@ -616,15 +617,9 @@ function normalizeManualSettings(
   }
 }
 
-function getPlatformIconPath(platform: string): string | null {
-  const key = platform.trim()
-  if (!key) return null
-  return `/${key}.png`
-}
-
 function PlatformIcon({ platform }: { platform: string }) {
   const [failed, setFailed] = useState(false)
-  const iconPath = getPlatformIconPath(platform)
+  const iconPath = platformIconSrc(platform)
   if (!iconPath || failed) return <Server className="w-4 h-4 text-green-400" />
   return (
     <img

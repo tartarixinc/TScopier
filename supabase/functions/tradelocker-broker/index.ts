@@ -211,6 +211,8 @@ Deno.serve(async (req: Request) => {
           tradelocker_password_encrypted: passwordEncrypted,
           tradelocker_account_ref: chosen.accountId,
           tradelocker_acc_num: chosen.accNum,
+          // The Account column and the assistant read account_login, so show the TradeLocker account number there.
+          account_login: chosen.accountId,
           tradelocker_status: "connected",
           broker_name: server,
           connection_status: "connected",

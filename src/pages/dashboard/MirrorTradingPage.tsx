@@ -19,6 +19,7 @@ import {
 import type { CopyRiskTranslations } from '../../i18n/locales/copyRiskLabels'
 import { interpolate } from '../../i18n/interpolate'
 import { supabase } from '../../lib/supabase'
+import { platformIconSrc } from '../../lib/activityRoute'
 import { copyRiskForEditor, manualSettingsFromCopyRisk, mirrorSizingValue, normalizeCopyRisk } from '../../lib/copyRiskTypes'
 import type { BrokerAccount, ManualSettings } from '../../types/database'
 import { PageHeader } from '../../components/layout/PageHeader'
@@ -53,10 +54,8 @@ function writeIds(key: string, ids: string[]) {
   }
 }
 
-function platformIconSrc(platform: string): string {
-  const raw = platform.trim()
-  const file = /^mt[45]$/i.test(raw) ? raw.toUpperCase() : raw || 'MT5'
-  return `/${file}.png`
+function mirrorPlatformIconSrc(platform: string): string {
+  return platformIconSrc(platform) ?? '/MT5.png'
 }
 
 function AccountMark({ platform, size = 'md' }: { platform: string; size?: 'sm' | 'md' }) {
@@ -64,7 +63,7 @@ function AccountMark({ platform, size = 'md' }: { platform: string; size?: 'sm' 
   if (failed) return null
   return (
     <img
-      src={platformIconSrc(platform)}
+      src={mirrorPlatformIconSrc(platform)}
       alt=""
       aria-hidden
       className={size === 'sm' ? 'h-6 w-6 shrink-0 object-contain' : 'h-8 w-8 shrink-0 object-contain'}

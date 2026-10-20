@@ -47,6 +47,23 @@ test('platformIconSrc maps MetaTrader and later destination platforms', () => {
   assert.equal(platformIconSrc(''), null)
 })
 
+test('platformIconSrc resolves every broker platform name stored in the database to its asset', () => {
+  const expected: Record<string, string> = {
+    MT5: '/MT5.png',
+    MT4: '/MT4.png',
+    cTrader: '/cTrader.png',
+    Binance: '/Binance.png',
+    Bybit: '/Bybit.png',
+    KuCoin: '/Kucoin.png',
+    DXtrade: '/DX-trade.png',
+    TradeLocker: '/Trade_locker.png',
+    MatchTrader: '/Match-Trader.png',
+  }
+  for (const [platform, src] of Object.entries(expected)) {
+    assert.equal(platformIconSrc(platform), src, platform)
+  }
+})
+
 test('telegram activities keep a Telegram source and the destination broker platform', () => {
   const route = resolveActivityRoute(activity({}), [mt5])
   assert.equal(route.source?.kind, 'telegram')

@@ -134,7 +134,7 @@ export function MarketingHeader({ overDarkHero = false }: { overDarkHero?: boole
           aria-label="UniCopier home"
           onClick={closeMobile}
         >
-          <TscopierLogo className="h-8 w-auto sm:h-9" onDark={onDark} />
+          <TscopierLogo className="h-10 w-auto sm:h-10" onDark={onDark} />
         </Link>
 
         <MarketingAudienceSwitch className="hidden xl:inline-flex" />
