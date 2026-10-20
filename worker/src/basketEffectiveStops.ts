@@ -5,6 +5,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   channelParamsPredateBasket,
+  levelFitsDirection,
   loadChannelActiveTradeParamsForSymbol,
   type ChannelActiveTradeParams,
 } from './channelActiveTradeParams'
@@ -398,9 +399,23 @@ export async function resolveEffectiveBasketStops(
     if (channelParams && args.basketCreatedAt && channelParamsPredateBasket(channelParams, args.basketCreatedAt)) {
       channelParams = null
     } else if (channelParams) {
-      channelSl = channelParams.stoploss != null ? sanitizeLevel(channelParams.stoploss) : null
-      if (channelParams.tpLevels.length > 0 && !mgmtSl && !tpFromTarget) {
-        tpLevels = [...channelParams.tpLevels]
+      // The per-symbol record has no direction, so it may hold stop/target values
+      // written by an opposite-direction signal. Use only the levels that are valid
+      // for this basket's direction; a wrong-side level would be rejected by the
+      // broker and loop the reconcile forever.
+      const refs = (args.familyTrades ?? [])
+        .map((t) => Number((t as { entry_price?: number | null }).entry_price))
+        .filter((n) => Number.isFinite(n) && n > 0)
+      const channelRef = refs.length ? refs.reduce((a, b) => a + b, 0) / refs.length : 0
+      const sl = channelParams.stoploss != null ? sanitizeLevel(channelParams.stoploss) : null
+      channelSl = sl != null && sl > 0 && (channelRef <= 0 || levelFitsDirection(sl, channelRef, isBuy, 'sl'))
+        ? sl
+        : null
+      const tps = channelRef > 0
+        ? channelParams.tpLevels.filter((l) => levelFitsDirection(l, channelRef, isBuy, 'tp'))
+        : channelParams.tpLevels
+      if (tps.length > 0 && !mgmtSl && !tpFromTarget) {
+        tpLevels = [...tps]
       }
     }
   }

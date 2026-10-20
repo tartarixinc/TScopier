@@ -15,7 +15,7 @@ import { type TradeExecutorContext } from '../context'
 import { type BrokerRow, type ParsedSignal, type SignalRow } from '../types'
 import { isV2 } from '../../engine/executionMode'
 import { getFxClient, toMtPlatform } from '../../engine/fxClient'
-
+import { writeExecutionLog } from '../../observability/executionLog'
 export async function hasOpenTradeForSymbol(ctx: TradeExecutorContext, brokerId: string, symbol: string): Promise<boolean> {
     try {
       const { count } = await ctx.supabase
@@ -85,24 +85,20 @@ export async function reconcileGhostBasketLegs(ctx: TradeExecutorContext, args: 
       `[tradeExecutor] stale_basket_reconciled signal=${signal.id} broker=${broker.id}`
       + ` anchor=${anchorSignalId} symbol=${symbol} closed=${closedCount}/${ghost.length}`,
     )
-
-    try {
-      await ctx.supabase.from('trade_execution_logs').insert({
-        user_id: signal.user_id,
-        signal_id: signal.id,
-        broker_account_id: broker.id,
-        action: 'stale_basket_reconciled',
-        status: 'success',
-        request_payload: {
-          anchor_signal_id: anchorSignalId,
-          symbol,
-          closed_count: closedCount,
-          ghost_leg_count: ghost.length,
-          user_message: GHOST_BASKET_CLOSED_USER_MESSAGE,
-        } as unknown as Record<string, unknown>,
-      })
-    } catch { /* best-effort */ }
-
+    await writeExecutionLog(ctx.supabase, {
+      user_id: signal.user_id,
+      signal_id: signal.id,
+      broker_account_id: broker.id,
+      action: 'stale_basket_reconciled',
+      status: 'success',
+      request_payload: {
+        anchor_signal_id: anchorSignalId,
+        symbol,
+        closed_count: closedCount,
+        ghost_leg_count: ghost.length,
+        user_message: GHOST_BASKET_CLOSED_USER_MESSAGE,
+      } as unknown as Record<string, unknown>,
+    })
     return { isGhostBasket: true, closedCount }
   }
 
@@ -225,6 +221,7 @@ export async function manualDispatchAlreadyMaterialized(ctx: TradeExecutorContex
       { count: sc, error: se },
       { count: tc, error: te },
       { count: lc, error: le },
+      { count: wc, error: we },
     ] = await Promise.all([
       ctx.supabase
         .from('range_pending_legs')
@@ -249,6 +246,11 @@ export async function manualDispatchAlreadyMaterialized(ctx: TradeExecutorContex
         .eq('broker_account_id', brokerAccountId)
         .eq('status', 'success')
         .eq('action', 'order_send'),
+      ctx.supabase
+        .from('signal_range_entry_waits')
+        .select('id', { count: 'exact', head: true })
+        .eq('signal_id', signalId)
+        .eq('broker_account_id', brokerAccountId),
     ])
     if (re) {
       console.warn(
@@ -270,7 +272,21 @@ export async function manualDispatchAlreadyMaterialized(ctx: TradeExecutorContex
         `[tradeExecutor] order_send log idempotency count failed signal=${signalId} broker=${brokerAccountId}: ${le.message}`,
       )
     }
-    return ((rc ?? 0) > 0 || (sc ?? 0) > 0 || (tc ?? 0) > 0 || (lc ?? 0) > 0)
+    if (we) {
+      console.warn(
+        `[tradeExecutor] range wait idempotency count failed signal=${signalId} broker=${brokerAccountId}: ${we.message}`,
+      )
+    }
+    // A revision must not create a second entry when materialization state is
+    // unavailable. Fail closed and let a later retry re-check durable state.
+    if (re || se || te || le || we) return true
+    return (
+      (rc ?? 0) > 0
+      || (sc ?? 0) > 0
+      || (tc ?? 0) > 0
+      || (lc ?? 0) > 0
+      || (wc ?? 0) > 0
+    )
   }
 
 export async function persistRangePendingLegRows(ctx: TradeExecutorContext, 

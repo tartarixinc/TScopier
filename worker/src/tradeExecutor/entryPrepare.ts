@@ -55,9 +55,16 @@ import {
   type ChannelActiveTradeParams,
 } from '../channelActiveTradeParams'
 import { resolveTscopierCommentPrefix } from '../tradeComment'
+import { writeExecutionLog } from '../observability/executionLog'
 import type { TradeExecutorContext } from './context'
 import { applySymbolMapping, computeLot, isBuySideOp, isExcluded, isMt5OnlyOperation, roundLot, triggerPriceFor, brokerSessionUuid, type Leg } from './helpers'
-import { missingRequiredSlFailure } from './entryPrepareMissingSl'
+import {
+  isExplicitProviderNewOrder,
+  missingRequiredSlFailure,
+  stopStatedButUnreadable,
+  shouldRunMissingRequiredSlPolicy,
+  shouldEnforceSingleOpenSymbolSlot,
+} from './entryPrepareMissingSl'
 
 export { missingRequiredSlFailure } from './entryPrepareMissingSl'
 import type {
@@ -327,7 +334,12 @@ export async function prepareEntryExecution(
   }
   const baseLot = roundLot(computeLot(broker, parsed), params)
   const sameSignalRefresh = sendOpts?.sameSignalRefresh === true
-  const missingSl = isManual && !sameSignalRefresh ? missingRequiredSlFailure(parsed, manual) : null
+  const revisionAlreadyMaterialized = sameSignalRefresh
+    ? await ctx.manualDispatchAlreadyMaterialized(signal.id, broker.id)
+    : false
+  const missingSl = shouldRunMissingRequiredSlPolicy(isManual, revisionAlreadyMaterialized)
+    ? missingRequiredSlFailure(parsed, manual)
+    : null
   if (missingSl) {
     const skipReason = missingSl.reason
     const tradeFailure = tradeFailureReasonFromCode(
@@ -335,6 +347,7 @@ export async function prepareEntryExecution(
       {
         missingField: 'stop_loss',
         withheldByProvider: missingSl.withheldByProvider,
+        stopStatedButUnreadable: stopStatedButUnreadable(parsed),
         requestedSymbol,
         brokerSymbol: symbol,
       },
@@ -355,8 +368,7 @@ export async function prepareEntryExecution(
   // real entry and must fall through to the normal entry path — otherwise the
   // edited signal can never trade.
   if (sameSignalRefresh) {
-    const revisionMaterialized = await ctx.manualDispatchAlreadyMaterialized(signal.id, broker.id)
-    if (revisionMaterialized) {
+    if (revisionAlreadyMaterialized) {
       const paramOutcome = await ctx.tryParameterFollowUpMergeModifyOnly({
         signal,
         parsed,
@@ -485,7 +497,8 @@ export async function prepareEntryExecution(
   const blockNewEntry = sendOpts?.blockNewEntry === true
   const rangeEntryStrict = signalEntryRangeStrictEnabled(manual)
   const basketParameterRefresh = shouldRouteAsBasketParameterRefresh(parsed)
-  if (isManual && !rangeEntryStrict && (basketParameterRefresh || sameSignalRefresh)) {
+  const explicitProviderNewOrder = isExplicitProviderNewOrder(parsed)
+  if (isManual && !explicitProviderNewOrder && !rangeEntryStrict && (basketParameterRefresh || sameSignalRefresh)) {
     const paramOutcome = await ctx.tryParameterFollowUpMergeModifyOnly({
       signal,
       parsed,
@@ -517,8 +530,7 @@ export async function prepareEntryExecution(
   // Message revision / re-dispatch must never place a second market or broker-pending basket
   // after the first entry already logged order_send / trades / range legs (live-fast used to skip this).
   if (sameSignalRefresh || blockNewEntry) {
-    const alreadyMaterialized = blockNewEntry
-      || await ctx.manualDispatchAlreadyMaterialized(signal.id, broker.id)
+    const alreadyMaterialized = blockNewEntry || revisionAlreadyMaterialized
     if (shouldBlockNewEntryOnRevision({
       sameSignalRefresh,
       blockNewEntry,
@@ -532,7 +544,7 @@ export async function prepareEntryExecution(
     }
   }
 
-  if (isManual && !sameSignalRefresh && !basketRefreshSucceeded && !rangeEntryStrict) {
+  if (isManual && !explicitProviderNewOrder && !sameSignalRefresh && !basketRefreshSucceeded && !rangeEntryStrict) {
     const teaserOutcome = await ctx.tryTeaserCompletionMerge({
       signal,
       parsed,
@@ -558,6 +570,7 @@ export async function prepareEntryExecution(
     isManual
     && manual.add_new_trades_to_existing === true
     && !basketRefreshSucceeded
+    && !explicitProviderNewOrder
   ) {
     const mergeOutcome = await ctx.tryMergeSignalIntoExistingOpenTrade({
       signal,
@@ -577,16 +590,13 @@ export async function prepareEntryExecution(
     }
   }
 
-  if (isManual && manual.add_new_trades_to_existing === false && !parsedSignalHasExplicitStops(parsed)) {
-    await ctx.logSendSkipped(signal, broker, 'explicit_stops_required_when_add_to_existing_off', { symbol })
-    return { ok: false, outcome: { finalizeSkipReason: 'explicit_stops_required_when_add_to_existing_off' } }
-  }
-
+  // Missing-SL safety is centralized in missingRequiredSlFailure above so
+  // configured predefined/RR fallbacks cannot disagree with a later guard.
   if (!liveEntryFast && isManual && manual.close_on_opposite_signal === true) {
     await ctx.closeOppositeDirectionTrades(signal, parsed, broker, symbol)
   }
 
-  if (isManual && manual.add_new_trades_to_existing === false) {
+  if (isManual && shouldEnforceSingleOpenSymbolSlot(parsed, manual)) {
     const already = await ctx.hasOpenTradeForSymbol(broker.id, symbol)
     if (already) {
       await ctx.logSendSkipped(signal, broker, 'add_new_trades_to_existing=false', { symbol })
@@ -795,13 +805,9 @@ export async function prepareEntryExecution(
       } as unknown as Record<string, unknown>,
     }
     if (liveEntryFast) {
-      void ctx.supabase.from('trade_execution_logs').insert(fallbackRow)
+      void writeExecutionLog(ctx.supabase, fallbackRow)
     } else {
-      try {
-        await ctx.supabase.from('trade_execution_logs').insert(fallbackRow)
-      } catch {
-        // Logging failure is non-fatal.
-      }
+      await writeExecutionLog(ctx.supabase, fallbackRow)
     }
   }
 
@@ -1085,17 +1091,15 @@ export async function prepareEntryExecution(
       `[tradeExecutor] single trade_style multi_leg_blocked ${legs.length} legs`
       + ` signal=${signal.id} broker=${broker.id}`,
     )
-    try {
-      await ctx.supabase.from('trade_execution_logs').insert({
-        user_id: signal.user_id,
-        signal_id: signal.id,
-        broker_account_id: broker.id,
-        action: 'single_style_multi_leg_blocked',
-        status: 'failed',
-        request_payload: { leg_count: legs.length } as unknown as Record<string, unknown>,
-        error_message: `single trade_style refused ${legs.length} immediate legs`,
-      })
-    } catch { /* best-effort */ }
+    await writeExecutionLog(ctx.supabase, {
+      user_id: signal.user_id,
+      signal_id: signal.id,
+      broker_account_id: broker.id,
+      action: 'single_style_multi_leg_blocked',
+      status: 'failed',
+      request_payload: { leg_count: legs.length },
+      error_message: `single trade_style refused ${legs.length} immediate legs`,
+    })
     return {
       ok: false,
       outcome: {

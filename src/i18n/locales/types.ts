@@ -1003,6 +1003,12 @@ export interface MirrorTradingPageTranslations {
   back: string
   next: string
   loadError: string
+  startCopying?: string
+  pauseCopying?: string
+  statusActive?: string
+  statusPaused?: string
+  statusStopped?: string
+  statusError?: string
   setup: {
     title: string
     preview: string
@@ -1358,6 +1364,20 @@ export interface TradesTranslations {
   brokerErrorTitle: string
   brokerErrorIntro: string
   viewCopierLogs: string
+  closeReason: string
+  reasonNewsPreClose: string
+  reasonSignalClose: string
+  reasonSignalRevision: string
+  reasonOppositeSignal: string
+  reasonPartialTp: string
+  reasonAutoManagement: string
+  reasonCloseWorseEntries: string
+  reasonCopyLimitFlatten: string
+  reasonUserForceClose: string
+  reasonPositionGone: string
+  reasonStopLoss: string
+  reasonTakeProfit: string
+  reasonUnknown: string
   cancel: string
 }
 

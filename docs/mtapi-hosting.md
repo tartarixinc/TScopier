@@ -200,7 +200,7 @@ Worker stays on Railway.
 ### Why nginx?
 
 1. **TLS encryption** — encrypts traffic between Railway and Contabo
-2. **Authentication** — shared secret header (`X-MTAPI-Key`) proves identity
+2. **Authentication** — shared secrets (`Authorization: Bearer` and `X-Internal-Token`) prove identity
 3. **Rate limiting** — can throttle abusive requests
 4. **Logging** — logs all requests for debugging
 
@@ -329,17 +329,19 @@ mtapi.yourdomain.com → <contabo-ip>
 
 ```
 MTAPI_BASE_URL=https://mtapi.yourdomain.com
-MTAPI_KEY=YOUR_SECRET_KEY_HERE
+MTAPI_API_KEY=YOUR_SECRET_KEY_HERE
+MTAPI_INTERNAL_TOKEN=YOUR_INTERNAL_TOKEN_HERE
 ```
 
 ### 6.2 Worker code
 
-Every MTAPI request includes the auth header:
+Every MTAPI request includes the auth headers:
 
 ```typescript
 const response = await fetch(`${MTAPI_BASE_URL}/AccountSummary?id=${token}`, {
   headers: {
-    'X-MTAPI-Key': process.env.MTAPI_KEY,
+    'Authorization': `Bearer ${process.env.MTAPI_API_KEY}`,
+    'X-Internal-Token': process.env.MTAPI_INTERNAL_TOKEN,
   },
 });
 ```
@@ -348,10 +350,12 @@ const response = await fetch(`${MTAPI_BASE_URL}/AccountSummary?id=${token}`, {
 
 ```
 1. Worker sends: GET https://mtapi.yourdomain.com/AccountSummary?id=<token>
-   Header: X-MTAPI-Key: <secret>
+   Header: Authorization: Bearer <secret>
+   Header: X-Internal-Token: <secret>
 
 2. nginx receives request
-   - Validates X-MTAPI-Key header → 403 if wrong
+   - Validates the credentials (map $http_authorization / $http_x_internal_token) → 401/403 if wrong
+   - Blanks both headers (proxy_set_header … "") so the container never sees them
    - Forwards to http://127.0.0.1:5000/AccountSummary?id=<token>
 
 3. MTAPI Docker receives request
@@ -368,14 +372,25 @@ const response = await fetch(`${MTAPI_BASE_URL}/AccountSummary?id=${token}`, {
 
 | Layer | What it protects |
 |-------|-----------------|
-| nginx `X-MTAPI-Key` | Proves request came from our worker (not public internet) |
+| nginx `Authorization: Bearer` + `X-Internal-Token` | Proves the request came from our worker or edge function (not the public internet) |
 | TLS (Let's Encrypt) | Encrypts traffic between Railway and Contabo |
 | Contabo firewall | Blocks all ports except 22, 80, 443 |
 | MTAPI token (`?id=`) | Identifies the broker session (not authentication) |
 | Broker credentials | MTAPI stores login/password to connect to Exness |
 
-**MTAPI has no API key.** The `X-MTAPI-Key` is an nginx-level shared secret.
-MTAPI never sees this header — nginx strips it before forwarding.
+**The containers have no API key.** Both secrets belong to nginx, which checks
+them against the incoming request (`map $http_authorization $auth_ok` and
+`map $http_x_internal_token $internal_ok`). Neither container is configured with
+either value — see `deploy/mt4-bridge/04-mt4-bridge.sh` — so the container has no
+use for them.
+
+To stop the MT4 bridge from echoing them back inside its own "client not found"
+error bodies, nginx also blanks the two headers before proxying
+(`proxy_set_header Authorization ""` / `proxy_set_header X-Internal-Token ""`).
+That strip is in the tracked config files and is applied to each listener with
+`deploy/mt4-bridge/06-strip-auth-headers.sh apply …`; until it has been applied
+to a location, that location still forwards the headers. Confirm the state with
+`deploy/mt4-bridge/06-strip-auth-headers.sh check`.
 
 ---
 
@@ -385,7 +400,8 @@ MTAPI never sees this header — nginx strips it before forwarding.
 
 ```bash
 # From worker or anywhere with access
-curl -H "X-MTAPI-Key: <secret>" https://mtapi.yourdomain.com/CheckConnect?id=<token>
+curl -H "Authorization: Bearer <secret>" -H "X-Internal-Token: <secret>" \
+  https://mtapi.yourdomain.com/CheckConnect?id=<token>
 # Expected: OK
 ```
 
@@ -418,7 +434,8 @@ tail -f /var/log/nginx/error.log
 Set up a cron job or external monitor to ping:
 ```
 GET https://mtapi.yourdomain.com/CheckConnect?id=<token>
-Header: X-MTAPI-Key: <secret>
+Header: Authorization: Bearer <secret>
+Header: X-Internal-Token: <secret>
 Expected: 200 OK
 ```
 

@@ -13,6 +13,7 @@ import {
   loadChannelActiveTradeParamsForSymbol,
 } from './channelActiveTradeParams'
 import { hasTpTouchedLock } from './rangePendingFireGuard'
+import { filterPlausibleInstrumentPrices } from './tradableSymbol'
 import { breakevenStopLossForSymbol } from './autoManagement'
 import {
   basketHasAutoBreakeven,
@@ -37,7 +38,7 @@ import { captureDeferredBusinessFailure } from './observability/deferredBusiness
 import { classifyBrokerFailureReason } from './observability/businessEvents'
 import { isInvalidStopsError } from './orderModifySafe'
 import { isBenignOrderModifyError, isPositionGoneError } from './orderModifyBenign'
-
+import { writeExecutionLog } from './observability/executionLog'
 export type RangeBasketParsedSlice = {
   sl?: number | null
   tp?: number[] | null
@@ -387,27 +388,25 @@ async function logRangeBasketTpRebalance(
     skippedReason?: string
   },
 ): Promise<void> {
-  try {
-    await supabase.from('trade_execution_logs').insert({
-      user_id: args.userId,
-      signal_id: args.signalId,
-      broker_account_id: args.brokerAccountId,
-      action: 'range_basket_tp_rebalance',
-      status: rangeBasketTpRebalanceStatus(args),
-      request_payload: {
-        open_legs: args.openLegs,
-        phase: args.phase,
-        force_layering_rebalance: args.forceLayeringRebalance === true,
-        modified: args.modified,
-        attempted: args.attempted,
-        failed: args.failed,
-        target_tp_counts: args.tpCounts,
-        effective_sl: args.effectiveSl,
-        effective_sl_source: args.effectiveSlSource,
-        skipped_reason: args.skippedReason,
-      } as unknown as Record<string, unknown>,
-    })
-  } catch { /* best-effort */ }
+  await writeExecutionLog(supabase, {
+    user_id: args.userId,
+    signal_id: args.signalId,
+    broker_account_id: args.brokerAccountId,
+    action: 'range_basket_tp_rebalance',
+    status: rangeBasketTpRebalanceStatus(args),
+    request_payload: {
+      open_legs: args.openLegs,
+      phase: args.phase,
+      force_layering_rebalance: args.forceLayeringRebalance === true,
+      modified: args.modified,
+      attempted: args.attempted,
+      failed: args.failed,
+      target_tp_counts: args.tpCounts,
+      effective_sl: args.effectiveSl,
+      effective_sl_source: args.effectiveSlSource,
+      skipped_reason: args.skippedReason,
+    } as unknown as Record<string, unknown>,
+  })
 }
 
 export async function patchPendingRangeLegTakeProfits(args: {
@@ -678,6 +677,8 @@ export function resolveFiringLegStops(args: {
   /** Own fill + offset when the basket is already at breakeven. */
   perLegBreakevenSl?: number | null
   effectiveSource?: EffectiveStopSource | string | null
+  /** Instrument, so a legacy stray TP (e.g. 100) is not used as the target. */
+  symbol?: string | null
 }): { stoploss: number; takeprofit: number } {
   const curSl = Number(args.legStoploss)
   const effSl = Number(args.effective.stoploss)
@@ -699,7 +700,10 @@ export function resolveFiringLegStops(args: {
   if (Number.isFinite(curTp) && curTp > 0) {
     return { stoploss, takeprofit: curTp }
   }
-  const deepest = deepestFinalTp(args.effective.tpLevels, args.isBuy)
+  const deepest = deepestFinalTp(
+    filterPlausibleInstrumentPrices(args.symbol ?? null, args.effective.tpLevels),
+    args.isBuy,
+  )
   return { stoploss, takeprofit: deepest > 0 ? deepest : 0 }
 }
 
@@ -857,6 +861,10 @@ export async function syncRangeBasketTakeProfits(args: RangeBasketTpSyncArgs): P
       direction: args.direction,
     })
   }
+
+  // Legacy rows can still carry a stray ladder value (e.g. 100 from before the
+  // parser fix). Drop quote-impossible levels so they never become a leg's TP.
+  finalTps = filterPlausibleInstrumentPrices(args.symbol, finalTps)
 
   if (!finalTps.length) {
     console.warn(

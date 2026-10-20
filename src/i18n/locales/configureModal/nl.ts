@@ -393,6 +393,7 @@ export const configureModalNl: ConfigureModalTranslations = {
     monitorIntroMulti: 'De werknemer controleert elke paar seconden open transacties. Regels gelden per open leg (elke Multi Trade leg wordt afzonderlijk bijgehouden).',
     moveSlTitle: 'Verplaats SL na beweging',
     moveSlSubtitle: 'Verplaats stop loss automatisch naar break-even (plus optionele gedeeltelijke afsluiting) zodra de prijs uw drempel bereikt.',
+    basicPlanAutoManagementLimit: 'Het automatisch verplaatsen van de stop loss naar break-even is beschikbaar op het Advanced-abonnement.',
     activeRule: 'Actieve regel:',
     triggerTitle: 'Trigger - verplaats SL wanneer',
     triggerPips: 'Pip-beweging',

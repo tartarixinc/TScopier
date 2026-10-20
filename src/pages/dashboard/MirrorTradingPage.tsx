@@ -12,9 +12,14 @@ import {
   connectBrokerCopyLink,
   disconnectBrokerCopyLink,
   fetchBrokerCopyLinks,
+  fetchMirrorCopyLinkStates,
+  mirrorCopyStatusTone,
   setBrokerCopySource,
+  setMirrorCopyLinkStatus,
   updateBrokerCopyLinkSettings,
   type BrokerCopyLinkRow,
+  type MirrorCopyDesiredStatus,
+  type MirrorCopyLinkStateRow,
 } from '../../lib/brokerCopyLink'
 import type { CopyRiskTranslations } from '../../i18n/locales/copyRiskLabels'
 import { interpolate } from '../../i18n/interpolate'
@@ -184,6 +189,8 @@ export function MirrorTradingPage() {
   const [error, setError] = useState<string | null>(null)
   const [configuringSlaveId, setConfiguringSlaveId] = useState<string | null>(null)
   const [configSaveError, setConfigSaveError] = useState<string | null>(null)
+  const [linkStates, setLinkStates] = useState<Record<string, MirrorCopyLinkStateRow>>({})
+  const [busyLinkId, setBusyLinkId] = useState<string | null>(null)
   const assignAfterConnectRef = useRef<string | null>(null)
   const chainRef = useRef(Promise.resolve())
   const settingsSaveRef = useRef(Promise.resolve())
@@ -216,6 +223,42 @@ export function MirrorTradingPage() {
     if (!user?.id || slaveUserId !== user.id) return
     writeIds(`${SLAVE_KEY}${user.id}`, slaveIds)
   }, [slaveIds, slaveUserId, user?.id])
+
+  // Link lifecycle state is worker-owned. Poll it while the page is open so the
+  // status badge follows activation and any error the worker records.
+  useEffect(() => {
+    if (!user?.id || links.length === 0) return
+    let cancelled = false
+    const load = () => {
+      void fetchMirrorCopyLinkStates(supabase, links.map(link => link.id)).then(result => {
+        if (cancelled) return
+        if (!result.error) setLinkStates(result.states)
+      })
+    }
+    load()
+    const timer = setInterval(load, 10_000)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [user?.id, links])
+
+  const changeCopying = useCallback((link: BrokerCopyLinkRow, status: MirrorCopyDesiredStatus) => {
+    if (!user?.id || busyLinkId) return
+    setBusyLinkId(link.id)
+    setError(null)
+    void setMirrorCopyLinkStatus(supabase, link.id, status).then(result => {
+      if (result.error) {
+        setError(result.error)
+        setBusyLinkId(null)
+        return
+      }
+      void fetchMirrorCopyLinkStates(supabase, [link.id]).then(refreshed => {
+        if (!refreshed.error) setLinkStates(prev => ({ ...prev, ...refreshed.states }))
+        setBusyLinkId(null)
+      })
+    })
+  }, [user?.id, busyLinkId])
 
   const dismissDestination = useCallback((brokerId: string) => {
     if (!user?.id) return
@@ -509,9 +552,12 @@ export function MirrorTradingPage() {
                           broker={slave}
                           source={source}
                           link={link}
+                          linkState={link ? linkStates[link.id] : undefined}
+                          copyBusy={link != null && busyLinkId === link.id}
                           copy={copy}
                           modes={t.copyRisk.modes}
                           emergencyLabel={link?.manual_settings.copy_risk?.protection.emergency_stop ? t.copyRisk.resumeEmergency : t.copyRisk.emergencyStop}
+                          onCopyingChange={next => { if (link) changeCopying(link, next) }}
                           onConfigure={() => {
                             setConfigSaveError(null)
                             setConfiguringSlaveId(slave.id)
@@ -755,17 +801,22 @@ function SlaveRow({
   broker,
   source,
   link,
+  linkState,
+  copyBusy,
   copy,
   modes,
   emergencyLabel,
   onConfigure,
   onEmergency,
   onActiveChange,
+  onCopyingChange,
   onDelete,
 }: {
   broker: BrokerAccount
   source?: BrokerAccount
   link?: BrokerCopyLinkRow
+  linkState?: MirrorCopyLinkStateRow
+  copyBusy: boolean
   copy: {
     slave: string
     configure: string
@@ -774,17 +825,37 @@ function SlaveRow({
     delete: string
     riskFixedLot: string
     riskBalancePercent: string
+    startCopying?: string
+    pauseCopying?: string
+    statusActive?: string
+    statusPaused?: string
+    statusStopped?: string
+    statusError?: string
   }
   modes: CopyRiskTranslations['modes']
   emergencyLabel: string
   onConfigure: () => void
   onEmergency: () => void
   onActiveChange: (active: boolean) => void
+  onCopyingChange: (status: MirrorCopyDesiredStatus) => void
   onDelete: () => void
 }) {
   const active = broker.is_active !== false
   const risk = riskCells(link, copy, modes)
   const sourceLogin = source?.account_login?.trim() || (source ? getBrokerDisplayLabel(source) : '—')
+  const desired = linkState?.desired_status ?? 'paused'
+  const copyingActive = desired === 'active'
+  const startLabel = copy.startCopying ?? 'Start copying'
+  const pauseLabel = copy.pauseCopying ?? 'Pause copying'
+  const statusLabel = linkState?.status === 'error'
+    || linkState?.status === 'unsupported_provider'
+    || linkState?.error_code
+    ? (copy.statusError ?? 'Copy error')
+    : desired === 'active'
+      ? (copy.statusActive ?? 'Copying')
+      : desired === 'stopped'
+        ? (copy.statusStopped ?? 'Stopped')
+        : (copy.statusPaused ?? 'Paused')
   return (
     <tr>
       <td className="border-y border-l border-dashed border-amber-300/80 bg-amber-50/70 px-4 py-3 dark:border-amber-700/50 dark:bg-amber-950/20">
@@ -792,7 +863,15 @@ function SlaveRow({
           <AccountMark platform={broker.platform} size="sm" />
           <div className="min-w-0">
             <div className="font-medium text-neutral-900 dark:text-neutral-50">{accountTitle(broker)}</div>
-            <Badge variant="warning" size="sm">{copy.slave}</Badge>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Badge variant="warning" size="sm">{copy.slave}</Badge>
+              {linkState ? <Badge variant={mirrorCopyStatusTone(linkState)} size="sm">{statusLabel}</Badge> : null}
+            </div>
+            {linkState?.error_code ? (
+              <div className="mt-1 max-w-[240px] text-[11px] leading-snug text-error-600 dark:text-error-300">
+                {linkState.error_code}{linkState.error_detail ? `: ${linkState.error_detail}` : ''}
+              </div>
+            ) : null}
           </div>
         </div>
       </td>
@@ -817,6 +896,14 @@ function SlaveRow({
       </td>
       <td className="border-y border-r border-dashed border-amber-300/80 bg-amber-50/70 px-4 py-3 dark:border-amber-700/50 dark:bg-amber-950/20">
         <div className="flex flex-wrap items-center gap-1.5">
+          <RowAction
+            label={copyingActive ? pauseLabel : startLabel}
+            disabled={!link || copyBusy}
+            onClick={() => onCopyingChange(copyingActive ? 'paused' : 'active')}
+          >
+            {copyingActive ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+            {copyingActive ? pauseLabel : startLabel}
+          </RowAction>
           <RowAction label={copy.configure} disabled={!link} onClick={onConfigure}>
             <Settings className="h-3.5 w-3.5" />
             {copy.configure}

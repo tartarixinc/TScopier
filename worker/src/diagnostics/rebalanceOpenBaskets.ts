@@ -38,7 +38,7 @@ import {
   createSupabaseBrokerWriteAuthorityStore,
   registerBrokerWriteAuthorityStore,
 } from '../brokerWriteAuthority'
-
+import { writeExecutionLog } from '../observability/executionLog'
 const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -328,7 +328,7 @@ async function main() {
             tp: targetTp,
           })
           .eq('id', tr.id)
-        await supabase.from('trade_execution_logs').insert({
+        await writeExecutionLog(supabase, {
           user_id: userId,
           signal_id: anchorSignalId,
           broker_account_id: brokerId,

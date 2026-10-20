@@ -41,7 +41,7 @@ import { TradeBrokerDriftMonitor } from './tradeBrokerDriftMonitor'
 import { attachBrokerStreamProxy } from './brokerStreamProxy'
 import { getFxsocketStreamManager } from './fxsocketStreamManager'
 import { CopyLimitMonitor } from './copyLimitMonitor'
-import { workerConfig, WORKER_BUILD_TAG } from './workerConfig'
+import { parseEnvBool, workerConfig, WORKER_BUILD_TAG } from './workerConfig'
 import { validateListenerTradeShardConfig, validateListenerMgmtShardConfig, validateListenerQueueConfig } from './tradeSignalPush'
 import { SignalQueueConsumerManager } from './queue/signalQueueConsumer'
 import { deployedTradeShardCount, signalQueueConfig, redisQueueConfigured } from './queue/signalQueueConfig'
@@ -56,6 +56,7 @@ import { initializeBrokerExecutionCapability } from './brokerExecutionMode'
 import { testFlagEnabled } from './testFlags'
 import { MtapiSessionManager } from './mtapiSessionManager'
 import { SocialCopyMonitor } from './socialCopyMonitor'
+import { MirrorCopyMonitor } from './mirrorCopy/mirrorCopyMonitor'
 import {
   createSupabaseBrokerWriteAuthorityStore,
   registerBrokerWriteAuthorityStore,
@@ -108,6 +109,7 @@ const monitors: Array<{ stop: () => void }> = []
 const monitorLoops: MonitorLoopHandle[] = []
 let stopLogRetention: (() => void) | null = null
 let stopWorkWake: (() => void) | null = null
+let stopTradeLivenessTick: (() => void) | null = null
 
 function trackMonitor(m: { stop: () => void; getLoopHandle?: () => MonitorLoopHandle | null; getLoopHandles?: () => MonitorLoopHandle[] }) {
   monitors.push(m)
@@ -161,6 +163,14 @@ function startTradeMonitors(executor: TradeExecutor | null) {
     const socialCopyMonitor = new SocialCopyMonitor(supabase)
     socialCopyMonitor.start()
     trackMonitor(socialCopyMonitor)
+    // Mirror copy is default-off and has no links in production yet. Only start the
+    // monitor when the worker is explicitly enabled, so a disabled flag never writes
+    // error state against existing links or reads a broker.
+    if (parseEnvBool(process.env.MIRROR_COPY_EXECUTION_ENABLED, true)) {
+      const mirrorCopyMonitor = new MirrorCopyMonitor(supabase, { workerId: `mirror-copy-${workerConfig.instanceId}:${process.pid}` })
+      mirrorCopyMonitor.start()
+      trackMonitor(mirrorCopyMonitor)
+    }
   }
 
   if (workerConfig.runsManagementMonitors) {
@@ -234,6 +244,27 @@ async function main() {
     const sweepHandle = tradeExecutor.getSweepLoopHandle()
     if (sweepHandle) monitorLoops.push(sweepHandle)
     startTradeMonitors(tradeExecutor)
+    // Trade-worker liveness: every trade worker bumps target 'worker_trade'
+    // through the same compare-and-set RPC the bridge probe uses. The
+    // alert-evaluator fires trade_workers_offline when this row stops
+    // updating. Listeners are covered by worker_session_leases; trade workers
+    // hold no leases (verified on staging), so this row is their heartbeat.
+    const livenessTick = () => {
+      supabase.rpc('record_probe_result', {
+        p_target: 'worker_trade',
+        p_state: 'up',
+        p_latency_ms: 0,
+        p_detail: workerConfig.instanceId,
+      }).then(res => {
+        if (res.error) console.warn('[worker] trade liveness tick failed code=' + res.error.message)
+      }, () => {
+        console.warn('[worker] trade liveness tick failed code=UNAVAILABLE')
+      })
+    }
+    livenessTick()
+    const livenessTimer = setInterval(livenessTick, 60_000)
+    livenessTimer.unref?.()
+    stopTradeLivenessTick = () => clearInterval(livenessTimer)
     if (monitorLoops.length > 0 && !stopWorkWake) {
       stopWorkWake = subscribeMonitorWorkWake(supabase, monitorLoops)
     }
@@ -345,6 +376,7 @@ async function main() {
     stopWorkerHeartbeatCheckIns()
     await authService?.shutdown()
     stopWorkWake?.()
+    stopTradeLivenessTick?.()
     stopLogRetention?.()
     setQueueMetricsProvider(null)
     await signalQueueConsumers?.stop()

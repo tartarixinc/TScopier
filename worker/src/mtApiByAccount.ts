@@ -8,6 +8,8 @@ export type BrokerApiMetadata = {
   sessionId: string
   platform: MtPlatform
   provider?: string | null
+  /** Broker account login (number), used to corroborate that a snapshot belongs to this account. */
+  accountLogin?: string | null
   manualSettings?: Record<string, unknown> | null
   authority?: BrokerWriteAuthority | null
 }
@@ -136,7 +138,7 @@ export async function loadBrokerApiByAccountId(
   const out: BrokerApiByAccountId = new Map()
   const ids = [...new Set(brokerAccountIds.map(id => String(id ?? '').trim()).filter(Boolean))]
   if (!ids.length) return out
-  const base = 'id,mtapi_session_id,fxsocket_account_id,metaapi_account_id,platform,provider,writer_epoch,provider_transition_state,manual_settings'
+  const base = 'id,mtapi_session_id,fxsocket_account_id,metaapi_account_id,platform,provider,writer_epoch,provider_transition_state,manual_settings,account_login'
   const withCtrader = await supabase
     .from('broker_accounts')
     .select(`${base},ctrader_account_id,binance_account_id,bybit_account_id,kucoin_account_id,dxtrade_account_id,tradelocker_account_id,matchtrader_account_id`)
@@ -152,11 +154,13 @@ export async function loadBrokerApiByAccountId(
     const brokerAccountId = String((row as { id?: unknown }).id ?? '').trim()
     const sessionId = brokerSessionId(row)
     if (!brokerAccountId || !sessionId) continue
+    const accountLogin = String((row as { account_login?: unknown }).account_login ?? '').trim()
     out.set(brokerAccountId, {
       brokerAccountId,
       sessionId,
       platform: mtPlatformFrom((row as { platform?: string | null }).platform),
       provider: (row as { provider?: string | null }).provider,
+      accountLogin: accountLogin || null,
       authority: authorityFromBrokerRow(row),
       manualSettings: (row as { manual_settings?: Record<string, unknown> | null }).manual_settings ?? null,
     })

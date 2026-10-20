@@ -10,6 +10,10 @@ import { whenRealtimeReady } from '../lib/whenRealtimeReady'
 const REFRESH_MS = 60_000
 const REALTIME_DEBOUNCE_MS = 450
 
+// Broker truth for the sidebar count. Unmarked accounts resolve to MTAPI inside
+// fetchTradesAcrossProviders, so this never fans out to the dead FxSocket edge
+// (its 404 otherwise looks like a live-feed outage and raises the "trouble
+// reaching your broker" banner), while declared cTrader accounts are queried.
 async function fetchOpenTradeCount(userId: string): Promise<number> {
   const brokerRes = await selectBrokerAccountColumns(columns =>
     supabase.from('broker_accounts').select(columns).eq('user_id', userId),

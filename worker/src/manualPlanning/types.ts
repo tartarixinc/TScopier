@@ -19,11 +19,15 @@ export interface ParsedSignal {
   lot_size: number | null
   open_tp?: boolean
   partial_close_fraction?: number | null
+  /** Referenced TP level on a "CLOSE TPn" message (1-based); null when absent. */
+  close_tp_index?: number | null
   raw_instruction?: string
   /** Explicit channel intent to open a new trade (not modify existing). */
   re_enter?: boolean
   /** Provider-side trade id (e.g. ForexBro Signal #899). */
   provider_signal_number?: number | null
+  /** Explicit provider lifecycle marker; separate from Telegram signal and broker ticket ids. */
+  provider_order_type?: 'new' | 'close' | null
 }
 
 export interface ManualTpLot {

@@ -27,7 +27,7 @@ import {
   type TradeExecutionLogRow,
   type TradeNotification,
 } from '../lib/tradeNotifications'
-import { isHumanReviewSignal } from '../lib/humanReview'
+import { isHumanReviewSignal, reviewRemainingMs } from '../lib/humanReview'
 
 const MAX_NOTIFICATIONS = 30
 const FETCH_LIMIT = 120
@@ -126,6 +126,11 @@ export function NotificationsProvider({
     (rows: ReviewRequiredSignal[]): TradeNotification[] =>
       rows
         .filter(isHumanReviewSignal)
+        // The approval window is two minutes; once it passes the row can no
+        // longer be approved, so it must not sit in the bell forever as an
+        // "awaiting approval" item (it would outlive the modal and the trades
+        // queue, which both age out).
+        .filter(signal => reviewRemainingMs(signal.created_at) > 0)
         .map(signal =>
           reviewNotificationFromSignal(signal, t.tradeNotifications, {
             channelDisplayNames: channelNamesRef.current,

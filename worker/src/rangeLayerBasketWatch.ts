@@ -6,7 +6,7 @@ import {
 } from './rangeLayerTillClose'
 import { setTpTouchedLock } from './rangePendingFireGuard'
 import { symbolsCompatibleForBasket } from './basketModFollowUp'
-
+import { writeExecutionLog } from './observability/executionLog'
 export type RangeLayerBasketTradeRow = {
   signal_id: string
   broker_account_id: string
@@ -113,30 +113,27 @@ export async function watchRangeLayeringBasketEvents(
     )
     if (!stopped) continue
     touched.add(basketKey)
-
-    try {
-      await supabase.from('trade_execution_logs').insert({
-        user_id: userId,
-        signal_id: signalId,
-        broker_account_id: brokerAccountId,
-        action: logAction,
-        status: 'info',
-        request_payload: {
-          symbol,
-          direction,
-          trigger_price: decision.triggerPrice,
-          trigger_side: decision.triggerSide,
-          lock_trigger: decision.reason,
-          closed_trades: closedCount,
-          open_trades: openRows.length,
-          bid,
-          ask,
-          deleted_rows: deleted,
-          lock_reason: 'layering_stopped',
-          layer_till_close: layerTillClose,
-        } as unknown as Record<string, unknown>,
-      })
-    } catch { /* best-effort */ }
+    await writeExecutionLog(supabase, {
+      user_id: userId,
+      signal_id: signalId,
+      broker_account_id: brokerAccountId,
+      action: logAction,
+      status: 'info',
+      request_payload: {
+        symbol,
+        direction,
+        trigger_price: decision.triggerPrice,
+        trigger_side: decision.triggerSide,
+        lock_trigger: decision.reason,
+        closed_trades: closedCount,
+        open_trades: openRows.length,
+        bid,
+        ask,
+        deleted_rows: deleted,
+        lock_reason: 'layering_stopped',
+        layer_till_close: layerTillClose,
+      } as unknown as Record<string, unknown>,
+    })
   }
 
   return touched

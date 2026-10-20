@@ -146,7 +146,7 @@ async function logPushAttemptToDb(
 ): Promise<void> {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return
   try {
-    await fetch(`${SUPABASE_URL}/rest/v1/trade_execution_logs`, {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/trade_execution_logs`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -162,8 +162,17 @@ async function logPushAttemptToDb(
         request_payload: payload,
       }]),
     })
-  } catch {
-    /* best-effort */
+    if (!res.ok) {
+      console.warn(
+        `[tradeSignalPush] dispatch_push_attempt insert rejected signal=${row.id} user=${row.user_id} http=${res.status}`,
+      )
+    }
+  } catch (err) {
+    console.warn(
+      `[tradeSignalPush] failed to persist dispatch_push_attempt signal=${row.id} user=${row.user_id}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    )
   }
 }
 

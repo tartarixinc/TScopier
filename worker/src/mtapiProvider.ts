@@ -7,14 +7,23 @@ import type { BrokerProvider } from './brokerProvider'
 import { ingestMtHistoryRows, type MtHistoryProfile } from './mtTradeFields'
 import { auditOrderClose } from './orderCloseAudit'
 import { createConcurrencyGate } from './perAccountConcurrency'
+import { createBrokerGateway, type BrokerGateway, type BrokerPriority } from './brokerGateway'
+import { redactBridgeSecrets } from './mtapiRedaction'
 
 type FetchLike = typeof fetch
 type RecoveryHandler = (sessionId: string) => Promise<string | null>
 
 export class MtapiApiError extends Error {
   constructor(message: string, readonly status: number, readonly code?: string) {
-    super(message)
+    // Single choke point: every MtapiApiError built in this runtime passes
+    // through here, so the MT4 bridge's echoed credentials cannot reach a log,
+    // the database or a customer's browser through a path we forgot to patch.
+    super(redactBridgeSecrets(message))
     this.name = 'MtapiApiError'
+    // `code` is redacted as well because `errorDetails` promotes a bare-string
+    // `error` body field into it, and `mtapiFailureSummary()` forwards an
+    // unmatched code verbatim into `broker_accounts.connection_error`.
+    if (this.code != null) this.code = redactBridgeSecrets(this.code)
   }
 }
 
@@ -111,13 +120,22 @@ function throttleRetryDelayMs(error: unknown): number {
 export interface MtapiProviderOptions {
   fetchImpl?: FetchLike
   timeoutMs?: number
+  /** Timeout for order operations; must exceed a read timeout and sit under nginx's 60s. */
+  orderTimeoutMs?: number
+  /** Timeout for bulk history reads (OrderHistory & co.); they legitimately take longer than a plain read. */
+  historyTimeoutMs?: number
   recoveryHandler?: RecoveryHandler
+  /** Shared rate pacer for all bridge calls (injectable for tests). */
+  gateway?: BrokerGateway
 }
 
 export class MtapiProvider implements BrokerProvider {
   readonly name = 'mtapi' as const
   private readonly fetchImpl: FetchLike
   private readonly timeoutMs: number
+  private readonly orderTimeoutMs: number
+  private readonly historyTimeoutMs: number
+  private readonly gateway: BrokerGateway
   private readonly platformBySession = new Map<string, MtPlatform>()
   private readonly canonicalSession = new Map<string, string>()
   private recoveryHandler?: RecoveryHandler
@@ -126,7 +144,31 @@ export class MtapiProvider implements BrokerProvider {
     this.fetchImpl = options.fetchImpl ?? fetch
     this.timeoutMs = options.timeoutMs
       ?? Math.max(1_000, Number(process.env.MTAPI_HTTP_TIMEOUT_MS ?? 20_000))
+    // Order sends wait longer than reads: the bridge/terminal may take tens of
+    // seconds, and giving up early turns a successful send into a false
+    // "ambiguous" outcome. Clamp strictly below nginx's proxy_read_timeout
+    // (60s) so the client can never outlive the bridge and retry a 504.
+    this.orderTimeoutMs = Math.min(
+      55_000,
+      options.orderTimeoutMs
+        ?? Math.max(this.timeoutMs, Number(process.env.MTAPI_ORDER_TIMEOUT_MS ?? 50_000)),
+    )
+    // Bulk history reads (a 30-day OrderHistory window over an active account)
+    // legitimately take longer than a plain read; prod saw "OrderHistory timed
+    // out" at the 20s default (2026-10-14), which swallowed the close proof and
+    // deferred ghost closes to manual review. Same sub-60s clamp as orders,
+    // applied per attempt. A non-numeric env value falls back to the default
+    // rather than poisoning setTimeout with NaN (instant abort = every history
+    // read would fail).
+    const historyEnvRaw = Number(process.env.MTAPI_HISTORY_TIMEOUT_MS ?? 30_000)
+    const historyEnv = Number.isFinite(historyEnvRaw) && historyEnvRaw > 0 ? historyEnvRaw : 30_000
+    this.historyTimeoutMs = Math.min(
+      55_000,
+      options.historyTimeoutMs
+        ?? Math.max(this.timeoutMs, historyEnv),
+    )
     this.recoveryHandler = options.recoveryHandler
+    this.gateway = options.gateway ?? createBrokerGateway()
   }
 
   setRecoveryHandler(handler: RecoveryHandler | undefined): void {
@@ -150,7 +192,14 @@ export class MtapiProvider implements BrokerProvider {
   private async request(
     endpoint: string,
     params: Record<string, string | number | boolean | null | undefined>,
-    options: { platform?: MtPlatform; sessionId?: string; method?: 'GET' | 'POST'; form?: FormData } = {},
+    options: {
+      platform?: MtPlatform
+      sessionId?: string
+      method?: 'GET' | 'POST'
+      form?: FormData
+      timeoutMs?: number
+      priority?: BrokerPriority
+    } = {},
   ): Promise<unknown> {
     const sessionId = options.sessionId ? this.resolvedId(options.sessionId) : ''
     const urlBase = baseUrl(this.platform(options.sessionId ?? '', options.platform))
@@ -165,8 +214,11 @@ export class MtapiProvider implements BrokerProvider {
       console.warn(`[mtapiProvider] request "${endpoint}" sends password via URL query — MTAPI protocol limitation, ensure server access logs are secured`)
     }
 
+    // Pace BEFORE arming the request timeout: queue wait must not consume the
+    // operation's time budget, or a busy gateway could itself abort an order.
+    await this.gateway.acquire(sessionId || 'global', options.priority ?? 'background')
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs)
+    const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? this.timeoutMs)
     try {
       const headers: Record<string, string> = { accept: 'application/json, text/plain' }
       const proxyKey = env('MTAPI_PROXY_KEY') || env('MTAPI_API_KEY')
@@ -181,8 +233,15 @@ export class MtapiProvider implements BrokerProvider {
       })
       const text = await response.text()
       let body: unknown = text
-      if (text.trim().startsWith('{') || text.trim().startsWith('[')) {
-        try { body = JSON.parse(text) } catch { /* caller validates shape */ }
+      const trimmed = text.trim()
+      const contentType = response.headers.get('content-type') ?? ''
+      // The bridge content-negotiates: with `Accept: application/json` it returns
+      // JSON, including bare JSON scalars. CheckConnect answers `"OK"` (a quoted
+      // JSON string), which the old `{`/`[`-only sniff left as the literal `"OK"`
+      // and made the health probe fail on every account — blocking reconciliation
+      // from ever closing a flat account's stale trades. Parse by content-type too.
+      if (trimmed.startsWith('{') || trimmed.startsWith('[') || contentType.includes('json')) {
+        try { body = JSON.parse(trimmed) } catch { /* caller validates shape */ }
       }
       const details = errorDetails(body)
       if (!response.ok || details.code) {
@@ -209,13 +268,39 @@ export class MtapiProvider implements BrokerProvider {
     endpoint: string,
     params: Record<string, string | number | boolean | null | undefined>,
     sessionId: string,
+    options: { timeoutMs?: number } = {},
   ): Promise<unknown> {
     try {
-      return await this.request(endpoint, params, { sessionId })
+      return await this.request(endpoint, params, { sessionId, timeoutMs: options.timeoutMs })
     } catch (error) {
       if (!isSessionGone(error)) throw error
       await this.ensureConnected(sessionId)
-      return this.request(endpoint, params, { sessionId })
+      return this.request(endpoint, params, { sessionId, timeoutMs: options.timeoutMs })
+    }
+  }
+
+  /**
+   * History reads (OrderHistory & co.) get the longer history timeout and one
+   * transport retry: a bulk 30-day pull can time out intermittently (prod
+   * 2026-10-14: `MTAPI OrderHistory timed out` swallowed the close proof for
+   * ghost trades). Only transport errors are retried — a deterministic 4xx is
+   * not made slower. Session-gone recovery stays inside `readRequest`; when a
+   * session-gone recovery and a transport failure interleave, one call can
+   * issue up to 4 bridge requests (2 OrderHistory + up to 2 recovery probes)
+   * before succeeding or failing — still bounded, never looping.
+   */
+  private async historyReadRequest(
+    endpoint: string,
+    params: Record<string, string | number | boolean | null | undefined>,
+    sessionId: string,
+  ): Promise<unknown> {
+    try {
+      return await this.readRequest(endpoint, params, sessionId, { timeoutMs: this.historyTimeoutMs })
+    } catch (error) {
+      const retryable = error instanceof MtapiApiError && error.code === 'TRANSPORT_ERROR'
+      if (!retryable) throw error
+      await new Promise(resolve => setTimeout(resolve, 400 + Math.random() * 600))
+      return this.readRequest(endpoint, params, sessionId, { timeoutMs: this.historyTimeoutMs })
     }
   }
 
@@ -262,7 +347,10 @@ export class MtapiProvider implements BrokerProvider {
 
   async checkConnect(id: string): Promise<void> {
     const body = await this.request('CheckConnect', {}, { sessionId: id })
-    if (typeof body === 'string' && body.trim().toUpperCase() === 'OK') return
+    // Tolerate both `OK` and the bridge's JSON-encoded `"OK"` regardless of how
+    // the request layer parsed it.
+    const text = typeof body === 'string' ? body.trim().replace(/^["']|["']$/g, '').toUpperCase() : ''
+    if (text === 'OK') return
     throw new MtapiApiError('MTAPI CheckConnect returned an invalid response', 502, 'INVALID_RESPONSE')
   }
 
@@ -334,7 +422,11 @@ export class MtapiProvider implements BrokerProvider {
       if (args.slippage != null) params.slippage = args.slippage
       if (args.comment) params.comment = args.comment
 
-      const raw = await this.requestWithRetry('OrderSendSafe', params, id, this.platform(id) === 'MT5')
+      // Never resend an orderSend on a client timeout: the terminal may have
+      // accepted it, and MT5 OrderSendSafe idempotency is not proven. Throttle
+      // retry is opt-in (`MTAPI_ORDER_THROTTLE_RETRY=true`) until it is.
+      const orderThrottleRetry = env('MTAPI_ORDER_THROTTLE_RETRY') === 'true' ? 'pre_accept' : 'off'
+      const raw = await this.requestWithRetry('OrderSendSafe', params, id, false, orderThrottleRetry)
       return normalizeOrderResponse(raw, { platform: this.platform(id), operation: args.operation })
     } finally {
       release()
@@ -368,7 +460,10 @@ export class MtapiProvider implements BrokerProvider {
       if (args.price != null && args.price > 0) params.price = args.price
       if (args.slippage != null) params.slippage = args.slippage
 
-      const raw = await this.requestWithRetry('OrderCloseSafe', params, id)
+      // A partial close must not be resent on a timeout (it could over-close);
+      // a full close is idempotent (an already-closed ticket is "not found").
+      const fullClose = args.lots == null || args.lots <= 0
+      const raw = await this.requestWithRetry('OrderCloseSafe', params, id, fullClose)
       const result = normalizeOrderResponse(raw, { platform: this.platform(id) })
       auditOrderClose({
         source: 'mtapi',
@@ -401,6 +496,14 @@ export class MtapiProvider implements BrokerProvider {
     params: Record<string, string | number>,
     sessionId: string,
     allowTimeoutRetry = true,
+    // 'pre_accept' restricts throttle retries to the pre-accept 429 signature
+    // (`code=rate_limited`); 'any' also retries a bare 429; 'off' never retries
+    // a throttle — except the bridge's own `expected available in` pre-execution
+    // signature, which is always retried because the order was refused before
+    // it reached the terminal. OrderSend uses 'off' by default because its
+    // idempotency is not proven (see MTAPI_ORDER_THROTTLE_RETRY); idempotent
+    // calls use 'any'.
+    throttleRetry: 'any' | 'pre_accept' | 'off' = 'any',
   ): Promise<unknown> {
     const MAX_ATTEMPTS = Math.max(1, Number(process.env.MT_ORDERSEND_MAX_ATTEMPTS ?? 3) || 3)
     // A rate-limited OrderSend was rejected, so retrying cannot duplicate a fill.
@@ -409,10 +512,21 @@ export class MtapiProvider implements BrokerProvider {
       MAX_ATTEMPTS,
       Number(process.env.MT_ORDER_THROTTLE_ATTEMPTS ?? 6) || 6,
     )
+    const rawThrottleBase = (process.env.MT_RATE_LIMIT_BACKOFF_MS ?? '').trim()
+    const configuredThrottleBase = rawThrottleBase === '' ? Number.NaN : Number(rawThrottleBase)
+    const throttleBaseMs = Number.isFinite(configuredThrottleBase) && configuredThrottleBase >= 0
+      ? configuredThrottleBase
+      : 1_000
     let lastErr: unknown
     for (let attempt = 0; attempt < THROTTLE_ATTEMPTS; attempt++) {
       try {
-        return await this.request(endpoint, params, { sessionId })
+        // Order operations get the longer order timeout and the priority lane,
+        // so background reads never delay them.
+        return await this.request(endpoint, params, {
+          sessionId,
+          timeoutMs: this.orderTimeoutMs,
+          priority: 'order',
+        })
       } catch (error) {
         lastErr = error
         if (isSessionGone(error)) {
@@ -420,7 +534,11 @@ export class MtapiProvider implements BrokerProvider {
           continue
         }
         const msg = error instanceof Error ? error.message : String(error)
-        if (isApiThrottleError(error)) {
+        // A throttle response that states when capacity returns
+        // (`expected available in N seconds`) is the bridge's own pre-execution
+        // queue: the order was refused, so retrying cannot duplicate a fill.
+        // Give the broker's window time to clear before failing the trade.
+        if (/expected available in/i.test(msg)) {
           if (attempt >= THROTTLE_ATTEMPTS - 1) throw error
           const waitMs = throttleRetryDelayMs(error)
           console.warn(
@@ -429,10 +547,24 @@ export class MtapiProvider implements BrokerProvider {
           await new Promise(r => setTimeout(r, waitMs))
           continue
         }
+        // A 429 / `rate_limited` is a clean pre-accept rejection: the bridge (or
+        // the broker) refused the request before executing it, so retrying an
+        // order send cannot duplicate a fill. It is safe and expected to retry
+        // with a longer, jittered backoff — unlike a timeout, which may have
+        // reached the terminal (gated by allowTimeoutRetry).
+        const preAcceptThrottle = error instanceof MtapiApiError && error.code === 'rate_limited'
+        const throttled = throttleRetry !== 'off'
+          && (preAcceptThrottle
+            || (throttleRetry === 'any'
+              && (isApiThrottleError(error)
+                || (error instanceof MtapiApiError && error.status === 429))))
         const retryable = isTransientMtApiError(error)
+          || throttled
           || (allowTimeoutRetry && isOrderOpTimedOutMessage(msg))
         if (!retryable || attempt >= MAX_ATTEMPTS - 1) throw error
-        const jitterMs = 600 + Math.random() * 900 + attempt * 400
+        const jitterMs = throttled
+          ? throttleBaseMs * (1 + Math.random() * 1.5) + attempt * 750
+          : 600 + Math.random() * 900 + attempt * 400
         console.warn(
           `[mtapiProvider] ${endpoint} retry id=${sessionId} attempt=${attempt + 1}/${MAX_ATTEMPTS}: ${msg}`,
         )
@@ -451,17 +583,17 @@ export class MtapiProvider implements BrokerProvider {
   }
 
   async closedOrders(id: string): Promise<unknown[]> {
-    const raw = await this.readRequest('ClosedOrders', {}, id)
+    const raw = await this.historyReadRequest('ClosedOrders', {}, id)
     return list(raw, ['orders', 'Orders'], 'ClosedOrders')
   }
 
   async orderHistory(id: string, from: string, to: string): Promise<unknown[]> {
-    const raw = await this.readRequest('OrderHistory', { from, to }, id)
+    const raw = await this.historyReadRequest('OrderHistory', { from, to }, id)
     return list(raw, ['orders', 'Orders'], 'OrderHistory')
   }
 
   async historyPositions(id: string, from: string, to: string): Promise<unknown[]> {
-    const raw = await this.readRequest('HistoryPositions', { from, to }, id)
+    const raw = await this.historyReadRequest('HistoryPositions', { from, to }, id)
     return list(raw, ['positions', 'Positions', 'orders', 'Orders'], 'HistoryPositions')
   }
 
@@ -472,7 +604,7 @@ export class MtapiProvider implements BrokerProvider {
     pageNumber: number,
     ordersPerPage = 500,
   ): Promise<{ orders: unknown[]; pagesCount: number }> {
-    const raw = await this.readRequest(
+    const raw = await this.historyReadRequest(
       'OrderHistoryPagination',
       // ascending pinned so newest-window selection never depends on the
       // bridge default (matches the edge's orderHistory pagination).
@@ -561,6 +693,7 @@ export class MtapiProvider implements BrokerProvider {
       leverage: numberValue(row.leverage ?? row.Leverage),
       currency: row.currency == null ? undefined : String(row.currency),
       type: tradeModeValue(row.type ?? row.Type ?? row.tradeMode ?? row.TradeMode),
+      method: row.method == null && row.Method == null ? undefined : String(row.method ?? row.Method),
       synced: boolValue(row.synced ?? row.Synced),
     }
   }

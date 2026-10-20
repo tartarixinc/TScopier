@@ -1,6 +1,18 @@
 import assert from 'node:assert/strict'
-import { describe, it } from 'node:test'
-import { findGhostOpenTradeIds, reconcileOpenTradesForBroker } from './openTradeReconcile'
+import { afterEach, describe, it } from 'node:test'
+import { findGhostOpenTradeIds, reconcileOpenTradesForBroker, selectGhostClosures } from './openTradeReconcile'
+import {
+  initWorkerSentry,
+  resetWorkerSentryForTests,
+  setSentryAdapterForTests,
+} from './observability/sentry'
+import { resetBusinessEventsForTests } from './observability/businessEvents'
+
+const oldRequireHistory = process.env.OPEN_TRADE_RECONCILE_REQUIRE_CLOSED_HISTORY
+afterEach(() => {
+  if (oldRequireHistory == null) delete process.env.OPEN_TRADE_RECONCILE_REQUIRE_CLOSED_HISTORY
+  else process.env.OPEN_TRADE_RECONCILE_REQUIRE_CLOSED_HISTORY = oldRequireHistory
+})
 
 describe('findGhostOpenTradeIds', () => {
   it('returns ids for tickets absent from broker', () => {
@@ -140,7 +152,11 @@ describe('reconcileOpenTradesForBroker', () => {
         return query
       },
     }
-    const api = { openedOrders: async () => [] }
+    const api = {
+      openedOrders: async () => [],
+      // Positive close record corroborates the ghost close.
+      orderHistory: async () => [{ ticket: 400406267, closePrice: 4160, closeTime: 1_760_000_000 }],
+    }
     await reconcileOpenTradesForBroker(
       supabase as never,
       api as never,
@@ -151,6 +167,72 @@ describe('reconcileOpenTradesForBroker', () => {
     // The close ran (one update attempted) rather than deferring.
     assert.equal(updates.length, 1)
     assert.equal((updates[0] as { status?: string }).status, 'closed')
+  })
+
+  it('does NOT close an empty-snapshot ghost that is not corroborated by history', async () => {
+    const updates: unknown[] = []
+    const supabase = {
+      from() {
+        return {
+          select() { return this },
+          in() { return this },
+          eq() { return this },
+          update(payload: unknown) {
+            updates.push(payload)
+            return { in: () => ({ eq: () => ({ select: async () => ({ data: [], error: null }) }) }) }
+          },
+        }
+      },
+    }
+    const api = {
+      openedOrders: async () => [],
+      orderHistory: async () => [], // no close record -> cannot corroborate
+    }
+    const closed = await reconcileOpenTradesForBroker(
+      supabase as never,
+      api as never,
+      'acct',
+      [{ id: 'a', broker_account_id: 'b1', metaapi_order_id: '400406267' }],
+      async () => {},
+    )
+    assert.equal(closed, 0)
+    assert.equal(updates.length, 0, 'must not close without a corroborating close record')
+  })
+
+  it('closes without history only when the requirement is explicitly disabled', async () => {
+    process.env.OPEN_TRADE_RECONCILE_REQUIRE_CLOSED_HISTORY = 'false'
+    const updates: unknown[] = []
+    const supabase = {
+      from() {
+        const query: Record<string, unknown> = {
+          select() { return query },
+          in() { return query },
+          eq() { return query },
+          update(payload: unknown) {
+            updates.push(payload)
+            return { in: () => ({ eq: () => ({ select: async () => ({ data: [], error: null }) }) }) }
+          },
+          then(resolve: (value: unknown) => unknown) {
+            return Promise.resolve({
+              data: [{ id: 'a', signal_id: null, broker_account_id: 'b1' }],
+              error: null,
+            }).then(resolve)
+          },
+        }
+        return query
+      },
+    }
+    const api = { openedOrders: async () => [] }
+    const closed = await reconcileOpenTradesForBroker(
+      supabase as never,
+      api as never,
+      'acct',
+      [{ id: 'a', broker_account_id: 'b1', metaapi_order_id: '400406267' }],
+      async () => {},
+    )
+    assert.equal(updates.length, 1)
+    assert.equal((updates[0] as { status?: string }).status, 'closed')
+    assert.ok(closed >= 0)
   })
 
   it('still defers on an empty snapshot when the session does not answer', async () => {
@@ -168,5 +250,743 @@ describe('reconcileOpenTradesForBroker', () => {
       async () => { throw new Error('disconnected') },
     )
     assert.equal(closed, 0)
+  })
+
+  it('logs why identity is ambiguous and defers instead of closing', async () => {
+    const warnings: string[] = []
+    const originalWarn = console.warn
+    console.warn = (...args: unknown[]): void => {
+      warnings.push(args.map(String).join(' '))
+    }
+    try {
+      const supabase = {
+        from() {
+          throw new Error('DB must not be mutated for an ambiguous trade')
+        },
+      }
+      const api = {
+        // The stored ticket (100) is gone from the broker, but two live
+        // positions are identical on every attribute the matcher compares —
+        // the shape that produced the undiagnosable production log line.
+        openedOrders: async () => [
+          { ticket: 500, type: 1, symbol: 'BTCUSDm', lots: 0.15, openPrice: 85600 },
+          { ticket: 501, type: 1, symbol: 'BTCUSDm', lots: 0.15, openPrice: 85600.05 },
+        ],
+      }
+      const closed = await reconcileOpenTradesForBroker(
+        supabase as never,
+        api as never,
+        'acct',
+        [{
+          id: 'amb-1',
+          broker_account_id: 'b1',
+          metaapi_order_id: '100',
+          symbol: 'BTCUSDm',
+          direction: 'sell',
+          lot_size: 0.15,
+          entry_price: 85600,
+        }],
+      )
+      assert.equal(closed, 0)
+      const line = warnings.find(w => w.includes('identity ambiguous trade=amb-1'))
+      assert.ok(line, `expected an identity ambiguous line, got: ${JSON.stringify(warnings)}`)
+      assert.match(line, /reason="attributes match multiple live positions"/)
+      assert.match(line, /pass=first/)
+      assert.match(line, /ticket=100/)
+      assert.match(line, /symbol=BTCUSDm/)
+    } finally {
+      console.warn = originalWarn
+    }
+  })
+
+  it('logs pass=second when identity only becomes ambiguous on the second snapshot', async () => {
+    const warnings: string[] = []
+    const originalWarn = console.warn
+    console.warn = (...args: unknown[]): void => {
+      warnings.push(args.map(String).join(' '))
+    }
+    try {
+      const supabase = {
+        from() {
+          throw new Error('DB must not be mutated for an ambiguous trade')
+        },
+      }
+      let openedCalls = 0
+      const api = {
+        // First snapshot: the stored ticket is gone and nothing matches on
+        // attributes, so the trade reaches the second pass. Second snapshot:
+        // two indistinguishable positions appear, which is ambiguous there —
+        // previously logged nowhere.
+        openedOrders: async () => {
+          openedCalls += 1
+          if (openedCalls === 1) return [{ ticket: 999, type: 0, symbol: 'EURUSD' }]
+          return [
+            { ticket: 500, type: 1, symbol: 'BTCUSDm', lots: 0.15, openPrice: 85600 },
+            { ticket: 501, type: 1, symbol: 'BTCUSDm', lots: 0.15, openPrice: 85600.05 },
+          ]
+        },
+      }
+      const closed = await reconcileOpenTradesForBroker(
+        supabase as never,
+        api as never,
+        'acct',
+        [{
+          id: 'amb-second',
+          broker_account_id: 'b1',
+          metaapi_order_id: '100',
+          symbol: 'BTCUSDm',
+          direction: 'sell',
+          lot_size: 0.15,
+          entry_price: 85600,
+        }],
+      )
+      assert.equal(closed, 0)
+      assert.equal(openedCalls, 2)
+      const line = warnings.find(w => w.includes('identity ambiguous trade=amb-second'))
+      assert.ok(line, `expected a second-pass identity ambiguous line, got: ${JSON.stringify(warnings)}`)
+      assert.match(line, /pass=second/)
+      assert.match(line, /reason="attributes match multiple live positions"/)
+    } finally {
+      console.warn = originalWarn
+    }
+  })
+})
+
+describe('selectGhostClosures (B1: close only on a positive per-ticket close record)', () => {
+  const candidate = (id: string, status = 'ambiguous', reason = 'attributes match multiple live positions') =>
+    ({ trade: { id }, resolution: { status, reason } })
+
+  it('closes an absent row when history holds a close record', () => {
+    const r = selectGhostClosures({
+      candidates: [candidate('t1')],
+      closeProof: () => true,
+      requireProof: true,
+    })
+    assert.deepEqual(r.ghostIds, ['t1'])
+    assert.deepEqual(r.deferred, [])
+  })
+
+  it('defers an absent row with no close record (identical siblings case)', () => {
+    const r = selectGhostClosures({
+      candidates: [candidate('t1')],
+      closeProof: () => false,
+      requireProof: true,
+    })
+    assert.deepEqual(r.ghostIds, [])
+    assert.deepEqual(r.deferred, [{ id: 't1', reason: 'attributes match multiple live positions' }])
+  })
+
+  it('legacy mode closes only clearly-missing rows, never attribute-ambiguous ones', () => {
+    const r = selectGhostClosures({
+      candidates: [candidate('t1'), candidate('t2', 'missing')],
+      closeProof: () => false,
+      requireProof: false,
+    })
+    assert.deepEqual(r.ghostIds, ['t2'])
+    assert.equal(r.deferred.length, 1)
+  })
+
+  it('never closes a row whose ticket maps to several live positions, even with a close record', () => {
+    const r = selectGhostClosures({
+      candidates: [{
+        trade: { id: 't1' },
+        resolution: { status: 'ambiguous', reason: 'stored ticket maps to multiple live positions', identityMatch: true },
+      }],
+      closeProof: () => true,
+      requireProof: true,
+    })
+    assert.deepEqual(r.ghostIds, [])
+    assert.equal(r.deferred.length, 1)
+  })
+
+  it('reports a missing-ticket reason when the resolver found nothing', () => {
+    const r = selectGhostClosures({
+      candidates: [candidate('t9', 'missing')],
+      closeProof: () => false,
+      requireProof: true,
+    })
+    assert.equal(r.deferred[0]?.reason, 'stored ticket has no live position match')
+  })
+})
+
+describe('reconcileOpenTradesForBroker (non-flat path, B1 close proof)', () => {
+  function mockSupabase(
+    loaded: Array<{ id: string; signal_id: string | null; broker_account_id: string | null }>,
+    writes: Array<Record<string, unknown>>,
+  ) {
+    // Responds only to the two queries `closeStaleOpenTrades` needs: the row
+    // load (selects signal_id) returns the rows; the close update returns the
+    // ids it closed; any other query (ramp-pending purge) returns nothing.
+    const builder: Record<string, unknown> = {
+      _op: 'select',
+      _ids: [] as string[],
+      _wantRows: false,
+      from() { return builder },
+      select(columns?: string) {
+        if (builder._op !== 'update') {
+          builder._op = 'select'
+          builder._wantRows = String(columns ?? '').includes('signal_id')
+        }
+        return builder
+      },
+      update(patch: Record<string, unknown>) { builder._op = 'update'; writes.push(patch); return builder },
+      delete() { builder._op = 'delete'; return builder },
+      in(_column: string, ids: string[]) { builder._ids = ids; return builder },
+      eq() { return builder },
+      is() { return builder },
+      or() { return builder },
+      order() { return builder },
+      limit() { return builder },
+      maybeSingle() { return { data: null, error: null } },
+      then(resolve: (value: unknown) => unknown) {
+        const data = builder._op === 'update'
+          ? (builder._ids as string[]).map(id => ({ id }))
+          : builder._wantRows
+            ? loaded
+            : []
+        return Promise.resolve({ data, error: null }).then(resolve)
+      },
+    }
+    return builder as never
+  }
+
+  const sibling = { ticket: 7002, orderType: 'Buy', state: 'Filled', symbol: 'XAUUSD', lots: 0.05, openPrice: 4146.61 }
+  const closeRow = { ticket: 7001, orderType: 'Buy', state: 'Filled', symbol: 'XAUUSD', lots: 0.05, closeTime: '2026-10-06T14:50:00', closePrice: 4149, profit: 12.5 }
+
+  function apiWith(history: unknown[]) {
+    return {
+      openedOrders: async () => [sibling],
+      orderHistory: async () => history,
+    } as never
+  }
+
+  it('closes a gone leg when the captured position ticket has a close record (identical sibling present)', async () => {
+    const writes: Array<Record<string, unknown>> = []
+    const supabase = mockSupabase([{ id: 't1', signal_id: 'sig-1', broker_account_id: 'acct-1' }], writes)
+    const closed = await reconcileOpenTradesForBroker(
+      supabase,
+      apiWith([closeRow]),
+      'acct-1',
+      [{
+        id: 't1',
+        signal_id: 'sig-1',
+        broker_account_id: 'acct-1',
+        metaapi_order_id: '5001',            // order ticket: not in history
+        broker_position_ticket: '7001',      // captured position ticket: in history
+        symbol: 'XAUUSD',
+        direction: 'buy',
+        lot_size: 0.05,
+        entry_price: 4146.6,
+      }],
+      undefined,
+      'mtapi',
+    )
+    assert.equal(closed, 1)
+    assert.equal(writes.length, 1)
+    assert.equal(writes[0]?.close_reason, 'position_gone')
+  })
+
+  it('defers when history holds no close record for the row', async () => {
+    const writes: Array<Record<string, unknown>> = []
+    const supabase = mockSupabase([{ id: 't1', signal_id: 'sig-1', broker_account_id: 'acct-1' }], writes)
+    const closed = await reconcileOpenTradesForBroker(
+      supabase,
+      apiWith([]),
+      'acct-1',
+      [{
+        id: 't1',
+        signal_id: 'sig-1',
+        broker_account_id: 'acct-1',
+        metaapi_order_id: '5001',
+        symbol: 'XAUUSD',
+        direction: 'buy',
+        lot_size: 0.05,
+        entry_price: 4146.6,
+      }],
+      undefined,
+      'mtapi',
+    )
+    assert.equal(closed, 0)
+    assert.equal(writes.length, 0)
+  })
+})
+
+describe('reconcileOpenTradesForBroker (login corroboration)', () => {
+  function mockSupabase2(loaded: Array<{ id: string; signal_id: string | null; broker_account_id: string | null }>, writes: Array<Record<string, unknown>>) {
+    const builder: Record<string, unknown> = {
+      _op: 'select', _ids: [] as string[], _wantRows: false,
+      from() { return builder },
+      select(columns?: string) {
+        if (builder._op !== 'update') { builder._op = 'select'; builder._wantRows = String(columns ?? '').includes('signal_id') }
+        return builder
+      },
+      update(patch: Record<string, unknown>) { builder._op = 'update'; writes.push(patch); return builder },
+      delete() { builder._op = 'delete'; return builder },
+      in(_c: string, ids: string[]) { builder._ids = ids; return builder },
+      eq() { return builder }, is() { return builder }, or() { return builder },
+      order() { return builder }, limit() { return builder },
+      maybeSingle() { return { data: null, error: null } },
+      then(resolve: (v: unknown) => unknown) {
+        const data = builder._op === 'update' ? (builder._ids as string[]).map(id => ({ id })) : builder._wantRows ? loaded : []
+        return Promise.resolve({ data, error: null }).then(resolve)
+      },
+    }
+    return builder as never
+  }
+
+  const position = (login: string) => ({
+    ticket: 7002, orderType: 'Buy', state: 'Filled', symbol: 'XAUUSD', lots: 0.05, openPrice: 4146.61,
+    dealInternalIn: { login },
+  })
+  const closeRow = { ticket: 7001, orderType: 'Buy', state: 'Filled', symbol: 'XAUUSD', lots: 0.05, closeTime: '2026-10-07T10:33:00', closePrice: 4138, profit: 6 }
+  const row = {
+    id: 't1', signal_id: 'sig-1', broker_account_id: 'acct-1',
+    metaapi_order_id: '5001', broker_position_ticket: '7001',
+    symbol: 'XAUUSD', direction: 'buy', lot_size: 0.05, entry_price: 4146.6,
+  }
+  const api = (login: string) => ({ openedOrders: async () => [position(login)], orderHistory: async () => [closeRow] }) as never
+
+  it('defers when the snapshot belongs to a different login (untrusted read)', async () => {
+    const writes: Array<Record<string, unknown>> = []
+    const closed = await reconcileOpenTradesForBroker(
+      mockSupabase2([{ id: 't1', signal_id: 'sig-1', broker_account_id: 'acct-1' }], writes),
+      api('99999999'),
+      'acct-1',
+      [row],
+      undefined,
+      'mtapi',
+      '52992109',
+    )
+    assert.equal(closed, 0)
+    assert.equal(writes.length, 0)
+  })
+
+  it('closes normally when the snapshot login matches', async () => {
+    const writes: Array<Record<string, unknown>> = []
+    const closed = await reconcileOpenTradesForBroker(
+      mockSupabase2([{ id: 't1', signal_id: 'sig-1', broker_account_id: 'acct-1' }], writes),
+      api('52992109'),
+      'acct-1',
+      [row],
+      undefined,
+      'mtapi',
+      '52992109',
+    )
+    assert.equal(closed, 1)
+    assert.equal(writes.length, 1)
+  })
+})
+
+describe('reconcileOpenTradesForBroker (login corroboration applies to MTAPI only)', () => {
+  it('ignores the login check for other providers', async () => {
+    const writes: Array<Record<string, unknown>> = []
+    const builder: Record<string, unknown> = {
+      _op: 'select', _ids: [] as string[], _wantRows: false,
+      from() { return builder },
+      select(c?: string) { if (builder._op !== 'update') { builder._op = 'select'; builder._wantRows = String(c ?? '').includes('signal_id') } return builder },
+      update(p: Record<string, unknown>) { builder._op = 'update'; writes.push(p); return builder },
+      delete() { return builder },
+      in(_c: string, ids: string[]) { builder._ids = ids; return builder },
+      eq() { return builder }, is() { return builder }, or() { return builder },
+      order() { return builder }, limit() { return builder },
+      maybeSingle() { return { data: null, error: null } },
+      then(resolve: (v: unknown) => unknown) {
+        const data = builder._op === 'update' ? (builder._ids as string[]).map(id => ({ id })) : builder._wantRows ? [{ id: 't1', signal_id: 'sig-1', broker_account_id: 'acct-1' }] : []
+        return Promise.resolve({ data, error: null }).then(resolve)
+      },
+    }
+    const api = {
+      openedOrders: async () => [{ ticket: 7002, orderType: 'Buy', state: 'Filled', symbol: 'XAUUSD', lots: 0.05, openPrice: 4146.61, dealInternalIn: { login: '99999999' } }],
+      // FxSocket closing deal shape: entry contains "out", order === 0, keyed by `position`.
+      orderHistory: async () => [{ entry: 'out', order: 0, position: 7001, price: 4138, profit: 6 }],
+    } as never
+    const closed = await reconcileOpenTradesForBroker(
+      builder as never,
+      api,
+      'acct-1',
+      [{ id: 't1', signal_id: 'sig-1', broker_account_id: 'acct-1', metaapi_order_id: '5001', broker_position_ticket: '7001', symbol: 'XAUUSD', direction: 'buy', lot_size: 0.05, entry_price: 4146.6 }],
+      undefined,
+      'fxsocket',
+      '52992109',
+    )
+    assert.equal(closed, 1)
+    assert.equal(writes.length, 1)
+  })
+})
+
+describe('reconcileOpenTradesForBroker (history window derivation)', () => {
+  function mockSupabase(
+    loaded: Array<{ id: string; signal_id: string | null; broker_account_id: string | null }>,
+    writes: Array<Record<string, unknown>>,
+  ) {
+    const builder: Record<string, unknown> = {
+      _op: 'select',
+      _ids: [] as string[],
+      _wantRows: false,
+      from() { return builder },
+      select(columns?: string) {
+        if (builder._op !== 'update') {
+          builder._op = 'select'
+          builder._wantRows = String(columns ?? '').includes('signal_id')
+        }
+        return builder
+      },
+      update(patch: Record<string, unknown>) { builder._op = 'update'; writes.push(patch); return builder },
+      delete() { builder._op = 'delete'; return builder },
+      in(_column: string, ids: string[]) { builder._ids = ids; return builder },
+      eq() { return builder },
+      is() { return builder },
+      or() { return builder },
+      order() { return builder },
+      limit() { return builder },
+      maybeSingle() { return { data: null, error: null } },
+      then(resolve: (value: unknown) => unknown) {
+        const data = builder._op === 'update'
+          ? (builder._ids as string[]).map(id => ({ id }))
+          : builder._wantRows
+            ? loaded
+            : []
+        return Promise.resolve({ data, error: null }).then(resolve)
+      },
+    }
+    return builder as never
+  }
+
+  const sibling = { ticket: 7002, orderType: 'Buy', state: 'Filled', symbol: 'XAUUSD', lots: 0.05, openPrice: 4146.61 }
+  const closeRow = { ticket: 7001, orderType: 'Buy', state: 'Filled', symbol: 'XAUUSD', lots: 0.05, closeTime: '2026-10-14T12:00:00', closePrice: 4149, profit: 12.5 }
+
+  function capturingApi(history: unknown[], calls: Array<{ from: string; to: string }>) {
+    return {
+      openedOrders: async () => [sibling],
+      orderHistory: async (_id: string, from: string, to: string) => {
+        calls.push({ from, to })
+        return history
+      },
+    } as never
+  }
+
+  const baseTrade = {
+    id: 't1',
+    signal_id: 'sig-1',
+    broker_account_id: 'acct-1',
+    metaapi_order_id: '5001',
+    broker_position_ticket: '7001',
+    symbol: 'XAUUSD',
+    direction: 'buy',
+    lot_size: 0.05,
+    entry_price: 4146.6,
+  }
+
+  it('derives the history window from the ghost trade opened_at instead of the full lookback', async () => {
+    const calls: Array<{ from: string; to: string }> = []
+    const writes: Array<Record<string, unknown>> = []
+    const openedAt = new Date(Date.now() - 2 * 3_600_000).toISOString()
+    const closed = await reconcileOpenTradesForBroker(
+      mockSupabase([{ id: 't1', signal_id: 'sig-1', broker_account_id: 'acct-1' }], writes),
+      capturingApi([closeRow], calls),
+      'acct-1',
+      [{ ...baseTrade, opened_at: openedAt }],
+      undefined,
+      'mtapi',
+    )
+    assert.equal(closed, 1)
+    assert.equal(calls.length, 1)
+    const expectedFrom = Date.parse(openedAt) - 86_400_000
+    const parsedFrom = Date.parse(calls[0]!.from + 'Z') // mtDate emits offset-less UTC
+    assert.ok(Math.abs(parsedFrom - expectedFrom) < 10_000,
+      `from=${calls[0]!.from} should be opened_at minus one day`)
+    assert.ok(parsedFrom > Date.now() - 2 * 86_400_000,
+      'window must not fall back to the full lookback when opened_at is present')
+  })
+
+  it('falls back to the configured lookback when opened_at is missing', async () => {
+    const calls: Array<{ from: string; to: string }> = []
+    const writes: Array<Record<string, unknown>> = []
+    const closed = await reconcileOpenTradesForBroker(
+      mockSupabase([{ id: 't1', signal_id: 'sig-1', broker_account_id: 'acct-1' }], writes),
+      capturingApi([closeRow], calls),
+      'acct-1',
+      [baseTrade],
+      undefined,
+      'mtapi',
+    )
+    assert.equal(closed, 1)
+    assert.equal(calls.length, 1)
+    const expectedFrom = Date.now() - 30 * 86_400_000
+    assert.ok(Math.abs(Date.parse(calls[0]!.from + 'Z') - expectedFrom) < 10_000,
+      `from=${calls[0]!.from} should be the default ${30}-day lookback`)
+  })
+})
+
+describe('reconcileOpenTradesForBroker (paged fallback after failed bulk history)', () => {
+  function mockSupabase(
+    loaded: Array<{ id: string; signal_id: string | null; broker_account_id: string | null }>,
+    writes: Array<Record<string, unknown>>,
+  ) {
+    const builder: Record<string, unknown> = {
+      _op: 'select',
+      _ids: [] as string[],
+      _wantRows: false,
+      from() { return builder },
+      select(columns?: string) {
+        if (builder._op !== 'update') {
+          builder._op = 'select'
+          builder._wantRows = String(columns ?? '').includes('signal_id')
+        }
+        return builder
+      },
+      update(patch: Record<string, unknown>) { builder._op = 'update'; writes.push(patch); return builder },
+      delete() { builder._delete = true; return builder },
+      in(_column: string, ids: string[]) { builder._ids = ids; return builder },
+      eq() { return builder },
+      is() { return builder },
+      or() { return builder },
+      order() { return builder },
+      limit() { return builder },
+      maybeSingle() { return { data: null, error: null } },
+      then(resolve: (value: unknown) => unknown) {
+        const data = builder._op === 'update'
+          ? (builder._ids as string[]).map(id => ({ id }))
+          : builder._wantRows
+            ? loaded
+            : []
+        return Promise.resolve({ data, error: null }).then(resolve)
+      },
+    }
+    return builder as never
+  }
+
+  const sibling = { ticket: 7002, orderType: 'Buy', state: 'Filled', symbol: 'XAUUSD', lots: 0.05, openPrice: 4146.61 }
+  const baseTrade = {
+    id: 't1',
+    signal_id: 'sig-1',
+    broker_account_id: 'acct-1',
+    metaapi_order_id: '5001',
+    broker_position_ticket: '7001',
+    symbol: 'XAUUSD',
+    direction: 'buy',
+    lot_size: 0.05,
+    entry_price: 4146.6,
+    opened_at: new Date(Date.now() - 2 * 3_600_000).toISOString(),
+  }
+
+  function pagedApi(opts: {
+    pagesCount: number
+    pageOrders: Record<number, unknown[]>
+    pageCalls: number[]
+  }) {
+    return {
+      openedOrders: async () => [sibling],
+      orderHistory: async () => { throw new Error('MTAPI OrderHistory timed out') },
+      orderHistoryPage: async (_id: string, _from: string, _to: string, pageNumber: number) => {
+        opts.pageCalls.push(pageNumber)
+        return {
+          orders: opts.pageOrders[pageNumber] ?? [],
+          pagesCount: opts.pagesCount,
+        }
+      },
+    } as never
+  }
+
+  it('closes from the newest pages when the bulk pull fails and the close record is recent', async () => {
+    // Five pages of history; the close record for ticket 7001 lives only on the
+    // newest page. Page 0 (the probe) holds the oldest rows and must not be
+    // trusted as "the" history when its rows fall outside the newest-N range.
+    const closeOnNewestPage = { ticket: 7001, orderType: 'Buy', state: 'Filled', symbol: 'XAUUSD', lots: 0.05, closeTime: '2026-10-14T12:00:00', closePrice: 4149, profit: 12.5 }
+    const staleOnProbePage = { ticket: 6001, orderType: 'Buy', state: 'Filled', symbol: 'XAUUSD', lots: 0.05, closeTime: '2026-09-20T08:00:00', closePrice: 4100, profit: 1 }
+    const pageCalls: number[] = []
+    const writes: Array<Record<string, unknown>> = []
+    const closed = await reconcileOpenTradesForBroker(
+      mockSupabase([{ id: 't1', signal_id: 'sig-1', broker_account_id: 'acct-1' }], writes),
+      pagedApi({
+        pagesCount: 5,
+        pageOrders: { 0: [staleOnProbePage], 3: [], 4: [closeOnNewestPage] },
+        pageCalls,
+      }),
+      'acct-1',
+      [baseTrade],
+      undefined,
+      'mtapi',
+    )
+    assert.equal(closed, 1)
+    assert.equal(writes.length, 1)
+    assert.equal(writes[0]?.close_reason, 'position_gone')
+    // Probe page 0 to learn pagesCount, then only the newest two pages (3, 4)
+    // with the default OPEN_TRADE_RECONCILE_HISTORY_MAX_PAGES=2. Pages 1-2 are
+    // never fetched.
+    assert.deepEqual(pageCalls, [0, 3, 4])
+  })
+
+  it('reuses the probe page when the whole window fits in the newest-N cap', async () => {
+    const closeRow = { ticket: 7001, orderType: 'Buy', state: 'Filled', symbol: 'XAUUSD', lots: 0.05, closeTime: '2026-10-14T12:00:00', closePrice: 4149, profit: 12.5 }
+    const pageCalls: number[] = []
+    const writes: Array<Record<string, unknown>> = []
+    const closed = await reconcileOpenTradesForBroker(
+      mockSupabase([{ id: 't1', signal_id: 'sig-1', broker_account_id: 'acct-1' }], writes),
+      pagedApi({
+        pagesCount: 1,
+        pageOrders: { 0: [closeRow] },
+        pageCalls,
+      }),
+      'acct-1',
+      [baseTrade],
+      undefined,
+      'mtapi',
+    )
+    assert.equal(closed, 1)
+    // Single page: the probe response is the data — no second fetch.
+    assert.deepEqual(pageCalls, [0])
+  })
+
+  it('defers without closing when both bulk and paged history reads fail', async () => {
+    const pageCalls: number[] = []
+    const writes: Array<Record<string, unknown>> = []
+    const api = {
+      openedOrders: async () => [sibling],
+      orderHistory: async () => { throw new Error('MTAPI OrderHistory timed out') },
+      orderHistoryPage: async (_id: string, _from: string, _to: string, pageNumber: number) => {
+        pageCalls.push(pageNumber)
+        throw new Error('OrderHistoryPagination timed out')
+      },
+    } as never
+    const closed = await reconcileOpenTradesForBroker(
+      mockSupabase([{ id: 't1', signal_id: 'sig-1', broker_account_id: 'acct-1' }], writes),
+      api,
+      'acct-1',
+      [baseTrade],
+      undefined,
+      'mtapi',
+    )
+    assert.equal(closed, 0)
+    assert.equal(writes.length, 0, 'must not close without a corroborating close record')
+    assert.ok(pageCalls.includes(0), 'the paged fallback must have been attempted')
+  })
+})
+
+describe('reconcileOpenTradesForBroker (HISTORY_LOAD_FAILED observability)', () => {
+  function mockSupabase() {
+    const builder: Record<string, unknown> = {
+      _op: 'select',
+      _ids: [] as string[],
+      _wantRows: false,
+      from() { return builder },
+      select(columns?: string) {
+        if (builder._op !== 'update') {
+          builder._op = 'select'
+          builder._wantRows = String(columns ?? '').includes('signal_id')
+        }
+        return builder
+      },
+      update(patch: Record<string, unknown>) { builder._op = 'update'; void patch; return builder },
+      delete() { builder._op = 'delete'; return builder },
+      in(_column: string, ids: string[]) { builder._ids = ids; return builder },
+      eq() { return builder },
+      is() { return builder },
+      or() { return builder },
+      order() { return builder },
+      limit() { return builder },
+      maybeSingle() { return { data: null, error: null } },
+      then(resolve: (value: unknown) => unknown) {
+        const data = builder._op === 'update'
+          ? (builder._ids as string[]).map(id => ({ id }))
+          : builder._wantRows
+            ? [{ id: 't1', signal_id: 'sig-1', broker_account_id: 'acct-hist' }]
+            : []
+        return Promise.resolve({ data, error: null }).then(resolve)
+      },
+    }
+    return builder as never
+  }
+
+  function sentryMock() {
+    const messages: Array<{ msg: string; level?: string }> = []
+    const scope = {
+      level: null as string | null,
+      tags: {} as Record<string, unknown>,
+      contexts: {} as Record<string, unknown>,
+      extras: {} as Record<string, unknown>,
+      fingerprint: null as string[] | null,
+      setLevel(v: string) { this.level = v },
+      setTag(k: string, v: unknown) { this.tags[k] = v },
+      setContext(k: string, v: unknown) { this.contexts[k] = v },
+      setExtra(k: string, v: unknown) { this.extras[k] = v },
+      setFingerprint(v: string[]) { this.fingerprint = v },
+    }
+    return {
+      messages,
+      adapter: {
+        init() {},
+        captureException() { return 'eid' },
+        captureMessage(msg: string, level?: string) { messages.push({ msg, level }); return 'eid' },
+        addBreadcrumb() {},
+        setTag() {},
+        setContext() {},
+        withScope(fn: (s: typeof scope) => void) { fn(scope) },
+        async flush() { return true },
+      },
+    }
+  }
+
+  const failingApi = {
+    openedOrders: async () => [
+      { ticket: 7002, orderType: 'Buy', state: 'Filled', symbol: 'XAUUSD', lots: 0.05, openPrice: 4146.61 },
+    ],
+    orderHistory: async () => { throw new Error('MTAPI OrderHistory timed out') },
+    // Realistic paged-leg failure (not a missing-method TypeError) so the
+    // HISTORY_LOAD_FAILED extra carries a genuine paged_error.
+    orderHistoryPage: async () => { throw new Error('OrderHistoryPagination timed out') },
+  } as never
+
+  const trade = {
+    id: 't1',
+    signal_id: 'sig-1',
+    broker_account_id: 'acct-hist',
+    metaapi_order_id: '5001',
+    broker_position_ticket: '7001',
+    symbol: 'XAUUSD',
+    direction: 'buy',
+    lot_size: 0.05,
+    entry_price: 4146.6,
+  }
+
+  it('emits HISTORY_LOAD_FAILED once per account cooldown and still defers the row', async () => {
+    resetWorkerSentryForTests()
+    resetBusinessEventsForTests()
+    const mock = sentryMock()
+    setSentryAdapterForTests(mock.adapter as never)
+    initWorkerSentry({
+      SENTRY_ENABLED: 'true',
+      SENTRY_DSN: 'https://public@example.invalid/1',
+    } as NodeJS.ProcessEnv)
+    try {
+      const writes: Array<Record<string, unknown>> = []
+      const closed1 = await reconcileOpenTradesForBroker(
+        mockSupabase() as never,
+        failingApi,
+        'acct-hist',
+        [trade],
+        undefined,
+        'mtapi',
+      )
+      assert.equal(closed1, 0)
+      assert.equal(writes.length, 0)
+      const historyFailures = mock.messages.filter(m => m.msg.includes('Closed-history load failed'))
+      assert.equal(historyFailures.length, 1, 'first failure must emit exactly one HISTORY_LOAD_FAILED')
+
+      const closed2 = await reconcileOpenTradesForBroker(
+        mockSupabase() as never,
+        failingApi,
+        'acct-hist',
+        [trade],
+        undefined,
+        'mtapi',
+      )
+      assert.equal(closed2, 0)
+      const historyFailuresAfter = mock.messages.filter(m => m.msg.includes('Closed-history load failed'))
+      assert.equal(historyFailuresAfter.length, 1, 'second failure inside the cooldown must not re-emit')
+    } finally {
+      resetWorkerSentryForTests()
+      resetBusinessEventsForTests()
+    }
   })
 })

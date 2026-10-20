@@ -113,3 +113,6 @@ verify_jwt = false
 
 [functions.discord-sync]
 verify_jwt = true
+
+[functions.alert-evaluator]
+verify_jwt = false

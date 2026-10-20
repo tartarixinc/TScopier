@@ -31,6 +31,7 @@ import {
   cerebrasParseModel,
   cerebrasParseRetries,
   getUniversalParseMode,
+  humanReviewEscalationEnabled,
   isUniversalParseEnabled,
   universalParseFastPathConfidence,
   universalParseModel,
@@ -44,6 +45,18 @@ import type { TradeIntent } from './tradeIntent'
 import { validateTradeIntent } from './validateTradeIntent'
 import { loadOpenTradesForChannel } from '../signalModificationGrounding'
 import { formatFewShots, STAGE_TWO_FEW_SHOTS, STAGE_THREE_FEW_SHOTS } from './fewShotExamples'
+
+/**
+ * Skip reason for an AI-uncertain message. With human review activated
+ * (HUMAN_REVIEW_ESCALATION_ENABLED=true) the reason marks the signal for the
+ * approval UI and notification path; deactivated (the default) it is an
+ * ordinary skip, so nothing asks the user to review anything.
+ */
+export function uncertainReviewSkipReason(): string {
+  return humanReviewEscalationEnabled()
+    ? 'AI classified as uncertain; human review required'
+    : 'AI classified as non-actionable'
+}
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? ''
 
@@ -451,7 +464,7 @@ function finalizeIntent(
         parsed: tradeIntentToChannelParsedSignal(intent, rawMessage),
         status: 'skipped',
         skip_reason: intent.kind === 'uncertain'
-          ? 'AI classified as uncertain; human review required'
+          ? uncertainReviewSkipReason()
           : 'AI classified as non-actionable',
       },
     }

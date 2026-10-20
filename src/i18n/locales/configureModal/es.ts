@@ -429,6 +429,8 @@ export const configureModalEs: ConfigureModalTranslations = {
     moveSlTitle: 'Mover SL tras el movimiento',
     moveSlSubtitle:
       'Mueve automáticamente el stop loss a break-even (más cierre parcial opcional) cuando el precio alcanza su umbral.',
+    basicPlanAutoManagementLimit:
+      'Mover automáticamente el stop loss a break-even está disponible en el plan Advanced.',
     activeRule: 'Regla activa:',
     triggerTitle: 'Disparador — mover SL cuando',
     triggerPips: 'Movimiento en pips',

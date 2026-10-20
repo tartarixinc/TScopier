@@ -17,7 +17,7 @@ import { loadExistingRangeStepIndices } from '../rangePendingFireGuard'
 import { isPostgresDuplicateKeyError } from '../rangePendingLegPersist'
 import { brokerLimitPriceKeysFromOpenedOrders } from './brokerPendingOpenedDedupe'
 import { captureDeferredBusinessFailure } from '../observability/deferredBusinessEvents'
-
+import { writeExecutionLog } from '../observability/executionLog'
 /** In-process single-flight for broker ladder OrderSends (signal+broker+symbol). */
 const brokerRangeMaterializeInflight = new Set<string>()
 
@@ -585,8 +585,7 @@ async function materializeBrokerRangePendingLegsUnlocked(
         }
         placedTickets.push({ ticket: Number(ticket), row })
         placed = true
-
-        void ctx.supabase.from('trade_execution_logs').insert({
+        void writeExecutionLog(ctx.supabase, {
           user_id: signal.user_id,
           signal_id: signal.id,
           broker_account_id: broker.id,
@@ -598,7 +597,7 @@ async function materializeBrokerRangePendingLegsUnlocked(
             layering_type: 'pending_order',
             step_idx: pick.stepIdx,
           } as unknown as Record<string, unknown>,
-        }).then(() => undefined, () => undefined)
+        })
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         if (isBrokerPendingLimitPriceRejectMessage(msg)) {
@@ -717,17 +716,15 @@ async function materializeBrokerRangePendingLegsUnlocked(
         } catch { /* best-effort rollback */ }
       }
       if (!liveEntryFast) {
-        try {
-          await ctx.supabase.from('trade_execution_logs').insert({
-            user_id: signal.user_id,
-            signal_id: signal.id,
-            broker_account_id: broker.id,
-            action: 'range_broker_pending_failed',
-            status: 'failed',
-            request_payload: { rows: insertRows.length, reservedAndConfirmed, anchor, anchorSource } as unknown as Record<string, unknown>,
-            error_message: persist.lastError ?? 'unknown',
-          })
-        } catch { /* best-effort */ }
+        await writeExecutionLog(ctx.supabase, {
+          user_id: signal.user_id,
+          signal_id: signal.id,
+          broker_account_id: broker.id,
+          action: 'range_broker_pending_failed',
+          status: 'failed',
+          request_payload: { rows: insertRows.length, reservedAndConfirmed, anchor, anchorSource } as unknown as Record<string, unknown>,
+          error_message: persist.lastError ?? 'unknown',
+        })
       }
       captureDeferredBusinessFailure({
         category: 'layering',
@@ -777,38 +774,36 @@ async function materializeBrokerRangePendingLegsUnlocked(
     + ` step_pips=${ladder.stepPips} dist_pips=${ladder.distPips} max_step_idx=${ladder.maxStepIdx}`
     + ` step_offset=${ladder.stepPriceOffset}`,
   )
-  try {
-    await ctx.supabase.from('trade_execution_logs').insert({
-      user_id: signal.user_id,
-      signal_id: signal.id,
-      broker_account_id: broker.id,
-      action: 'range_broker_pending_inserted',
-      status: 'success',
-      request_payload: {
-        rows: placedTotal,
-        reserved_confirmed: reservedAndConfirmed,
-        cancelled_invalid: cancelledRows.length,
-        remaps,
-        anchor,
-        anchorSource,
-        symbol,
-        stepIdxs: [
-          ...insertRows.map(r => r.step_idx),
-          ...placedTickets.filter(p => !insertRows.includes(p.row)).map(p => p.row.step_idx),
-        ],
-        triggers: [
-          ...insertRows.map(r => r.trigger_price),
-          ...placedTickets.filter(p => !insertRows.includes(p.row)).map(p => p.row.trigger_price),
-        ],
-        tickets: placedTickets.map(p => p.ticket),
-        range_layering: plan.rangeLayering ?? null,
-        ladder_pricing: ladder,
-        basket_leg_cap: plan.rangeLayering?.basketLegCap ?? null,
-        strict_deferred: strictDeferred,
-        strict_broker_pending: strictBrokerPlaced,
-        layering_type: 'pending_order',
-      } as unknown as Record<string, unknown>,
-    })
-  } catch { /* best-effort */ }
+  await writeExecutionLog(ctx.supabase, {
+    user_id: signal.user_id,
+    signal_id: signal.id,
+    broker_account_id: broker.id,
+    action: 'range_broker_pending_inserted',
+    status: 'success',
+    request_payload: {
+      rows: placedTotal,
+      reserved_confirmed: reservedAndConfirmed,
+      cancelled_invalid: cancelledRows.length,
+      remaps,
+      anchor,
+      anchorSource,
+      symbol,
+      stepIdxs: [
+        ...insertRows.map(r => r.step_idx),
+        ...placedTickets.filter(p => !insertRows.includes(p.row)).map(p => p.row.step_idx),
+      ],
+      triggers: [
+        ...insertRows.map(r => r.trigger_price),
+        ...placedTickets.filter(p => !insertRows.includes(p.row)).map(p => p.row.trigger_price),
+      ],
+      tickets: placedTickets.map(p => p.ticket),
+      range_layering: plan.rangeLayering ?? null,
+      ladder_pricing: ladder,
+      basket_leg_cap: plan.rangeLayering?.basketLegCap ?? null,
+      strict_deferred: strictDeferred,
+      strict_broker_pending: strictBrokerPlaced,
+      layering_type: 'pending_order',
+    } as unknown as Record<string, unknown>,
+  })
   return true
 }
