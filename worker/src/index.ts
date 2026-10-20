@@ -41,7 +41,7 @@ import { TradeBrokerDriftMonitor } from './tradeBrokerDriftMonitor'
 import { attachBrokerStreamProxy } from './brokerStreamProxy'
 import { getFxsocketStreamManager } from './fxsocketStreamManager'
 import { CopyLimitMonitor } from './copyLimitMonitor'
-import { workerConfig, WORKER_BUILD_TAG } from './workerConfig'
+import { parseEnvBool, workerConfig, WORKER_BUILD_TAG } from './workerConfig'
 import { validateListenerTradeShardConfig, validateListenerMgmtShardConfig, validateListenerQueueConfig } from './tradeSignalPush'
 import { SignalQueueConsumerManager } from './queue/signalQueueConsumer'
 import { deployedTradeShardCount, signalQueueConfig, redisQueueConfigured } from './queue/signalQueueConfig'
@@ -56,6 +56,7 @@ import { initializeBrokerExecutionCapability } from './brokerExecutionMode'
 import { testFlagEnabled } from './testFlags'
 import { MtapiSessionManager } from './mtapiSessionManager'
 import { SocialCopyMonitor } from './socialCopyMonitor'
+import { MirrorCopyMonitor } from './mirrorCopy/mirrorCopyMonitor'
 import {
   createSupabaseBrokerWriteAuthorityStore,
   registerBrokerWriteAuthorityStore,
@@ -162,6 +163,14 @@ function startTradeMonitors(executor: TradeExecutor | null) {
     const socialCopyMonitor = new SocialCopyMonitor(supabase)
     socialCopyMonitor.start()
     trackMonitor(socialCopyMonitor)
+    // Mirror copy is default-off and has no links in production yet. Only start the
+    // monitor when the worker is explicitly enabled, so a disabled flag never writes
+    // error state against existing links or reads a broker.
+    if (parseEnvBool(process.env.MIRROR_COPY_EXECUTION_ENABLED, true)) {
+      const mirrorCopyMonitor = new MirrorCopyMonitor(supabase, { workerId: `mirror-copy-${workerConfig.instanceId}:${process.pid}` })
+      mirrorCopyMonitor.start()
+      trackMonitor(mirrorCopyMonitor)
+    }
   }
 
   if (workerConfig.runsManagementMonitors) {

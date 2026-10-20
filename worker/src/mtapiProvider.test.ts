@@ -158,6 +158,7 @@ test('AccountSummary preserves synced=false and normalizes values', async () => 
     leverage: undefined,
     currency: 'USD',
     type: undefined,
+    method: undefined,
     synced: false,
   })
   assert.equal(await api.verifyTradingReady('session'), false)

@@ -693,6 +693,7 @@ export class MtapiProvider implements BrokerProvider {
       leverage: numberValue(row.leverage ?? row.Leverage),
       currency: row.currency == null ? undefined : String(row.currency),
       type: tradeModeValue(row.type ?? row.Type ?? row.tradeMode ?? row.TradeMode),
+      method: row.method == null && row.Method == null ? undefined : String(row.method ?? row.Method),
       synced: boolValue(row.synced ?? row.Synced),
     }
   }
