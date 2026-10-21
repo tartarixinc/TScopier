@@ -162,9 +162,9 @@ select is((select desired_status from public.social_copy_subscriptions where sub
 select is((select is_copy_eligible from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), false, 'synthetic source is never copy-eligible');
 select is((select eligibility_reason from public.get_social_copy_sources('40000000-0000-0000-0000-000000000001')), 'synthetic_demo', 'source discovery exposes the synthetic demo block');
 select throws_ok(
-  $select public.create_social_copy_subscription(
+  $$select public.create_social_copy_subscription(
     current_setting('test.source_a_id')::uuid,
-    '41000000-0000-0000-0000-000000000003', 'fixed_lot', 0.01, 1, 0.1, null, 'demo', '{}')$,
+    '41000000-0000-0000-0000-000000000003', 'fixed_lot', 0.01, 1, 0.1, null, 'demo', '{}')$$,
   '55000', 'Provider is not eligible for copying: synthetic_demo',
   'subscription creation rejects synthetic demo sources server-side'
 );
