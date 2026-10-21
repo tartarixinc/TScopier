@@ -1334,6 +1334,9 @@ export interface TradesTranslations {
   imageSignal: string
   copiedFromMasterTitle?: string
   copiedFromMaster?: string
+  execNotesTitle?: string
+  execNoteTpSplit?: string
+  execNoteStaleEntry?: string
   loadingSignal: string
   loadSignalError: string
   viewDetails: string

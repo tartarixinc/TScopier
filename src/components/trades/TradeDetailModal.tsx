@@ -19,6 +19,11 @@ import {
   fetchMirrorCopyAttribution,
   type MirrorCopyAttribution,
 } from '../../lib/mirrorCopyAttribution'
+import {
+  fetchPlanFallbackReason,
+  isTpSplitSkippedReason,
+  staleEntryNotice,
+} from '../../lib/tradeExecutionNotes'
 import type { MtTrade } from '../../lib/fxsocketBroker'
 import {
   formatSignalInstructions,
@@ -73,6 +78,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
   const [closeReasonCode, setCloseReasonCode] = useState<TradeCloseReasonCode | null>(null)
   const [brokerFailures, setBrokerFailures] = useState<CopierBrokerFailureRow[]>([])
   const [mirrorAttribution, setMirrorAttribution] = useState<MirrorCopyAttribution | null>(null)
+  const [planFallbackReason, setPlanFallbackReason] = useState<string | null>(null)
   const [showReport, setShowReport] = useState(false)
 
   useEffect(() => {
@@ -83,6 +89,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
       setLoading(false)
       setBrokerFailures([])
       setMirrorAttribution(null)
+      setPlanFallbackReason(null)
       return
     }
     if (!userId) {
@@ -90,6 +97,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
       setCloseReasonCode(null)
       setBrokerFailures([])
       setMirrorAttribution(null)
+      setPlanFallbackReason(null)
       return
     }
 
@@ -100,6 +108,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
     setCloseReasonCode(null)
     setBrokerFailures([])
     setMirrorAttribution(null)
+    setPlanFallbackReason(null)
 
     void (async () => {
       try {
@@ -119,12 +128,21 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
         setContext(result)
         setMirrorAttribution(mirror)
         if (result?.signal) {
-          const failures = await fetchBrokerFailuresForTrade(supabase, {
-            userId,
-            signalId: result.signal.id,
-            brokerAccountId: trade.broker_id,
-          })
-          if (!cancelled) setBrokerFailures(failures)
+          const [failures, fallbackReason] = await Promise.all([
+            fetchBrokerFailuresForTrade(supabase, {
+              userId,
+              signalId: result.signal.id,
+              brokerAccountId: trade.broker_id,
+            }),
+            fetchPlanFallbackReason(supabase, {
+              userId,
+              signalId: result.signal.id,
+              brokerAccountId: trade.broker_id,
+            }),
+          ])
+          if (cancelled) return
+          setBrokerFailures(failures)
+          setPlanFallbackReason(fallbackReason)
         }
       } catch (e) {
         if (!cancelled) {
@@ -239,6 +257,12 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
   }, [context?.signal, tr])
 
   if (!trade || !display) return null
+
+  const staleEntry = staleEntryNotice(
+    (context?.signal?.parsed_data as Record<string, unknown> | null)?.entry_price,
+    trade.entry_price,
+  )
+  const showTpSplitNote = isTpSplitSkippedReason(planFallbackReason)
 
   const channelLabel = (() => {
     const ch = context?.channel
@@ -433,6 +457,37 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                   login: mirrorAttribution.masterLogin,
                 })}
               </p>
+            </section>
+          ) : null}
+
+          {staleEntry != null || showTpSplitNote ? (
+            <section className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 space-y-2 dark:border-amber-900/60 dark:bg-amber-950/25">
+              <div className="flex items-center gap-2">
+                <TriangleAlert className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" aria-hidden />
+                <p className="text-xs font-semibold uppercase tracking-wide text-amber-900 dark:text-amber-200">
+                  {tr.execNotesTitle ?? 'Execution notes'}
+                </p>
+              </div>
+              <ul className="space-y-1.5">
+                {showTpSplitNote ? (
+                  <li className="text-sm text-neutral-900 dark:text-neutral-50">
+                    {tr.execNoteTpSplit
+                      ?? 'Some partial take-profits were skipped — this lot is too small to split (those slices would be below the broker minimum). The remaining take-profits still apply.'}
+                  </li>
+                ) : null}
+                {staleEntry != null ? (
+                  <li className="text-sm text-neutral-900 dark:text-neutral-50">
+                    {interpolate(
+                      tr.execNoteStaleEntry
+                        ?? 'The signal entry was {entry} but the trade opened at {fill} — price had already moved when the order was sent.',
+                      {
+                        entry: formatTradePrice(staleEntry.signalEntry),
+                        fill: formatTradePrice(staleEntry.fillPrice),
+                      },
+                    )}
+                  </li>
+                ) : null}
+              </ul>
             </section>
           ) : null}
 
