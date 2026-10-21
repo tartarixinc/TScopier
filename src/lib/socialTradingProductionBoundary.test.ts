@@ -5,6 +5,7 @@ import test from 'node:test'
 const page = readFileSync(new URL('../pages/dashboard/SocialTradingPage.tsx', import.meta.url), 'utf8')
 const directory = readFileSync(new URL('../components/social/SocialFollowDirectory.tsx', import.meta.url), 'utf8')
 const history = readFileSync(new URL('../components/social/SocialTradeHistoryPanel.tsx', import.meta.url), 'utf8')
+const copyPanel = readFileSync(new URL('../components/social/SocialCopyPanel.tsx', import.meta.url), 'utf8')
 
 test('fixture ratings and performance remain development-only', () => {
   const demoGate = page.indexOf('{import.meta.env.DEV ? (')
@@ -37,7 +38,23 @@ test('production social UI retains the approved directory and profile informatio
   assert.match(history, /Trading/)
   assert.match(history, /Portfolio/)
   assert.match(history, /Recent realized performance/)
+  assert.match(history, /P\/L calendar/)
+  assert.match(history, /DEMO DATA/)
   assert.match(history, /Maximum drawdown[^]*Unavailable/)
   assert.match(history, /Destination-side copy executions are excluded/)
   assert.doesNotMatch(history, /SOCIAL_TRADERS|previewBalance|monthlyCopyPriceCents/)
+})
+
+test('production directory keeps compact ratings in the Name column and copy controls reject demo data', () => {
+  const nameCell = directory.slice(directory.indexOf('<tbody>'), directory.indexOf('<PerformanceCells'))
+  assert.match(nameCell, /<TraderReviews compact/)
+
+  const actionsStart = directory.indexOf('<td className="px-4 py-3 text-end">', directory.indexOf('<tbody>'))
+  const actionsEnd = directory.indexOf('</td></tr>', actionsStart)
+  const actionsCell = directory.slice(actionsStart, actionsEnd)
+  assert.match(actionsCell, /FollowButton/)
+  assert.doesNotMatch(actionsCell, /TraderReviews/)
+
+  assert.match(copyPanel, /selectedSource\?\.isSynthetic \? <Alert/)
+  assert.match(copyPanel, /!selectedSource\?\.isCopyEligible/)
 })

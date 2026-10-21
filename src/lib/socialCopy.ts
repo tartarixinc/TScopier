@@ -10,6 +10,7 @@ export type SocialCopySource = {
   connectionHealthy: boolean
   isCopyEligible: boolean
   eligibilityReason: string
+  isSynthetic: boolean
 }
 
 export type SocialCopySubscriptionStatus = 'pending' | 'active' | 'paused' | 'stopped' | 'error' | 'emergency_stopped'
@@ -78,6 +79,7 @@ export async function fetchSocialCopySources(client: SupabaseClient, traderUserI
     connectionHealthy: row.connection_healthy,
     isCopyEligible: row.is_copy_eligible === true,
     eligibilityReason: row.eligibility_reason,
+    isSynthetic: row.eligibility_reason === 'synthetic_demo',
   }))
 }
 

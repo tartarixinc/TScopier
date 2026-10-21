@@ -34,6 +34,7 @@ export type SocialProviderPerformance = {
   equityCurveAvailable: false
   isCopyEligible: boolean
   eligibilityReason: string
+  isSynthetic: boolean
 }
 
 export type SocialTradeHistoryItem = {
@@ -122,6 +123,7 @@ export async function fetchSocialProviderPerformance(client: SupabaseClient, tra
     equityCurveAvailable: false,
     isCopyEligible: row.is_copy_eligible === true,
     eligibilityReason: row.eligibility_reason,
+    isSynthetic: row.eligibility_reason === 'synthetic_demo',
   }))
 }
 

@@ -1,6 +1,6 @@
 begin;
 
-select plan(39);
+select plan(45);
 
 insert into auth.users (id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data)
 values
@@ -153,6 +153,30 @@ select ok(public.create_social_copy_subscription(
 ) is not null, 'server permits a fresh complete demo provider meeting the minimum policy');
 
 reset role;
+update public.social_copy_sources set is_synthetic = true
+where id = current_setting('test.source_a_id')::uuid;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '40000000-0000-0000-0000-000000000002', true);
+select is((select eligibility_reason from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), 'synthetic_demo', 'synthetic source is visibly identified by performance RPC');
+select is((select desired_status from public.social_copy_subscriptions where subscriber_user_id = '40000000-0000-0000-0000-000000000002'), 'paused', 'marking a source synthetic pauses existing subscriptions');
+select is((select is_copy_eligible from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), false, 'synthetic source is never copy-eligible');
+select is((select eligibility_reason from public.get_social_copy_sources('40000000-0000-0000-0000-000000000001')), 'synthetic_demo', 'source discovery exposes the synthetic demo block');
+select throws_ok(
+  $select public.create_social_copy_subscription(
+    current_setting('test.source_a_id')::uuid,
+    '41000000-0000-0000-0000-000000000003', 'fixed_lot', 0.01, 1, 0.1, null, 'demo', '{}')$,
+  '55000', 'Provider is not eligible for copying: synthetic_demo',
+  'subscription creation rejects synthetic demo sources server-side'
+);
+reset role;
+set local role service_role;
+select is(public.check_social_copy_subscription_authorization(
+  (select id from public.social_copy_subscriptions where subscriber_user_id = '40000000-0000-0000-0000-000000000002')
+), false, 'worker authorization rejects an existing synthetic-source subscription');
+reset role;
+update public.social_copy_sources set is_synthetic = false
+where id = current_setting('test.source_a_id')::uuid;
+
 update public.broker_accounts set last_synced_at = now() - interval '1 hour'
 where id = '41000000-0000-0000-0000-000000000001';
 set local role authenticated;
