@@ -18,6 +18,16 @@
   ::file-selector-button {
     border-color: var(--color-gray-200, currentcolor);
   }
+
+  input::placeholder,
+  textarea::placeholder {
+    @apply text-neutral-500;
+  }
+
+  .dark input::placeholder,
+  .dark textarea::placeholder {
+    @apply text-neutral-400;
+  }
 }
 
 @utility tsc-surface {

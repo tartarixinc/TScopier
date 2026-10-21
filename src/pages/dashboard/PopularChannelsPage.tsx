@@ -187,7 +187,7 @@ export function PopularChannelsPage() {
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             placeholder="Search channels..."
-            className="w-full pl-9 pr-8 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-900 dark:placeholder:text-neutral-50 focus:outline-hidden focus:ring-2 focus:ring-green-400 focus:border-transparent"
+            className="w-full pl-9 pr-8 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-500 dark:placeholder:text-neutral-400 focus:outline-hidden focus:ring-2 focus:ring-green-400 focus:border-transparent"
           />
           {searchQuery && (
             <button

@@ -2839,7 +2839,7 @@ export function AccountConfigPage() {
               onChange={e => setBrokerSearchQuery(e.target.value)}
               placeholder={bl.accountSearchPlaceholder}
               aria-label={bl.accountSearchLabel}
-              className="w-full rounded-lg border border-neutral-200 bg-white py-2 ps-9 pe-3 text-sm text-neutral-900 placeholder:text-neutral-900 dark:placeholder:text-neutral-50 focus:border-transparent focus:outline-hidden focus:ring-2 focus:ring-green-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50"
+              className="w-full rounded-lg border border-neutral-200 bg-white py-2 ps-9 pe-3 text-sm text-neutral-900 placeholder:text-neutral-500 dark:placeholder:text-neutral-400 focus:border-transparent focus:outline-hidden focus:ring-2 focus:ring-green-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50"
             />
           </div>
           <div className="relative w-full sm:w-56">

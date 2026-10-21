@@ -35,7 +35,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             'w-full px-3 py-2 text-base md:text-sm rounded-lg border transition-colors focus:outline-hidden focus:ring-2 focus:ring-green-400 focus:border-transparent',
             error
               ? 'border-error-500 bg-error-50 dark:bg-error-950/40 text-neutral-900 dark:text-neutral-100'
-              : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-900 dark:placeholder:text-neutral-50 hover:border-neutral-300 dark:hover:border-neutral-600',
+              : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-500 dark:placeholder:text-neutral-400 hover:border-neutral-300 dark:hover:border-neutral-600',
             className
           )}
           {...props}

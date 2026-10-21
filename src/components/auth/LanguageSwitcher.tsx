@@ -142,7 +142,7 @@ export function LanguageSwitcher({ className, compact = false }: LanguageSwitche
                 onKeyDown={onInputKeyDown}
                 className={clsx(
                   'w-full rounded-lg border py-2 ps-8 pe-3 text-sm',
-                  'border-neutral-200 bg-neutral-50 text-neutral-900 dark:text-neutral-50 placeholder:text-neutral-900 dark:placeholder:text-neutral-50',
+                  'border-neutral-200 bg-neutral-50 text-neutral-900 dark:text-neutral-50 placeholder:text-neutral-500 dark:placeholder:text-neutral-400',
                   'focus:border-transparent focus:outline-hidden focus:ring-2 focus:ring-green-400',
                   'dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100',
                 )}
