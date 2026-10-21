@@ -6,13 +6,19 @@ import {
   Loader2,
   Minus,
   Radio,
+  Repeat,
   TriangleAlert,
   X,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useT } from '../../context/LocaleContext'
+import { interpolate } from '../../i18n/interpolate'
 import { useAssistant } from '../../context/useAssistant'
 import { supabase } from '../../lib/supabase'
+import {
+  fetchMirrorCopyAttribution,
+  type MirrorCopyAttribution,
+} from '../../lib/mirrorCopyAttribution'
 import type { MtTrade } from '../../lib/fxsocketBroker'
 import {
   formatSignalInstructions,
@@ -66,6 +72,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
   const [context, setContext] = useState<TradeSignalContext | null | undefined>(undefined)
   const [closeReasonCode, setCloseReasonCode] = useState<TradeCloseReasonCode | null>(null)
   const [brokerFailures, setBrokerFailures] = useState<CopierBrokerFailureRow[]>([])
+  const [mirrorAttribution, setMirrorAttribution] = useState<MirrorCopyAttribution | null>(null)
   const [showReport, setShowReport] = useState(false)
 
   useEffect(() => {
@@ -75,12 +82,14 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
       setLoadError('')
       setLoading(false)
       setBrokerFailures([])
+      setMirrorAttribution(null)
       return
     }
     if (!userId) {
       setContext(null)
       setCloseReasonCode(null)
       setBrokerFailures([])
+      setMirrorAttribution(null)
       return
     }
 
@@ -90,10 +99,11 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
     setContext(undefined)
     setCloseReasonCode(null)
     setBrokerFailures([])
+    setMirrorAttribution(null)
 
     void (async () => {
       try {
-        const [result, storedCloseReason] = await Promise.all([
+        const [result, storedCloseReason, mirror] = await Promise.all([
           resolveTradeSignalContext(userId, trade),
           trade.status === 'closed'
             ? fetchTradeCloseReason(supabase, {
@@ -102,10 +112,12 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                 ticket: trade.ticket,
               }).catch(() => null)
             : Promise.resolve(null),
+          fetchMirrorCopyAttribution(supabase, userId, trade.comment).catch(() => null),
         ])
         if (cancelled) return
         setCloseReasonCode(resolveTradeCloseReason(storedCloseReason, trade))
         setContext(result)
+        setMirrorAttribution(mirror)
         if (result?.signal) {
           const failures = await fetchBrokerFailuresForTrade(supabase, {
             userId,
@@ -407,6 +419,22 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
               ) : null}
             </dl>
           </section>
+
+          {mirrorAttribution ? (
+            <section className="rounded-xl border border-teal-200/80 dark:border-teal-900/60 bg-teal-50/40 dark:bg-teal-950/20 p-4 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <Repeat className="w-4 h-4 text-green-400 shrink-0" aria-hidden />
+                <p className="text-xs font-semibold uppercase tracking-wide text-teal-800 dark:text-teal-300">
+                  {tr.copiedFromMasterTitle ?? 'Mirror copy'}
+                </p>
+              </div>
+              <p className="text-sm text-neutral-900 dark:text-neutral-50">
+                {interpolate(tr.copiedFromMaster ?? 'Copied from master account {login}', {
+                  login: mirrorAttribution.masterLogin,
+                })}
+              </p>
+            </section>
+          ) : null}
 
           {manualOverrideWarning ? (
             <ManualBrokerOverrideWarningNotice

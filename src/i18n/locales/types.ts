@@ -1332,6 +1332,8 @@ export interface TradesTranslations {
   signalTime: string
   noLinkedSignal: string
   imageSignal: string
+  copiedFromMasterTitle?: string
+  copiedFromMaster?: string
   loadingSignal: string
   loadSignalError: string
   viewDetails: string

@@ -1518,6 +1518,8 @@ broker: {
     parsedInstruction: 'Parsed instruction',
     signalTime: 'Signal received',
     noLinkedSignal: 'No linked UniCopier signal for this trade.',
+    copiedFromMasterTitle: 'Mirror copy',
+    copiedFromMaster: 'Copied from master account {login}',
     imageSignal: '(image signal)',
     loadingSignal: 'Loading signal…',
     loadSignalError: 'Could not load signal details.',

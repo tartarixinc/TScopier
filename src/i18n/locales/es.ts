@@ -1466,6 +1466,8 @@ export const es: Translations = {
     parsedInstruction: 'Instrucción analizada',
     signalTime: 'Señal recibida',
     noLinkedSignal: 'No hay señal UniCopier vinculada a esta operación.',
+    copiedFromMasterTitle: 'Copia de espejo',
+    copiedFromMaster: 'Copiado desde la cuenta maestra {login}',
     imageSignal: '(señal con imagen)',
     loadingSignal: 'Cargando señal…',
     loadSignalError: 'No se pudieron cargar los detalles de la señal.',

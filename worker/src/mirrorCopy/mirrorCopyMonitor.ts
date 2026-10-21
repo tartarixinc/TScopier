@@ -3,8 +3,9 @@
  *
  * Copies one master broker account's open positions onto its slave accounts for the
  * same user. This is the execution kernel for `broker_copy_links`; it is deliberately
- * separate from social copy (cross-user) and reuses only the pure helpers in
- * copyShared.
+ * separate from social copy (cross-user) and reuses the pure helpers in
+ * copyShared plus the pure symbol catalog matcher shared with the signal
+ * executor (tradeExecutor/brokerSymbolCache).
  *
  * Safety model:
  *  - On this migration test branch execution and live copying are on by default. Set
@@ -42,6 +43,7 @@ import { mirrorCopyAccountModeSupported } from './mirrorCopyAccountMode'
 import { mirrorCopyStops, planMirrorCopy, type MirrorCopyPlan } from './mirrorCopyPlan'
 import { parseMirrorCopySettings, type MirrorCopySettings } from './mirrorCopyTypes'
 import { historyContainsClosedPosition, mappingIsOpen, mirrorCopyComment } from './mirrorCopyReconcile'
+import { matchBrokerSymbolFromInventory, parseSymbolListResponse } from '../tradeExecutor/brokerSymbolCache'
 
 type Json = Record<string, unknown>
 
@@ -111,6 +113,12 @@ const OPEN_MAPPING_STATES = ['opening', 'open', 'uncertain', 'error']
 /** Upper bound on automatic retries of a close/resize event left `uncertain`. */
 const MAX_EVENT_ATTEMPTS = 5
 
+/** How long a destination /Symbols inventory is trusted before refetching. */
+const DEST_SYMBOL_LIST_TTL_MS = 10 * 60_000
+
+/** Hard cap on reusing a stale inventory while /Symbols keeps failing. */
+const DEST_SYMBOL_LIST_MAX_AGE_MS = 2 * DEST_SYMBOL_LIST_TTL_MS
+
 export type MirrorCopyMonitorOptions = {
   workerId?: string
   executionEnabled?: boolean
@@ -152,6 +160,7 @@ export class MirrorCopyMonitor {
   private readonly historyWindowMs: number
   private readonly uncertainRetryMs: number
   private readonly staleClaimMs: number
+  private readonly symbolListBySession = new Map<string, { set: Set<string>; list: string[]; loadedAt: number }>()
 
   constructor(private readonly supabase: SupabaseClient, private readonly options: MirrorCopyMonitorOptions = {}) {
     this.workerId = options.workerId ?? `mirror-copy-${process.env.HOSTNAME ?? 'local'}-${process.pid}`
@@ -377,8 +386,19 @@ export class MirrorCopyMonitor {
     destinationOrders: unknown[],
     position: NormalizedSourcePosition,
   ): Promise<void> {
-    const plan = planMirrorCopy(settings, position)
-    if (!plan) return
+    const planned = planMirrorCopy(settings, position)
+    if (!planned) return
+    const linkMapped = Object.prototype.hasOwnProperty.call(
+      settings.symbolMap,
+      position.symbol.trim().toUpperCase(),
+    )
+    const symbol = await this.resolveDestinationSymbol(
+      api,
+      sessionId(context.destination),
+      planned.symbol,
+      linkMapped,
+    )
+    const plan: MirrorCopyPlan = { ...planned, symbol }
     const volume = await this.destinationVolume(api, context, plan)
     const comment = mirrorCopyComment(link.id, position.ticket)
     const { data: mappingData, error: mappingError } = await this.supabase.from('mirror_copy_trade_mappings').insert({
@@ -424,6 +444,55 @@ export class MirrorCopyMonitor {
       await this.finishEvent(event, 'uncertain', {}, brokerErrorCode(error), error)
       await this.markMappingUncertain(mapping.id, brokerErrorCode(error), 'Open result is uncertain; automatic retry is blocked to prevent a duplicate order')
       throw error
+    }
+  }
+
+  /** Destination /Symbols inventory, cached per session for DEST_SYMBOL_LIST_TTL_MS. */
+  private async destinationInventory(
+    api: BrokerProvider,
+    session: string,
+  ): Promise<{ set: Set<string>; list: string[]; loadedAt: number } | null> {
+    const cached = this.symbolListBySession.get(session)
+    const now = Date.now()
+    if (cached && now - cached.loadedAt < DEST_SYMBOL_LIST_TTL_MS) return cached
+    // Reuse a stale inventory only up to the hard cap; beyond that fail to
+    // `null` so resolution falls back to the planned symbol (today's behavior)
+    // rather than trading on unbounded-age ground truth.
+    const stale = cached && now - cached.loadedAt < DEST_SYMBOL_LIST_MAX_AGE_MS ? cached : null
+    try {
+      const names = parseSymbolListResponse(await api.symbols(session))
+      if (!names) return stale
+      const entry = { list: names, set: new Set(names.map(name => name.toUpperCase())), loadedAt: now }
+      this.symbolListBySession.set(session, entry)
+      return entry
+    } catch {
+      return stale
+    }
+  }
+
+  /**
+   * Resolve the planned destination symbol against the destination's live
+   * catalog so a master symbol decorated for another broker (e.g. `XAUUSDm`)
+   * opens under this account's own name (`XAUUSD`, `GOLD`, ...). A link-level
+   * symbol mapping is an explicit user override: exact-match only, never
+   * second-guessed. Any failure falls back to the planned symbol unchanged.
+   */
+  private async resolveDestinationSymbol(
+    api: BrokerProvider,
+    session: string,
+    planned: string,
+    linkMapped: boolean,
+  ): Promise<string> {
+    try {
+      const inventory = await this.destinationInventory(api, session)
+      if (!inventory) return planned
+      return matchBrokerSymbolFromInventory(
+        inventory,
+        planned,
+        linkMapped ? { userDecorated: true } : undefined,
+      )
+    } catch {
+      return planned
     }
   }
 

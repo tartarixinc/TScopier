@@ -1466,6 +1466,8 @@ export const fr: Translations = {
     parsedInstruction: 'Instruction analysée',
     signalTime: 'Signal reçu',
     noLinkedSignal: 'Aucun signal UniCopier lié à ce trade.',
+    copiedFromMasterTitle: 'Copie miroir',
+    copiedFromMaster: 'Copié depuis le compte maître {login}',
     imageSignal: '(signal image)',
     loadingSignal: 'Chargement du signal…',
     loadSignalError: 'Impossible de charger les détails du signal.',

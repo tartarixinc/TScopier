@@ -107,6 +107,8 @@ function provider(options: {
   sendErrorAt?: number
   closeErrorAt?: number
   symbolError?: Error
+  symbols?: unknown[]
+  symbolsError?: Error
 } = {}): BrokerProvider & { sends: number; closes: number; modifies: number; lastCloseLots: number | undefined } {
   let calls = 0
   return {
@@ -134,7 +136,7 @@ function provider(options: {
     async closedOrdersHistory() { return options.closedOrdersHistory ?? [] }, async closedOrdersHistoryLite() { return options.closedOrdersHistory ?? [] },
     async accountSummary() { return { equity: 1000 } }, async quote() { return { symbol: 'EURUSD', bid: 1, ask: 1.1 } },
     async symbolParams() { if (options.symbolError) throw options.symbolError; return { groupParams: { minLot: 0.01, maxLot: 10, lotStep: 0.01 } } },
-    async symbols() { return [] }, async mtStatus() { return {} }, async terminalStatus() { return {} },
+    async symbols() { if (options.symbolsError) throw options.symbolsError; return options.symbols ?? [] }, async mtStatus() { return {} }, async terminalStatus() { return {} },
   }
 }
 
@@ -438,4 +440,48 @@ test('an MT5 destination with unknown margin_mode fails closed', async () => {
   assert.equal(destination.sends, 0)
   assert.equal(db.linkState().status, 'unsupported_provider')
   assert.equal(db.linkState().error_code, 'ACCOUNT_MODE_UNSUPPORTED')
+})
+
+const goldPosition = { ticket: 77, symbol: 'XAUUSDm', operation: 'Buy', lots: 0.05, stopLoss: 4109, takeProfit: 4118 }
+
+test('a decorated master symbol resolves against the destination inventory before opening', async () => {
+  const db = new FakeDb()
+  const source = provider({ orders: [goldPosition] })
+  const destination = provider({ symbols: ['XAUUSD', 'EURUSD'] })
+  await monitor(db, source, destination).tick()
+  assert.equal(destination.sends, 1)
+  const mapping = db.tables.mirror_copy_trade_mappings[0]!
+  assert.equal(mapping.source_symbol, 'XAUUSDm')
+  assert.equal(mapping.destination_symbol, 'XAUUSD')
+  assert.equal(db.linkState().status, 'active')
+})
+
+test('a link-level symbol mapping wins over inventory resolution', async () => {
+  const db = new FakeDb()
+  db.tables.broker_copy_links[0]!.manual_settings = settings({ symbol_mapping: { XAUUSDm: 'GOLD' } })
+  const source = provider({ orders: [goldPosition] })
+  const destination = provider({ symbols: ['XAUUSD', 'GOLD'] })
+  await monitor(db, source, destination).tick()
+  assert.equal(destination.sends, 1)
+  assert.equal(db.tables.mirror_copy_trade_mappings[0]!.destination_symbol, 'GOLD')
+  assert.equal(db.linkState().status, 'active')
+})
+
+test('without a destination inventory the planned symbol is sent unchanged', async () => {
+  const db = new FakeDb()
+  const source = provider({ orders: [goldPosition] })
+  const destination = provider({ symbols: [] })
+  await monitor(db, source, destination).tick()
+  assert.equal(destination.sends, 1)
+  assert.equal(db.tables.mirror_copy_trade_mappings[0]!.destination_symbol, 'XAUUSDm')
+})
+
+test('a failing /Symbols endpoint falls back to the planned symbol', async () => {
+  const db = new FakeDb()
+  const source = provider({ orders: [goldPosition] })
+  const destination = provider({ symbolsError: new Error('symbols unavailable') })
+  await monitor(db, source, destination).tick()
+  assert.equal(destination.sends, 1)
+  assert.equal(db.tables.mirror_copy_trade_mappings[0]!.destination_symbol, 'XAUUSDm')
+  assert.equal(db.linkState().status, 'active')
 })
