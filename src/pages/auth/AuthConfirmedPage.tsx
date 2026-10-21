@@ -49,8 +49,17 @@ export function AuthConfirmedPage() {
             /* DB trigger may have already synced */
           }
         }
-        const row = await loadUserProfile(activeUser.id)
-        await refreshProfile()
+        let row
+        try {
+          row = await loadUserProfile(activeUser.id)
+          await refreshProfile()
+        } catch {
+          if (!cancelled) {
+            setPhase('error')
+            setError('We could not finish verification. Please sign in again or request a new email.')
+          }
+          return
+        }
         if (isEmailVerified(activeUser, row?.email_verified_at)) {
           navigate(postAuthAppPath(), { replace: true })
           return
