@@ -23,6 +23,7 @@ export interface UserProfile {
   notification_email_enabled?: boolean
   copier_paused?: boolean
   avatar_url?: string | null
+  social_links?: Record<string, string>
   created_at?: string
   updated_at?: string
 }
@@ -44,6 +45,7 @@ export const EMPTY_USER_PROFILE: Omit<UserProfile, 'user_id'> = {
   notification_email_enabled: true,
   copier_paused: false,
   avatar_url: null,
+  social_links: {},
 }
 
 /** Admin bypass: DB flag (with timed expiry) or Supabase Auth app_metadata (matches edge subscriptionAccess). */

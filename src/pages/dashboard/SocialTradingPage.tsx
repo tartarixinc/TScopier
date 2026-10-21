@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { BarChart3, ChevronRight, LineChart, Star, Wallet, X } from 'lucide-react'
+import { BarChart3, ChevronRight, LineChart, Wallet, X } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import clsx from 'clsx'
 import { AccountGrowthChart } from '../../components/dashboard/AccountGrowthChart'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { CopyTraderModal } from '../../components/social/CopyTraderModal'
-import { SocialFollowDirectory, SocialFollowProfile } from '../../components/social/SocialFollowDirectory'
+import { TraderReviews } from '../../components/social/TraderReviews'
+import { SocialProfileLinks } from '../../components/social/SocialProfileLinks'
 import { PageShell } from '../../components/layout/PageShell'
 import { PerformanceTradeOutcomeChart } from '../../components/performance/PerformanceTradeOutcomeChart'
 import { Button } from '../../components/ui/Button'
@@ -19,19 +20,13 @@ import { useUserProfile } from '../../context/UserProfileContext'
 import type { SocialTradingPageTranslations } from '../../i18n/locales/types'
 import { useTheme } from '../../context/ThemeContext'
 import { useFormatMoney } from '../../hooks/useFormatMoney'
+import { useSocialTradingPreview } from '../../hooks/useSocialTradingPreview'
 import { interpolate } from '../../i18n/interpolate'
 import { chartThemeColors, chartTooltipProps } from '../../lib/chartTheme'
-import {
-  COPY_PRICE_STORAGE_KEY,
-  copyPriceOfferLabel,
-  dollarsToCopyPriceCents,
-  readMonthlyCopyPriceCents,
-} from '../../lib/socialCopyPrice'
+import { copyPriceOfferLabel } from '../../lib/socialCopyPrice'
+
 import { resolveUserAvatarUrl } from '../../lib/userAvatar'
 import {
-  SOCIAL_INCOMING_REQUESTS,
-  SOCIAL_TRADERS,
-  socialTraderById,
   socialTraderStats,
   type SocialAccess,
   type SocialCalendarDay,
@@ -39,15 +34,6 @@ import {
   type SocialTrader,
   type SocialTraderStats,
 } from '../../lib/socialTradingFixture'
-
-const FOLLOW_KEY = 'tscopier:social-trading:following'
-const ACCESS_KEY = 'tscopier:social-trading:access'
-const OUTGOING_KEY = 'tscopier:social-trading:copy-requests'
-const INCOMING_KEY = 'tscopier:social-trading:incoming-requests'
-
-type OutgoingStatus = 'pending' | 'declined'
-type IncomingStatus = 'pending' | 'accepted' | 'declined'
-type CopyButtonState = 'follow' | 'following' | 'request' | 'requested'
 
 type SortKey = 'roi' | 'winRate' | 'followers' | 'rating'
 type DirectoryView = 'all' | 'followers' | 'following'
@@ -92,197 +78,14 @@ function TraderAvatar({
   )
 }
 
-function initialFollowing(): Set<string> {
-  try {
-    const raw = sessionStorage.getItem(FOLLOW_KEY)
-    if (raw) {
-      const parsed: unknown = JSON.parse(raw)
-      if (Array.isArray(parsed)) {
-        return new Set(parsed.filter((id): id is string => typeof id === 'string'))
-      }
-    }
-  } catch {
-    // Fall through to the fixture.
-  }
-  return new Set(SOCIAL_TRADERS.filter(trader => trader.following).map(trader => trader.id))
-}
-
-function writeFollowing(ids: Set<string>) {
-  try {
-    sessionStorage.setItem(FOLLOW_KEY, JSON.stringify([...ids]))
-  } catch {
-    // Session storage can be full or blocked. The toggle still updates this view.
-  }
-}
-
-function initialAccess(): SocialAccess {
-  try {
-    const raw = sessionStorage.getItem(ACCESS_KEY)
-    if (raw === 'open' || raw === 'private') return raw
-  } catch {
-    // Fall through to the fixture.
-  }
-  return SOCIAL_TRADERS.find(trader => trader.isYou)?.access ?? 'open'
-}
-
-function writeAccess(access: SocialAccess) {
-  try {
-    sessionStorage.setItem(ACCESS_KEY, access)
-  } catch {
-    // The choice still updates this view.
-  }
-}
-
-function initialCopyPriceCents(): number {
-  const fallback = SOCIAL_TRADERS.find(trader => trader.isYou)?.monthlyCopyPriceCents ?? 0
-  try {
-    return readMonthlyCopyPriceCents(localStorage.getItem(COPY_PRICE_STORAGE_KEY), fallback)
-  } catch {
-    return fallback
-  }
-}
-
-function writeCopyPriceCents(cents: number) {
-  try {
-    localStorage.setItem(COPY_PRICE_STORAGE_KEY, String(cents))
-  } catch {
-    // The choice still updates this view.
-  }
-}
-
-function readStatusMap<T extends string>(key: string, allowed: readonly T[]): Record<string, T> {
-  try {
-    const raw = sessionStorage.getItem(key)
-    if (!raw) return {}
-    const parsed: unknown = JSON.parse(raw)
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
-    const next: Record<string, T> = {}
-    for (const [id, status] of Object.entries(parsed)) {
-      if (allowed.includes(status as T)) next[id] = status as T
-    }
-    return next
-  } catch {
-    return {}
-  }
-}
-
-function writeStatusMap(key: string, value: Record<string, string>) {
-  try {
-    sessionStorage.setItem(key, JSON.stringify(value))
-  } catch {
-    // The choice still updates this view.
-  }
-}
-
-function initialOutgoing(): Record<string, OutgoingStatus> {
-  return readStatusMap(OUTGOING_KEY, ['pending', 'declined'] as const)
-}
-
-function initialIncoming(): Record<string, IncomingStatus> {
-  const seed: Record<string, IncomingStatus> = {}
-  for (const request of SOCIAL_INCOMING_REQUESTS) seed[request.traderId] = 'pending'
-  return { ...seed, ...readStatusMap(INCOMING_KEY, ['pending', 'accepted', 'declined'] as const) }
-}
-
-function copyButtonState(
-  trader: SocialTrader,
-  following: Set<string>,
-  outgoing: Record<string, OutgoingStatus>,
-): CopyButtonState {
-  if (following.has(trader.id)) return 'following'
-  if (trader.access === 'open') return 'follow'
-  if (outgoing[trader.id] === 'pending') return 'requested'
-  return 'request'
-}
-
-function applyCopyAction(
-  id: string,
-  following: Set<string>,
-  outgoing: Record<string, OutgoingStatus>,
-): { following: Set<string>; outgoing: Record<string, OutgoingStatus> } {
-  const trader = socialTraderById(id)
-  if (!trader || trader.isYou) return { following, outgoing }
-  const state = copyButtonState(trader, following, outgoing)
-  if (state === 'following') {
-    const next = new Set(following)
-    next.delete(id)
-    return { following: next, outgoing }
-  }
-  if (state === 'follow') {
-    const next = new Set(following)
-    next.add(id)
-    const requests = { ...outgoing }
-    delete requests[id]
-    return { following: next, outgoing: requests }
-  }
-  if (state === 'requested') {
-    const requests = { ...outgoing }
-    delete requests[id]
-    return { following, outgoing: requests }
-  }
-  return { following, outgoing: { ...outgoing, [id]: 'pending' } }
-}
-
-function canConfigureCopy(trader: SocialTrader, following: Set<string>): boolean {
-  return trader.access === 'open' || following.has(trader.id)
-}
-
-function followsYou(trader: SocialTrader, incoming: Record<string, IncomingStatus>): boolean {
-  return trader.followsYou || incoming[trader.id] === 'accepted'
-}
-
 function formatWhen(iso: string): string {
   const date = new Date(iso)
   if (!Number.isFinite(date.getTime())) return iso
   return date.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-function percent(value: number): string {
-  return `${value.toFixed(1)}%`
-}
-
-function TraderRating({
-  rating,
-  count,
-  copy,
-}: {
-  rating: number | null
-  count: number
-  copy: { noRating: string; ratingAria: string }
-}) {
-  if (rating == null || count <= 0) {
-    return <p className="text-xs text-neutral-900 dark:text-neutral-50">{copy.noRating}</p>
-  }
-  const rounded = Math.round(rating * 2) / 2
-  const score = rating.toFixed(1)
-  return (
-    <p className="flex items-center gap-1.5" aria-label={copy.ratingAria.replace('{rating}', score)}>
-      <span className="inline-flex" aria-hidden="true">
-        {[1, 2, 3, 4, 5].map(star => {
-          const fill = rounded >= star ? 'full' : rounded >= star - 0.5 ? 'half' : 'empty'
-          if (fill === 'half') {
-            return (
-              <span key={star} className="relative inline-flex h-3.5 w-3.5">
-                <Star className="h-3.5 w-3.5 text-neutral-900 dark:text-neutral-50" />
-                <Star className="absolute inset-0 h-3.5 w-3.5 fill-green-400 text-green-400" style={{ clipPath: 'inset(0 50% 0 0)' }} />
-              </span>
-            )
-          }
-          return (
-            <Star
-              key={star}
-              className={clsx(
-                'h-3.5 w-3.5',
-                fill === 'full' ? 'fill-green-400 text-green-400' : 'text-neutral-900 dark:text-neutral-50',
-              )}
-            />
-          )
-        })}
-      </span>
-      <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50">{score}</span>
-      <span className="text-xs text-neutral-900 dark:text-neutral-50">({count})</span>
-    </p>
-  )
+function percent(value: number | null): string {
+  return value == null ? 'Unavailable' : `${value.toFixed(1)}%`
 }
 
 function SideLabel({ side, buy, sell }: { side: SocialTradeSide; buy: string; sell: string }) {
@@ -305,11 +108,7 @@ export function SocialTradingPage() {
   const [sort, setSort] = useState<SortKey>('roi')
   const [visibility, setVisibility] = useState<'all' | SocialAccess>('all')
   const [requestsOnly, setRequestsOnly] = useState(false)
-  const [following, setFollowing] = useState(initialFollowing)
-  const [access, setAccess] = useState(initialAccess)
-  const [copyPriceCents, setCopyPriceCents] = useState(initialCopyPriceCents)
-  const [outgoing, setOutgoing] = useState(initialOutgoing)
-  const [incoming] = useState(initialIncoming)
+  const social = useSocialTradingPreview()
   const [setupTrader, setSetupTrader] = useState<SocialTrader | null>(null)
   const ownAvatarUrl = useOwnAvatarUrl()
   const view: DirectoryView = params.get('view') === 'followers'
@@ -318,57 +117,44 @@ export function SocialTradingPage() {
       ? 'following'
       : 'all'
 
+  const access = social.currentProfile?.access ?? 'open'
   const traders = useMemo(() => {
     const needle = query.trim().toLowerCase()
-    const filtered = SOCIAL_TRADERS.filter(trader => {
-      if (view === 'followers' && !followsYou(trader, incoming)) return false
-      if (view === 'following' && !following.has(trader.id)) return false
-      const traderAccess = trader.isYou ? access : trader.access
-      if (visibility !== 'all' && traderAccess !== visibility) return false
-      if (requestsOnly && outgoing[trader.id] !== 'pending') return false
+    const filtered = social.traders.filter(trader => {
+      const relationship = social.profiles.find(profile => profile.profileUserId === trader.id)
+      if (view === 'followers' && relationship?.followsViewerStatus !== 'accepted') return false
+      if (view === 'following' && relationship?.viewerRelationshipStatus !== 'accepted') return false
+      if (visibility !== 'all' && trader.access !== visibility) return false
+      if (requestsOnly && relationship?.viewerRelationshipStatus !== 'pending') return false
       if (!needle) return true
       return trader.displayName.toLowerCase().includes(needle) || trader.username.toLowerCase().includes(needle)
     })
     const rank = (trader: SocialTrader) => {
-      if (sort === 'winRate') return trader.winRate
+      if (sort === 'winRate') return trader.winRate ?? -1
       if (sort === 'followers') return trader.followerCount
       if (sort === 'rating') return trader.rating ?? -1
-      return trader.roi
+      return trader.roi ?? -1
     }
     return filtered.slice().sort((a, b) => {
       if (a.isYou !== b.isYou) return a.isYou ? -1 : 1
       return rank(b) - rank(a)
     })
-  }, [access, following, incoming, outgoing, query, requestsOnly, sort, view, visibility])
-
-  const runCopyAction = (id: string) => {
-    const next = applyCopyAction(id, following, outgoing)
-    setFollowing(next.following)
-    setOutgoing(next.outgoing)
-    writeFollowing(next.following)
-    writeStatusMap(OUTGOING_KEY, next.outgoing)
-  }
+  }, [query, requestsOnly, social.profiles, social.traders, sort, view, visibility])
 
   const chooseAccess = (value: SocialAccess) => {
-    setAccess(value)
-    writeAccess(value)
-  }
-
-  const chooseCopyPrice = (cents: number) => {
-    setCopyPriceCents(cents)
-    writeCopyPriceCents(cents)
+    void social.setAccess(value)
   }
 
   const heading = view === 'followers' ? copy.tabFollowers : view === 'following' ? copy.tabFollowing : copy.tabProviders
-  const openCount = SOCIAL_TRADERS.filter(trader => (trader.isYou ? access : trader.access) === 'open').length
-  const privateCount = SOCIAL_TRADERS.length - openCount
-  const followerCount = SOCIAL_TRADERS.filter(trader => followsYou(trader, incoming)).length
-  const requestCount = Object.values(outgoing).filter(status => status === 'pending').length
+  const openCount = social.traders.filter(trader => trader.access === 'open').length
+  const privateCount = social.traders.length - openCount
+  const followerCount = social.currentProfile?.followerCount ?? 0
+  const requestCount = social.profiles.filter(profile => profile.viewerRelationshipStatus === 'pending').length
   const toggleVisibility = (next: SocialAccess) => {
     setVisibility(current => current === next ? 'all' : next)
   }
 
-  const priceLabel = (cents: number) => copyPriceOfferLabel(cents, formatMoney, {
+  const priceLabel = (cents: number | null) => cents == null ? 'Unavailable' : copyPriceOfferLabel(cents, formatMoney, {
     free: copy.priceFree,
     paid: copy.pricePerMonth,
   })
@@ -382,18 +168,17 @@ export function SocialTradingPage() {
         <DirectoryTab to="/social-trading?view=following" active={view === 'following'}>{copy.tabFollowing}</DirectoryTab>
       </nav>
       <PageHeader title={heading} />
-      <SocialFollowDirectory copy={copy} />
-      {import.meta.env.DEV ? (
-      <>
-      <div className="flex items-center gap-2 pt-2">
-        <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">{copy.demoDirectory}</h2>
-        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">{copy.demoBadge}</span>
-      </div>
-      <p className="text-xs text-neutral-500 dark:text-neutral-400">{copy.sampleNote}</p>
+      {!social.loading && !social.currentProfile ? (
+        <Card>
+          <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{copy.joinTitle}</h2>
+          <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-50">{copy.joinBody}</p>
+          <Button type="button" size="sm" className="mt-3" disabled={social.pendingKeys.has('register')} onClick={() => void social.register()}>{copy.joinAction}</Button>
+        </Card>
+      ) : null}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
         <SummaryStat label={copy.open} value={openCount} selected={visibility === 'open'} onClick={() => toggleVisibility('open')} />
         <SummaryStat label={copy.private} value={privateCount} selected={visibility === 'private'} onClick={() => toggleVisibility('private')} />
-        <SummaryStat label={copy.following} value={following.size} selected={view === 'following'} onClick={() => navigate('/social-trading?view=following')} />
+        <SummaryStat label={copy.following} value={social.profiles.filter(profile => profile.viewerRelationshipStatus === 'accepted').length} selected={view === 'following'} onClick={() => navigate('/social-trading?view=following')} />
         <SummaryStat label={copy.followers} value={followerCount} selected={view === 'followers'} onClick={() => navigate('/social-trading?view=followers')} />
         <SummaryStat label={copy.requests} value={requestCount} selected={requestsOnly} onClick={() => setRequestsOnly(current => !current)} />
       </div>
@@ -447,7 +232,7 @@ export function SocialTradingPage() {
               <tbody>
                 {traders.map(trader => {
                   const traderAccess = trader.isYou ? access : trader.access
-                  const rank = SOCIAL_TRADERS.findIndex(item => item.id === trader.id) + 1
+                  const rank = trader.profile.rank ?? '—'
                   const name = trader.isYou ? copy.you : trader.displayName
                   return (
                     <tr
@@ -468,8 +253,8 @@ export function SocialTradingPage() {
                         <div className="flex items-center gap-3">
                           <TraderAvatar name={name} src={trader.isYou ? ownAvatarUrl : null} size="row" />
                           <div className="min-w-0">
-                            <p className="truncate font-medium text-neutral-900 dark:text-neutral-50">{name}</p>
-                            <TraderRating rating={trader.rating} count={trader.ratingCount} copy={copy} />
+                            <p className="truncate font-medium text-neutral-900 dark:text-neutral-50">{name}</p>{trader.syntheticDemo ? <span className="ms-2 rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">Synthetic demo</span> : null}
+                            <TraderReviews traderUserId={trader.id} traderName={trader.displayName} isSelf={trader.isYou} averageRating={trader.rating} reviewCount={trader.ratingCount} />
                             <p className="truncate text-xs text-neutral-900 dark:text-neutral-50">
                               #{rank} · {traderAccess === 'open' ? copy.open : copy.private}
                             </p>
@@ -479,30 +264,28 @@ export function SocialTradingPage() {
                       <td className="px-3 py-3">
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
                           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                          {copy.statusActive}
+                          {trader.syntheticDemo ? 'Synthetic demo' : trader.performanceStatus === 'available' ? copy.statusActive : 'Unavailable'}
                         </span>
                       </td>
                       <td className="px-3 py-3 font-medium text-neutral-900 dark:text-neutral-100">{percent(trader.roi)}</td>
                       <td className="px-3 py-3 text-neutral-900 dark:text-neutral-50">{percent(trader.winRate)}</td>
                       <td className="px-3 py-3 text-neutral-900 dark:text-neutral-50">{trader.followerCount}</td>
-                      <td className="px-3 py-3 text-neutral-900 dark:text-neutral-50">{formatMoney(trader.previewBalance)}</td>
+                      <td className="px-3 py-3 text-neutral-900 dark:text-neutral-50">{trader.previewBalance == null ? 'Unavailable' : formatMoney(trader.previewBalance)}</td>
                       <td className="px-3 py-3 font-medium text-neutral-900 dark:text-neutral-100">
-                        {priceLabel(trader.isYou ? copyPriceCents : trader.monthlyCopyPriceCents)}
+                        {priceLabel(trader.monthlyCopyPriceCents)}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-2">
                           {trader.isYou ? (
                             <div className="flex flex-wrap items-center justify-end gap-2">
                               <AccessChoice access={access} copy={copy} onChange={chooseAccess} />
-                              <MonthlyPriceChoice cents={copyPriceCents} copy={copy} onChange={chooseCopyPrice} />
-                            </div>
+                           </div>
                           ) : (
                             <CopyActionButton
-                              following={following.has(trader.id)}
+                              disabled={!trader.copyEligible}
+                              disabledReason={trader.syntheticDemo ? 'Synthetic demo traders cannot be copied.' : 'This trader is not currently eligible for copying.'}
                               copyLabel={copy.copySetup.action}
-                              followingLabel={copy.following}
                               onOpenSetup={() => setSetupTrader(trader)}
-                              onStopCopying={() => runCopyAction(trader.id)}
                             />
                           )}
                           <ChevronRight className="h-4 w-4 text-neutral-900 dark:text-neutral-50" aria-hidden="true" />
@@ -516,8 +299,6 @@ export function SocialTradingPage() {
           </div>
         )}
       </Card>
-      </>
-      ) : null}
     </PageShell>
     {setupTrader ? (
       <CopyTraderModal
@@ -633,93 +414,31 @@ function AccessChoice({
   )
 }
 
-function MonthlyPriceChoice({
-  cents,
-  copy,
-  onChange,
-  labelled = false,
-}: {
-  cents: number
-  copy: { monthlyPrice: string; priceFree: string; pricePaid: string }
-  onChange: (cents: number) => void
-  labelled?: boolean
-}) {
-  const paid = cents > 0
-  const [draft, setDraft] = useState(paid ? String(cents / 100) : '50')
-
-  return (
-    <div
-      className="relative z-10 flex shrink-0 items-end gap-2"
-      onClick={event => event.stopPropagation()}
-      onKeyDown={event => event.stopPropagation()}
-    >
-      <label className="flex flex-col gap-1 text-xs text-neutral-900 dark:text-neutral-50">
-        {labelled ? <span>{copy.monthlyPrice}</span> : <span className="sr-only">{copy.monthlyPrice}</span>}
-        <select
-          value={paid ? 'paid' : 'free'}
-          aria-label={copy.monthlyPrice}
-          onChange={event => {
-            if (event.target.value === 'free') {
-              onChange(0)
-              return
-            }
-            onChange(dollarsToCopyPriceCents(Number(draft) || 50))
-          }}
-          className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-50"
-        >
-          <option value="free">{copy.priceFree}</option>
-          <option value="paid">{copy.pricePaid}</option>
-        </select>
-      </label>
-      {paid ? (
-        <label className="flex items-center gap-1 text-xs text-neutral-900 dark:text-neutral-50">
-          <span aria-hidden="true">$</span>
-          <input
-            type="number"
-            min={1}
-            step={1}
-            inputMode="decimal"
-            aria-label={copy.monthlyPrice}
-            value={draft}
-            onChange={event => {
-              setDraft(event.target.value)
-              const next = dollarsToCopyPriceCents(Number(event.target.value))
-              if (next > 0) onChange(next)
-            }}
-            className="w-20 rounded-lg border border-neutral-200 bg-white px-2 py-2 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-50"
-          />
-        </label>
-      ) : null}
-    </div>
-  )
-}
-
 function CopyActionButton({
-  following,
   copyLabel,
-  followingLabel,
+  disabled = false,
+  disabledReason,
   onOpenSetup,
-  onStopCopying,
 }: {
-  following: boolean
   copyLabel: string
-  followingLabel: string
+  disabled?: boolean
+  disabledReason?: string
   onOpenSetup: () => void
-  onStopCopying: () => void
 }) {
   return (
     <Button
       type="button"
       size="sm"
-      variant={following ? 'secondary' : 'primary'}
+      variant="primary"
+      disabled={disabled}
+      title={disabledReason}
       onClick={event => {
         event.stopPropagation()
-        if (following) onStopCopying()
-        else onOpenSetup()
+        onOpenSetup()
       }}
       onKeyDown={event => event.stopPropagation()}
     >
-      {following ? followingLabel : copyLabel}
+      {copyLabel}
     </Button>
   )
 }
@@ -731,27 +450,15 @@ export function SocialTraderActivityPage() {
   const { locale } = useLocale()
   const { openAddTradingAccount } = useAddTradingAccount()
   const { traderId } = useParams()
-  const trader = traderId ? socialTraderById(traderId) : undefined
-  const [following, setFollowing] = useState(initialFollowing)
-  const [access, setAccess] = useState(initialAccess)
-  const [copyPriceCents, setCopyPriceCents] = useState(initialCopyPriceCents)
-  const [outgoing, setOutgoing] = useState(initialOutgoing)
-  const [incoming, setIncoming] = useState(initialIncoming)
+  const social = useSocialTradingPreview()
+  const trader = traderId ? social.traders.find(item => item.id === traderId) : undefined
   const ownAvatarUrl = useOwnAvatarUrl()
   const [copyModalOpen, setCopyModalOpen] = useState(false)
   const [profileTab, setProfileTab] = useState<'performance' | 'trading' | 'portfolio'>('performance')
+  const access = social.currentProfile?.access ?? trader?.access ?? 'open'
 
-  if (traderId && (!trader || !import.meta.env.DEV)) {
-    return (
-      <PageShell maxWidth="xl">
-        <div>
-          <Link to="/social-trading" className="text-sm font-medium text-teal-700 hover:text-teal-800 dark:text-teal-300">
-            {copy.back}
-          </Link>
-        </div>
-        <SocialFollowProfile profileUserId={traderId} copy={copy} />
-      </PageShell>
-    )
+  if (social.loading && !trader) {
+    return <PageShell maxWidth="xl"><Card><p className="text-sm text-neutral-900 dark:text-neutral-50">{copy.loadingDirectory}</p></Card></PageShell>
   }
 
   if (!trader) {
@@ -768,37 +475,19 @@ export function SocialTraderActivityPage() {
     )
   }
 
-  const runCopyAction = () => {
-    const next = applyCopyAction(trader.id, following, outgoing)
-    setFollowing(next.following)
-    setOutgoing(next.outgoing)
-    writeFollowing(next.following)
-    writeStatusMap(OUTGOING_KEY, next.outgoing)
-    if (!canConfigureCopy(trader, next.following)) setCopyModalOpen(false)
-  }
-
   const chooseAccess = (value: SocialAccess) => {
-    setAccess(value)
-    writeAccess(value)
+    void social.setAccess(value)
   }
 
-  const chooseCopyPrice = (cents: number) => {
-    setCopyPriceCents(cents)
-    writeCopyPriceCents(cents)
-  }
-
-  const resolveIncoming = (id: string, status: 'accepted' | 'declined') => {
-    setIncoming(prev => {
-      const next = { ...prev, [id]: status }
-      writeStatusMap(INCOMING_KEY, next)
-      return next
-    })
-  }
-
-  const pendingRequests = SOCIAL_TRADERS.filter(person => incoming[person.id] === 'pending')
+  const pendingRequests = social.profiles
+    .filter(profile => profile.followsViewerStatus === 'pending')
+    .map(profile => social.traders.find(person => person.id === profile.profileUserId))
+    .filter((person): person is SocialTrader => Boolean(person))
   const stats = socialTraderStats(trader)
   const name = trader.isYou ? copy.you : trader.displayName
-  const joined = new Date(trader.profile.joinedAt).toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric' })
+  const joined = trader.profile.joinedAt
+    ? new Date(trader.profile.joinedAt).toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric' })
+    : 'Unavailable'
 
   return (
     <>
@@ -813,7 +502,7 @@ export function SocialTraderActivityPage() {
               <TraderAvatar name={name} src={trader.isYou ? ownAvatarUrl : null} size="profile" />
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="truncate text-xl font-semibold text-neutral-900 dark:text-neutral-50">{name}</h1>
+                  <h1 className="truncate text-xl font-semibold text-neutral-900 dark:text-neutral-50">{name}</h1>{trader.syntheticDemo ? <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">Synthetic demo · copying disabled</span> : null}
                   <AccessTag
                     access={trader.isYou ? access : trader.access}
                     openLabel={copy.open}
@@ -821,30 +510,29 @@ export function SocialTraderActivityPage() {
                   />
                 </div>
                 <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-50">
-                  #{trader.profile.rank} {copy.rank} · {copy.joined} {joined} · {trader.profile.country}
+                  #{trader.profile.rank ?? '—'} {copy.rank} · {copy.joined} {joined} · {trader.profile.country}
                 </p>
                 <div className="mt-1">
-                  <TraderRating rating={trader.rating} count={trader.ratingCount} copy={copy} />
+                  <TraderReviews traderUserId={trader.id} traderName={trader.displayName} isSelf={trader.isYou} averageRating={trader.rating} reviewCount={trader.ratingCount} />
+                  <SocialProfileLinks links={trader.socialLinks ?? {}} />
                 </div>
               </div>
             </div>
             <dl className="grid grid-cols-3 gap-4 sm:gap-8">
-              <HeaderStat label={copy.aum} value={formatMoney(trader.previewBalance)} />
+              <HeaderStat label={copy.aum} value={trader.previewBalance == null ? 'Unavailable' : formatMoney(trader.previewBalance)} />
               <HeaderStat label={copy.followers} value={String(trader.followerCount)} />
-              <HeaderStat label={copy.leverage} value={trader.profile.leverage} />
+              <HeaderStat label={copy.leverage} value={trader.profile.leverage ?? 'Unavailable'} />
             </dl>
             {trader.isYou ? (
               <div className="flex flex-wrap items-end gap-3">
                 <AccessChoice access={access} copy={copy} onChange={chooseAccess} labelled />
-                <MonthlyPriceChoice cents={copyPriceCents} copy={copy} onChange={chooseCopyPrice} labelled />
-              </div>
+             </div>
             ) : (
               <CopyActionButton
-                following={following.has(trader.id)}
+                disabled={!trader.copyEligible}
+                disabledReason={trader.syntheticDemo ? 'Synthetic demo traders cannot be copied.' : 'This trader is not currently eligible for copying.'}
                 copyLabel={copy.copySetup.action}
-                followingLabel={copy.following}
                 onOpenSetup={() => setCopyModalOpen(true)}
-                onStopCopying={runCopyAction}
               />
             )}
           </div>
@@ -866,10 +554,10 @@ export function SocialTraderActivityPage() {
                     <p className="truncate text-sm text-neutral-900 dark:text-neutral-50">@{person.username}</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button type="button" size="sm" onClick={() => resolveIncoming(person.id, 'accepted')}>
+                    <Button type="button" size="sm" onClick={() => void social.resolve(person.id, 'accepted')}>
                       {copy.accept}
                     </Button>
-                    <Button type="button" size="sm" variant="secondary" onClick={() => resolveIncoming(person.id, 'declined')}>
+                    <Button type="button" size="sm" variant="secondary" onClick={() => void social.resolve(person.id, 'declined')}>
                       {copy.decline}
                     </Button>
                   </div>
@@ -1053,19 +741,19 @@ function StatisticsGrid({
   copy: SocialTradingPageTranslations
   formatMoney: (value: number) => string
 }) {
-  const growth = `${trader.roi.toFixed(2)}%`
+  const growth = trader.roi == null ? 'Unavailable' : `${trader.roi.toFixed(2)}%`
   return (
     <Card>
       <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{copy.statisticsMonth}</h2>
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-4">
-        <Metric label={copy.growth} value={growth} tone={trader.roi >= 0 ? 'up' : 'down'} />
+        <Metric label={copy.growth} value={growth} tone={trader.roi == null ? undefined : trader.roi >= 0 ? 'up' : 'down'} />
         <Metric label={copy.longTrades} value={String(stats.longTrades)} />
-        <Metric label={copy.maxOpenTrades} value={String(stats.maxOpenTrades)} />
-        <Metric label={copy.sharpeRatio} value={stats.sharpe.toFixed(2)} />
-        <Metric label={copy.avgProfit} value={formatMoney(stats.avgProfit)} />
+        <Metric label={copy.maxOpenTrades} value={stats.maxOpenTrades == null ? 'Unavailable' : String(stats.maxOpenTrades)} />
+        <Metric label={copy.sharpeRatio} value={stats.sharpe == null ? 'Unavailable' : stats.sharpe.toFixed(2)} />
+        <Metric label={copy.avgProfit} value={stats.avgProfit == null ? 'Unavailable' : formatMoney(stats.avgProfit)} />
         <Metric label={copy.shortTrades} value={String(stats.shortTrades)} />
-        <Metric label={copy.avgHoldingTime} value={interpolate(copy.holdingDays, { count: stats.avgHoldingDays })} />
-        <Metric label={copy.profitFactor} value={stats.profitFactor.toFixed(2)} />
+        <Metric label={copy.avgHoldingTime} value={stats.avgHoldingDays == null ? 'Unavailable' : interpolate(copy.holdingDays, { count: stats.avgHoldingDays })} />
+        <Metric label={copy.profitFactor} value={stats.profitFactor == null ? 'Unavailable' : stats.profitFactor.toFixed(2)} />
       </dl>
     </Card>
   )
@@ -1085,12 +773,18 @@ function PnlCalendar({
   formatSignedMoney: (value: number) => string
 }) {
   const [selected, setSelected] = useState<SocialCalendarDay | null>(null)
+  const latestClose = trader.closedPerformance.reduce<Date | null>((pick, trade) => {
+    const date = new Date(trade.closedAt)
+    return Number.isNaN(date.getTime()) || (pick && pick >= date) ? pick : date
+  }, null)
+  const anchor = latestClose ?? new Date()
+  const calendarYear = anchor.getUTCFullYear()
+  const calendarMonth = anchor.getUTCMonth()
   const weekdays = Array.from({ length: 7 }, (_, index) => {
     const date = new Date(Date.UTC(2026, 8, 6 + index))
     return date.toLocaleDateString(locale, { weekday: 'short', timeZone: 'UTC' })
   })
-  const leading = new Date(Date.UTC(2026, 8, 1)).getUTCDay()
-  const symbols = [...trader.openTrades, ...trader.closedPerformance].map(trade => trade.symbol)
+  const leading = new Date(Date.UTC(calendarYear, calendarMonth, 1)).getUTCDay()
   return (
     <Card>
       <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{copy.pnlCalendar}</h2>
@@ -1137,7 +831,9 @@ function PnlCalendar({
       {selected ? (
         <DayTradesModal
           day={selected}
-          symbols={symbols}
+          trades={trader.closedPerformance}
+          year={calendarYear}
+          month={calendarMonth}
           locale={locale}
           copy={copy}
           onClose={() => setSelected(null)}
@@ -1147,79 +843,60 @@ function PnlCalendar({
   )
 }
 
-const DAY_SYMBOLS = ['EURUSD', 'GBPUSD', 'USDJPY', 'XAUUSD', 'GBPJPY', 'NAS100']
-
 interface DayFill {
+  id: string
   symbol: string
   side: SocialTradeSide
-  unit: number
-  lots: number
-  openRate: number
-  closeRate: number
+  unit: number | null
+  lots: number | null
+  openRate: number | null
+  closeRate: number | null
   openedAt: string
   closedAt: string
   profit: number
 }
 
-function dayFills(day: SocialCalendarDay, symbols: string[]): DayFill[] {
-  if (day.profit == null || day.trades <= 0) return []
-  let seed = day.day * 997 + Math.round(day.profit * 100)
-  const random = () => {
-    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
-    return seed / 4294967296
-  }
-  const weights = Array.from({ length: day.trades }, () => 0.35 + random())
-  const weightSum = weights.reduce((sum, weight) => sum + weight, 0)
-  const profits = weights.map(weight => Math.round(((day.profit ?? 0) * weight / weightSum) * 100) / 100)
-  const drift = Math.round(((day.profit ?? 0) - profits.reduce((sum, profit) => sum + profit, 0)) * 100) / 100
-  const last = profits.length - 1
-  profits[last] = Math.round(((profits[last] ?? 0) + drift) * 100) / 100
-  const pool = symbols.length > 0 ? symbols : DAY_SYMBOLS
-  return profits.map((profit, index) => {
-    const symbol = pool[index % pool.length] ?? 'EURUSD'
-    const side: SocialTradeSide = random() > 0.35 ? 'buy' : 'sell'
-    const base = symbol.includes('XAU') ? 2650 : symbol.includes('JPY') ? 151 : symbol.includes('NAS') || symbol.includes('US30') ? 20100 : 1.1
-    const digits = base > 100 ? 2 : 5
-    const openRate = Number((base + random() * (base > 100 ? 8 : 0.02)).toFixed(digits))
-    const closeRate = Number((openRate + (side === 'buy' ? 1 : -1) * (profit >= 0 ? 1 : -1) * (base > 100 ? 0.4 : 0.0002)).toFixed(digits))
-    const openHour = 8 + Math.floor(random() * 8)
-    const closeHour = Math.min(openHour + 1 + Math.floor(random() * 6), 22)
-    const lots = Number((0.01 + Math.floor(random() * 8) * 0.01).toFixed(2))
-    return {
-      symbol,
-      side,
-      unit: Math.round(lots * 100000),
-      lots,
-      openRate,
-      closeRate,
-      openedAt: new Date(Date.UTC(2026, 8, Math.max(day.day - 1, 1), openHour, Math.floor(random() * 60), Math.floor(random() * 60))).toISOString(),
-      closedAt: new Date(Date.UTC(2026, 8, day.day, closeHour, Math.floor(random() * 60), Math.floor(random() * 60))).toISOString(),
-      profit,
-    }
-  })
+function dayFills(day: SocialCalendarDay, trades: SocialTrader['closedPerformance'], year: number, month: number): DayFill[] {
+  return trades.filter(trade => {
+    const closed = new Date(trade.closedAt)
+    return closed.getUTCFullYear() === year && closed.getUTCMonth() === month && closed.getUTCDate() === day.day
+  }).map(trade => ({
+    id: trade.id,
+    symbol: trade.symbol,
+    side: trade.side,
+    unit: null,
+    lots: null,
+    openRate: null,
+    closeRate: null,
+    openedAt: trade.openedAt,
+    closedAt: trade.closedAt,
+    profit: trade.profit,
+  }))
 }
-
 function DayTradesModal({
   day,
-  symbols,
+  trades,
+  year,
+  month,
   locale,
   copy,
   onClose,
 }: {
   day: SocialCalendarDay
-  symbols: string[]
+  trades: SocialTrader['closedPerformance']
+  year: number
+  month: number
   locale: string
   copy: SocialTradingPageTranslations
   onClose: () => void
 }) {
   const { formatSignedMoney } = useFormatMoney()
-  const fills = dayFills(day, symbols)
+  const fills = dayFills(day, trades, year, month)
   const wins = fills.filter(fill => fill.profit > 0).length
   const losses = fills.filter(fill => fill.profit < 0).length
   const gross = fills.reduce((sum, fill) => sum + fill.profit, 0)
-  const lots = fills.reduce((sum, fill) => sum + fill.lots, 0)
   const winRate = fills.length === 0 ? 0 : (wins / fills.length) * 100
-  const heading = new Date(Date.UTC(2026, 8, day.day)).toLocaleDateString(locale, {
+  const heading = new Date(Date.UTC(year, month, day.day)).toLocaleDateString(locale, {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
@@ -1289,7 +966,7 @@ function DayTradesModal({
                 <Metric label={copy.grossPnl} value={formatSignedMoney(gross)} tone={gross >= 0 ? 'up' : 'down'} />
                 <Metric label={copy.winRate} value={`${winRate.toFixed(2)}%`} />
                 <Metric label={copy.losingTrades} value={String(losses)} />
-                <Metric label={copy.totalLots} value={lots.toFixed(2)} />
+                <Metric label={copy.totalLots} value={'Unavailable'} />
               </dl>
             </div>
             <div className="mt-5 overflow-x-auto">
@@ -1307,16 +984,16 @@ function DayTradesModal({
                 </thead>
                 <tbody>
                   {fills.map((fill, index) => (
-                    <tr key={`${fill.symbol}-${index}`} className="border-t border-neutral-100 dark:border-neutral-800">
+                    <tr key={fill.id || `${fill.symbol}-${index}`} className="border-t border-neutral-100 dark:border-neutral-800">
                       <td className="px-2 py-3">
                         <span className="inline-flex items-center gap-2 font-medium text-neutral-900 dark:text-neutral-50">
                           {fill.symbol}
                           <SideLabel side={fill.side} buy={copy.buy} sell={copy.sell} />
                         </span>
                       </td>
-                      <td className="px-2 py-3 text-neutral-900 dark:text-neutral-50">{fill.unit}</td>
-                      <td className="px-2 py-3 text-neutral-900 dark:text-neutral-50">{fill.openRate}</td>
-                      <td className="px-2 py-3 text-neutral-900 dark:text-neutral-50">{fill.closeRate}</td>
+                      <td className="px-2 py-3 text-neutral-900 dark:text-neutral-50">{fill.unit ?? 'Unavailable'}</td>
+                      <td className="px-2 py-3 text-neutral-900 dark:text-neutral-50">{fill.openRate ?? 'Unavailable'}</td>
+                      <td className="px-2 py-3 text-neutral-900 dark:text-neutral-50">{fill.closeRate ?? 'Unavailable'}</td>
                       <td className="px-2 py-3 text-neutral-900 dark:text-neutral-50">{stamp(fill.openedAt)}</td>
                       <td className="px-2 py-3 text-neutral-900 dark:text-neutral-50">{stamp(fill.closedAt)}</td>
                       <td className={clsx('px-2 py-3 text-end font-medium', fill.profit >= 0 ? 'text-green-500 dark:text-teal-300' : 'text-red-600 dark:text-red-400')}>
@@ -1375,43 +1052,43 @@ function OverviewPanel({
       <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{copy.overview}</h2>
       <div className="mt-4 grid grid-cols-2 gap-3">
         <div>
-          <p className={clsx('text-lg font-semibold', stats.dailyProfitPercent >= 0 ? 'text-green-500 dark:text-teal-300' : 'text-red-600')}>
-            {stats.dailyProfitPercent.toFixed(2)}%
+          <p className={clsx('text-lg font-semibold', stats.dailyProfitPercent == null ? 'text-neutral-900 dark:text-neutral-50' : stats.dailyProfitPercent >= 0 ? 'text-green-500 dark:text-teal-300' : 'text-red-600')}>
+            {stats.dailyProfitPercent == null ? 'Unavailable' : stats.dailyProfitPercent.toFixed(2) + '%'}
           </p>
           <p className="text-xs text-neutral-900 dark:text-neutral-50">{copy.dailyProfit}</p>
         </div>
         <div>
-          <p className={clsx('text-lg font-semibold', stats.monthlyProfitPercent >= 0 ? 'text-green-500 dark:text-teal-300' : 'text-red-600')}>
-            {stats.monthlyProfitPercent.toFixed(2)}%
+          <p className={clsx('text-lg font-semibold', stats.monthlyProfitPercent == null ? 'text-neutral-900 dark:text-neutral-50' : stats.monthlyProfitPercent >= 0 ? 'text-green-500 dark:text-teal-300' : 'text-red-600')}>
+            {stats.monthlyProfitPercent == null ? 'Unavailable' : stats.monthlyProfitPercent.toFixed(2) + '%'}
           </p>
           <p className="text-xs text-neutral-900 dark:text-neutral-50">{copy.monthlyProfit}</p>
         </div>
       </div>
       <dl className="mt-4 space-y-3 text-sm">
-        <OverviewRow label={copy.growth} value={`${trader.roi.toFixed(2)}%`} tone={trader.roi >= 0 ? 'up' : 'down'} />
-        <OverviewRow label={copy.drawdown} value={`${trader.maxDrawdown.toFixed(2)}%`} tone="down" />
+        <OverviewRow label={copy.growth} value={trader.roi == null ? 'Unavailable' : trader.roi.toFixed(2) + '%'} tone={trader.roi == null ? undefined : trader.roi >= 0 ? 'up' : 'down'} />
+        <OverviewRow label={copy.drawdown} value={trader.maxDrawdown == null ? 'Unavailable' : trader.maxDrawdown.toFixed(2) + '%'} tone="down" />
         <div>
           <div className="flex items-center justify-between">
             <dt className="text-neutral-900 dark:text-neutral-50">{copy.winRate}</dt>
-            <dd className="font-semibold text-green-500 dark:text-teal-300">{trader.winRate.toFixed(2)}%</dd>
+            <dd className="font-semibold text-green-500 dark:text-teal-300">{trader.winRate == null ? 'Unavailable' : trader.winRate.toFixed(2) + '%'}</dd>
           </div>
           <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800">
-            <div className="h-full rounded-full bg-green-400" style={{ width: `${Math.min(trader.winRate, 100)}%` }} />
+            <div className="h-full rounded-full bg-green-400" style={{ width: Math.min(trader.winRate ?? 0, 100) + '%' }} />
           </div>
         </div>
         <OverviewRow label={copy.profitableTrades} value={String(stats.profitableTrades)} />
         <OverviewRow label={copy.losingTrades} value={String(stats.losingTrades)} />
-        <OverviewRow label={copy.balance} value={formatMoney(trader.previewBalance)} />
-        <OverviewRow label={copy.equity} value={formatMoney(stats.equity)} />
-        <OverviewRow label={copy.deposit} value={formatMoney(stats.deposit)} />
+        <OverviewRow label={copy.balance} value={trader.previewBalance == null ? 'Unavailable' : formatMoney(trader.previewBalance)} />
+        <OverviewRow label={copy.equity} value={stats.equity == null ? 'Unavailable' : formatMoney(stats.equity)} />
+        <OverviewRow label={copy.deposit} value={stats.deposit == null ? 'Unavailable' : formatMoney(stats.deposit)} />
         <OverviewRow label={copy.totalTrades} value={String(trader.closedTrades + trader.openTrades.length)} />
         <OverviewRow label={copy.lastTrade} value={lastTrade ? formatWhen(lastTrade) : '—'} />
-        <OverviewRow label={copy.openPosition} value={formatSignedMoney(stats.openPosition)} tone={stats.openPosition >= 0 ? 'up' : 'down'} />
+        <OverviewRow label={copy.openPosition} value={stats.openPosition == null ? 'Unavailable' : formatSignedMoney(stats.openPosition)} tone={stats.openPosition == null ? undefined : stats.openPosition >= 0 ? 'up' : 'down'} />
         <OverviewRow label={copy.liveCopiers} value={String(trader.followerCount)} />
-        <OverviewRow label={copy.bestTrade} value={`${formatSignedMoney(stats.bestTradeProfit)} · ${formatWhen(stats.bestTradeAt)}`} tone="up" />
-        <OverviewRow label={copy.worstTrade} value={`${formatSignedMoney(stats.worstTradeProfit)} · ${formatWhen(stats.worstTradeAt)}`} tone="down" />
-        <OverviewRow label={copy.timezone} value={trader.profile.timezone} />
-        <OverviewRow label={copy.amountFollowing} value={formatMoney(stats.amountFollowing)} />
+<OverviewRow label={copy.bestTrade} value={stats.bestTradeProfit == null || !stats.bestTradeAt ? 'Unavailable' : formatSignedMoney(stats.bestTradeProfit) + ' / ' + formatWhen(stats.bestTradeAt)} tone="up" />
+<OverviewRow label={copy.worstTrade} value={stats.worstTradeProfit == null || !stats.worstTradeAt ? 'Unavailable' : formatSignedMoney(stats.worstTradeProfit) + ' / ' + formatWhen(stats.worstTradeAt)} tone="down" />
+        <OverviewRow label={copy.timezone} value={trader.profile.timezone ?? 'Unavailable'} />
+        <OverviewRow label={copy.amountFollowing} value={stats.amountFollowing == null ? 'Unavailable' : formatMoney(stats.amountFollowing)} />
       </dl>
     </Card>
   )

@@ -26,6 +26,7 @@ import { PageShell } from '../../components/layout/PageShell'
 import { Button } from '../../components/ui/Button'
 import { Alert } from '../../components/ui/Alert'
 import { Toggle } from '../../components/ui/Toggle'
+import { normalizeSocialProfileLinks, SOCIAL_PROFILE_PLATFORMS, validateSocialProfileLinks } from '../../lib/socialProfileLinks'
 
 type SettingsSection = 'personal' | 'general' | 'security'
 
@@ -189,10 +190,17 @@ export function SettingsPage() {
 
   const handleSavePersonal = async () => {
     if (!user) return
-    setPersonalSaving(true)
     setPersonalMsg(null)
+    const socialLinkError = validateSocialProfileLinks(profile.social_links)
+    if (socialLinkError) {
+      setPersonalMsg({ type: 'error', text: socialLinkError })
+      return
+    }
+    const socialLinks = normalizeSocialProfileLinks(profile.social_links)
+    setPersonalSaving(true)
     try {
-      await persistProfile()
+      await persistProfile({ ...profile, social_links: socialLinks })
+      patchProfile({ social_links: socialLinks })
       setPersonalMsg({ type: 'success', text: t.settings.saved })
     } catch (e) {
       setPersonalMsg({
@@ -374,6 +382,23 @@ export function SettingsPage() {
                     placeholder={t.settings.placeholders.address}
                   />
                 </div>
+                <div className="sm:col-span-2 border-t border-neutral-100 pt-4 dark:border-neutral-800">
+                  <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Social profiles</h3>
+                  <p className="mt-1 text-xs text-neutral-900 dark:text-neutral-50">Public HTTPS profile links only. TSCopier never requests access to your external accounts.</p>
+                </div>
+                {SOCIAL_PROFILE_PLATFORMS.map(platform => (
+                  <Input
+                    key={platform.key}
+                    label={platform.label}
+                    type="url"
+                    value={profile.social_links?.[platform.key] ?? ''}
+                    placeholder={platform.placeholder}
+                    onChange={event => patchProfile({
+                      social_links: { ...profile.social_links, [platform.key]: event.target.value },
+                    })}
+                    autoComplete="url"
+                  />
+                ))}
               </div>
             </SettingsCard>
           ) : null}

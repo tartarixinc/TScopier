@@ -26,7 +26,7 @@ test('maps only persisted source availability and subscription lifecycle state',
   assert.deepEqual(await fetchSocialCopySources(client, 'trader'), [{
     sourceId: 'source', traderUserId: 'trader', label: 'Demo source', provider: 'fxsocket',
     platform: 'MT5', accountMode: 'demo', connectionHealthy: true,
-    isCopyEligible: false, eligibilityReason: 'minimum_trades_not_met',
+    isCopyEligible: false, eligibilityReason: 'minimum_trades_not_met', isSynthetic: false,
   }])
   const subscriptions = await fetchSocialCopySubscriptions(client, 'trader')
   assert.equal(subscriptions[0]?.status, 'pending')

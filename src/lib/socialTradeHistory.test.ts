@@ -31,6 +31,7 @@ test('maps explicit integrity, freshness and unavailable metric states', async (
   assert.equal(rows[0]?.returnPercentage, null)
   assert.equal(rows[0]?.maximumDrawdown, null)
   assert.equal(rows[0]?.isCopyEligible, false)
+  assert.equal(rows[0]?.isSynthetic, false)
 })
 
 test('persists the explicit history-sharing choice', async () => {

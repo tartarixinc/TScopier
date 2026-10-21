@@ -1,6 +1,8 @@
 node_modules/
 .env
 load-results/
+.env.local
+.env.*.local
 
 # Build output (Netlify/Railway build from source)
 dist/

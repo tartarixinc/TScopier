@@ -135,13 +135,14 @@ function ReviewModal({ traderName, traderUserId, existing, onClose, onSaved }: {
   )
 }
 
-export function TraderReviews({ traderUserId, traderName, isSelf, averageRating, reviewCount, expanded = false }: {
+export function TraderReviews({ traderUserId, traderName, isSelf, averageRating, reviewCount, expanded = false, compact = false }: {
   traderUserId: string
   traderName: string
   isSelf: boolean
   averageRating: number | null
   reviewCount: number
   expanded?: boolean
+  compact?: boolean
 }) {
   const [reviews, setReviews] = useState<SocialTraderReview[]>([])
   const [loading, setLoading] = useState(expanded)
@@ -184,11 +185,11 @@ export function TraderReviews({ traderUserId, traderName, isSelf, averageRating,
 
   const action = (
     <button type="button" disabled={isSelf || opening} aria-busy={opening} onClick={() => void openReview()}
-      className="inline-flex items-center gap-2 rounded-lg px-2 py-1 text-sm hover:bg-neutral-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400 disabled:cursor-not-allowed disabled:opacity-70 dark:hover:bg-neutral-800"
+      className={clsx('inline-flex items-center rounded-lg text-sm hover:bg-neutral-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400 disabled:cursor-not-allowed disabled:opacity-70 dark:hover:bg-neutral-800', compact ? 'py-0.5' : 'gap-2 px-2 py-1')}
       aria-label={isSelf ? `Your rating: ${summary.average?.toFixed(1) ?? 'not rated'}` : `${ownReview ? 'Edit rating for' : 'Rate'} ${traderName}`}>
       <Stars rating={summary.average ?? 0} label={summary.average == null ? 'Not rated' : `${summary.average.toFixed(1)} out of 5`} />
-      <span>{summary.average == null ? 'No ratings' : summary.average.toFixed(1)} ({summary.count})</span>
-      {!isSelf ? <span className="font-medium text-teal-700 dark:text-teal-300">{opening ? 'Loading reviews…' : ownReview ? 'Edit review' : 'Rate trader'}</span> : null}
+      {!compact ? <><span>{summary.average == null ? 'No ratings' : summary.average.toFixed(1)} ({summary.count})</span>
+      {!isSelf ? <span className="font-medium text-teal-700 dark:text-teal-300">{opening ? 'Loading reviews…' : ownReview ? 'Edit review' : 'Rate trader'}</span> : null}</> : null}
     </button>
   )
 

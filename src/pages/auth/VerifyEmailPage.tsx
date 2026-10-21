@@ -26,6 +26,7 @@ export function VerifyEmailPage() {
   const [searchParams] = useSearchParams()
   // Prefer the query string so the subtitle does not flash when the session clears.
   const email = (searchParams.get('email') ?? '').trim() || user?.email || ''
+  const registered = searchParams.get('registered') === '1'
   const redirectTo = `${window.location.origin}/auth/confirmed`
 
   const [resending, setResending] = useState(false)
@@ -128,6 +129,7 @@ export function VerifyEmailPage() {
       </p>
 
       {error ? <Alert variant="error" className="mt-5 py-2.5 text-left">{error}</Alert> : null}
+      {registered ? <Alert variant="success" className="mt-5 py-2.5 text-left">Account created. Check your inbox to confirm your email.</Alert> : null}
       {resent ? <Alert variant="success" className="mt-5 py-2.5 text-left">{verifyT.resent}</Alert> : null}
 
       <div className="mt-8 space-y-3">

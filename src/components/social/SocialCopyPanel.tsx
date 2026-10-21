@@ -33,6 +33,7 @@ function statusLabel(subscription: SocialCopySubscription): string {
 
 function eligibilityMessage(reason: string): string {
   const messages: Record<string, string> = {
+    synthetic_demo: 'This is synthetic DEMO data and can never be copied.',
     source_missing: 'The published source account is missing.',
     source_not_published: 'The provider has not published this source.',
     source_unsupported: 'Performance verification is not supported for this broker connection.',
@@ -170,7 +171,7 @@ export function SocialCopyPanel({ traderUserId, isSelf }: { traderUserId: string
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-xs text-neutral-500">Published source
               <select className="mt-1 block w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900" value={sourceId} onChange={event => setSourceId(event.target.value)}>
-                {sources.map(source => <option key={source.sourceId} value={source.sourceId}>{source.label} · {source.platform} · {source.accountMode} · {source.isCopyEligible ? 'eligible' : 'not eligible'}</option>)}
+                {sources.map(source => <option key={source.sourceId} value={source.sourceId}>{source.label} · {source.platform} · {source.isSynthetic ? 'DEMO DATA · ' : ''}{source.accountMode} · {source.isCopyEligible ? 'eligible' : 'not eligible'}</option>)}
               </select>
             </label>
             <label className="text-xs text-neutral-500">Destination account
@@ -193,6 +194,7 @@ export function SocialCopyPanel({ traderUserId, isSelf }: { traderUserId: string
               <input type="number" min="0.01" step="0.01" className="mt-1 block w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900" value={maxLot} onChange={event => setMaxLot(event.target.value)} />
             </label>
           </div>
+          {selectedSource?.isSynthetic ? <Alert variant="warning">DEMO DATA: synthetic performance is display-only and cannot create or authorize copy subscriptions.</Alert> : null}
           {selectedSource && !selectedSource.isCopyEligible ? (
             <Alert variant="warning">Provider not eligible for copying: {eligibilityMessage(selectedSource.eligibilityReason)}</Alert>
           ) : null}
