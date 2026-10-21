@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { ArrowDown, ArrowRight, Check, CheckCircle2, ShieldCheck, X } from 'lucide-react'
 import clsx from 'clsx'
 import { Button } from '../ui/Button'
+import { Alert } from '../ui/Alert'
 import { Toggle } from '../ui/Toggle'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
 import { useFormatMoney } from '../../hooks/useFormatMoney'
@@ -17,6 +18,8 @@ import {
 import type { SocialTrader } from '../../lib/socialTradingFixture'
 import type { SocialTradingPageTranslations } from '../../i18n/locales/types'
 import type { BrokerAccount } from '../../types/database'
+import { createSocialCopySubscription } from '../../lib/socialCopy'
+import { supabase } from '../../lib/supabase'
 
 const MULTIPLIERS = [0.25, 0.5, 0.75, 1, 1.5, 2] as const
 
@@ -124,6 +127,8 @@ export function CopyTraderModal({
     respectRiskLimits: true,
   })
   const [ready, setReady] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -138,11 +143,12 @@ export function CopyTraderModal({
     }
   }, [onClose])
 
-  const effectiveSelectedBrokerId = selectedBrokerId || brokers[0]?.id
-  const selectedBroker = brokers.find(broker => broker.id === effectiveSelectedBrokerId) ?? null
+  const destinations = brokers.filter(broker => broker.is_active)
+  const effectiveSelectedBrokerId = selectedBrokerId || destinations[0]?.id
+  const selectedBroker = destinations.find(broker => broker.id === effectiveSelectedBrokerId) ?? null
   const previewTrade = trader.openTrades[0] ?? null
   const destinationBalance = selectedBroker ? resolveBrokerTotalBalance(selectedBroker) : null
-  const copiedLot = previewTrade
+  const copiedLot = previewTrade?.previewLot != null && trader.previewBalance != null
     ? estimateSocialCopyLot({
         mode: riskMode,
         traderLot: previewTrade.previewLot,
@@ -151,7 +157,7 @@ export function CopyTraderModal({
         fixedLot,
         multiplier,
       })
-    : null
+    : riskMode === 'fixed_lot' ? fixedLot : null
 
   const profileLabel = riskMode === 'fixed_lot'
     ? `${fixedLot.toFixed(2)} ${c.lots}`
@@ -171,6 +177,30 @@ export function CopyTraderModal({
     setProtections(current => ({ ...current, [key]: checked }))
   }
 
+  const submitCopy = async () => {
+    if (!selectedBroker || !trader.sourceId || !trader.copyEligible || copiedLot == null || copiedLot <= 0 || submitting) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      const sizingMode = riskMode === 'fixed_lot' ? 'fixed_lot' : riskMode === 'risk_multiplier' ? 'lot_multiplier' : 'equity_ratio'
+      const destinationMode = ['demo', 'practice'].includes(String(selectedBroker.linked_account_type ?? '').toLowerCase()) ? 'demo' : 'live'
+      const accountMode = trader.sourceAccountMode === 'live' || destinationMode === 'live' ? 'live' : 'demo'
+      await createSocialCopySubscription(supabase, {
+        sourceId: trader.sourceId,
+        destinationBrokerAccountId: selectedBroker.id,
+        sizingMode,
+        fixedLot: sizingMode === 'fixed_lot' ? fixedLot : null,
+        lotMultiplier: sizingMode === 'lot_multiplier' ? multiplier : 1,
+        maxLot: Math.max(0.01, copiedLot),
+        accountMode,
+      })
+      setReady(true)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to create the copy subscription.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
   if (ready && selectedBroker) {
     return createPortal(
       <div
@@ -231,9 +261,9 @@ export function CopyTraderModal({
             <p className="mt-0.5 text-sm text-neutral-900 dark:text-neutral-50">{c.subtitle}</p>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-900 dark:text-neutral-50">
               <span>@{trader.username}</span>
-              <span>{copy.roi} <strong className="font-semibold text-neutral-900 dark:text-neutral-50">{trader.roi.toFixed(1)}%</strong></span>
-              <span>{copy.maxDrawdown} <strong className="font-semibold text-neutral-900 dark:text-neutral-50">{trader.maxDrawdown.toFixed(1)}%</strong></span>
-              <span>{copy.winRate} <strong className="font-semibold text-neutral-900 dark:text-neutral-50">{trader.winRate.toFixed(1)}%</strong></span>
+              <span>{copy.roi} <strong className="font-semibold text-neutral-900 dark:text-neutral-50">{trader.roi == null ? 'Unavailable' : trader.roi.toFixed(1) + '%'}</strong></span>
+              <span>{copy.maxDrawdown} <strong className="font-semibold text-neutral-900 dark:text-neutral-50">{trader.maxDrawdown == null ? 'Unavailable' : trader.maxDrawdown.toFixed(1) + '%'}</strong></span>
+              <span>{copy.winRate} <strong className="font-semibold text-neutral-900 dark:text-neutral-50">{trader.winRate == null ? 'Unavailable' : trader.winRate.toFixed(1) + '%'}</strong></span>
             </div>
           </div>
           <button
@@ -253,7 +283,7 @@ export function CopyTraderModal({
                 <h3 id="copy-destination-heading" className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{c.destinationAccount}</h3>
                 {loading ? (
                   <p className="mt-3 text-sm text-neutral-900 dark:text-neutral-50">{c.loadingAccounts}</p>
-                ) : brokers.length === 0 ? (
+                ) : destinations.length === 0 ? (
                   <div className="mt-2 rounded-xl border border-dashed border-neutral-300 px-4 py-3 dark:border-neutral-700">
                     <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{c.noAccountsTitle}</p>
                     <p className="mt-1 text-xs leading-5 text-neutral-900 dark:text-neutral-50">{c.noAccountsBody}</p>
@@ -261,7 +291,7 @@ export function CopyTraderModal({
                   </div>
                 ) : (
                   <div className="mt-2 max-h-52 space-y-2 overflow-y-auto pr-1">
-                    {brokers.map(broker => {
+                    {destinations.map(broker => {
                       const selected = broker.id === effectiveSelectedBrokerId
                       const login = resolveAccountLogin(broker)
                       return (
@@ -394,7 +424,7 @@ export function CopyTraderModal({
                           {previewTrade.side.toUpperCase()}
                         </span>
                       </p>
-                      <p className={clsx('text-xs font-semibold', previewTrade.side === 'buy' ? 'text-green-500 dark:text-teal-300' : 'text-red-600 dark:text-red-400')}>{c.traderSize}: {previewTrade.previewLot.toFixed(2)}</p>
+                      <p className={clsx('text-xs font-semibold', previewTrade.side === 'buy' ? 'text-green-500 dark:text-teal-300' : 'text-red-600 dark:text-red-400')}>{c.traderSize}: {previewTrade.previewLot == null ? 'Unavailable' : previewTrade.previewLot.toFixed(2)}</p>
                     </div>
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-900 dark:text-neutral-50">
                       <span>{c.stopLoss} {previewTrade.previewStopLoss ?? 'N/A'}</span>
@@ -439,12 +469,14 @@ export function CopyTraderModal({
           </div>
         </div>
 
+        {error ? <div className="px-5 pb-3 sm:px-6"><Alert variant="error">{error}</Alert></div> : null}
         <footer className="flex shrink-0 flex-col-reverse gap-2 border-t border-neutral-100 bg-white px-5 py-4 dark:border-neutral-800 dark:bg-neutral-950 sm:flex-row sm:justify-end sm:px-6">
-          <Button type="button" variant="secondary" onClick={onClose}>{c.cancel}</Button>
+          <Button type="button" variant="secondary" disabled={submitting} onClick={onClose}>{c.cancel}</Button>
           <Button
             type="button"
-            disabled={!selectedBroker || !previewTrade || copiedLot == null}
-            onClick={() => setReady(true)}
+            loading={submitting}
+            disabled={!selectedBroker || !trader.sourceId || !trader.copyEligible || copiedLot == null || copiedLot <= 0 || submitting}
+            onClick={() => void submitCopy()}
           >
             {c.startCopying}
           </Button>

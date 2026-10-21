@@ -75,23 +75,23 @@ describe('signup validation explanations', () => {
   })
 })
 
-describe('existing signup submission flow', () => {
-  it('keeps the existing Supabase signup, verification email, sign-out, and navigation sequence', () => {
+describe('signup completion flow', () => {
+  it('does not wait for the optional resend endpoint after Supabase signup succeeds', () => {
     const source = readFileSync(
       new URL('../pages/auth/SignupPage.tsx', import.meta.url),
       'utf8',
     )
     const signupAt = source.indexOf('await supabase.auth.signUp({')
-    const verificationAt = source.indexOf('await sendVerificationEmail({')
-    const signOutAt = source.indexOf('await supabase.auth.signOut()')
     const navigateAt = source.indexOf('navigate(`/verify-email?email=')
 
     expect(signupAt).toBeGreaterThan(-1)
     expect(source).toContain('captchaToken: captchaToken ?? undefined')
     expect(source).toContain('first_name: trimmedFirst')
     expect(source).toContain('last_name: trimmedLast')
-    expect(verificationAt).toBeGreaterThan(signupAt)
-    expect(signOutAt).toBeGreaterThan(verificationAt)
-    expect(navigateAt).toBeGreaterThan(signOutAt)
+    expect(source).not.toContain('await sendVerificationEmail({')
+    expect(source).toContain("if (!data.session)")
+    expect(source).toContain('&registered=1')
+    expect(source).toContain('navigate(postAuthAppPath(), { replace: true })')
+    expect(navigateAt).toBeGreaterThan(signupAt)
   })
 })
