@@ -85,7 +85,7 @@ test('worker heartbeat sends a bounded ok check-in when configured', () => {
 
   assert.equal(checkInId, 'check-in-id')
   assert.deepEqual(mock.checkIns[0], {
-    monitorSlug: 'unicopier-worker-trade',
+    monitorSlug: 'tscopier-worker-trade',
     status: 'ok',
   })
   assert.deepEqual(mock.monitorConfigs[0], {
