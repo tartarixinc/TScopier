@@ -681,6 +681,7 @@ export function MirrorTradingPage() {
       ) : null}
       {configuringSlave && configuringLink ? (
         <SlaveConfigureModal
+          key={configuringSlave.id}
           slave={configuringSlave}
           source={configuringSource}
           settings={copyRiskForEditor(configuringLink.manual_settings)}
@@ -690,6 +691,8 @@ export function MirrorTradingPage() {
           balanceLabel={copy.balance}
           saveError={configSaveError}
           closeLabel={closeLabel}
+          symbolMap={configuringLink.manual_settings.symbol_mapping ?? {}}
+          onSymbolMapChange={next => patchSlaveSettings(configuringSlave.id, { symbol_mapping: next })}
           onChange={next => patchSlaveSettings(configuringSlave.id, manualSettingsFromCopyRisk(next))}
           onClose={() => setConfiguringSlaveId(null)}
         />

@@ -1021,6 +1021,15 @@ export interface MirrorTradingPageTranslations {
     copyMethod: string
     protections: string
     moreSettings: string
+    symbolMapping?: {
+      title?: string
+      hint?: string
+      master?: string
+      slave?: string
+      add?: string
+      remove?: string
+      empty?: string
+    }
     exampleTrade: string
     masterSize: string
     slaveAccount: string

@@ -5,6 +5,7 @@ import clsx from 'clsx'
 import { Button } from '../ui/Button'
 import { Toggle } from '../ui/Toggle'
 import { CopyRiskEditor } from './CopyRiskEditor'
+import { SymbolMappingEditor, type SymbolMappingLabels } from './SymbolMappingEditor'
 import { useFormatMoney } from '../../hooks/useFormatMoney'
 import { interpolate } from '../../i18n/interpolate'
 import type { CopyRiskTranslations } from '../../i18n/locales/copyRiskLabels'
@@ -378,6 +379,8 @@ export function SlaveConfigureModal({
   balanceLabel,
   saveError,
   closeLabel,
+  symbolMap,
+  onSymbolMapChange,
   onChange,
   onClose,
 }: {
@@ -390,6 +393,8 @@ export function SlaveConfigureModal({
   balanceLabel: string
   saveError: string | null
   closeLabel: string
+  symbolMap: Record<string, string>
+  onSymbolMapChange: (next: Record<string, string>) => void
   onChange: (next: CopyRiskSettings) => void
   onClose: () => void
 }) {
@@ -453,6 +458,16 @@ export function SlaveConfigureModal({
   }
   const login = resolveAccountLogin(slave)
   const sourceName = source ? getBrokerDisplayLabel(source) : null
+  const symbolLabels: SymbolMappingLabels = {
+    title: setup.symbolMapping?.title ?? 'Symbol mapping',
+    hint: setup.symbolMapping?.hint
+      ?? "Rename the master's symbols to the names this account uses (for example XAUUSD to GOLD). Symbols not listed copy unchanged.",
+    master: setup.symbolMapping?.master ?? 'Master symbol',
+    slave: setup.symbolMapping?.slave ?? 'Slave symbol',
+    add: setup.symbolMapping?.add ?? 'Add mapping',
+    remove: setup.symbolMapping?.remove ?? 'Remove mapping',
+    empty: setup.symbolMapping?.empty ?? 'No mappings yet — symbols copy with their original names.',
+  }
 
   return createPortal(
     <div
@@ -699,6 +714,16 @@ export function SlaveConfigureModal({
                   />
                 </div>
               </section>
+
+              {advanced ? (
+                <div className="rounded-xl border border-neutral-200 px-3 py-3 dark:border-neutral-800">
+                  <SymbolMappingEditor
+                    value={symbolMap}
+                    labels={symbolLabels}
+                    onChange={onSymbolMapChange}
+                  />
+                </div>
+              ) : null}
 
               {advanced ? (
                 <div className="rounded-xl border border-neutral-200 px-3 py-3 dark:border-neutral-800">
