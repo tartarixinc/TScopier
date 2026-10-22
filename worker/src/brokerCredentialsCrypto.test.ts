@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { decryptMtPassword, encryptMtPassword } from './brokerCredentialsCrypto'
+import { decryptMtPassword, decryptMtPasswordWithSource, encryptMtPassword } from './brokerCredentialsCrypto'
 
 const ENV_KEYS = [
   'BROKER_CREDENTIALS_ENCRYPTION_KEY',
@@ -85,4 +85,30 @@ test('stored format never changes during rotation (v1:iv:payload)', () => {
   setKeys(KEY_B, KEY_A)
   const stored = encryptMtPassword('format-check')
   assert.match(stored!, /^v1:[A-Za-z0-9+/=]+:[A-Za-z0-9+/=]+$/)
+})
+
+test('reports which key opened a value (primary vs previous)', () => {
+  setKeys(KEY_A)
+  const oldStored = encryptMtPassword('sealed-by-a')!
+  setKeys(KEY_B, KEY_A)
+
+  assert.deepEqual(decryptMtPasswordWithSource(oldStored), {
+    plaintext: 'sealed-by-a',
+    keySource: 'previous',
+  })
+
+  const newStored = encryptMtPassword('sealed-by-b')!
+  assert.deepEqual(decryptMtPasswordWithSource(newStored), {
+    plaintext: 'sealed-by-b',
+    keySource: 'primary',
+  })
+})
+
+test('a previous entry identical to the primary is not re-reported as previous', () => {
+  setKeys(KEY_C, KEY_C)
+  const stored = encryptMtPassword('same-key')!
+  assert.deepEqual(decryptMtPasswordWithSource(stored), {
+    plaintext: 'same-key',
+    keySource: 'primary',
+  })
 })
