@@ -169,11 +169,14 @@ export async function decryptMtPassword(
   const keys = await getKeyCandidates(env);
   if (!keys.length) return null;
 
-  let iv: Uint8Array;
-  let payload: Uint8Array;
+  const decodePart = (part: string | undefined) =>
+    Uint8Array.from(atob(part ?? ""), c => c.charCodeAt(0));
+
+  let iv: ReturnType<typeof decodePart>;
+  let payload: ReturnType<typeof decodePart>;
   try {
-    iv = Uint8Array.from(atob(parts[1] ?? ""), c => c.charCodeAt(0));
-    payload = Uint8Array.from(atob(parts[2] ?? ""), c => c.charCodeAt(0));
+    iv = decodePart(parts[1]);
+    payload = decodePart(parts[2]);
   } catch {
     return null;
   }

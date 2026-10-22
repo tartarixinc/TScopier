@@ -125,6 +125,31 @@ function keyCandidates(): Array<{ key: Buffer; source: BrokerCredentialKeySource
   return candidates
 }
 
+function keyFingerprint(raw: string): string | null {
+  const key = decodeKeyMaterial(raw)
+  if (!key || key.length !== 32) return null
+  return createHash('sha256').update(key).digest('hex').slice(0, 16)
+}
+
+/**
+ * Short, non-reversible fingerprints of the configured keys (SHA-256 of the
+ * derived 32 bytes). Used to confirm that every service really holds the same
+ * primary key before rewriting stored ciphertext.
+ */
+export function brokerCredentialKeyFingerprints(): {
+  primary: string | null
+  previous: string[]
+} {
+  const primaryRaw = resolveEncryptionKeyRaw()
+  const previous = resolvePreviousEncryptionKeysRaw()
+    .map(keyFingerprint)
+    .filter((value): value is string => value != null)
+  return {
+    primary: primaryRaw ? keyFingerprint(primaryRaw) : null,
+    previous,
+  }
+}
+
 /**
  * Decrypt and report which key opened the value. The reencrypt diagnostic uses
  * this to tell values already on the primary (skip) from values still sealed
