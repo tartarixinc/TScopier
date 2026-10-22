@@ -24,9 +24,14 @@
  */
 import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
-import { decryptMtPasswordWithSource, encryptMtPassword } from '../brokerCredentialsCrypto'
+import {
+  brokerCredentialKeyFingerprints,
+  decryptMtPasswordWithSource,
+  encryptMtPassword,
+} from '../brokerCredentialsCrypto'
 
 const APPLY = process.argv.includes('--apply')
+const ALLOW_EMPTY = process.argv.includes('--allow-empty')
 const PAGE_SIZE = 500
 
 function requireEnv(name: string): string {
@@ -47,6 +52,14 @@ const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 )
+
+const TARGET = (() => {
+  try {
+    return new URL(requireEnv('SUPABASE_URL')).host
+  } catch {
+    return '(unparseable SUPABASE_URL)'
+  }
+})()
 
 interface EncryptedRow {
   id: string
@@ -85,6 +98,13 @@ async function loadAllRows(): Promise<EncryptedRow[]> {
 }
 
 async function main(): Promise<void> {
+  const fingerprints = brokerCredentialKeyFingerprints()
+  console.log(`[reencrypt] target=${TARGET} mode=${APPLY ? 'APPLY' : 'DRY-RUN'}`)
+  console.log(
+    `[reencrypt] primary-fingerprint=${fingerprints.primary ?? 'missing'} `
+    + `previous-fingerprints=${fingerprints.previous.join(',') || 'none'}`,
+  )
+
   const rows = await loadAllRows()
 
   let scanned = 0
@@ -92,6 +112,7 @@ async function main(): Promise<void> {
   let onPrevious = 0
   let rewritten = 0
   const failures: string[] = []
+  const nonV1: string[] = []
   const perRow: Array<{ id: string; columns: string[] }> = []
 
   for (const row of rows) {
@@ -100,7 +121,13 @@ async function main(): Promise<void> {
       if (!column.endsWith('_encrypted')) continue
       const stored = typeof raw === 'string' ? raw : ''
       const value = stored.trim()
-      if (!value || !value.startsWith('v1:')) continue
+      if (!value) continue
+      if (!value.startsWith('v1:')) {
+        // Unknown or truncated format: never touch it, but never report the
+        // rotation as complete while it is present either.
+        nonV1.push(`${row.id}.${column}`)
+        continue
+      }
       scanned++
 
       const decrypted = decryptMtPasswordWithSource(value)
@@ -153,10 +180,10 @@ async function main(): Promise<void> {
     }
   }
 
-  console.log(`[reencrypt] mode=${APPLY ? 'APPLY' : 'DRY-RUN'}`)
   console.log(
     `[reencrypt] accounts=${rows.length} values-scanned=${scanned} on-primary=${onPrimary} `
-    + `on-previous=${onPrevious} ${APPLY ? 'rewritten' : 'would-rewrite'}=${rewritten}`,
+    + `on-previous=${onPrevious} skipped-non-v1=${nonV1.length} `
+    + `${APPLY ? 'rewritten' : 'would-rewrite'}=${rewritten}`,
   )
   for (const entry of perRow) {
     console.log(`[reencrypt]   ${APPLY ? 'rewrote' : 'would rewrite'} ${entry.id}: ${entry.columns.join(', ')}`)
@@ -166,6 +193,18 @@ async function main(): Promise<void> {
     console.error('[reencrypt] FAILED (those values were left untouched):')
     for (const failure of failures) console.error(`[reencrypt]   ${failure}`)
     process.exit(1)
+  }
+  if (nonV1.length > 0) {
+    console.error('[reencrypt] values in an unrecognised format were left untouched:')
+    for (const entry of nonV1) console.error(`[reencrypt]   ${entry}`)
+    process.exit(1)
+  }
+  if (scanned === 0 && !ALLOW_EMPTY) {
+    console.error(
+      '[reencrypt] no encrypted values scanned — wrong project or empty table; '
+      + `refusing to report success (target=${TARGET}). Pass --allow-empty to override.`,
+    )
+    process.exit(2)
   }
   if (onPrevious === 0) {
     console.log('[reencrypt] on-previous=0 — safe to remove BROKER_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS.')
