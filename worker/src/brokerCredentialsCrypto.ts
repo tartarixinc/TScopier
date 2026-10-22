@@ -66,17 +66,20 @@ export function encryptMtPassword(plaintext: string): string | null {
   return `${PREFIX}:${iv.toString('base64')}:${payload.toString('base64')}`
 }
 
-export function decryptMtPassword(stored: string | null | undefined): string | null {
+export type BrokerCredentialKeySource = 'primary' | 'previous'
+
+export interface DecryptedMtPassword {
+  plaintext: string
+  /** Which configured key opened the stored value. */
+  keySource: BrokerCredentialKeySource
+}
+
+function parseStoredValue(stored: string | null | undefined): { iv: Buffer; payload: Buffer } | null {
   const value = String(stored ?? '').trim()
   if (!value) return null
 
   const parts = value.split(':')
   if (parts.length !== 3 || parts[0] !== PREFIX) return null
-
-  const candidates = [resolveEncryptionKeyRaw(), ...resolvePreviousEncryptionKeysRaw()]
-    .map(raw => decodeKeyMaterial(raw))
-    .filter((key): key is Buffer => key != null && key.length === 32)
-  if (candidates.length === 0) return null
 
   let iv: Buffer
   let payload: Buffer
@@ -87,21 +90,61 @@ export function decryptMtPassword(stored: string | null | undefined): string | n
     return null
   }
   if (iv.length !== IV_LEN || payload.length < 16) return null
+  return { iv, payload }
+}
 
+function decryptWithKey(key: Buffer, iv: Buffer, payload: Buffer): string | null {
   const tag = payload.subarray(payload.length - 16)
   const encrypted = payload.subarray(0, payload.length - 16)
+  try {
+    const decipher = createDecipheriv('aes-256-gcm', key, iv)
+    decipher.setAuthTag(tag)
+    const plain = Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8').trim()
+    return plain || null
+  } catch {
+    return null
+  }
+}
+
+function keyCandidates(): Array<{ key: Buffer; source: BrokerCredentialKeySource }> {
+  const entries: Array<{ raw: string; source: BrokerCredentialKeySource }> = []
+  const primary = resolveEncryptionKeyRaw()
+  if (primary) entries.push({ raw: primary, source: 'primary' })
+  for (const raw of resolvePreviousEncryptionKeysRaw()) entries.push({ raw, source: 'previous' })
+
+  const seen = new Set<string>()
+  const candidates: Array<{ key: Buffer; source: BrokerCredentialKeySource }> = []
+  for (const entry of entries) {
+    const key = decodeKeyMaterial(entry.raw)
+    if (!key || key.length !== 32) continue
+    const fingerprint = key.toString('hex')
+    if (seen.has(fingerprint)) continue
+    seen.add(fingerprint)
+    candidates.push({ key, source: entry.source })
+  }
+  return candidates
+}
+
+/**
+ * Decrypt and report which key opened the value. The reencrypt diagnostic uses
+ * this to tell values already on the primary (skip) from values still sealed
+ * with a previous key (rewrite).
+ */
+export function decryptMtPasswordWithSource(
+  stored: string | null | undefined,
+): DecryptedMtPassword | null {
+  const parsed = parseStoredValue(stored)
+  if (!parsed) return null
 
   // Try the primary key first, then any rotation predecessors. A wrong key
   // fails the GCM auth tag and falls through to the next candidate.
-  for (const key of candidates) {
-    try {
-      const decipher = createDecipheriv('aes-256-gcm', key, iv)
-      decipher.setAuthTag(tag)
-      const plain = Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8').trim()
-      return plain || null
-    } catch {
-      /* try next candidate */
-    }
+  for (const candidate of keyCandidates()) {
+    const plaintext = decryptWithKey(candidate.key, parsed.iv, parsed.payload)
+    if (plaintext != null) return { plaintext, keySource: candidate.source }
   }
   return null
+}
+
+export function decryptMtPassword(stored: string | null | undefined): string | null {
+  return decryptMtPasswordWithSource(stored)?.plaintext ?? null
 }
