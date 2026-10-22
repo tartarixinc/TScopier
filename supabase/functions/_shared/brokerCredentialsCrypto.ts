@@ -27,6 +27,18 @@ function resolveEncryptionKeyRaw(env: EnvLike): string {
   );
 }
 
+/**
+ * Rotation support (DECRYPT ONLY): old key(s) accepted while stored values are
+ * re-encrypted under the primary. Comma-separated list in
+ * BROKER_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS (set via Supabase secrets).
+ */
+function resolvePreviousEncryptionKeysRaw(env: EnvLike): string[] {
+  return readEnv(env, "BROKER_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
 function decodeKeyMaterial(raw: string): Uint8Array | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
@@ -54,10 +66,7 @@ function decodeKeyMaterial(raw: string): Uint8Array | null {
   return null; // Will be handled by hash fallback
 }
 
-async function getKey(env: EnvLike): Promise<CryptoKey | null> {
-  const raw = resolveEncryptionKeyRaw(env);
-  if (!raw) return null;
-
+async function importKeyFromRaw(raw: string): Promise<CryptoKey> {
   const material = decodeKeyMaterial(raw);
   if (material) {
     return crypto.subtle.importKey("raw", material.buffer as ArrayBuffer, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
@@ -67,6 +76,22 @@ async function getKey(env: EnvLike): Promise<CryptoKey | null> {
   const encoder = new TextEncoder();
   const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(raw));
   return crypto.subtle.importKey("raw", hashBuffer, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+}
+
+async function getKey(env: EnvLike): Promise<CryptoKey | null> {
+  const raw = resolveEncryptionKeyRaw(env);
+  if (!raw) return null;
+  return importKeyFromRaw(raw);
+}
+
+/** Primary key first, then rotation predecessors (decrypt path only). */
+async function getKeyCandidates(env: EnvLike): Promise<CryptoKey[]> {
+  const raws = [resolveEncryptionKeyRaw(env), ...resolvePreviousEncryptionKeysRaw(env)].filter(Boolean);
+  const keys: CryptoKey[] = [];
+  for (const raw of new Set(raws)) {
+    keys.push(await importKeyFromRaw(raw));
+  }
+  return keys;
 }
 
 export async function encryptMtPassword(
@@ -141,20 +166,25 @@ export async function decryptMtPassword(
   const parts = value.split(":");
   if (parts.length !== 3 || parts[0] !== PREFIX) return null;
 
-  const key = await getKey(env);
-  if (!key) return null;
+  const keys = await getKeyCandidates(env);
+  if (!keys.length) return null;
 
   const iv = Uint8Array.from(atob(parts[1] ?? ""), c => c.charCodeAt(0));
   const payload = Uint8Array.from(atob(parts[2] ?? ""), c => c.charCodeAt(0));
 
   if (iv.length !== IV_LEN || payload.length < 16) return null;
 
-  try {
-    const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, payload);
-    return new TextDecoder().decode(decrypted).trim() || null;
-  } catch {
-    return null;
+  // Try the primary key first, then any rotation predecessors. A wrong key
+  // fails the GCM auth tag and falls through to the next candidate.
+  for (const key of keys) {
+    try {
+      const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, payload);
+      return new TextDecoder().decode(decrypted).trim() || null;
+    } catch {
+      /* try next candidate */
+    }
   }
+  return null;
 }
 
 export function isEncryptionConfigured(env: EnvLike): boolean {
