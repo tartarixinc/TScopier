@@ -266,6 +266,139 @@ describe('runBasketLegModifies wrong-side guard', () => {
   })
 })
 
+describe('runBasketLegModifies invalid buy stop', () => {
+  it('skips a buy stop above entry instead of sending TP-only with SL 0', async () => {
+    const familyLeg: BasketOpenLeg = {
+      id: 'trade-buy',
+      signal_id: 'sig-mod',
+      metaapi_order_id: '9002',
+      opened_at: new Date().toISOString(),
+      lot_size: 0.05,
+      sl: 4135,
+      tp: null,
+      entry_price: 4119,
+      direction: 'buy',
+      symbol: 'XAUUSD',
+    }
+    let modifyCalls = 0
+    const api = {
+      quote: async () => ({ bid: 4070, ask: 4070.2, symbol: 'XAUUSD' }),
+      orderModify: async () => {
+        modifyCalls += 1
+        return {}
+      },
+    }
+    const inserts: unknown[] = []
+    const supabase = {
+      from: () => ({
+        insert: async (row: unknown) => {
+          inserts.push(row)
+          return { error: null }
+        },
+        update: () => ({ eq: async () => ({ error: null }) }),
+      }),
+    }
+
+    const { summary, legErrors } = await runBasketLegModifies({
+      supabase: supabase as never,
+      api: api as never,
+      uuid: 'broker-uuid',
+      symbol: 'XAUUSD',
+      direction: 'buy',
+      baseLot: 0.05,
+      params: { point: 0.01, stopsLevel: 0, freezeLevel: 0, minLot: 0.01, lotStep: 0.01, contractSize: null, digits: 2 },
+      signalId: 'sig-mod',
+      userId: 'user-1',
+      brokerAccountId: 'broker-1',
+      familyTrades: [familyLeg],
+      perLegTargets: [{ stoploss: 4135, takeprofit: 0 }],
+      nImmCwe: 0,
+      overrideTp: null,
+      strictEntryPrefetch: null,
+      openedTickets: new Set([9002]),
+      explicitChannelTargets: true,
+      internalRebalance: true,
+    })
+
+    assert.equal(modifyCalls, 0, 'invalid stop must not become a TP-only modify')
+    assert.equal(summary.skippedUnfixable, 1)
+    assert.equal(summary.modified, 0)
+    assert.equal(summary.failed, 0)
+    assert.equal(legErrors.length, 0)
+    const skipped = inserts.find(
+      (row) => (row as { status?: string }).status === 'skipped',
+    ) as { request_payload?: { skip_reason?: string } } | undefined
+    assert.equal(skipped?.request_payload?.skip_reason, 'wrong_side_sl')
+  })
+
+  it('skips a too-close buy stop instead of falling through to a TP-only modify', async () => {
+    // SL sits on the correct side of market but within the strip min-distance,
+    // so it is dropped as too_close (slWrongSide=false). The surviving TP must
+    // NOT be sent as a TP-only modify — that would clear the stop to 0.
+    const familyLeg: BasketOpenLeg = {
+      id: 'trade-close',
+      signal_id: 'sig-mod',
+      metaapi_order_id: '9003',
+      opened_at: new Date().toISOString(),
+      lot_size: 0.05,
+      sl: null, // no existing stop to fall back to
+      tp: null,
+      entry_price: 4119,
+      direction: 'buy',
+      symbol: 'XAUUSD',
+    }
+    let modifyCalls = 0
+    const api = {
+      quote: async () => ({ bid: 4070, ask: 4070.2, symbol: 'XAUUSD' }),
+      orderModify: async () => {
+        modifyCalls += 1
+        return {}
+      },
+    }
+    const inserts: unknown[] = []
+    const supabase = {
+      from: () => ({
+        insert: async (row: unknown) => {
+          inserts.push(row)
+          return { error: null }
+        },
+        update: () => ({ eq: async () => ({ error: null }) }),
+      }),
+    }
+
+    const { summary, legErrors } = await runBasketLegModifies({
+      supabase: supabase as never,
+      api: api as never,
+      uuid: 'broker-uuid',
+      symbol: 'XAUUSD',
+      direction: 'buy',
+      baseLot: 0.05,
+      params: { point: 0.01, stopsLevel: 0, freezeLevel: 0, minLot: 0.01, lotStep: 0.01, contractSize: null, digits: 2 },
+      signalId: 'sig-mod',
+      userId: 'user-1',
+      brokerAccountId: 'broker-1',
+      familyTrades: [familyLeg],
+      perLegTargets: [{ stoploss: 4069.99, takeprofit: 4116 }], // SL 0.01 under bid (too close), TP valid
+      nImmCwe: 0,
+      overrideTp: null,
+      strictEntryPrefetch: null,
+      openedTickets: new Set([9003]),
+      explicitChannelTargets: true,
+      internalRebalance: true,
+    })
+
+    assert.equal(modifyCalls, 0, 'too-close stop must not become a TP-only modify')
+    assert.equal(summary.skippedUnfixable, 1)
+    assert.equal(summary.modified, 0)
+    assert.equal(summary.failed, 0)
+    assert.equal(legErrors.length, 0)
+    const skipped = inserts.find(
+      (row) => (row as { status?: string }).status === 'skipped',
+    ) as { request_payload?: { skip_reason?: string } } | undefined
+    assert.equal(skipped?.request_payload?.skip_reason, 'sl_suppressed')
+  })
+})
+
 describe('runBasketLegModifies modify outcome observability counters', () => {
   const familyLeg = (ticket = 9001): BasketOpenLeg => ({
     id: `trade-${ticket}`,

@@ -151,6 +151,26 @@ export async function modifyLegSlTpWithFallback(
         }
       } else slErr = m2
     }
+    // Never fall through to a TP-only modify when a requested SL could not be
+    // applied. A TP-only OrderModify omits stopLoss, and MTAPI treats an
+    // omitted stopLoss as "clear the stop to 0" (docs/mtapi-conformance.md).
+    // The split fallback exists to protect the stop, not to trade it away: the
+    // SL-only retry already failed, so the leg must stay untouched and the
+    // failure must reach the caller/reconcile path rather than landing a
+    // target on a now-naked position.
+    if (!slApplied) {
+      return {
+        ok: false,
+        slApplied: false,
+        tpApplied: false,
+        appliedSl: 0,
+        appliedTp: 0,
+        mode: 'split',
+        result: slResult,
+        error: slErr ?? msg,
+        ...(positionGone ? { positionGone: true } : {}),
+      }
+    }
     // TP best-effort: try the requested TP, then (if price passed it) the selected
     // target and finally the deepest ladder TP so the leg still carries a profit
     // target rather than none.
