@@ -58,7 +58,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const RESEND_FROM = Deno.env.get("ALERT_RESEND_FROM") || "TScopier <alerts@tscopier.ai>";
-const ADMIN_ALERTS_URL = (Deno.env.get("ADMIN_ALERTS_URL") || "https://app.tscopier.ai/monitoring/alerts").replace(/\/$/, "");
+const ADMIN_ALERTS_URL = (Deno.env.get("ADMIN_ALERTS_URL") || "http://panel.tscopier.cloud/monitoring/alerts").replace(/\/$/, "");
 
 const EMAIL_BATCH_LIMIT = 25;
 const EMAIL_MAX_ATTEMPTS = 5; // recovery (resolved) emails only; firing retries are uncapped

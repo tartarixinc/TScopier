@@ -82,7 +82,11 @@ Deno.serve(async (req: Request) => {
   if (!row) {
     await supabase
       .from("subscriptions")
-      .update({ status: "canceled", updated_at: new Date().toISOString() })
+      .update({
+        status: "canceled",
+        canceled_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
       .eq("user_id", userId);
     await revokeCopierAccessOnSubscriptionEnd(supabase, userId);
     return Response.json(
