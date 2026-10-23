@@ -93,6 +93,29 @@ describe('modifyLegSlTpWithFallback', () => {
     assert.equal(out.ok, false)
     assert.equal(out.slApplied, false)
     assert.ok(out.error)
+    // Regression: a TP-only OrderModify omits stopLoss, which MTAPI clears to 0.
+    // When the requested SL cannot be applied we must NOT land the TP and strip
+    // the stop — the combined + SL-only retries are the only calls allowed.
+    assert.equal(api.calls.length, 2, 'combined + SL-only, no TP-only fallback')
+    assert.ok(
+      api.calls.every(c => c.stoploss != null),
+      'no TP-only modify was sent (every call carries the SL)',
+    )
+  })
+
+  it('never issues a TP-only modify when the SL retry fails, even if the TP would succeed', async () => {
+    // Combined rejected (invalid stops), SL-only rejected, but a bare TP-only
+    // call would be accepted by the broker. The old split fallback would send it
+    // and clear the stop to 0. The fix must leave the leg untouched instead.
+    const api = mockApi(call =>
+      call.stoploss != null ? 'invalid' : 'ok', // TP-only would "succeed"
+    )
+    const out = await modifyLegSlTpWithFallback(api, 'u', 111, 4065, 4083)
+    assert.equal(out.ok, false, 'overall failure — nothing was applied')
+    assert.equal(out.slApplied, false)
+    assert.equal(out.tpApplied, false, 'TP must NOT land when the SL failed')
+    assert.equal(api.calls.length, 2, 'combined + SL-only only')
+    assert.equal(api.calls[1]!.takeprofit, undefined, 'SL-only retry carries no TP')
   })
 
   it('does NOT split on a timeout (returns the error for transient handling)', async () => {

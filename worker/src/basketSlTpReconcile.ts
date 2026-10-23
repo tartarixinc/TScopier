@@ -553,6 +553,25 @@ export async function runBasketLegModifies(args: {
     if (stripped.stripped.length) {
       stoploss = stripped.stoploss
       takeprofit = stripped.takeprofit
+      // A requested stop that cannot exist for this side must not be silently
+      // turned into a TP-only modify. That was how a buy basket ended up with
+      // SL 0 while the DB still held the rejected channel level.
+      if (stripped.slWrongSide && target.stoploss > 0) {
+        await logLegModify({
+          userId,
+          signalId,
+          brokerAccountId,
+          status: 'skipped',
+          tradeId: tr.id,
+          ticket,
+          legIndex: i + 1,
+          brokerSymbol: tr.symbol,
+          targetSl: target.stoploss,
+          targetTp: target.takeprofit,
+          skipReason: 'wrong_side_sl',
+        })
+        return { ...noopOutcome(), skippedUnfixable: 1 }
+      }
       if (stoploss <= 0 && takeprofit <= 0) {
         await logLegModify({
           userId,
@@ -632,6 +651,22 @@ export async function runBasketLegModifies(args: {
     if (postClampStripped.stripped.length) {
       modSl = postClampStripped.stoploss
       modTp = postClampStripped.takeprofit
+      if (postClampStripped.slWrongSide && target.stoploss > 0) {
+        await logLegModify({
+          userId,
+          signalId,
+          brokerAccountId,
+          status: 'skipped',
+          tradeId: tr.id,
+          ticket,
+          legIndex: i + 1,
+          brokerSymbol: tr.symbol,
+          targetSl: target.stoploss,
+          targetTp: target.takeprofit,
+          skipReason: 'wrong_side_sl',
+        })
+        return { ...noopOutcome(), skippedUnfixable: 1 }
+      }
       if (modSl <= 0 && modTp <= 0) {
         await logLegModify({
           userId,
@@ -650,6 +685,27 @@ export async function runBasketLegModifies(args: {
       }
     }
 
+    // A requested SL that could not be applied (wrong-side or stripped as too
+    // close to market) must never fall through to a TP-only modify: omitting
+    // stopLoss clears the broker stop to 0 (MTAPI). Leave the leg untouched so
+    // the failure reaches the reconcile/monitor path instead.
+    if (target.stoploss > 0 && modSl <= 0) {
+      await logLegModify({
+        userId,
+        signalId,
+        brokerAccountId,
+        status: 'skipped',
+        tradeId: tr.id,
+        ticket,
+        legIndex: i + 1,
+        brokerSymbol: tr.symbol,
+        targetSl: target.stoploss,
+        targetTp: target.takeprofit,
+        skipReason: 'sl_suppressed',
+      })
+      return { ...noopOutcome(), skippedUnfixable: 1 }
+    }
+
     try {
       // SL-first with split fallback: an invalid/late TP must never block the
       // protective SL (avoids legs left fully naked after an "Invalid stops").
@@ -663,7 +719,7 @@ export async function runBasketLegModifies(args: {
         deepestTp,
         ...(chosenTp > 0 ? { tpFallbacks: [chosenTp] } : {}),
       })
-      if (!safe.ok || (modSl > 0 && !safe.slApplied)) {
+      if (!safe.ok || (target.stoploss > 0 && !safe.slApplied)) {
         const failMsg = safe.error ?? 'OrderModify failed'
         if (isBenignOrderModifyError(failMsg)) {
           await logLegModify({

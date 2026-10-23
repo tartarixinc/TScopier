@@ -84,14 +84,27 @@ function normSymbolKey(sym: string): string {
   return String(sym ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')
 }
 
-/** Bucket open legs by compatible broker symbol. */
+function normDirection(direction: string): 'buy' | 'sell' {
+  return String(direction ?? '').toLowerCase().includes('sell') ? 'sell' : 'buy'
+}
+
+/**
+ * Bucket open legs by compatible broker symbol **and direction**.
+ *
+ * Grouping by symbol alone merged a buy basket and a sell basket on the same
+ * instrument. A stop or target valid for one side was then evaluated against a
+ * mixed bucket, rejected as implausible, and the fallback applied it to every
+ * leg on the symbol — including the side where it could never exist.
+ */
 function groupTradesBySymbolBucket(trades: MgmtTradeRow[]): Map<string, MgmtTradeRow[]> {
   const buckets = new Map<string, MgmtTradeRow[]>()
   for (const tr of trades) {
-    const key = normSymbolKey(tr.symbol)
+    const dir = normDirection(tr.direction)
+    const key = `${normSymbolKey(tr.symbol)}|${dir}`
     let hit: string | null = null
     for (const existing of buckets.keys()) {
-      if (symbolsCompatibleForBasket(existing, tr.symbol)) {
+      const [existingSym, existingDir] = existing.split('|')
+      if (existingDir === dir && symbolsCompatibleForBasket(existingSym ?? '', tr.symbol)) {
         hit = existing
         break
       }
