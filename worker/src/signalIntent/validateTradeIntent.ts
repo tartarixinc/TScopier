@@ -33,10 +33,13 @@ function priceAppearsInSource(value: number, sourceTokens: Set<string>): boolean
 
 function validatePricesFromSource(intent: TradeIntent, rawMessage: string): string | null {
   const tokens = sourcePriceTokens(rawMessage)
-  if (!tokens.size) return null
 
+  // A message without a single number cannot name an absolute price. This is the
+  // common "SL TO BE" / "take partials" case: the model sometimes fills in the
+  // stop it remembers from the open trade, which would move a breakeven stop
+  // back to the original loss level. Reject every price for such messages.
   const check = (v: number | null | undefined): boolean =>
-    v == null || v <= 0 || priceAppearsInSource(v, tokens)
+    v == null || v <= 0 || (tokens.size > 0 && priceAppearsInSource(v, tokens))
 
   if (!check(intent.sl)) return 'invented_sl'
   for (const e of intent.entry) {
