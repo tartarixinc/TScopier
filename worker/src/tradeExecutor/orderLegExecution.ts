@@ -12,10 +12,10 @@ import {
   resolveAutoBeTpHitTriggerPrice,
 } from '../autoManagement'
 import { stripInvalidStopsForSide } from '../channelActiveTradeParams'
-import { isInvalidStopsError } from '../orderModifySafe'
 import {
   BROKER_SYMBOL_TRADE_DISABLED,
   humanizeOrderSendError,
+  isInvalidStopsMessage,
   tradeFailureReasonFromBrokerMessage,
 } from '../brokerTradeError'
 import {
@@ -251,7 +251,6 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
       setPipelineTimestamp(signal.pipeline_ts, 'broker_request_started_at', t0)
     }
 
-    let stopsFallback = false
     let result: NormalizedFill | null = null
     let lastAttemptError: string
     let correlation = buildPipelineCorrelation({
@@ -281,7 +280,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
         // no broker can apply it, and we will not move the stop or open naked.
         if (wrongSideSl) {
           throw new Error(
-            `Invalid stops: signal stop loss ${plannedSlForSide} is on the wrong side of the live price ${refPx} for ${args.operation}`,
+            `Signal stop loss ${plannedSlForSide} is on the wrong side of the live price ${refPx} for ${args.operation}; trade not opened`,
           )
         }
         const attemptNo = attempt + 1
@@ -403,19 +402,17 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
         break
       } catch (err) {
         setPipelineTimestamp(signal.pipeline_ts ?? (signal.pipeline_ts = {}), 'broker_response_received_at', Date.now())
-        lastAttemptError = humanizeOrderSendError(
-          err instanceof Error ? err.message : String(err),
-          sendArgs.symbol,
-        )
+        const rawAttemptError = err instanceof Error ? err.message : String(err)
+        lastAttemptError = humanizeOrderSendError(rawAttemptError, sendArgs.symbol)
         const hasStops = (Number(sendArgs.stoploss) || 0) > 0 || (Number(sendArgs.takeprofit) || 0) > 0
-        if (attempt === 0 && isInvalidStopsError(lastAttemptError) && hasStops && !wrongSideSl) {
+        if (isInvalidStopsMessage(rawAttemptError) && hasStops && !wrongSideSl) {
+          // Never resend without the stops: that opens a naked position the user
+          // did not ask for. Fail the copy and say why.
           console.warn(
-            `[tradeExecutor] retry without stops signal=${signal.id} broker=${broker.id} leg=${leg.idx + 1}/${totalCount}`
+            `[tradeExecutor] broker rejected stops; copy failed without opening naked`
+            + ` signal=${signal.id} broker=${broker.id} leg=${leg.idx + 1}/${totalCount}`
             + ` reason="${lastAttemptError}" (sl=${sendArgs.stoploss} tp=${sendArgs.takeprofit})`,
           )
-          sendArgs = { ...sendArgs, stoploss: 0, takeprofit: 0 }
-          stopsFallback = true
-          continue
         }
         lastSendError = lastAttemptError
         if (isBrokerDisconnectedMessage(lastAttemptError) && !isMtBridgeGlitchMessage(lastAttemptError)) {
@@ -510,7 +507,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
             },
           })
         } else {
-          const reasonCode = classifyBrokerFailureReason(lastAttemptError)
+          const reasonCode = classifyBrokerFailureReason(rawAttemptError)
           captureBusinessIssue({
             category: 'trade',
             event: reasonCode === 'INSUFFICIENT_MARGIN'
@@ -546,7 +543,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
             },
           })
         }
-        const tradeFailure = tradeFailureReasonFromBrokerMessage(lastAttemptError, {
+        const tradeFailure = tradeFailureReasonFromBrokerMessage(rawAttemptError, {
           requestedSymbol,
           brokerSymbol: sendArgs.symbol,
           operation: sendArgs.operation,
@@ -610,18 +607,20 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
         leg: leg.idx + 1,
         total: totalCount,
         latency_ms: latencyMs,
-        stops_fallback: stopsFallback || undefined,
       },
     })
     console.log(
       `[tradeExecutor] OrderSend ok signal=${signal.id} broker=${broker.id} ticket=${result.ticket} leg=${leg.idx + 1}/${totalCount}`
-      + ` price=${sendArgs.price ?? 0} ${latencyMs}ms v2=${useV2}${stopsFallback ? ' stops_fallback' : ''}`,
+      + ` price=${sendArgs.price ?? 0} ${latencyMs}ms v2=${useV2}`,
     )
 
     const isBuy = !sendArgs.operation.toLowerCase().includes('sell')
     const entryPx = result.openPrice ?? sendArgs.price ?? null
-    const openSl = stopsFallback ? (plannedSl > 0 ? plannedSl : null) : (result.stopLoss ?? sendArgs.stoploss ?? null)
-    const openTp = stopsFallback ? (plannedTp > 0 ? plannedTp : null) : (result.takeProfit ?? sendArgs.takeprofit ?? null)
+    // The broker either accepts the order with its stops or rejects the whole
+    // order, so the requested stops are broker-verified when the send succeeds.
+    // Prefer the values the broker echoes back, then the accepted request.
+    const openSl = Number(result.stopLoss) > 0 ? Number(result.stopLoss) : (Number(sendArgs.stoploss) > 0 ? Number(sendArgs.stoploss) : null)
+    const openTp = Number(result.takeProfit) > 0 ? Number(result.takeProfit) : (Number(sendArgs.takeprofit) > 0 ? Number(sendArgs.takeprofit) : null)
     const trailCols = trailingTradeRowSnapshot(
       manual,
       entryPx,
@@ -781,7 +780,6 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
         request_payload: {
           ...sendArgs,
           ...orderLogContext,
-          ...(stopsFallback ? { stops_fallback: true } : {}),
         } as unknown as Record<string, unknown>,
         response_payload: {
           ticket: result.ticket,

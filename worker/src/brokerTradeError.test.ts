@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  BROKER_REJECTED_STOPS,
   BROKER_SYMBOL_NOT_FOUND,
   BROKER_SYMBOL_TRADE_DISABLED,
   SIGNAL_MISSING_REQUIRED_SL,
@@ -136,6 +137,28 @@ describe('tradeFailureReasonFromBrokerMessage', () => {
     )
   })
 
+  it('maps a rejected stop loss to a user-facing reason', () => {
+    const reason = tradeFailureReasonFromBrokerMessage(
+      'Invalid stops',
+      { requestedSymbol: 'XAUUSD' },
+    )
+    assert.equal(reason?.reasonCode, BROKER_REJECTED_STOPS)
+    assert.equal(reason?.category, 'broker')
+    assert.equal(reason?.userActionRequired, true)
+    assert.match(reason?.explanation ?? '', /did not open the position without a stop/i)
+  })
+
+  it('does not confuse a stop rejection with a bad symbol or request', () => {
+    assert.equal(
+      tradeFailureReasonFromBrokerMessage('Invalid stops')?.reasonCode,
+      BROKER_REJECTED_STOPS,
+    )
+    assert.notEqual(
+      tradeFailureReasonFromBrokerMessage('Invalid stops')?.reasonCode,
+      'INVALID_REQUEST',
+    )
+  })
+
   it('reports trading-disabled as disabled, not as a missing symbol', () => {
     assert.equal(
       tradeFailureReasonFromBrokerMessage(
@@ -195,6 +218,12 @@ describe('humanizeOrderSendError', () => {
 
   it('normalizes SymbolSelect failed', () => {
     assert.equal(humanizeOrderSendError('SymbolSelect failed', 'gold#'), 'Symbol not found: GOLD#')
+  })
+
+  it('explains a broker stop rejection in plain words', () => {
+    const msg = humanizeOrderSendError('Invalid stops', 'XAUUSD')
+    assert.match(msg, /rejected the stop loss for XAUUSD/i)
+    assert.match(msg, /too close to the current price/i)
   })
 
   it('maps "Invalid request" to a descriptive message', () => {

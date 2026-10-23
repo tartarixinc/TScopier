@@ -16,6 +16,7 @@ import {
   type OrderResult,
   type OrderSendArgs,
 } from '../fxsocketClient'
+import { isInvalidStopsMessage } from '../brokerTradeError'
 import { clampOrderStops, roundLot } from './helpers'
 import type { PreparedEntry } from './entryPrepare'
 
@@ -32,6 +33,7 @@ export type LayeringBrokerPendingReason =
   | 'broker_pending_min_distance'
   | 'broker_pending_quote_unavailable'
   | 'broker_pending_send_failed'
+  | 'broker_pending_rejected_stops'
   | 'broker_pending_activation_failed'
   | 'broker_pending_blocked'
   | 'broker_pending_claim_lost'
@@ -238,19 +240,18 @@ async function placeOrAdoptPending(args: {
     result = await prep.api.orderSend(prep.uuid, clamped.args)
   } catch (err) {
     sendErrMsg = err instanceof Error ? err.message : String(err)
-    const hasStops = (Number(clamped.args.stoploss) || 0) > 0
-      || (Number(clamped.args.takeprofit) || 0) > 0
-    if (/invalid\s+stops/i.test(sendErrMsg) && hasStops) {
-      try {
-        result = await prep.api.orderSend(prep.uuid, { ...clamped.args, stoploss: 0, takeprofit: 0 })
-        sendErrMsg = null
-      } catch (nakedErr) {
-        sendErrMsg = nakedErr instanceof Error ? nakedErr.message : String(nakedErr)
-      }
-    }
   }
   if (!result) {
     const msg = sendErrMsg ?? 'broker_pending_send_failed'
+    if (isInvalidStopsMessage(msg)) {
+      // The broker refused the protective stop. Do not resend without it: fail
+      // the pending order and surface the reason.
+      console.warn(
+        `[tradeExecutor] broker pending rejected stops signal=${args.prep.signal.id}`
+        + ` symbol=${prep.symbol}: ${msg}`,
+      )
+      return { ok: false, reason: 'broker_pending_rejected_stops' }
+    }
     if (isOrderOpTimedOutMessage(msg)) {
       const reconciled = await reconcileByReference(prep, args.reference).catch(() => null)
       if (reconciled && brokerOrderMatchesLayer({
