@@ -18,6 +18,7 @@ import { isPostgresDuplicateKeyError } from '../rangePendingLegPersist'
 import { brokerLimitPriceKeysFromOpenedOrders } from './brokerPendingOpenedDedupe'
 import { captureDeferredBusinessFailure } from '../observability/deferredBusinessEvents'
 import { writeExecutionLog } from '../observability/executionLog'
+import { humanizeOrderSendError, isInvalidStopsMessage } from '../brokerTradeError'
 /** In-process single-flight for broker ladder OrderSends (signal+broker+symbol). */
 const brokerRangeMaterializeInflight = new Set<string>()
 
@@ -431,7 +432,7 @@ async function materializeBrokerRangePendingLegsUnlocked(
       }
 
       // Prefer planned SL/TP on the resting limit so the chart shows protection.
-      // Invalid-stops fallback still places naked; monitor/rebalance heals later.
+      // A stop rejection fails the leg; a price rejection is remapped to a deeper rung.
       const plannedSl = v.stoploss != null && Number(v.stoploss) > 0 ? Number(v.stoploss) : 0
       const plannedTp = v.cweClosePrice != null
         ? 0
@@ -460,12 +461,7 @@ async function materializeBrokerRangePendingLegsUnlocked(
           result = await api.orderSend(uuid, clamped.args)
         } catch (sendErr) {
           const msg = sendErr instanceof Error ? sendErr.message : String(sendErr)
-          const isInvalidStops = /invalid\s+stops/i.test(msg)
-          const hasStops = (Number(clamped.args.stoploss) || 0) > 0
-            || (Number(clamped.args.takeprofit) || 0) > 0
-          if (isInvalidStops && hasStops) {
-            result = await api.orderSend(uuid, { ...clamped.args, stoploss: 0, takeprofit: 0 })
-          } else if (isBrokerPendingLimitPriceRejectMessage(msg)) {
+          if (isBrokerPendingLimitPriceRejectMessage(msg)) {
             exhaustedInvalidSteps.set(pick.stepIdx, { price: limitPx, reason: msg })
             if (reserve.kind === 'owned') {
               await ctx.supabase
@@ -483,6 +479,22 @@ async function materializeBrokerRangePendingLegsUnlocked(
               + ` step=${pick.stepIdx} price=${limitPx}; trying next deeper rung: ${msg}`,
             )
             continue
+          } else if (isInvalidStopsMessage(msg)) {
+            // Broker refused the stop. Never place the pending order without it.
+            console.warn(
+              `[tradeExecutor] broker range pending rejected stops signal=${signal.id}`
+              + ` step=${pick.stepIdx} op=${pendingOp} price=${limitPx}: ${msg}`,
+            )
+            if (reserve.kind === 'owned') {
+              await ctx.supabase
+                .from('range_pending_legs')
+                .update({
+                  status: 'cancelled',
+                  error_message: `skipped_invalid_stops:${humanizeOrderSendError(msg, symbol)}`,
+                })
+                .eq('id', reserve.id)
+            }
+            break
           } else {
             console.warn(
               `[tradeExecutor] broker range pending rejected signal=${signal.id} step=${pick.stepIdx} op=${pendingOp} price=${limitPx}: ${msg}`,
