@@ -48,9 +48,9 @@ export function CopierPauseToggle({ className }: CopierPauseToggleProps) {
   const setPaused = useCallback(async (next: boolean) => {
     if (saving || lockedStopped) return
     setSaving(true)
-    patchProfile({ copier_paused: next })
+    patchProfile({ copier_paused: next, copier_pause_reason: next ? 'user_paused' : null })
     try {
-      await persistProfile({ copier_paused: next })
+      await persistProfile({ copier_paused: next, copier_pause_reason: next ? 'user_paused' : null })
     } catch {
       await refreshProfile()
     } finally {

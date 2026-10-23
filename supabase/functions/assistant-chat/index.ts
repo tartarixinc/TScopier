@@ -1733,7 +1733,11 @@ async function toolSetCopierPaused(
   }
   const { error } = await supabase
     .from("user_profiles")
-    .update({ copier_paused: paused, updated_at: new Date().toISOString() })
+    .update({
+      copier_paused: paused,
+      copier_pause_reason: paused ? "user_paused" : null,
+      updated_at: new Date().toISOString(),
+    })
     .eq("user_id", userId);
   if (error) return { content: JSON.stringify({ error: error.message }) };
   return { content: JSON.stringify({ ok: true, copier_paused: paused }) };

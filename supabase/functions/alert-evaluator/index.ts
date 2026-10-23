@@ -69,7 +69,7 @@ const SERVICE_ROLE_KEY =
   Deno.env.get("ALERT_EVALUATOR_SERVICE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const RESEND_FROM = Deno.env.get("ALERT_RESEND_FROM") || "TScopier <alerts@tscopier.ai>";
-const ADMIN_ALERTS_URL = (Deno.env.get("ADMIN_ALERTS_URL") || "https://app.tscopier.ai/monitoring/alerts").replace(/\/$/, "");
+const ADMIN_ALERTS_URL = (Deno.env.get("ADMIN_ALERTS_URL") || "http://panel.tscopier.cloud/monitoring/alerts").replace(/\/$/, "");
 // Emails must never look like production when they come from staging (or the
 // other way round). Derive the label from the project ref; ALERT_ENV overrides.
 const ALERT_ENV =
