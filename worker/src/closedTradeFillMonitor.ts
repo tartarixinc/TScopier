@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { FxsocketBrokerClient } from './fxsocketClient'
-import { apiForFxsocketAccount, brokerSessionId, loadPlatformByFxsocketId, type PlatformByFxsocketId } from './mtApiByAccount'
+import { mtPlatformFrom, type FxsocketBrokerClient } from './fxsocketClient'
+import { brokerSessionId } from './mtApiByAccount'
+import { apiForBrokerAccount, type ResolvedBrokerProvider } from './providerResolver'
+import { authorityFromBrokerRow } from './brokerWriteAuthority'
 import {
   applyShardToQuery,
   hasWorkOnShard,
@@ -29,6 +31,32 @@ type BrokerRow = {
   mtapi_session_id?: string | null
   fxsocket_account_id?: string | null
   metaapi_account_id?: string | null
+  platform?: string | null
+  writer_epoch?: number | null
+  provider_transition_state?: string | null
+}
+
+/**
+ * Resolve the broker client straight from the broker row this tick already
+ * loaded.
+ *
+ * The monitor used to resolve through `apiForFxsocketAccount(platformByUuid,
+ * uuid)`, which reads `metadata?.provider` from a session-keyed map. When that
+ * map missed the session the provider defaulted to `'fxsocket'`, which is not
+ * configured in production (every broker account here is `mtapi`), so the
+ * resolver returned null and the monitor skipped the whole broker **without
+ * logging anything** — the standing `filled=0 skipped=50` stall. The row is
+ * the authoritative source for provider, platform and write authority, so it
+ * is used directly and a miss can no longer silently change which provider is
+ * selected.
+ */
+export function apiForBrokerRow(
+  broker: BrokerRow,
+  sessionId: string,
+): ResolvedBrokerProvider | null {
+  const api = apiForBrokerAccount(broker.provider, sessionId, authorityFromBrokerRow(broker))
+  if (api) api.seedPlatformCache(sessionId, mtPlatformFrom(broker.platform))
+  return api
 }
 
 // Env names are kept as CLOSED_TRADE_CLOSE_PRICE_* for deployment
@@ -65,10 +93,56 @@ const FXSOCKET_HISTORY_TIMEOUT_MS = 90_000
  * the attempt ledger, so the loop stops paying for history reads it cannot
  * turn into progress.
  */
+/**
+ * Once-per-reason ledger behind the monitor's skip warnings.
+ *
+ * Three of the monitor's four `skipped +=` sites used to log nothing, which
+ * made a full production stall invisible: it reported `filled=0 skipped=50`
+ * every minute with no explanation. Warn on the transition, stay quiet while
+ * the same reason persists, and warn again if the broker recovers and then
+ * fails anew (or fails with a different reason). Kept as a standalone value
+ * type so the dedupe/re-warn behaviour is testable without a Supabase client.
+ *
+ * Bounded: one set per broker key that has ever skipped, each capped (a key
+ * that keeps producing brand-new reasons — e.g. a rotating session id —
+ * starts over instead of growing forever), and `clear` drops the whole entry
+ * on successful resolution.
+ */
+export class SkipWarnLedger {
+  /** Distinct messages already warned, per key — so a reason that flip-flops
+   *  between two values every tick warns once each, not once per tick. */
+  private readonly warned = new Map<string, Set<string>>()
+  private static readonly MAX_REASONS_PER_KEY = 16
+
+  /** True when this key has not already warned for this exact message. */
+  shouldWarn(key: string, message: string): boolean {
+    let seen = this.warned.get(key)
+    if (!seen) {
+      seen = new Set()
+      this.warned.set(key, seen)
+    } else if (seen.has(message)) {
+      return false
+    }
+    if (seen.size >= SkipWarnLedger.MAX_REASONS_PER_KEY) seen.clear()
+    seen.add(message)
+    return true
+  }
+
+  /** Forget a key so a later failure warns again (recovery, then relapse). */
+  clear(key: string): void {
+    this.warned.delete(key)
+  }
+
+  get size(): number {
+    return this.warned.size
+  }
+}
+
 export class ClosedTradeFillMonitor {
   private loop: MonitorLoopHandle | null = null
   private ticking = false
-  private platformByUuid: PlatformByFxsocketId = new Map()
+  /** Reasons already warned, per broker — see `SkipWarnLedger`. */
+  private readonly skipWarns = new SkipWarnLedger()
   /** Position of the oldest row in the last processed batch (null = start from newest). Compound on (closed_at, id) — see `ClosedFillCursor`. */
   private cursor: ClosedFillCursor | null = null
   /** Rows whose broker history yielded nothing on the last few ticks; they
@@ -103,6 +177,11 @@ export class ClosedTradeFillMonitor {
 
   getLoopHandle(): MonitorLoopHandle | null {
     return this.loop
+  }
+
+  /** Log a broker skip at most once per distinct reason (see `SkipWarnLedger`). */
+  private warnSkip(brokerKey: string, message: string): void {
+    if (this.skipWarns.shouldWarn(brokerKey, message)) console.warn(message)
   }
 
   private hasWork(sb: SupabaseClient): Promise<boolean> {
@@ -191,7 +270,7 @@ export class ClosedTradeFillMonitor {
     const brokerIds = [...byBroker.keys()]
     const { data: brokers, error: brokerErr } = await this.supabase
       .from('broker_accounts')
-      .select('id,provider,mtapi_session_id,fxsocket_account_id,metaapi_account_id')
+      .select('id,provider,mtapi_session_id,fxsocket_account_id,metaapi_account_id,platform,writer_epoch,provider_transition_state')
       .in('id', brokerIds)
     if (brokerErr) {
       console.warn(`[closedTradeFillMonitor] broker load failed: ${brokerErr.message}`)
@@ -200,8 +279,6 @@ export class ClosedTradeFillMonitor {
 
     const brokerRows = (brokers ?? []) as BrokerRow[]
     const responded = new Set(brokerRows.map(b => b.id))
-    const uuids = brokerRows.map(b => brokerSessionId(b)).filter(uuid => uuid.length > 0)
-    this.platformByUuid = await loadPlatformByFxsocketId(this.supabase, uuids)
 
     let filled = 0
     let pending = 0
@@ -214,14 +291,29 @@ export class ClosedTradeFillMonitor {
 
       const uuid = brokerSessionId(broker)
       if (!uuid) {
+        // Previously silent: the whole broker was skipped every tick with no
+        // trace at all, which is what made the stall undiagnosable.
+        this.warnSkip(
+          broker.id,
+          `[closedTradeFillMonitor] skip broker=${broker.id}: no usable session id`
+            + ` (provider=${broker.provider || 'fxsocket'}`
+            + ` mtapi_session_id=${broker.mtapi_session_id ? 'set' : 'empty'}`
+            + ` fxsocket_account_id=${broker.fxsocket_account_id ? 'set' : 'empty'})`,
+        )
         skipped += tradesForBroker.length
         continue
       }
-      const api = apiForFxsocketAccount(this.platformByUuid, uuid)
+      const api = apiForBrokerRow(broker, uuid)
       if (!api) {
+        this.warnSkip(
+          broker.id,
+          `[closedTradeFillMonitor] skip broker=${broker.id}: no broker client for`
+            + ` provider=${broker.provider || 'fxsocket'} session=${uuid.slice(0, 8)}…`,
+        )
         skipped += tradesForBroker.length
         continue
       }
+      this.skipWarns.clear(broker.id)
       const provider = broker.provider == null || broker.provider === '' ? 'fxsocket' : broker.provider
 
       try {
@@ -294,7 +386,14 @@ export class ClosedTradeFillMonitor {
       }
     }
     for (const [brokerId, list] of byBroker) {
-      if (!responded.has(brokerId)) skipped += list.length
+      if (!responded.has(brokerId)) {
+        this.warnSkip(
+          brokerId,
+          `[closedTradeFillMonitor] skip broker=${brokerId}: broker row not returned`
+            + ' by the broker_accounts lookup',
+        )
+        skipped += list.length
+      }
     }
 
     // Gate reasons are logged only when their mix changes: MTAPI echoes open
