@@ -1,6 +1,61 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+@config '../tailwind.config.js';
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so these compatibility styles keep everything rendering as it did with
+  Tailwind CSS v3. Remove them only after adding an explicit border color to
+  every element that relies on the v3 default.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    @apply text-neutral-500;
+  }
+
+  .dark input::placeholder,
+  .dark textarea::placeholder {
+    @apply text-neutral-400;
+  }
+}
+
+/*
+  Tailwind CSS v4 can only `@apply` utilities, so these two component classes
+  are declared with @utility instead. They are also referenced from markup
+  (GlassCard, FeatureShowcasePanel), which @utility still generates.
+*/
+@utility marketing-card {
+  @apply rounded-2xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900;
+}
+
+@utility marketing-grid-pattern {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  opacity: 0.6;
+  background-image:
+    linear-gradient(to right, rgba(148, 163, 184, 0.14) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(148, 163, 184, 0.14) 1px, transparent 1px);
+  background-size: 32px 32px;
+
+  /* Kept inside the utility: a rule left in @layer components would lose to
+     this utility regardless of specificity, silently disabling dark mode. */
+  &:is(html.dark *) {
+    opacity: 0.4;
+    background-image:
+      linear-gradient(to right, rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+  }
+}
 
 * {
   box-sizing: border-box;
@@ -110,10 +165,6 @@ html.app-viewport-lock #root {
 
   .tsc-page-subtext {
     @apply text-neutral-500 dark:text-neutral-400;
-  }
-
-  .marketing-card {
-    @apply rounded-2xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900;
   }
 
   .marketing-card-feature {
@@ -378,24 +429,6 @@ html.app-viewport-lock #root {
 
   .marketing-feature-panel {
     @apply relative overflow-hidden rounded-2xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900;
-  }
-
-  .marketing-grid-pattern {
-    pointer-events: none;
-    position: absolute;
-    inset: 0;
-    opacity: 0.6;
-    background-image:
-      linear-gradient(to right, rgba(148, 163, 184, 0.14) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(148, 163, 184, 0.14) 1px, transparent 1px);
-    background-size: 32px 32px;
-  }
-
-  html.dark .marketing-grid-pattern {
-    opacity: 0.4;
-    background-image:
-      linear-gradient(to right, rgba(148, 163, 184, 0.08) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
   }
 
   .marketing-feature-panel-grid {
