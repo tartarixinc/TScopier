@@ -4,6 +4,7 @@ import http from 'node:http'
 import https from 'node:https'
 import {
   addWorkerBreadcrumb,
+  allowEventRate,
   buildSafePipelineContext,
   captureWorkerError,
   captureWorkerFatalError,
@@ -17,6 +18,7 @@ import {
   isWorkerSentryEnabled,
   isValidSentryDsn,
   removeWorkerProcessSentryHandlersForTests,
+  resetEventRateLimitsForTests,
   resetWorkerSentryForTests,
   safeForSentry,
   setSentryAdapterForTests,
@@ -849,3 +851,86 @@ test('fatal startup failure is captured once by fatal helper', () => {
   assert.equal(mock.capturedExceptions.length, 1)
 })
 
+
+// ---------------------------------------------------------------------------
+// beforeSend event rate limiting (transition-only emission).
+//
+// A chronic state condition is logged every monitor tick; without a limiter
+// each line became its own Sentry event (prod 2026-10-23: ~90% of 213k events
+// were 3 such conditions). allowEventRate lets the first event of a key
+// through a window and drops repeats; 'fatal' is never limited.
+// ---------------------------------------------------------------------------
+
+test('event rate limiter allows the first event and drops a repeat of the same key', () => {
+  resetEventRateLimitsForTests()
+  const event = { level: 'error', fingerprint: ['broker', 'invalid_request'], message: 'order 387155920 refused' }
+  assert.equal(allowEventRate(event), true, 'first event passes')
+  assert.equal(allowEventRate(event), false, 'repeat within the window is dropped')
+})
+
+test('event rate limiter keeps distinct issues (different fingerprints) separate', () => {
+  resetEventRateLimitsForTests()
+  const a = { level: 'error', fingerprint: ['broker', 'invalid_request'], message: 'refused' }
+  const b = { level: 'error', fingerprint: ['broker', 'throttle'], message: 'refused' }
+  assert.equal(allowEventRate(a), true)
+  assert.equal(allowEventRate(b), true, 'different fingerprint is a different issue')
+})
+
+test('event rate limiter collapses ids in the message into one template', () => {
+  resetEventRateLimitsForTests()
+  const first = { level: 'warning', fingerprint: ['sweep'], message: 'Ticket 387155920 not found' }
+  const second = { level: 'warning', fingerprint: ['sweep'], message: 'Ticket 386551578 not found' }
+  assert.equal(allowEventRate(first), true)
+  assert.equal(allowEventRate(second), false, 'same template with a different ticket is a repeat')
+  const different = { level: 'warning', fingerprint: ['sweep'], message: 'OrderHistory timed out' }
+  assert.equal(allowEventRate(different), true, 'a new template passes immediately')
+})
+
+test('event rate limiter never limits fatal events', () => {
+  resetEventRateLimitsForTests()
+  const fatal = { level: 'fatal', fingerprint: ['worker'], message: 'uncaught exception' }
+  assert.equal(allowEventRate(fatal), true)
+  assert.equal(allowEventRate(fatal), true, 'a repeated fatal is still sent')
+})
+
+test('event rate limiter re-allows an event after the window expires', async () => {
+  resetEventRateLimitsForTests()
+  // A tiny window (1ms) configured through the same env path initWorkerSentry
+  // uses, so this exercises the real wiring rather than a private setter.
+  setupMock({
+    SENTRY_ENABLED: 'true',
+    SENTRY_DSN: 'https://public@example.invalid/1',
+    SENTRY_EVENT_RATE_WINDOW_MS: '1',
+  } as NodeJS.ProcessEnv)
+  const event = { level: 'error', fingerprint: ['x'], message: 'repeated condition' }
+  assert.equal(allowEventRate(event), true)
+  assert.equal(allowEventRate(event), false, 'immediately after: still in window')
+  await new Promise(resolve => setTimeout(resolve, 5))
+  assert.equal(allowEventRate(event), true, 'window elapsed: allowed again')
+})
+
+test('an empty rate-limit env value keeps limiting enabled (does not mean zero)', () => {
+  resetEventRateLimitsForTests()
+  setupMock({
+    SENTRY_ENABLED: 'true',
+    SENTRY_DSN: 'https://public@example.invalid/1',
+    SENTRY_EVENT_RATE_WINDOW_MS: '',
+    SENTRY_EVENT_RATE_MAX: '',
+  } as NodeJS.ProcessEnv)
+  const event = { level: 'error', fingerprint: ['y'], message: 'still limited' }
+  assert.equal(allowEventRate(event), true)
+  assert.equal(allowEventRate(event), false, 'empty env must not disable the limiter')
+})
+
+test('event rate limiter stays bounded and usable past its key capacity', () => {
+  resetEventRateLimitsForTests()
+  // 2100 distinct keys exceeds the 2000-key map cap; eviction must not wedge
+  // the limiter, and a brand-new key must still be allowed.
+  for (let i = 0; i < 2100; i += 1) {
+    allowEventRate({ level: 'error', fingerprint: [`k${i}`], message: `unique ${i}` })
+  }
+  assert.equal(
+    allowEventRate({ level: 'error', fingerprint: ['fresh'], message: 'after eviction' }),
+    true,
+  )
+})

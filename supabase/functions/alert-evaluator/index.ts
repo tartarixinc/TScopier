@@ -35,9 +35,9 @@
  *   workers_offline        { }                               // zero leases sustained for window_minutes
  *   trade_workers_offline  { max_stale_minutes: number }      // worker_trade heartbeat
  *   queue_stuck            { max_oldest_minutes: number, max_pending: number }
- *   executions_failing     { max_failed: number }            // windowed
+ *   executions_failing     { max_failed: number }            // windowed; distinct failing signals, order_close_audit excluded
  *   dead_letters_high      { max_open: number }
- *   telegram_gap           { max_not_listening: number }
+ *   telegram_gap           { max_not_listening: number }     // paying subscribers only (active/trialing)
  *   openai_credits_exhausted { grace_seconds: number }
  *
  * OpenAI credits are the one external dependency this evaluator probes
@@ -453,17 +453,54 @@ async function evalQueueStuck(sb: any, rule: RuleRow, nowMs: number): Promise<Ev
   };
 }
 
+/**
+ * Failed executions.
+ *
+ * Three noise corrections, all learned from the 2026-10-23 incident review:
+ *
+ *  1. `order_close_audit` rows are the audit trail of broker close *attempts*
+ *     (the stuck-pending retry loop wrote one every few minutes — 215 in 24h).
+ *     They describe an attempt, not an execution outcome, so they never count.
+ *  2. Distinct failing signals, not raw rows: one chronic failure retried every
+ *     cycle must not look like twenty different failing executions.
+ *  3. A raw-row storm still fires on its own at 3x `max_failed`, so a
+ *     systematic single-account failure (one broker down, every execution for
+ *     it retrying) cannot hide under the distinct count.
+ */
+const EXECUTIONS_FAILING_MAX_ROWS = 5000;
+const EXECUTIONS_FAILING_STORM_MULTIPLIER = 3;
+
+export function countDistinctFailingSignals(rows: Array<{ signal_id?: string | null }>): number {
+  const signals = new Set<string>();
+  for (const row of rows) {
+    const id = String(row.signal_id ?? "").trim();
+    if (id) signals.add(id);
+  }
+  return signals.size;
+}
+
 async function evalExecutionsFailing(sb: any, rule: RuleRow, nowMs: number): Promise<EvalOutcome> {
   const maxFailed = num(rule.threshold.max_failed, 20);
+  const stormCap = maxFailed * EXECUTIONS_FAILING_STORM_MULTIPLIER;
   const since = new Date(nowMs - rule.window_minutes * 60_000).toISOString();
-  const count = await headCount(sb, "trade_execution_logs", q =>
-    q.eq("status", "failed").gte("created_at", since));
-  if (count == null) return { kind: "skip", reason: "trade_execution_logs unreadable" };
+  const { data, error } = await sb
+    .from("trade_execution_logs")
+    .select("signal_id")
+    .eq("status", "failed")
+    .neq("action", "order_close_audit")
+    .gte("created_at", since)
+    .limit(EXECUTIONS_FAILING_MAX_ROWS);
+  if (error) return { kind: "skip", reason: "trade_execution_logs unreadable" };
+  const rows = (data ?? []) as Array<{ signal_id?: string | null }>;
+  const distinct = countDistinctFailingSignals(rows);
+  const rowsFailed = rows.length;
+  const fired = distinct > maxFailed || rowsFailed > stormCap;
   return {
     kind: "ok",
-    fired: count > maxFailed,
-    value: count,
-    message: `${count} failed executions in ${rule.window_minutes}m (max ${maxFailed})`,
+    fired,
+    value: fired ? Math.max(distinct, rowsFailed) : distinct,
+    message: `${distinct} distinct signal(s) with failed executions in ${rule.window_minutes}m`
+      + ` (${rowsFailed} failure rows; limits ${maxFailed} signals / ${stormCap} rows)`,
   };
 }
 
@@ -480,10 +517,42 @@ async function evalDeadLettersHigh(sb: any, rule: RuleRow): Promise<EvalOutcome>
 }
 
 /**
+ * Users whose subscription currently pays for copying.
+ *
+ * The gap alert must measure "customers whose copies stopped", and a linked
+ * Telegram session with an expired/cancelled trial is not one of them. Counting
+ * every session made the rule a permanent false positive (2026-10-23: 177
+ * sessions vs 37 active/trialing subscribers, a reported gap of ~140 against a
+ * real gap of 0). A trialing row only counts while `trial_ends_at` is in the
+ * future — the same rule `planLimits.ts` applies for entitlement.
+ */
+export function payingSubscriberIds(
+  rows: Array<{ user_id: string; status?: string | null; trial_ends_at?: string | null }>,
+  nowMs: number,
+): Set<string> {
+  const out = new Set<string>();
+  for (const row of rows) {
+    const userId = String(row.user_id ?? "").trim();
+    if (!userId) continue;
+    const status = String(row.status ?? "").toLowerCase();
+    if (status === "trialing") {
+      const ends = row.trial_ends_at ? Date.parse(row.trial_ends_at) : NaN;
+      if (Number.isFinite(ends) && ends <= nowMs) continue;
+    }
+    out.add(userId);
+  }
+  return out;
+}
+
+/**
  * Telegram listening gap — mirrors tscopier-admin systemHealth.ts: prefer the
  * copier_listener_health truth table when it has fresh reporting rows, fall
  * back to session leases otherwise, and never count an unreadable health table
  * as an outage.
+ *
+ * Scope: users with an active/trialing subscription. An unreadable
+ * `subscriptions` table falls back to every linked session (over-counting is
+ * the safe direction — a broken read must not hide a real gap).
  */
 async function evalTelegramGap(sb: any, rule: RuleRow, nowMs: number): Promise<EvalOutcome> {
   const maxGap = num(rule.threshold.max_not_listening, 2);
@@ -493,6 +562,24 @@ async function evalTelegramGap(sb: any, rule: RuleRow, nowMs: number): Promise<E
   if (sessionsRes.error) return { kind: "skip", reason: "telegram_sessions unreadable" };
   const linked = new Set<string>((sessionsRes.data ?? []).map((r: any) => r.user_id));
   if (linked.size === 0) return { kind: "ok", fired: false, value: 0, message: "" };
+
+  // Set when the scope was narrowed to paying subscribers (null = all linked).
+  let payingTotal: number | null = null;
+  const subsRes = await sb
+    .from("subscriptions")
+    .select("user_id,status,trial_ends_at")
+    .in("status", ["active", "trialing"]);
+  if (!subsRes.error && Array.isArray(subsRes.data)) {
+    const paying = payingSubscriberIds(subsRes.data as any[], nowMs);
+    if (paying.size > 0) {
+      for (const userId of [...linked]) {
+        if (!paying.has(userId)) linked.delete(userId);
+      }
+      payingTotal = paying.size;
+    }
+    // paying.size === 0: keep every linked session — no entitled user must
+    // silently fall out of the gap calculation.
+  }
 
   const leasesRes = await sb.from("worker_session_leases").select("user_id").gte("expires_at", nowIso);
   const leaseListening = new Set<string>(
@@ -523,11 +610,15 @@ async function evalTelegramGap(sb: any, rule: RuleRow, nowMs: number): Promise<E
     if (useHealth ? healthLive.has(userId) : leaseListening.has(userId)) listening.add(userId);
   }
   const gap = linked.size - listening.size;
+  const message = payingTotal != null
+    ? `${gap} of ${linked.size} paying-subscriber session(s) not listening`
+      + ` (${payingTotal} paying subscribers total; max ${maxGap})`
+    : `${gap} of ${linked.size} linked session(s) not listening (max ${maxGap})`;
   return {
     kind: "ok",
     fired: gap > maxGap,
     value: gap,
-    message: `${gap} of ${linked.size} linked Telegram accounts not listening (max ${maxGap})`,
+    message,
   };
 }
 

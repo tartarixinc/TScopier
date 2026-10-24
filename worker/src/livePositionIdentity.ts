@@ -297,12 +297,41 @@ export async function persistCanonicalPositionTicket(
   // explicit order→position relationship) may be frozen into the row. An
   // attribute-only match stays transient and is not written anywhere.
   if (resolution.matchedBy === 'attributes' && !opts.allowAttributeMatch) return false
-  if (!resolution.replacement) return true
 
-  const stored = String(resolution.storedTicket)
   const capturedRaw = typeof trade.broker_position_ticket === 'string'
     ? trade.broker_position_ticket.trim()
     : ''
+
+  if (!resolution.replacement) {
+    // No new ticket to record — but the position column may still be empty.
+    // On MT4 the send ticket IS the position ticket, so `replacement` is false
+    // for every row and the NULL column was never filled: prod 2026-10-23 had
+    // 13 open GOLD trades on MT4 • 79261348 that the resolver matched by ticket
+    // every tick yet never healed. A certain match may always backfill the
+    // column; a guess still never may.
+    if (capturedRaw !== '' || resolution.matchedBy === 'attributes') return true
+    const { error } = await supabase
+      .from('trades')
+      .update({ broker_position_ticket: String(resolution.ticket) })
+      .eq('id', trade.id)
+      .eq('status', 'open')
+      .is('broker_position_ticket', null)
+      .select('id')
+      .maybeSingle()
+    if (error && error.code !== 'PGRST204') {
+      console.warn(`[livePositionIdentity] ticket backfill failed trade=${trade.id}: ${error.message}`)
+    } else if (error && error.code === 'PGRST204') {
+      // Same loud hint as the replacement path: an unmigrated environment
+      // (column missing) must be visible, not a silent no-op every tick.
+      console.warn(
+        '[livePositionIdentity] broker_position_ticket column missing — backfill skipped'
+        + ' (apply supabase/migrations/20261006140000_trades_broker_position_ticket.sql)',
+      )
+    }
+    return true
+  }
+
+  const stored = String(resolution.storedTicket)
   const sourceColumn = Number(capturedRaw) === resolution.storedTicket && capturedRaw !== ''
     ? 'broker_position_ticket'
     : 'metaapi_order_id'

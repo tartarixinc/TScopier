@@ -358,7 +358,10 @@ export async function reconcileOpenTradesForBroker(
   for (const trade of openTrades) {
     const resolution = resolveCanonicalOpenPosition({ trade, openedOrders: firstSnapshot })
     if (resolution.status === 'resolved') {
-      if (resolution.replacement && resolution.matchedBy !== 'attributes') {
+      // Certain match: persist the position ticket — a replacement (MT5 order →
+      // position) or a NULL-column backfill (MT4, where the two tickets agree
+      // and the column was never filled).
+      if (resolution.matchedBy !== 'attributes') {
         const persisted = await persistCanonicalPositionTicket(supabase, trade, resolution)
         if (!persisted) {
           console.warn(`[openTradeReconcile] replacement ticket CAS lost trade=${trade.id}; deferring`)
@@ -414,7 +417,7 @@ export async function reconcileOpenTradesForBroker(
   for (const trade of unresolved) {
     const resolution = resolveCanonicalOpenPosition({ trade, openedOrders: secondSnapshot })
     if (resolution.status === 'resolved') {
-      if (resolution.replacement && resolution.matchedBy !== 'attributes') {
+      if (resolution.matchedBy !== 'attributes') {
         const persisted = await persistCanonicalPositionTicket(supabase, trade, resolution)
         if (!persisted) {
           console.warn(`[openTradeReconcile] replacement ticket CAS lost trade=${trade.id}; deferring`)

@@ -41,7 +41,7 @@ export function apiForBrokerAccount(
   if (!resolved) return null
   if (!brokerWriteAuthorityStoreRegistered()) return resolved
 
-  const guardedMethods = new Set(['orderSend', 'orderModify', 'orderClose'])
+  const guardedMethods = new Set(['orderSend', 'orderModify', 'orderClose', 'orderCancel'])
   return new Proxy(resolved, {
     get(target, prop, receiver) {
       const member = Reflect.get(target, prop, receiver)
