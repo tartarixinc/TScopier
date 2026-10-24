@@ -600,6 +600,11 @@ export interface CopierLogsTranslations {
   retryFailedDetail: string
   retryReasonNotRetryable: string
   retryReasonDispatchRejected: string
+  mirrorSource?: string
+  mirrorOpenMessage?: string
+  mirrorCloseMessage?: string
+  mirrorModifyMessage?: string
+  mirrorOtherMessage?: string
   skipReasons: Record<string, string>
   skipReasonDetails?: Record<string, string>
   detailModal?: {

@@ -1361,6 +1361,11 @@ broker: {
     retryFailedDetail: 'Could not retry: {reason}',
     retryReasonNotRetryable: 'This signal cannot be retried.',
     retryReasonDispatchRejected: 'The copier did not accept the retry.',
+    mirrorSource: 'Mirror copy',
+    mirrorOpenMessage: 'Copied {side} {symbol} ({lot} lot) from master #{ticket}',
+    mirrorCloseMessage: 'Copy of #{ticket} closed',
+    mirrorModifyMessage: 'Copy of #{ticket} updated',
+    mirrorOtherMessage: '{action} · copy of #{ticket}',
     skipReasons: {
       invalid_stops: 'Broker rejected stop levels',
       entry_not_opened: 'No position opened',
