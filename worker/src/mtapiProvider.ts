@@ -145,6 +145,14 @@ export class MtapiProvider implements BrokerProvider {
   private readonly platformBySession = new Map<string, MtPlatform>()
   private readonly canonicalSession = new Map<string, string>()
   private recoveryHandler?: RecoveryHandler
+  /**
+   * Bridge hosts (base URLs) whose build answered 404/501 for
+   * `OrderCancelTask`. Keyed per host because MT4 and MT5 can point at
+   * different bridge deployments (`MTAPI_MT4_BASE_URL` vs
+   * `MTAPI_MT5_BASE_URL`): a missing endpoint on one must not disable the
+   * cancel path on the other. See `orderCancel`.
+   */
+  private readonly cancelEndpointMissingHosts = new Set<string>()
 
   constructor(options: MtapiProviderOptions = {}) {
     this.fetchImpl = options.fetchImpl ?? fetch
@@ -495,6 +503,61 @@ export class MtapiProvider implements BrokerProvider {
     } finally {
       release()
     }
+  }
+
+  /**
+   * Remove a resting pending order.
+   *
+   * `OrderCloseSafe` is a position close: for several pendings the bridge
+   * answers `Invalid request` and the order survives, which turned into a
+   * failed close every sweep cycle (prod 2026-10-23, order 387155920,
+   * 215 `order_close_audit` failures in 24h). The bridge documents
+   * `GET /OrderCancelTask` as its pending-cancel endpoint, so pendings go there
+   * first. A 404/501 means this bridge build does not expose the endpoint: the
+   * capability is remembered for that host (one warning per process) and
+   * `OrderCloseSafe` is used instead, so behaviour on older bridges is
+   * unchanged. The latch is keyed by base URL so MT4 and MT5 bridges (which
+   * can be different deployments) fail independently.
+   */
+  async orderCancel(id: string, args: { ticket: number }): Promise<OrderResult> {
+    const host = baseUrl(this.platform(id))
+    if (this.cancelEndpointMissingHosts.has(host)) {
+      return this.orderClose(id, { ticket: args.ticket })
+    }
+    const release = await tradeOpGate.acquire(id, perAccountTradeConcurrency())
+    try {
+      const raw = await this.requestWithRetry('OrderCancelTask', { ticket: args.ticket }, id)
+      const result = normalizeOrderResponse(raw, { platform: this.platform(id) })
+      auditOrderClose({
+        source: 'mtapi',
+        accountId: id,
+        ticket: args.ticket,
+        ok: true,
+        message: result.state ?? null,
+      })
+      return result
+    } catch (err) {
+      const status = err instanceof MtapiApiError ? err.status : 0
+      const unsupported = status === 404 || status === 501
+      if (!unsupported) {
+        auditOrderClose({
+          source: 'mtapi',
+          accountId: id,
+          ticket: args.ticket,
+          ok: false,
+          message: err instanceof Error ? err.message : String(err),
+        })
+        throw err
+      }
+      this.cancelEndpointMissingHosts.add(host)
+      console.warn(
+        `[mtapiProvider] OrderCancelTask unavailable on ${host} (HTTP ${status})`
+        + ' — pending cancels fall back to OrderCloseSafe',
+      )
+    } finally {
+      release()
+    }
+    return this.orderClose(id, { ticket: args.ticket })
   }
 
   private async requestWithRetry(
