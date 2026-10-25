@@ -110,41 +110,65 @@ function brokerLabel(row: BrokerRow | undefined): string {
   return login || '—'
 }
 
-/** Where one merged page (mirror rows first, then signals) begins and ends. */
-export type MergedLogPagePlan = {
-  /** Index into the mirror rows where this page starts. */
-  mirrorStart: number
-  /** How many mirror rows belong on this page. */
-  mirrorCount: number
-  /** Inclusive signal range, or null when this page holds mirror rows only. */
-  signalFrom: number | null
-  signalTo: number | null
-}
-
 /**
- * Split a merged log page between its two sources.
+ * Which mirror rows belong on one page of the log.
  *
- * Mirror rows take the front of the list, so they are sliced directly from
- * their own array; the signal window starts as many rows in. Two mistakes this
- * guards against: emitting every mirror row on every page (duplicates), and
- * clamping the offset before branching — which turns a page of pure mirror rows
- * into `range(0, 0)` and fetches one signal the page must not show.
+ * The log is read top to bottom by time, so mirror events are spliced into the
+ * page that owns their moment instead of being parked in front of every signal.
+ * The pages tile time exactly:
+ *
+ *   page 1              [oldest signal of page 1, ∞)  — unbounded above
+ *   page n > 1          [oldest of page n, oldest of page n-1)
+ *   last signal page    (-∞, oldest of that page)     — unbounded below
+ *
+ * Upper bounds are exclusive and lower bounds inclusive, so consecutive windows
+ * touch without overlapping and every event lands on exactly one page —
+ * including the events interleaved with page 1's own signals, which the earlier
+ * version stranded (page 1 kept only rows newer than its newest signal, and no
+ * later page reaches back above the previous page's oldest signal).
+ *
+ * A page jump has no previous bound, so it falls back to its own span; a wider
+ * window would show rows the skipped pages already own. There is deliberately no
+ * per-page cap: dropping the oldest overflow would strand those rows too, since
+ * the next page's upper bound is the previous page's signal, which they sit
+ * above. The fetch itself is the backstop (see `fetchMirrorCopyLogs`'s `limit`).
+ *
+ * Timestamps are compared as strings, which is safe only because both sides
+ * come from PostgREST (`+00:00`): mixing `Z`-suffixed values would order them
+ * wrongly ('Z' sorts after '+').
+ *
+ * `signals` must be this page's rows ordered newest-first — element 0 is taken
+ * as the newest and the last element as the oldest.
  */
-export function planMergedLogPage(
+export function pageMirrorSlice(
+  mirrors: MirrorCopyLogRow[],
+  signals: Array<{ created_at: string }>,
   page: number,
-  pageSize: number,
-  mirrorTotal: number,
-): MergedLogPagePlan {
-  const from = (page - 1) * pageSize
-  const to = from + pageSize - 1
-  const rawSignalFrom = from - mirrorTotal
-  const rawSignalTo = to - mirrorTotal
-  return {
-    mirrorStart: from,
-    mirrorCount: Math.max(0, Math.min(pageSize, mirrorTotal - from)),
-    signalFrom: rawSignalTo >= 0 ? Math.max(0, rawSignalFrom) : null,
-    signalTo: rawSignalTo >= 0 ? rawSignalTo : null,
-  }
+  previousOldestSignalTime: string | null,
+  isLastSignalPage = false,
+): MirrorCopyLogRow[] {
+  if (mirrors.length === 0) return []
+  const sorted = [...mirrors].sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))
+  const newest = signals[0]?.created_at ?? null
+  const oldest = signals.length > 0 ? signals[signals.length - 1]!.created_at : null
+
+  const isFirstPage = page <= 1
+  // Page 1 is unbounded above: it absorbs everything from its oldest signal
+  // upward, whether it arrived after the newest signal or between two of this
+  // page's signals.
+  const upper = isFirstPage ? null : (previousOldestSignalTime ?? newest)
+  // A later page with no signals at all cannot place its window: showing
+  // nothing is better than showing rows another page already showed.
+  if (!isFirstPage && upper == null) return []
+  // The last signal page is unbounded below, so events older than every signal
+  // still get a home instead of being unreachable.
+  const lower = isLastSignalPage ? null : oldest
+
+  return sorted.filter((row) => {
+    if (upper != null && row.createdAt >= upper) return false
+    if (lower != null && row.createdAt < lower) return false
+    return true
+  })
 }
 
 /** Pure: turn the raw mirror tables into copier-log rows, newest first. */
