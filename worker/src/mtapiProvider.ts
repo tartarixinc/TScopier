@@ -47,6 +47,12 @@ function numberValue(value: unknown): number | undefined {
   return Number.isFinite(n) ? n : undefined
 }
 
+/** Like numberValue but drops zero/negative, for fields where 0 means "not set". */
+function positiveValue(value: unknown): number | undefined {
+  const n = numberValue(value)
+  return n != null && n > 0 ? n : undefined
+}
+
 function boolValue(value: unknown): boolean | undefined {
   if (typeof value === 'boolean') return value
   if (typeof value === 'number') return value !== 0
@@ -724,25 +730,41 @@ export class MtapiProvider implements BrokerProvider {
 
   async symbolParams(id: string, symbol: string): Promise<SymbolParams> {
     const row = object(await this.readRequest('SymbolParams', { symbol }, id))
-    const info = object(row.symbolInfo ?? row.SymbolInfo)
-    const group = object(row.symbolGroup ?? row.SymbolGroup)
     if (Object.keys(row).length === 0) {
       throw new MtapiApiError('SymbolParams returned an invalid response', 502, 'INVALID_RESPONSE')
     }
+    // MT5 sends `symbolInfo` / `symbolGroup`; MT4 sends the instrument under
+    // `symbol` as an object plus `group` / `groupParams`. Read both shapes so
+    // lot limits are not lost on MT4 (which made every MT4 mirror copy fail as
+    // an unsupported symbol).
+    const mt4Symbol = object(row.symbol)
+    // Merge, so an empty `symbolInfo` cannot hide the MT4 instrument object.
+    const info = { ...mt4Symbol, ...object(row.symbolInfo ?? row.SymbolInfo) }
+    const group = object(row.symbolGroup ?? row.SymbolGroup ?? row.group ?? row.Group)
+    const groupParams = object(row.groupParams ?? row.GroupParams)
+    const declaredName = row.symbolName ?? row.SymbolName
+    const symbolName = typeof row.symbol === 'string'
+      ? row.symbol
+      : typeof declaredName === 'string' && declaredName.trim()
+        ? declaredName.trim()
+        : String(mt4Symbol.symbolAsString ?? (typeof row.Symbol === 'string' ? row.Symbol : symbol))
     return {
       ...row,
-      symbolName: String(row.symbol ?? row.Symbol ?? symbol),
+      symbolName,
       symbol: {
-        digits: numberValue(info.digits ?? info.Digits),
-        point: numberValue(info.points ?? info.point ?? info.Point),
-        contractSize: numberValue(info.contractSize ?? info.ContractSize),
-        stopsLevel: numberValue(info.stopsLevel ?? info.StopsLevel),
-        freezeLevel: numberValue(info.freezeLevel ?? info.FreezeLevel),
+        digits: positiveValue(info.digits ?? info.Digits),
+        point: positiveValue(info.points ?? info.point ?? info.Point),
+        contractSize: positiveValue(info.contractSize ?? info.ContractSize ?? info.contract_size),
+        stopsLevel: numberValue(info.stopsLevel ?? info.StopsLevel ?? info.stops_level),
+        freezeLevel: numberValue(info.freezeLevel ?? info.FreezeLevel ?? info.freeze_level),
       },
       groupParams: {
-        minLot: numberValue(group.minLots ?? group.minLot ?? group.MinLots),
-        maxLot: numberValue(group.maxLots ?? group.maxLot ?? group.MaxLots),
-        lotStep: numberValue(group.lotsStep ?? group.lotStep ?? group.LotsStep),
+        minLot: numberValue(groupParams.minLot ?? groupParams.MinLot ?? groupParams.min_lot
+          ?? group.minLots ?? group.minLot ?? group.MinLots ?? group.min_lot),
+        maxLot: numberValue(groupParams.maxLot ?? groupParams.MaxLot ?? groupParams.max_lot
+          ?? group.maxLots ?? group.maxLot ?? group.MaxLots ?? group.max_lot),
+        lotStep: numberValue(groupParams.lotStep ?? groupParams.LotStep ?? groupParams.lot_step
+          ?? group.lotsStep ?? group.lotStep ?? group.LotsStep ?? group.lot_step),
       },
     }
   }
