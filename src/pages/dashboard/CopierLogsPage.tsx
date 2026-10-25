@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, Loader2, RefreshCw } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowLeftRight, ChevronLeft, ChevronRight, Loader2, RefreshCw } from 'lucide-react'
 import clsx from 'clsx'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
@@ -23,7 +23,9 @@ import {
   isCopierSignalRetryEligible,
 } from '../../lib/retrySignalDisplay'
 import { formatCopierSkipReasonShort } from '../../lib/copierLogDetail'
+import { fetchMirrorCopyLogs, planMergedLogPage, type MirrorCopyLogRow } from '../../lib/mirrorCopyLogs'
 import { CopierLogDetailModal } from '../../components/dashboard/CopierLogDetailModal'
+import { MirrorLogDetailModal } from '../../components/dashboard/MirrorLogDetailModal'
 import { SignalSourceLogo } from '../../components/dashboard/SignalSourceLogo'
 import { buildChannelSourceKinds, SIGNAL_SOURCE_MARKS, type SignalSourceKind } from '../../lib/signalSourceMark'
 
@@ -61,7 +63,43 @@ function channelLabel(channelId: string | null | undefined, names: Record<string
   return names[channelId] ?? 'Unknown channel'
 }
 
-function useCopierLogDisplay(
+/** One rendered log line, whatever produced it (a signal or a mirror copy). */
+type CopierLogView = {
+  symbol: string
+  status: { variant: StatusVariant; label: string; className?: string }
+  channelName: string
+  channelTitle: string
+  sourceKind: SignalSourceKind | null
+  isMirror: boolean
+  action: string | null
+  messageFull: string
+  messagePreview: string
+  reason: string | null
+  reasonShort: string
+  timeLabel: string
+}
+
+/** One row on the list — a signal or a mirror copy, never both. */
+type LogViewEntry = { key: string; view: CopierLogView } & (
+  | { signal: Signal; mirror?: never }
+  | { mirror: MirrorCopyLogRow; signal?: never }
+)
+
+function formatLogTime(iso: string): string {
+  return new Date(iso).toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function shortenReason(reason: string | null | undefined): string | null {
+  if (!reason) return null
+  return reason.length > 80 ? `${reason.slice(0, 80)}…` : reason
+}
+
+function buildSignalLogView(
   signal: Signal,
   channelDisplayNames: Record<string, string>,
   channelSourceKinds: Record<string, SignalSourceKind>,
@@ -69,7 +107,7 @@ function useCopierLogDisplay(
   batchSignals: Signal[],
   statusConfig: Record<string, { variant: StatusVariant; label: string; className?: string }>,
   copierLogs: ReturnType<typeof useT>['copierLogs'],
-) {
+): CopierLogView {
   const parsed = signal.parsed_data as Record<string, unknown> | null
   const action = parsed?.action as string | undefined
   const symbol = symbolForCopierLog(signal, symbolContext, batchSignals)
@@ -78,77 +116,127 @@ function useCopierLogDisplay(
   const sourceKind = signal.channel_id ? (channelSourceKinds[signal.channel_id] ?? 'telegram') : null
   const channelTitle = sourceKind ? `${SIGNAL_SOURCE_MARKS[sourceKind].label} · ${channelName}` : channelName
   const reason = formatCopierSkipReasonShort(signal.skip_reason, copierLogs)
-  const reasonShort = signal.skip_reason
-    ? (reason.length > 80 ? `${reason.slice(0, 80)}…` : reason)
-    : '—'
   const messagePreview = signal.raw_message
     ? (signal.raw_message.length > 60 ? `${signal.raw_message.slice(0, 60)}…` : signal.raw_message)
     : '(image)'
-  const timeLabel = new Date(signal.created_at).toLocaleString([], {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
 
-  return { action, symbol, status, channelName, sourceKind, channelTitle, reason, reasonShort, messagePreview, timeLabel }
+  return {
+    symbol,
+    status,
+    channelName,
+    channelTitle,
+    sourceKind,
+    isMirror: false,
+    action: action ?? null,
+    messageFull: signal.raw_message ?? messagePreview,
+    messagePreview,
+    reason,
+    reasonShort: shortenReason(reason) ?? '—',
+    timeLabel: formatLogTime(signal.created_at),
+  }
+}
+
+/** Compose a plain-English one-liner for a mirror-copy event. */
+function mirrorLogMessage(
+  row: MirrorCopyLogRow,
+  copierLogs: ReturnType<typeof useT>['copierLogs'],
+): string {
+  const vars = {
+    // Built from what is actually known: an event with no mapping has no lot
+    // and sometimes no side, and must not render "Copied  XAUUSD ( lot)".
+    detail: `${[row.side, row.symbol].filter(Boolean).join(' ')}${row.lot == null ? '' : ` (${row.lot} lot)`}`
+      || row.action
+      || '',
+    ticket: row.sourceTicket || '—',
+    action: row.action ?? '',
+  }
+  switch (row.action) {
+    case 'open':
+      return interpolate(copierLogs.mirrorOpenMessage ?? 'Copied {detail} from master #{ticket}', vars)
+    case 'close':
+      return interpolate(copierLogs.mirrorCloseMessage ?? 'Copy of #{ticket} closed', vars)
+    case 'modify':
+      return interpolate(copierLogs.mirrorModifyMessage ?? 'Copy of #{ticket} updated', vars)
+    // open | modify | close are the only write actions the engine claims;
+    // unsupported and reconcile fall through here (see the action CHECK on
+    // mirror_copy_execution_events).
+    default:
+      return interpolate(copierLogs.mirrorOtherMessage ?? '{action} · copy of #{ticket}', vars)
+  }
+}
+
+function buildMirrorLogView(
+  row: MirrorCopyLogRow,
+  statusConfig: Record<string, { variant: StatusVariant; label: string; className?: string }>,
+  copierLogs: ReturnType<typeof useT>['copierLogs'],
+): CopierLogView {
+  const sourceLabel = copierLogs.mirrorSource
+  const message = mirrorLogMessage(row, copierLogs)
+  return {
+    symbol: row.symbol,
+    status: statusConfig[row.status] ?? { variant: 'neutral' as const, label: row.status },
+    channelName: `${sourceLabel ?? 'Mirror copy'} · ${row.channelName}`,
+    channelTitle: row.channelName,
+    sourceKind: null,
+    isMirror: true,
+    action: row.action === 'open' ? (row.side ?? row.action) : row.action,
+    messageFull: message,
+    messagePreview: message,
+    reason: row.reason,
+    reasonShort: shortenReason(row.reason) ?? '—',
+    timeLabel: formatLogTime(row.createdAt),
+  }
+}
+
+function SourceMark({ view, className }: { view: CopierLogView; className?: string }) {
+  if (!view.isMirror) return <SignalSourceLogo kind={view.sourceKind} className={className} />
+  return (
+    <ArrowLeftRight
+      className={clsx('h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50', className)}
+      aria-hidden
+    />
+  )
 }
 
 function CopierLogCard({
-  signal,
-  channelDisplayNames,
-  channelSourceKinds,
-  symbolContext,
-  batchSignals,
-  statusConfig,
+  view,
   labels,
   copierLogs,
   isRetrying,
   onRetry,
   onOpenDetail,
 }: {
-  signal: Signal
-  channelDisplayNames: Record<string, string>
-  channelSourceKinds: Record<string, SignalSourceKind>
-  symbolContext: CopierSymbolContext
-  batchSignals: Signal[]
-  statusConfig: Record<string, { variant: StatusVariant; label: string; className?: string }>
+  view: CopierLogView
   labels: { colReason: string; viewDetails: string }
   copierLogs: ReturnType<typeof useT>['copierLogs']
   isRetrying: boolean
   onRetry?: () => void
-  onOpenDetail: () => void
+  onOpenDetail?: () => void
 }) {
-  const { action, symbol, status, channelName, sourceKind, channelTitle, reason, messagePreview, timeLabel } = useCopierLogDisplay(
-    signal,
-    channelDisplayNames,
-    channelSourceKinds,
-    symbolContext,
-    batchSignals,
-    statusConfig,
-    copierLogs,
-  )
-  const retryEligible = isCopierSignalRetryEligible(signal)
+  const { action, symbol, status, channelName, channelTitle, reason, messagePreview, messageFull, timeLabel } = view
 
   return (
     <article
-      className="px-4 py-4 hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition-colors cursor-pointer"
+      className={clsx(
+        'px-4 py-4 transition-colors',
+        onOpenDetail && 'hover:bg-neutral-50 dark:hover:bg-neutral-800/40 cursor-pointer',
+      )}
       onClick={onOpenDetail}
-      onKeyDown={e => {
+      onKeyDown={onOpenDetail ? e => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
           onOpenDetail()
         }
-      }}
-      role="button"
-      tabIndex={0}
-      aria-label={labels.viewDetails}
+      } : undefined}
+      role={onOpenDetail ? 'button' : undefined}
+      tabIndex={onOpenDetail ? 0 : undefined}
+      aria-label={onOpenDetail ? labels.viewDetails : undefined}
     >
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="min-w-0">
           <p className="text-base font-semibold text-neutral-900 dark:text-neutral-50 truncate">{symbol}</p>
           <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-neutral-900 dark:text-neutral-50" title={channelTitle}>
-            <SignalSourceLogo kind={sourceKind} />
+            <SourceMark view={view} />
             <span className="truncate">{channelName}</span>
           </p>
         </div>
@@ -167,18 +255,18 @@ function CopierLogCard({
         </p>
       ) : null}
 
-      <p className="text-sm text-neutral-900 dark:text-neutral-50 mb-3 line-clamp-3" title={signal.raw_message ?? ''}>
+      <p className="text-sm text-neutral-900 dark:text-neutral-50 mb-3 line-clamp-3" title={messageFull}>
         {messagePreview}
       </p>
 
-      {reason !== '—' ? (
+      {reason !== '—' && reason ? (
         <p className="text-xs text-neutral-900 dark:text-neutral-50 mb-3">
           <span className="font-medium text-neutral-900 dark:text-neutral-50">{labels.colReason}: </span>
           <span className="underline decoration-dotted underline-offset-2">{reason}</span>
         </p>
       ) : null}
 
-      {retryEligible && onRetry ? (
+      {onRetry ? (
         <Button
           type="button"
           variant="secondary"
@@ -202,65 +290,49 @@ function CopierLogCard({
 }
 
 function CopierLogRow({
-  signal,
-  channelDisplayNames,
-  channelSourceKinds,
-  symbolContext,
-  batchSignals,
-  statusConfig,
+  view,
   copierLogs,
   isRetrying,
   onRetry,
   onOpenDetail,
   viewDetailsLabel,
 }: {
-  signal: Signal
-  channelDisplayNames: Record<string, string>
-  channelSourceKinds: Record<string, SignalSourceKind>
-  symbolContext: CopierSymbolContext
-  batchSignals: Signal[]
-  statusConfig: Record<string, { variant: StatusVariant; label: string; className?: string }>
+  view: CopierLogView
   copierLogs: ReturnType<typeof useT>['copierLogs']
   isRetrying: boolean
   onRetry?: () => void
-  onOpenDetail: () => void
+  onOpenDetail?: () => void
   viewDetailsLabel: string
 }) {
-  const { action, symbol, status, channelName, sourceKind, channelTitle, reasonShort, messagePreview, timeLabel } = useCopierLogDisplay(
-    signal,
-    channelDisplayNames,
-    channelSourceKinds,
-    symbolContext,
-    batchSignals,
-    statusConfig,
-    copierLogs,
-  )
-  const retryEligible = isCopierSignalRetryEligible(signal)
+  const { action, symbol, status, channelName, channelTitle, reasonShort, messagePreview, messageFull, timeLabel } = view
 
   return (
     <div
-      className="grid grid-cols-[1.5fr_1.2fr_1fr_1.2fr_1fr_1fr_auto_auto] gap-3 min-w-3xl px-4 sm:px-5 py-3.5 items-center hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors cursor-pointer"
+      className={clsx(
+        'grid grid-cols-[1.5fr_1.2fr_1fr_1.2fr_1fr_1fr_auto_auto] gap-3 min-w-3xl px-4 sm:px-5 py-3.5 items-center transition-colors',
+        onOpenDetail && 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50 cursor-pointer',
+      )}
       onClick={onOpenDetail}
-      onKeyDown={e => {
+      onKeyDown={onOpenDetail ? e => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
           onOpenDetail()
         }
-      }}
-      role="button"
-      tabIndex={0}
-      aria-label={viewDetailsLabel}
+      } : undefined}
+      role={onOpenDetail ? 'button' : undefined}
+      tabIndex={onOpenDetail ? 0 : undefined}
+      aria-label={onOpenDetail ? viewDetailsLabel : undefined}
     >
       <Badge variant={status.variant} size="sm" className={status.className}>{status.label}</Badge>
       <span className="text-xs text-neutral-900 dark:text-neutral-50 truncate underline decoration-dotted underline-offset-2" title={reasonShort}>
         {reasonShort}
       </span>
       <span className="flex min-w-0 items-center gap-1.5 text-xs text-neutral-900 dark:text-neutral-50" title={channelTitle}>
-        <SignalSourceLogo kind={sourceKind} />
+        <SourceMark view={view} />
         <span className="truncate">{channelName}</span>
       </span>
       <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{symbol}</span>
-      <span className="text-xs text-neutral-900 dark:text-neutral-50 truncate" title={signal.raw_message ?? ''}>
+      <span className="text-xs text-neutral-900 dark:text-neutral-50 truncate" title={messageFull}>
         {messagePreview}
       </span>
       <span className={clsx(
@@ -271,7 +343,7 @@ function CopierLogRow({
       </span>
       <span className="text-xs text-neutral-900 dark:text-neutral-50 text-right whitespace-nowrap">{timeLabel}</span>
       <div className="flex justify-end">
-        {retryEligible && onRetry ? (
+        {onRetry ? (
           <Button
             type="button"
             variant="secondary"
@@ -299,6 +371,7 @@ export function CopierLogsPage() {
   const t = useT()
   const { user } = useAuth()
   const [signals, setSignals] = useState<Signal[]>([])
+  const [mirrorLogs, setMirrorLogs] = useState<MirrorCopyLogRow[]>([])
   const [channelDisplayNames, setChannelDisplayNames] = useState<Record<string, string>>({})
   const [channelSourceKinds, setChannelSourceKinds] = useState<Record<string, SignalSourceKind>>({})
   const [symbolContext, setSymbolContext] = useState<CopierSymbolContext>(() => ({
@@ -308,11 +381,20 @@ export function CopierLogsPage() {
   const [filter, setFilter] = useState<Filter>('all')
   const [loading, setLoading] = useState(true)
   const [totalCount, setTotalCount] = useState(0)
+  // Monotonic token so a slower, older load can never commit over a newer one.
+  const loadSeqRef = useRef(0)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<PageSizeOption>(25)
   const [retryingSignalIds, setRetryingSignalIds] = useState<Set<string>>(() => new Set())
   const [toast, setToast] = useState<string | null>(null)
-  const [detailSignal, setDetailSignal] = useState<Signal | null>(null)
+  // One slot for the open detail view. A row is either a signal or a mirror
+  // copy, so two dialogs can never be mounted at the same time.
+  const [detail, setDetail] = useState<LogViewEntry | null>(null)
+  const detailSignal = detail?.signal ?? null
+  const detailMirror = detail?.mirror ?? null
+  // Stable identity: MirrorLogDetailModal re-runs its scroll-lock/focus effect
+  // whenever this changes, which would yank focus back to the panel.
+  const closeDetail = useCallback(() => setDetail(null), [])
 
   const showToast = useCallback((message: string) => {
     setToast(message)
@@ -332,35 +414,60 @@ export function CopierLogsPage() {
   const loadSignals = useCallback(async () => {
     if (!user) return
     setLoading(true)
-    const from = (page - 1) * pageSize
-    const to = from + pageSize - 1
+    const seq = ++loadSeqRef.current
 
-    let query = supabase
-      .from('signals')
-      .select('*', { count: 'exact' })
-      .eq('user_id', user.id)
-      .or('skip_reason.is.null,skip_reason.neq.non_trade_message')
-      .order('created_at', { ascending: false })
-      .range(from, to)
-
-    if (filter !== 'all') query = query.eq('status', filter)
-
-    const [channelsRes, signalsRes] = await Promise.all([
-      supabase
+    try {
+      // Mirror copies carry no signal, so they are read from their own ledger and
+      // merged in front of the signal list. Their count shifts the signal window,
+      // so that read goes first; the channel lookup runs alongside it.
+      const channelsQuery = supabase
         .from('telegram_channels')
         .select('id,display_name,channel_username,source_kind')
-        .eq('user_id', user.id),
-      query,
-    ])
+        .eq('user_id', user.id)
+      const [mirror, channelsRes] = await Promise.all([
+        fetchMirrorCopyLogs(supabase, user.id),
+        channelsQuery,
+      ])
+      const visibleMirror = filter === 'all' ? mirror : mirror.filter(row => row.status === filter)
 
-    const loaded = ((signalsRes.data ?? []) as Signal[]).filter(s => !isNonTradeSkipReason(s.skip_reason))
-    setTotalCount(signalsRes.count ?? loaded.length)
-    const channelRows = (channelsRes.data ?? []) as ChannelNameRow[]
-    setChannelDisplayNames(buildChannelDisplayNames(channelRows))
-    setChannelSourceKinds(buildChannelSourceKinds(channelRows))
-    setSymbolContext(await buildSignalSymbolLookup(supabase, user.id, loaded))
-    setSignals(loaded)
-    setLoading(false)
+      const plan = planMergedLogPage(page, pageSize, visibleMirror.length)
+
+      let query = supabase
+        .from('signals')
+        .select('*', { count: 'exact' })
+        .eq('user_id', user.id)
+        .or('skip_reason.is.null,skip_reason.neq.non_trade_message')
+        .order('created_at', { ascending: false })
+
+      if (filter !== 'all') query = query.eq('status', filter)
+      if (plan.signalFrom != null && plan.signalTo != null) query = query.range(plan.signalFrom, plan.signalTo)
+      else query = query.limit(0)
+
+      const signalsRes = await query
+
+      const loaded = ((signalsRes.data ?? []) as Signal[]).filter(s => !isNonTradeSkipReason(s.skip_reason))
+      const nextSymbolContext = await buildSignalSymbolLookup(supabase, user.id, loaded)
+      const channelRows = (channelsRes.data ?? []) as ChannelNameRow[]
+
+      // Commit everything together after the last await: the mirror list and the
+      // signal window must never be written a request apart, or a slower older
+      // load could pair its mirror rows with a newer load's signal page.
+      if (seq !== loadSeqRef.current) return
+      const signalCount = signalsRes.count ?? loaded.length
+      setMirrorLogs(visibleMirror)
+      setTotalCount((Number.isFinite(signalCount) ? signalCount : loaded.length) + visibleMirror.length)
+      setChannelDisplayNames(buildChannelDisplayNames(channelRows))
+      setChannelSourceKinds(buildChannelSourceKinds(channelRows))
+      setSymbolContext(nextSymbolContext)
+      setSignals(loaded)
+    } catch (error) {
+      // Never leave the skeleton up: the next load recovers from a failed one.
+      console.warn('[copier-logs] load failed:', error instanceof Error ? error.message : String(error))
+    } finally {
+      // Only the load that still owns the token may clear the flag, so a
+      // superseded request cannot switch off a newer one's loading state.
+      if (seq === loadSeqRef.current) setLoading(false)
+    }
   }, [user, filter, page, pageSize])
 
   const retrySignalEntry = useCallback(async (signalId: string) => {
@@ -423,6 +530,33 @@ export function CopierLogsPage() {
   )
 
   const viewDetailsLabel = t.copierLogs.detailModal?.viewDetails ?? DEFAULT_DETAIL_MODAL.viewDetails
+
+  /** Mirror copies and signals as one renderable list, mirror first (newest). */
+  const logViews = useMemo(() => {
+    // Mirror rows are held in full (their count drives the signal window), so
+    // slice them to this page here — otherwise every page would re-show them.
+    const { mirrorStart, mirrorCount } = planMergedLogPage(page, pageSize, mirrorLogs.length)
+    const mirrorPage = mirrorLogs.slice(mirrorStart, mirrorStart + mirrorCount)
+    const mirrorViews: LogViewEntry[] = mirrorPage.map(row => ({
+      key: row.id,
+      view: buildMirrorLogView(row, statusConfig, t.copierLogs),
+      mirror: row,
+    }))
+    const signalViews: LogViewEntry[] = signals.map(signal => ({
+      key: signal.id,
+      view: buildSignalLogView(
+        signal,
+        channelDisplayNames,
+        channelSourceKinds,
+        symbolContext,
+        signals,
+        statusConfig,
+        t.copierLogs,
+      ),
+      signal,
+    }))
+    return [...mirrorViews, ...signalViews]
+  }, [mirrorLogs, signals, statusConfig, channelDisplayNames, channelSourceKinds, symbolContext, t, page, pageSize])
 
   const detailDisplay = useMemo(() => {
     if (!detailSignal) return null
@@ -490,7 +624,7 @@ export function CopierLogsPage() {
               ))}
             </div>
           </>
-        ) : signals.length === 0 ? (
+        ) : logViews.length === 0 ? (
           <div className="px-4 sm:px-6 py-12 sm:py-20 text-center">
             <div className="w-16 h-16 bg-neutral-100 dark:bg-neutral-800 rounded-2xl mx-auto mb-3 flex items-center justify-center">
               <svg className="w-8 h-8 text-neutral-900 dark:text-neutral-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -503,24 +637,22 @@ export function CopierLogsPage() {
         ) : (
           <>
             <div className="md:hidden divide-y divide-neutral-100 dark:divide-neutral-800">
-              {signals.map(signal => (
-                <CopierLogCard
-                  key={signal.id}
-                  signal={signal}
-                  channelDisplayNames={channelDisplayNames}
-                  channelSourceKinds={channelSourceKinds}
-                  symbolContext={symbolContext}
-                  batchSignals={signals}
-                  statusConfig={statusConfig}
-                  labels={cardLabels}
-                  copierLogs={t.copierLogs}
-                  isRetrying={retryingSignalIds.has(signal.id)}
-                  onRetry={isCopierSignalRetryEligible(signal)
-                    ? () => { void retrySignalEntry(signal.id) }
-                    : undefined}
-                  onOpenDetail={() => setDetailSignal(signal)}
-                />
-              ))}
+              {logViews.map(entry => {
+                const signal = entry.signal
+                return (
+                  <CopierLogCard
+                    key={entry.key}
+                    view={entry.view}
+                    labels={cardLabels}
+                    copierLogs={t.copierLogs}
+                    isRetrying={signal ? retryingSignalIds.has(signal.id) : false}
+                    onRetry={signal && isCopierSignalRetryEligible(signal)
+                      ? () => { void retrySignalEntry(signal.id) }
+                      : undefined}
+                    onOpenDetail={() => setDetail(entry)}
+                  />
+                )
+              })}
             </div>
             <div className="hidden md:block overflow-x-auto">
               <div className="grid grid-cols-[1.5fr_1.2fr_1fr_1.2fr_1fr_1fr_auto_auto] gap-3 min-w-3xl px-4 sm:px-5 py-3 border-b border-neutral-100 dark:border-neutral-800 text-xs font-semibold text-neutral-900 dark:text-neutral-50 uppercase tracking-wide">
@@ -534,24 +666,22 @@ export function CopierLogsPage() {
                 <span />
               </div>
               <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
-                {signals.map(signal => (
-                  <CopierLogRow
-                    key={signal.id}
-                    signal={signal}
-                    channelDisplayNames={channelDisplayNames}
-                  channelSourceKinds={channelSourceKinds}
-                    symbolContext={symbolContext}
-                    batchSignals={signals}
-                    statusConfig={statusConfig}
-                    copierLogs={t.copierLogs}
-                    isRetrying={retryingSignalIds.has(signal.id)}
-                    onRetry={isCopierSignalRetryEligible(signal)
-                      ? () => { void retrySignalEntry(signal.id) }
-                      : undefined}
-                    onOpenDetail={() => setDetailSignal(signal)}
-                    viewDetailsLabel={viewDetailsLabel}
-                  />
-                ))}
+                {logViews.map(entry => {
+                  const signal = entry.signal
+                  return (
+                    <CopierLogRow
+                      key={entry.key}
+                      view={entry.view}
+                      copierLogs={t.copierLogs}
+                      isRetrying={signal ? retryingSignalIds.has(signal.id) : false}
+                      onRetry={signal && isCopierSignalRetryEligible(signal)
+                        ? () => { void retrySignalEntry(signal.id) }
+                        : undefined}
+                      onOpenDetail={() => setDetail(entry)}
+                      viewDetailsLabel={viewDetailsLabel}
+                    />
+                  )
+                })}
               </div>
             </div>
           </>
@@ -586,12 +716,20 @@ export function CopierLogsPage() {
           sourceKind={detailDisplay.sourceKind}
           symbol={detailDisplay.symbol}
           status={detailDisplay.status}
-          onClose={() => setDetailSignal(null)}
+          onClose={closeDetail}
           retryEligible={isCopierSignalRetryEligible(detailDisplay.signal)}
           isRetrying={retryingSignalIds.has(detailDisplay.signal.id)}
           onRetry={isCopierSignalRetryEligible(detailDisplay.signal)
             ? () => { void retrySignalEntry(detailDisplay.signal.id) }
             : undefined}
+        />
+      ) : null}
+
+      {detailMirror ? (
+        <MirrorLogDetailModal
+          row={detailMirror}
+          status={statusConfig[detailMirror.status] ?? { variant: 'neutral' as const, label: detailMirror.status }}
+          onClose={closeDetail}
         />
       ) : null}
     </PageShell>
