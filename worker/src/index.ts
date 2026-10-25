@@ -33,6 +33,7 @@ import { AutoManagementMonitor } from './autoManagementMonitor'
 import { TrailingStopMonitor } from './trailingStopMonitor'
 import { BasketSlTpReconcileMonitor } from './basketSlTpReconcileMonitor'
 import { NewsTradingMonitor } from './newsTradingMonitor'
+import { OrphanPositionMonitor } from './orphanPositionMonitor'
 import { V2ReconcileMonitor } from './engine/v2ReconcileMonitor'
 import { v2EngineConfigured } from './engine/executionMode'
 import { OpenTradeReconcileMonitor } from './openTradeReconcileMonitor'
@@ -132,6 +133,7 @@ function startTradeMonitors(executor: TradeExecutor | null) {
     const openTradeReconcileMonitor = new OpenTradeReconcileMonitor(supabase)
     const closedTradeFillMonitor = new ClosedTradeFillMonitor(supabase)
     const tradeBrokerDriftMonitor = new TradeBrokerDriftMonitor(supabase)
+    const orphanPositionMonitor = new OrphanPositionMonitor(supabase)
     virtualPendingMonitor.start()
     registerVirtualPendingMonitor(virtualPendingMonitor)
     rangeBrokerPendingMonitor.start()
@@ -141,6 +143,8 @@ function startTradeMonitors(executor: TradeExecutor | null) {
     openTradeReconcileMonitor.start()
     closedTradeFillMonitor.start()
     tradeBrokerDriftMonitor.start()
+    orphanPositionMonitor.start()
+    trackMonitor(orphanPositionMonitor)
     trackMonitor(virtualPendingMonitor)
     trackMonitor(rangeBrokerPendingMonitor)
     trackMonitor(cweCloseMonitor)
