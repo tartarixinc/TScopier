@@ -172,6 +172,8 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
 
   const filledLegs: PostFillTradeLeg[] = []
   let lastSendError: string | null = null
+  /** What the timeout reconcile decided (attached to the failure log below). */
+  let timeoutReconcile: string | null = null
 
   // v2 entries fire PROTECTED-at-send through the strict fxClient (bounded timeout,
   // strict retcode, no blind 3x retries) instead of the old client. One pre-burst
@@ -275,6 +277,9 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
     }
 
     for (let attempt = 0; attempt < 2; attempt++) {
+      // Each attempt decides for itself; a stale value from an earlier attempt
+      // must not be attributed to this failure's payload.
+      timeoutReconcile = null
       try {
         // Reject a copy whose signal stop sits on the wrong side of the live price:
         // no broker can apply it, and we will not move the stop or open naked.
@@ -433,6 +438,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
           && api
           && process.env.MTAPI_RECONCILE_ON_TIMEOUT !== 'false'
         ) {
+          timeoutReconcile = 'inconclusive'
           try {
             const rec = await reconcileUnknownSend(api, uuid, {
               symbol: sendArgs.symbol,
@@ -440,6 +446,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
               volume: sendArgs.volume,
               comment: sendArgs.comment,
             })
+            timeoutReconcile = rec.status === 'inconclusive' ? `inconclusive: ${rec.reason}` : rec.status
             if (rec.status === 'adopted') {
               result = {
                 ticket: rec.ticket,
@@ -472,7 +479,17 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
             }
             // 'absent' on the last attempt, or 'inconclusive' -> fall through to
             // the ambiguous capture below.
-          } catch { /* best-effort; fall through to ambiguous */ }
+          } catch (reconcileErr) {
+            timeoutReconcile = `inconclusive: reconcile threw ${reconcileErr instanceof Error ? reconcileErr.message : String(reconcileErr)}`
+            /* fall through to the ambiguous capture below */
+          }
+        } else if (isOrderOpTimedOutMessage(lastAttemptError)) {
+          // A timeout we declined to reconcile: record why in the failure log.
+          timeoutReconcile = process.env.MTAPI_RECONCILE_ON_TIMEOUT === 'false'
+            ? 'disabled'
+            : useV2
+              ? 'skipped: v2 path does not reconcile'
+              : (api ? 'skipped' : 'skipped: no api')
         }
         if (isOrderOpTimedOutMessage(lastAttemptError)) {
           captureBusinessIssue({
@@ -557,6 +574,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
           request_payload: {
             ...sendArgs,
             ...orderLogContext,
+            ...(timeoutReconcile ? { timeout_reconcile: timeoutReconcile } : {}),
             ...(tradeFailure
               ? {
                 reason_code: tradeFailure.reasonCode,

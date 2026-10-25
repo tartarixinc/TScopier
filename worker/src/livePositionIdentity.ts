@@ -40,7 +40,8 @@ type ParsedLivePosition = {
   entryPrice: number | null
 }
 
-function positiveNumber(value: unknown): number | null {
+/** Finite number strictly above zero, or null. Shared with the orphan sweep. */
+export function positiveNumber(value: unknown): number | null {
   if (value == null || value === '') return null
   const number = typeof value === 'number' ? value : Number(value)
   return Number.isFinite(number) && number > 0 ? number : null
