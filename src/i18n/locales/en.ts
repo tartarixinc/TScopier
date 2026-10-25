@@ -621,7 +621,7 @@ broker: {
     balance: 'Balance',
     equity: 'Equity',
     deposit: 'Deposit',
-    statisticsMonth: 'Statistics Sep 2026',
+    statisticsMonth: 'Statistics',
     longTrades: 'Long trades',
     shortTrades: 'Short trades',
     maxOpenTrades: 'Max. open trades',

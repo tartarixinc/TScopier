@@ -13,6 +13,7 @@ import { PageShell } from '../../components/layout/PageShell'
 import { PerformanceTradeOutcomeChart } from '../../components/performance/PerformanceTradeOutcomeChart'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
+import { Alert } from '../../components/ui/Alert'
 import { useAddTradingAccount } from '../../context/AddTradingAccountContext'
 import { useAuth } from '../../context/AuthContext'
 import { useLocale, useT } from '../../context/LocaleContext'
@@ -24,6 +25,7 @@ import { useSocialTradingPreview } from '../../hooks/useSocialTradingPreview'
 import { interpolate } from '../../i18n/interpolate'
 import { chartThemeColors, chartTooltipProps } from '../../lib/chartTheme'
 import { copyPriceOfferLabel } from '../../lib/socialCopyPrice'
+import { canOpenCopyTrader, copyTraderUnavailableReason } from '../../lib/socialCopyAvailability'
 
 import { resolveUserAvatarUrl } from '../../lib/userAvatar'
 import {
@@ -282,8 +284,8 @@ export function SocialTradingPage() {
                            </div>
                           ) : (
                             <CopyActionButton
-                              disabled={!trader.copyEligible}
-                              disabledReason={trader.syntheticDemo ? 'Synthetic demo traders cannot be copied.' : 'This trader is not currently eligible for copying.'}
+                              disabled={!canOpenCopyTrader(trader)}
+                              disabledReason={copyTraderUnavailableReason(trader) ?? undefined}
                               copyLabel={copy.copySetup.action}
                               onOpenSetup={() => setSetupTrader(trader)}
                             />
@@ -426,6 +428,7 @@ function CopyActionButton({
   onOpenSetup: () => void
 }) {
   return (
+    <div className={'flex flex-col items-end gap-1'}>
     <Button
       type="button"
       size="sm"
@@ -440,7 +443,17 @@ function CopyActionButton({
     >
       {copyLabel}
     </Button>
+    <p className={'max-w-64 text-right text-xs leading-4 text-neutral-500'} role={'status'}>{disabledReason}</p>
+    </div>
   )
+}
+
+function PerformanceNotice({ loading, trader }: { loading: boolean, trader: SocialTrader }) {
+  if (loading) return <Alert variant={'warning'}>Loading source-scoped performance and trade history...</Alert>
+  if (trader.performanceError) return <Alert variant={'error'}>{trader.performanceError}</Alert>
+  if (trader.performanceStatus === 'no_history') return <Alert variant={'warning'}>No recorded trade history is available for this source yet.</Alert>
+  if (trader.performanceStatus === 'stale') return <Alert variant={'warning'}>Source history is stale. Historical values are shown and copying remains unavailable until synchronization succeeds.</Alert>
+  return null
 }
 
 export function SocialTraderActivityPage() {
@@ -502,7 +515,7 @@ export function SocialTraderActivityPage() {
               <TraderAvatar name={name} src={trader.isYou ? ownAvatarUrl : null} size="profile" />
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="truncate text-xl font-semibold text-neutral-900 dark:text-neutral-50">{name}</h1>{trader.syntheticDemo ? <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">Synthetic demo · copying disabled</span> : null}
+                  <h1 className="truncate text-xl font-semibold text-neutral-900 dark:text-neutral-50">{name}</h1>{trader.syntheticDemo ? <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">Synthetic demo · simulated copying</span> : null}
                   <AccessTag
                     access={trader.isYou ? access : trader.access}
                     openLabel={copy.open}
@@ -515,6 +528,11 @@ export function SocialTraderActivityPage() {
                 <div className="mt-1">
                   <TraderReviews traderUserId={trader.id} traderName={trader.displayName} isSelf={trader.isYou} averageRating={trader.rating} reviewCount={trader.ratingCount} />
                   <SocialProfileLinks links={trader.socialLinks ?? {}} />
+                  <p className="mt-2 text-xs text-neutral-500">
+                    Source: {trader.sourceLabel
+                      ? [trader.sourceLabel, trader.sourceProvider, trader.sourcePlatform, trader.sourceAccountMode].filter(Boolean).join(' · ')
+                      : 'Unavailable'}
+                  </p>
                 </div>
               </div>
             </div>
@@ -529,8 +547,8 @@ export function SocialTraderActivityPage() {
              </div>
             ) : (
               <CopyActionButton
-                disabled={!trader.copyEligible}
-                disabledReason={trader.syntheticDemo ? 'Synthetic demo traders cannot be copied.' : 'This trader is not currently eligible for copying.'}
+                disabled={!canOpenCopyTrader(trader)}
+                disabledReason={copyTraderUnavailableReason(trader) ?? undefined}
                 copyLabel={copy.copySetup.action}
                 onOpenSetup={() => setCopyModalOpen(true)}
               />
@@ -574,6 +592,7 @@ export function SocialTraderActivityPage() {
             <ProfileTab icon={<LineChart className="h-4 w-4" />} active={profileTab === 'trading'} onClick={() => setProfileTab('trading')}>{copy.tabTrading}</ProfileTab>
             <ProfileTab icon={<Wallet className="h-4 w-4" />} active={profileTab === 'portfolio'} onClick={() => setProfileTab('portfolio')}>{copy.tabPortfolio}</ProfileTab>
           </div>
+          <PerformanceNotice loading={social.performanceLoading} trader={trader} />
           {profileTab === 'performance' ? (
             <>
               <MonthlyProfitChart title={copy.monthlyStatistics} data={stats.monthly} />
@@ -747,11 +766,11 @@ function StatisticsGrid({
       <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{copy.statisticsMonth}</h2>
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-4">
         <Metric label={copy.growth} value={growth} tone={trader.roi == null ? undefined : trader.roi >= 0 ? 'up' : 'down'} />
-        <Metric label={copy.longTrades} value={String(stats.longTrades)} />
+        <Metric label={copy.longTrades} value={stats.longTrades == null ? 'Unavailable' : String(stats.longTrades)} />
         <Metric label={copy.maxOpenTrades} value={stats.maxOpenTrades == null ? 'Unavailable' : String(stats.maxOpenTrades)} />
         <Metric label={copy.sharpeRatio} value={stats.sharpe == null ? 'Unavailable' : stats.sharpe.toFixed(2)} />
         <Metric label={copy.avgProfit} value={stats.avgProfit == null ? 'Unavailable' : formatMoney(stats.avgProfit)} />
-        <Metric label={copy.shortTrades} value={String(stats.shortTrades)} />
+        <Metric label={copy.shortTrades} value={stats.shortTrades == null ? 'Unavailable' : String(stats.shortTrades)} />
         <Metric label={copy.avgHoldingTime} value={stats.avgHoldingDays == null ? 'Unavailable' : interpolate(copy.holdingDays, { count: stats.avgHoldingDays })} />
         <Metric label={copy.profitFactor} value={stats.profitFactor == null ? 'Unavailable' : stats.profitFactor.toFixed(2)} />
       </dl>
@@ -1076,15 +1095,15 @@ function OverviewPanel({
             <div className="h-full rounded-full bg-green-400" style={{ width: Math.min(trader.winRate ?? 0, 100) + '%' }} />
           </div>
         </div>
-        <OverviewRow label={copy.profitableTrades} value={String(stats.profitableTrades)} />
-        <OverviewRow label={copy.losingTrades} value={String(stats.losingTrades)} />
+        <OverviewRow label={copy.profitableTrades} value={stats.profitableTrades == null ? 'Unavailable' : String(stats.profitableTrades)} />
+        <OverviewRow label={copy.losingTrades} value={stats.losingTrades == null ? 'Unavailable' : String(stats.losingTrades)} />
         <OverviewRow label={copy.balance} value={trader.previewBalance == null ? 'Unavailable' : formatMoney(trader.previewBalance)} />
         <OverviewRow label={copy.equity} value={stats.equity == null ? 'Unavailable' : formatMoney(stats.equity)} />
         <OverviewRow label={copy.deposit} value={stats.deposit == null ? 'Unavailable' : formatMoney(stats.deposit)} />
-        <OverviewRow label={copy.totalTrades} value={String(trader.closedTrades + trader.openTrades.length)} />
-        <OverviewRow label={copy.lastTrade} value={lastTrade ? formatWhen(lastTrade) : '—'} />
+        <OverviewRow label={copy.totalTrades} value={trader.closedTrades == null || trader.openTradeCount == null ? 'Unavailable' : String(trader.closedTrades + trader.openTradeCount)} />
+        <OverviewRow label={copy.lastTrade} value={lastTrade ? formatWhen(lastTrade) : trader.historyAvailable ? '—' : 'Unavailable'} />
         <OverviewRow label={copy.openPosition} value={stats.openPosition == null ? 'Unavailable' : formatSignedMoney(stats.openPosition)} tone={stats.openPosition == null ? undefined : stats.openPosition >= 0 ? 'up' : 'down'} />
-        <OverviewRow label={copy.liveCopiers} value={String(trader.followerCount)} />
+        <OverviewRow label={copy.liveCopiers} value={trader.liveCopiers == null ? 'Unavailable' : String(trader.liveCopiers)} />
 <OverviewRow label={copy.bestTrade} value={stats.bestTradeProfit == null || !stats.bestTradeAt ? 'Unavailable' : formatSignedMoney(stats.bestTradeProfit) + ' / ' + formatWhen(stats.bestTradeAt)} tone="up" />
 <OverviewRow label={copy.worstTrade} value={stats.worstTradeProfit == null || !stats.worstTradeAt ? 'Unavailable' : formatSignedMoney(stats.worstTradeProfit) + ' / ' + formatWhen(stats.worstTradeAt)} tone="down" />
         <OverviewRow label={copy.timezone} value={trader.profile.timezone ?? 'Unavailable'} />

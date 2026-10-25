@@ -24,6 +24,7 @@ describe('approved Social Trading performance presentation', () => {
     expect(stats.profitableTrades).toBe(1)
     expect(stats.losingTrades).toBe(1)
     expect(stats.profitFactor).toBe(6)
+    expect(stats.maxOpenTrades).toBe(1)
   })
 
   it('keeps metrics unavailable when trade history cannot support them', () => {
@@ -33,5 +34,25 @@ describe('approved Social Trading performance presentation', () => {
     expect(stats.deposit).toBeNull()
     expect(stats.dailyProfitPercent).toBeNull()
     expect(stats.monthlyProfitPercent).toBeNull()
+  })
+
+  it('does not turn a failed history request into genuine zero counts', () => {
+    const stats = socialTraderStats({ ...trader, historyAvailable: false, closedTrades: null, closedPerformance: [] })
+    expect(stats.longTrades).toBeNull()
+    expect(stats.shortTrades).toBeNull()
+    expect(stats.profitableTrades).toBeNull()
+    expect(stats.losingTrades).toBeNull()
+  })
+
+  it('preserves genuine breakeven trades as available zero values', () => {
+    const stats = socialTraderStats({
+      ...trader,
+      historyAvailable: true,
+      closedTrades: 1,
+      closedPerformance: [{ ...trader.closedPerformance[0], profit: 0 }],
+    })
+    expect(stats.avgProfit).toBe(0)
+    expect(stats.profitableTrades).toBe(0)
+    expect(stats.losingTrades).toBe(0)
   })
 })
