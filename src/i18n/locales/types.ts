@@ -605,6 +605,13 @@ export interface CopierLogsTranslations {
   mirrorCloseMessage?: string
   mirrorModifyMessage?: string
   mirrorOtherMessage?: string
+  mirrorDetailTitle?: string
+  mirrorOccurred?: string
+  mirrorMasterAccount?: string
+  mirrorSlaveAccount?: string
+  mirrorMasterTicket?: string
+  mirrorCopyTicket?: string
+  mirrorLot?: string
   skipReasons: Record<string, string>
   skipReasonDetails?: Record<string, string>
   detailModal?: {

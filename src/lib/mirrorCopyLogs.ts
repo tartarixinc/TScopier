@@ -34,6 +34,10 @@ export type MirrorCopyLogRow = {
   lot: number | null
   /** Master account label, e.g. `MT5 • 476205231`. */
   channelName: string
+  /** Slave account the copy sits on, e.g. `MT4 • 71901962`. */
+  destinationAccount: string | null
+  /** Broker ticket of the copy itself, once it reached the slave. */
+  destinationTicket: string | null
   reason: string | null
 }
 
@@ -56,9 +60,14 @@ type MappingRow = {
   source_side: string | null
   source_volume: number | null
   destination_volume: number | null
+  destination_ticket: string | null
 }
 
-type LinkRow = { id: string; source_broker_account_id: string }
+type LinkRow = {
+  id: string
+  source_broker_account_id: string
+  destination_broker_account_id: string
+}
 
 type BrokerRow = { id: string; label: string | null; account_login: string | null }
 
@@ -167,6 +176,8 @@ export function normalizeMirrorCopyLogs(
         sourceTicket: textOrNull(event.source_ticket),
         lot: numberOrNull(mapping?.destination_volume ?? mapping?.source_volume ?? request.volume),
         channelName: (link && labelByAccount.get(link.source_broker_account_id)) || '—',
+        destinationAccount: (link && labelByAccount.get(link.destination_broker_account_id)) || null,
+        destinationTicket: textOrNull(mapping?.destination_ticket),
         reason: textOrNull(event.error_detail),
       }
     })
@@ -187,7 +198,7 @@ export async function fetchMirrorCopyLogs(
 
   const { data: links, error: linkError } = await supabase
     .from('broker_copy_links')
-    .select('id,source_broker_account_id')
+    .select('id,source_broker_account_id,destination_broker_account_id')
     .eq('user_id', userId)
   if (linkError || !links?.length) return []
 
@@ -206,11 +217,12 @@ export async function fetchMirrorCopyLogs(
   // Only the mappings these events actually reference are needed, so a long-lived
   // mirror user does not pull every mapping they ever had.
   const mappingIds = [...new Set(events.map(row => row.mapping_id).filter((id): id is string => Boolean(id)))]
-  const accountIds = [...new Set(linkRows.map(row => row.source_broker_account_id))]
+  // Both ends: the modal names the master and the slave the copy sits on.
+  const accountIds = [...new Set(linkRows.flatMap(row => [row.source_broker_account_id, row.destination_broker_account_id]))]
   const [mappingsRes, brokersRes] = await Promise.all([
     supabase
       .from('mirror_copy_trade_mappings')
-      .select('id,source_symbol,destination_symbol,source_side,source_volume,destination_volume')
+      .select('id,source_symbol,destination_symbol,source_side,source_volume,destination_volume,destination_ticket')
       .in('id', mappingIds),
     supabase
       .from('broker_accounts')

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeftRight, ChevronLeft, ChevronRight, Loader2, RefreshCw } from 'lucide-react'
 import clsx from 'clsx'
 import { supabase } from '../../lib/supabase'
@@ -25,6 +25,7 @@ import {
 import { formatCopierSkipReasonShort } from '../../lib/copierLogDetail'
 import { fetchMirrorCopyLogs, planMergedLogPage, type MirrorCopyLogRow } from '../../lib/mirrorCopyLogs'
 import { CopierLogDetailModal } from '../../components/dashboard/CopierLogDetailModal'
+import { MirrorLogDetailModal } from '../../components/dashboard/MirrorLogDetailModal'
 import { SignalSourceLogo } from '../../components/dashboard/SignalSourceLogo'
 import { buildChannelSourceKinds, SIGNAL_SOURCE_MARKS, type SignalSourceKind } from '../../lib/signalSourceMark'
 
@@ -77,6 +78,12 @@ type CopierLogView = {
   reasonShort: string
   timeLabel: string
 }
+
+/** One row on the list — a signal or a mirror copy, never both. */
+type LogViewEntry = { key: string; view: CopierLogView } & (
+  | { signal: Signal; mirror?: never }
+  | { mirror: MirrorCopyLogRow; signal?: never }
+)
 
 function formatLogTime(iso: string): string {
   return new Date(iso).toLocaleString([], {
@@ -135,15 +142,17 @@ function mirrorLogMessage(
   copierLogs: ReturnType<typeof useT>['copierLogs'],
 ): string {
   const vars = {
-    side: row.side ?? '',
-    symbol: row.symbol,
-    lot: row.lot ?? '',
-    ticket: row.sourceTicket ?? '',
+    // Built from what is actually known: an event with no mapping has no lot
+    // and sometimes no side, and must not render "Copied  XAUUSD ( lot)".
+    detail: `${[row.side, row.symbol].filter(Boolean).join(' ')}${row.lot == null ? '' : ` (${row.lot} lot)`}`
+      || row.action
+      || '',
+    ticket: row.sourceTicket || '—',
     action: row.action ?? '',
   }
   switch (row.action) {
     case 'open':
-      return interpolate(copierLogs.mirrorOpenMessage ?? 'Copied {side} {symbol} ({lot} lot) from master #{ticket}', vars)
+      return interpolate(copierLogs.mirrorOpenMessage ?? 'Copied {detail} from master #{ticket}', vars)
     case 'close':
       return interpolate(copierLogs.mirrorCloseMessage ?? 'Copy of #{ticket} closed', vars)
     case 'modify':
@@ -372,11 +381,20 @@ export function CopierLogsPage() {
   const [filter, setFilter] = useState<Filter>('all')
   const [loading, setLoading] = useState(true)
   const [totalCount, setTotalCount] = useState(0)
+  // Monotonic token so a slower, older load can never commit over a newer one.
+  const loadSeqRef = useRef(0)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<PageSizeOption>(25)
   const [retryingSignalIds, setRetryingSignalIds] = useState<Set<string>>(() => new Set())
   const [toast, setToast] = useState<string | null>(null)
-  const [detailSignal, setDetailSignal] = useState<Signal | null>(null)
+  // One slot for the open detail view. A row is either a signal or a mirror
+  // copy, so two dialogs can never be mounted at the same time.
+  const [detail, setDetail] = useState<LogViewEntry | null>(null)
+  const detailSignal = detail?.signal ?? null
+  const detailMirror = detail?.mirror ?? null
+  // Stable identity: MirrorLogDetailModal re-runs its scroll-lock/focus effect
+  // whenever this changes, which would yank focus back to the panel.
+  const closeDetail = useCallback(() => setDetail(null), [])
 
   const showToast = useCallback((message: string) => {
     setToast(message)
@@ -396,49 +414,60 @@ export function CopierLogsPage() {
   const loadSignals = useCallback(async () => {
     if (!user) return
     setLoading(true)
+    const seq = ++loadSeqRef.current
 
-    // Mirror copies carry no signal, so they are read from their own ledger and
-    // merged in front of the signal list. Their count shifts the signal window,
-    // so that read goes first; the channel lookup runs alongside it.
-    const channelsQuery = supabase
-      .from('telegram_channels')
-      .select('id,display_name,channel_username,source_kind')
-      .eq('user_id', user.id)
-    const [mirror, channelsRes] = await Promise.all([
-      fetchMirrorCopyLogs(supabase, user.id),
-      channelsQuery,
-    ])
-    const visibleMirror = filter === 'all' ? mirror : mirror.filter(row => row.status === filter)
+    try {
+      // Mirror copies carry no signal, so they are read from their own ledger and
+      // merged in front of the signal list. Their count shifts the signal window,
+      // so that read goes first; the channel lookup runs alongside it.
+      const channelsQuery = supabase
+        .from('telegram_channels')
+        .select('id,display_name,channel_username,source_kind')
+        .eq('user_id', user.id)
+      const [mirror, channelsRes] = await Promise.all([
+        fetchMirrorCopyLogs(supabase, user.id),
+        channelsQuery,
+      ])
+      const visibleMirror = filter === 'all' ? mirror : mirror.filter(row => row.status === filter)
 
-    const plan = planMergedLogPage(page, pageSize, visibleMirror.length)
+      const plan = planMergedLogPage(page, pageSize, visibleMirror.length)
 
-    let query = supabase
-      .from('signals')
-      .select('*', { count: 'exact' })
-      .eq('user_id', user.id)
-      .or('skip_reason.is.null,skip_reason.neq.non_trade_message')
-      .order('created_at', { ascending: false })
+      let query = supabase
+        .from('signals')
+        .select('*', { count: 'exact' })
+        .eq('user_id', user.id)
+        .or('skip_reason.is.null,skip_reason.neq.non_trade_message')
+        .order('created_at', { ascending: false })
 
-    if (filter !== 'all') query = query.eq('status', filter)
-    if (plan.signalFrom != null && plan.signalTo != null) query = query.range(plan.signalFrom, plan.signalTo)
-    else query = query.limit(0)
+      if (filter !== 'all') query = query.eq('status', filter)
+      if (plan.signalFrom != null && plan.signalTo != null) query = query.range(plan.signalFrom, plan.signalTo)
+      else query = query.limit(0)
 
-    const signalsRes = await query
+      const signalsRes = await query
 
-    const loaded = ((signalsRes.data ?? []) as Signal[]).filter(s => !isNonTradeSkipReason(s.skip_reason))
-    const nextSymbolContext = await buildSignalSymbolLookup(supabase, user.id, loaded)
-    const channelRows = (channelsRes.data ?? []) as ChannelNameRow[]
+      const loaded = ((signalsRes.data ?? []) as Signal[]).filter(s => !isNonTradeSkipReason(s.skip_reason))
+      const nextSymbolContext = await buildSignalSymbolLookup(supabase, user.id, loaded)
+      const channelRows = (channelsRes.data ?? []) as ChannelNameRow[]
 
-    // Commit everything together after the last await: the mirror list and the
-    // signal window must never be written a request apart, or a slower older
-    // load could pair its mirror rows with a newer load's signal page.
-    setMirrorLogs(visibleMirror)
-    setTotalCount((signalsRes.count ?? 0) + visibleMirror.length)
-    setChannelDisplayNames(buildChannelDisplayNames(channelRows))
-    setChannelSourceKinds(buildChannelSourceKinds(channelRows))
-    setSymbolContext(nextSymbolContext)
-    setSignals(loaded)
-    setLoading(false)
+      // Commit everything together after the last await: the mirror list and the
+      // signal window must never be written a request apart, or a slower older
+      // load could pair its mirror rows with a newer load's signal page.
+      if (seq !== loadSeqRef.current) return
+      const signalCount = signalsRes.count ?? loaded.length
+      setMirrorLogs(visibleMirror)
+      setTotalCount((Number.isFinite(signalCount) ? signalCount : loaded.length) + visibleMirror.length)
+      setChannelDisplayNames(buildChannelDisplayNames(channelRows))
+      setChannelSourceKinds(buildChannelSourceKinds(channelRows))
+      setSymbolContext(nextSymbolContext)
+      setSignals(loaded)
+    } catch (error) {
+      // Never leave the skeleton up: the next load recovers from a failed one.
+      console.warn('[copier-logs] load failed:', error instanceof Error ? error.message : String(error))
+    } finally {
+      // Only the load that still owns the token may clear the flag, so a
+      // superseded request cannot switch off a newer one's loading state.
+      if (seq === loadSeqRef.current) setLoading(false)
+    }
   }, [user, filter, page, pageSize])
 
   const retrySignalEntry = useCallback(async (signalId: string) => {
@@ -508,12 +537,12 @@ export function CopierLogsPage() {
     // slice them to this page here — otherwise every page would re-show them.
     const { mirrorStart, mirrorCount } = planMergedLogPage(page, pageSize, mirrorLogs.length)
     const mirrorPage = mirrorLogs.slice(mirrorStart, mirrorStart + mirrorCount)
-    const mirrorViews = mirrorPage.map(row => ({
+    const mirrorViews: LogViewEntry[] = mirrorPage.map(row => ({
       key: row.id,
       view: buildMirrorLogView(row, statusConfig, t.copierLogs),
-      signal: undefined as Signal | undefined,
+      mirror: row,
     }))
-    const signalViews = signals.map(signal => ({
+    const signalViews: LogViewEntry[] = signals.map(signal => ({
       key: signal.id,
       view: buildSignalLogView(
         signal,
@@ -620,7 +649,7 @@ export function CopierLogsPage() {
                     onRetry={signal && isCopierSignalRetryEligible(signal)
                       ? () => { void retrySignalEntry(signal.id) }
                       : undefined}
-                    onOpenDetail={signal ? () => setDetailSignal(signal) : undefined}
+                    onOpenDetail={() => setDetail(entry)}
                   />
                 )
               })}
@@ -648,7 +677,7 @@ export function CopierLogsPage() {
                       onRetry={signal && isCopierSignalRetryEligible(signal)
                         ? () => { void retrySignalEntry(signal.id) }
                         : undefined}
-                      onOpenDetail={signal ? () => setDetailSignal(signal) : undefined}
+                      onOpenDetail={() => setDetail(entry)}
                       viewDetailsLabel={viewDetailsLabel}
                     />
                   )
@@ -687,12 +716,20 @@ export function CopierLogsPage() {
           sourceKind={detailDisplay.sourceKind}
           symbol={detailDisplay.symbol}
           status={detailDisplay.status}
-          onClose={() => setDetailSignal(null)}
+          onClose={closeDetail}
           retryEligible={isCopierSignalRetryEligible(detailDisplay.signal)}
           isRetrying={retryingSignalIds.has(detailDisplay.signal.id)}
           onRetry={isCopierSignalRetryEligible(detailDisplay.signal)
             ? () => { void retrySignalEntry(detailDisplay.signal.id) }
             : undefined}
+        />
+      ) : null}
+
+      {detailMirror ? (
+        <MirrorLogDetailModal
+          row={detailMirror}
+          status={statusConfig[detailMirror.status] ?? { variant: 'neutral' as const, label: detailMirror.status }}
+          onClose={closeDetail}
         />
       ) : null}
     </PageShell>

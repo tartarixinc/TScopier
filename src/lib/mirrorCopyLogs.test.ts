@@ -73,10 +73,16 @@ const mapping = {
   source_side: 'sell',
   source_volume: 0.01,
   destination_volume: 0.01,
+  destination_ticket: '3389489202',
 }
 
-const links = [{ id: LINK_ID, source_broker_account_id: 'src-1' }]
-const brokers = [{ id: 'src-1', label: 'MT5 • 476205231', account_login: '476205231' }]
+const links = [
+  { id: LINK_ID, source_broker_account_id: 'src-1', destination_broker_account_id: 'dst-1' },
+]
+const brokers = [
+  { id: 'src-1', label: 'MT5 • 476205231', account_login: '476205231' },
+  { id: 'dst-1', label: 'MT5 • 477608729', account_login: '477608729' },
+]
 
 describe('normalizeMirrorCopyLogs', () => {
   it('turns a successful open event into an executed buy/sell row with master label', () => {
@@ -91,9 +97,21 @@ describe('normalizeMirrorCopyLogs', () => {
         sourceTicket: '3400415901',
         lot: 0.01,
         channelName: 'MT5 • 476205231',
+        destinationAccount: 'MT5 • 477608729',
+        destinationTicket: '3389489202',
         reason: null,
       },
     ])
+  })
+
+  it('leaves the slave fields empty when the mapping ticket or slave label is missing', () => {
+    const rows = normalizeMirrorCopyLogs(
+      [{ ...openEvent, id: 'e9' }],
+      [{ ...mapping, destination_ticket: null }],
+      links,
+      [{ id: 'src-1', label: 'MT5 • 476205231', account_login: '476205231' }],
+    )
+    expect(rows[0]).toMatchObject({ destinationTicket: null, destinationAccount: null })
   })
 
   it('keeps an uncertain close visible as pending rather than hiding it', () => {
