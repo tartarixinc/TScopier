@@ -179,6 +179,7 @@ export async function seedSocialTradingDemo(client: SupabaseClient, anchor = new
     access_mode: trader.accessMode,
     is_listed: true,
     share_trade_history: true,
+    is_synthetic_demo: true,
   })), { onConflict: 'user_id' }), 'Upserting social profiles')
 
   await requireNoError(client.from('broker_accounts').upsert(buildDemoBrokerAccounts(anchor), { onConflict: 'id' }), 'Upserting synthetic broker accounts')

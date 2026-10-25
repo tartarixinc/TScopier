@@ -618,7 +618,7 @@ export const fr: Translations = {
     balance: 'Solde',
     equity: 'Equite',
     deposit: 'Depot',
-    statisticsMonth: 'Statistiques sep 2026',
+    statisticsMonth: 'Statistiques',
     longTrades: 'Trades longs',
     shortTrades: 'Trades courts',
     maxOpenTrades: 'Trades ouverts max.',
