@@ -853,7 +853,7 @@ export const landingPl: LandingTranslations = {
       openApp: 'Otwórz pulpit nawigacyjny',
     },
     platforms: 'Współpracuje z',
-    copyright: 'Â© {year} Tartarix Inc. Wszelkie prawa zastrzeżone.',
+    copyright: '© {year} Tartarix Inc. Wszelkie prawa zastrzeżone.',
     disclaimer:
       'Handel wiąże się z ryzykiem. TScopier to narzędzie do kopiowania, a nie porada finansowa.',
   },

@@ -70,7 +70,7 @@ export const landingRu: LandingTranslations = {
           time: '22 мая, 09:37',
         },
         {
-          message: 'Отправлен заказ на счет MT5 Â· № 88291.',
+          message: 'Отправлен заказ на счет MT5 · № 88291.',
           time: '22 мая, 09:37',
         },
       ],
@@ -344,7 +344,7 @@ export const landingRu: LandingTranslations = {
       },
       signalEdit: {
         channelName: 'Золотые сигналы Pro',
-        channelMeta: 'Telegram Â· сообщение отредактировано',
+        channelMeta: 'Telegram · сообщение отредактировано',
         editedLabel: 'Отредактировано',
         messageBuy: 'КУПИТЬ XAUUSD',
         beforeLabel: 'Предыдущий',
@@ -359,7 +359,7 @@ export const landingRu: LandingTranslations = {
       },
       backtest: {
         resultsTitle: 'Результаты бэктеста',
-        resultsSubtitle: 'XAUUSD Â· Канал',
+        resultsSubtitle: 'XAUUSD · Канал',
         newRunLabel: 'Новый запуск',
         totalPipsLabel: 'Всего пунктов',
         totalPips: '+544.0п',
@@ -507,13 +507,13 @@ export const landingRu: LandingTranslations = {
             name: 'Золотые сигналы Pro',
             username: 'золотосигналыпро',
             active: true,
-            brokers: ['MT5 Â · #88291'],
+            brokers: ['MT5 · #88291'],
           },
           {
             name: 'FX-скальпер VIP',
             username: 'fxscalpervip',
             active: true,
-            brokers: ['MT4 Â· #44102'],
+            brokers: ['MT4 · #44102'],
           },
         ],
       },
@@ -541,7 +541,7 @@ export const landingRu: LandingTranslations = {
             time: '22 мая, 09:37',
           },
           {
-            message: 'Отправлен лот 0,10 на счет MT5 Â· № 88291.',
+            message: 'Отправлен лот 0,10 на счет MT5 · № 88291.',
             time: '22 мая, 09:37',
           },
         ],

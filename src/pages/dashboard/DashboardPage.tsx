@@ -166,7 +166,7 @@ interface DashboardStats {
   yesterdayTotalSignals: number
   totalVolume: number
   yesterdayTotalVolume: number
-  /** Sum of `profit` across all trades (open floating + closed realized) â€” account-level P/L from the trade list. */
+  /** Sum of `profit` across all trades (open floating + closed realized) — account-level P/L from the trade list. */
   /** Sum of realized closed-deal profit across linked accounts (deposits excluded). */
   totalProfitLoss: number | null
   /** Unused for Total P/L (lifetime-style metric has no single yesterday twin); keep null so the UI hides the sub. */
@@ -190,7 +190,7 @@ type AiExpertLogRow = TradeActivityLogRow
 type ChannelNameRow = { id: string; display_name: string; channel_username?: string | null }
 
 function channelLabel(channelId: string | null | undefined, names: Record<string, string>): string {
-  if (!channelId) return 'â€”'
+  if (!channelId) return '—'
   return names[channelId] ?? 'Unknown channel'
 }
 
@@ -485,10 +485,10 @@ const DEFAULT_DASHBOARD_STATS: DashboardStats = {
   yesterdayWorstTradeProfit: 0,
   todayProfit: 0,
   yesterdayProfit: 0,
-  mostProfitableChannel: 'â€”',
-  yesterdayMostProfitableChannel: 'â€”',
-  mostTradedAsset: 'â€”',
-  yesterdayMostTradedAsset: 'â€”',
+  mostProfitableChannel: '—',
+  yesterdayMostProfitableChannel: '—',
+  mostTradedAsset: '—',
+  yesterdayMostTradedAsset: '—',
 }
 
 function readBootstrapDashboardCache(authUserId?: string | null): DashboardCachePayload | null {
@@ -655,7 +655,7 @@ function mergeDashboardStats(
   const acceptFresh = (p: number, n: number) => (Number.isFinite(n) ? n : p)
   const keepOpenCount = (p: number, n: number) =>
     opts?.trustOpenTrades ? (Number.isFinite(n) ? n : p) : (Number.isFinite(n) ? n : p)
-  const keepStr = (p: string, n: string) => (n === 'â€”' && p !== 'â€”' ? p : n)
+  const keepStr = (p: string, n: string) => (n === '—' && p !== '—' ? p : n)
   const keepPnl = (p: number, n: number) =>
     opts?.preserveMtPnl && p !== 0 ? p : acceptFresh(p, n)
   const keepTradeCount = (p: number, n: number) =>
@@ -756,7 +756,7 @@ function readDashboardCache(userId: string): DashboardCachePayload | null {
         parsed.stats.totalVolume = 0
         parsed.stats.bestTradeProfit = 0
         parsed.stats.worstTradeProfit = 0
-        parsed.stats.mostTradedAsset = 'â€”'
+        parsed.stats.mostTradedAsset = '—'
       }
       return parsed
     } catch {
@@ -1523,7 +1523,7 @@ export function DashboardPage() {
         if (!trade.symbol) continue
         counts.set(trade.symbol, (counts.get(trade.symbol) ?? 0) + 1)
       }
-      let winner = 'â€”'
+      let winner = '—'
       let max = 0
       for (const [symbol, count] of counts.entries()) {
         if (count > max) {
@@ -1539,7 +1539,7 @@ export function DashboardPage() {
         if (!trade.symbol) continue
         counts.set(trade.symbol, (counts.get(trade.symbol) ?? 0) + 1)
       }
-      let winner = 'â€”'
+      let winner = '—'
       let max = 0
       for (const [symbol, count] of counts.entries()) {
         if (count > max) {
@@ -1568,7 +1568,7 @@ export function DashboardPage() {
         if (!channelId) continue
         pnlByChannel.set(channelId, (pnlByChannel.get(channelId) ?? 0) + (trade.profit ?? 0))
       }
-      let winnerName = 'â€”'
+      let winnerName = '—'
       let winnerPnl = Number.NEGATIVE_INFINITY
       for (const [channelId, pnl] of pnlByChannel.entries()) {
         if (pnl > winnerPnl) {
@@ -1592,7 +1592,7 @@ export function DashboardPage() {
         if (!channelId) continue
         pnlByChannel.set(channelId, (pnlByChannel.get(channelId) ?? 0) + (trade.profit ?? 0))
       }
-      let winnerName = 'â€”'
+      let winnerName = '—'
       let winnerPnl = Number.NEGATIVE_INFINITY
       for (const [channelId, pnl] of pnlByChannel.entries()) {
         if (pnl > winnerPnl) {
@@ -1974,7 +1974,7 @@ export function DashboardPage() {
     },
   }, linkedAccounts.some(isFxsocketLinkedBroker))
 
-  /** REST fallback when WS is quiet â€” keeps Open P/L moving without a full page refresh. */
+  /** REST fallback when WS is quiet — keeps Open P/L moving without a full page refresh. */
   const linkedAccountIdsKey = linkedAccounts.map(a => a.id).sort().join(',')
   useEffect(() => {
     const accounts = linkedAccounts.filter(isFxsocketLinkedBroker)
@@ -2209,7 +2209,7 @@ export function DashboardPage() {
     const topSymbol = (rows: typeof trades): string => {
       const counts = new Map<string, number>()
       for (const r of rows) if (r.symbol) counts.set(r.symbol, (counts.get(r.symbol) ?? 0) + 1)
-      let best = 'â€”'
+      let best = '—'
       let max = 0
       for (const [s, c] of counts.entries()) if (c > max) { best = s; max = c }
       return best
@@ -2373,13 +2373,13 @@ export function DashboardPage() {
                   <span className="text-teal-600 dark:text-teal-500">
                     {interpolate(t.common.won, { count: headlineStats.tradesWon })}
                   </span>
-                  <span className="text-neutral-300 dark:text-neutral-600">â€¢</span>
+                  <span className="text-neutral-300 dark:text-neutral-600">•</span>
                   <span className={lossTextClass}>
                     {interpolate(t.common.lost, { count: headlineStats.tradesLost })}
                   </span>
                   {headlineStats.tradesBreakeven > 0 ? (
                     <>
-                      <span className="text-neutral-300 dark:text-neutral-600">â€¢</span>
+                      <span className="text-neutral-300 dark:text-neutral-600">•</span>
                       <span className="text-neutral-500 dark:text-neutral-400">
                         {interpolate(t.common.breakeven, { count: headlineStats.tradesBreakeven })}
                       </span>
@@ -2548,7 +2548,7 @@ export function DashboardPage() {
                   key={log.id}
                   signal={log}
                   channelName={channelLabel(log.channel_id, channelDisplayNames)}
-                  symbol={copierLogSymbols[log.id] ?? 'â€”'}
+                  symbol={copierLogSymbols[log.id] ?? '—'}
                 />
               ))}
             </div>
@@ -2804,7 +2804,7 @@ function LogRow({ signal, channelName, symbol }: { signal: Signal; channelName: 
   const s = statusConfig[signal.status] ?? { color: 'text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800', label: signal.status }
   const isBuy = action === 'buy'
 
-  const typeLabel = action ? action.replace(/_/g, ' ') : 'â€”'
+  const typeLabel = action ? action.replace(/_/g, ' ') : '—'
 
   return (
     <div className={`${DASHBOARD_COPIER_LOG_GRID} px-4 sm:px-5 py-3 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors`}>
@@ -2829,14 +2829,14 @@ function LogRow({ signal, channelName, symbol }: { signal: Signal; channelName: 
               hour: '2-digit',
               minute: '2-digit',
             })
-          : 'â€”'}
+          : '—'}
       </span>
     </div>
   )
 }
 
 function formatPerformancePct(value: number | null | undefined, digits = 1): string {
-  if (value == null || !Number.isFinite(value)) return 'â€”'
+  if (value == null || !Number.isFinite(value)) return '—'
   return `${value.toFixed(digits)}%`
 }
 
@@ -2936,19 +2936,19 @@ function LinkedAccountRow({
   const fromApi = inferBrokerLabelFromServer(apiRaw) || apiRaw
   const server = resolveMtServerCandidate(account, accountSummary?.mt_server_hint)
   const fromServer = inferBrokerLabelFromServer(server) || (server?.trim() ?? '')
-  const brokerText = fromApi || fromServer || 'â€”'
-  const accountType: LinkedAccountType | 'â€”' =
+  const brokerText = fromApi || fromServer || '—'
+  const accountType: LinkedAccountType | '—' =
     resolveLinkedAccountTypeForBroker(account, undefined, accountSummary?.mt_server_hint)
     ?? accountSummary?.account_type
-    ?? 'â€”'
-  const accountTypeClass = linkedAccountTypeValueClass(accountType === 'â€”' ? undefined : accountType)
+    ?? '—'
+  const accountTypeClass = linkedAccountTypeValueClass(accountType === '—' ? undefined : accountType)
 
   const accountLabel = account.label || la.unnamedAccount
-  const platformLabel = (account.platform ?? '').trim().toUpperCase() || 'â€”'
+  const platformLabel = (account.platform ?? '').trim().toUpperCase() || '—'
   const accountLogin = resolveAccountLogin(account)
-  const platformLine = accountLogin ? `${platformLabel} â€¢ ${accountLogin}` : platformLabel
+  const platformLine = accountLogin ? `${platformLabel} • ${accountLogin}` : platformLabel
   const accountTypeLabel =
-    accountType === 'â€”'
+    accountType === '—'
       ? accountType
       : formatLinkedAccountTypeLabel(accountType, {
           demo: la.accountTypeDemo,
@@ -2998,7 +2998,7 @@ function LinkedAccountRow({
       <span className={`text-sm font-semibold ${accountTypeClass}`}>{accountTypeLabel}</span>
       <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{balanceText}</span>
       <span className={`text-sm font-semibold ${pnlColor}`}>
-        {connectPnl == null ? 'â€”' : (
+        {connectPnl == null ? '—' : (
           <>
             {pnl >= 0 ? '+' : '-'}
             {pnlFormatted}
@@ -3006,7 +3006,7 @@ function LinkedAccountRow({
         )}
       </span>
       <span className={`text-sm font-semibold  ${openPnlColor}`}>
-        {openPnl == null ? 'â€”' : (
+        {openPnl == null ? '—' : (
           <>
             {openPnl >= 0 ? '+' : '-'}
             {openPnlFormatted}
