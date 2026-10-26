@@ -205,6 +205,41 @@ describe('formatHolisticNotification', () => {
     assert.match(notification.body, /TP was updated to 4220/)
   })
 
+  it('ignores internal range rebalances', () => {
+    const rows = [
+      baseRow({
+        id: 'leg-1',
+        action: 'basket_leg_modify',
+        request_payload: { target_sl: 0, target_tp: 4000, internal_rebalance: true },
+      }),
+      baseRow({
+        id: 'summary',
+        action: 'merge_modify_summary',
+        created_at: '2026-06-05T12:00:01.000Z',
+        request_payload: { modified: 1, internal_rebalance: true },
+      }),
+    ]
+    assert.equal(aggregateTradeNotificationEvents(rows).length, 0)
+  })
+
+  it('uses the applied target and skips a zero stop instead of the signal original', () => {
+    const rows = [
+      baseRow({
+        id: 'leg-1',
+        action: 'basket_leg_modify',
+        request_payload: { target_sl: 0, target_tp: 4088, operation: 'sell' },
+        signals: {
+          channel_id: CHANNEL_ID,
+          parsed_data: { action: 'sell', symbol: 'XAUUSD', sl: 4104.5, tp: [4000] },
+        },
+      }),
+    ]
+    const notification = tradeNotificationsFromLogs(rows, tradeNotificationsEn, ctx)[0]
+    assert.match(notification.body, /TP was updated to 4088/)
+    assert.doesNotMatch(notification.body, /SL/)
+    assert.doesNotMatch(notification.body, /4104/)
+  })
+
   it('formats SL from/to when payload includes old_sl and new_sl', () => {
     const event = aggregateTradeNotificationEvents([
       baseRow({

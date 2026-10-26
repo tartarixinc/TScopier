@@ -22,6 +22,7 @@ export interface UserProfile {
   notification_sound_enabled?: boolean
   notification_email_enabled?: boolean
   copier_paused?: boolean
+  copier_pause_reason?: string | null
   created_at?: string
   updated_at?: string
 }

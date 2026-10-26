@@ -7,6 +7,7 @@ import {
   brokerOrderSlMatchesTarget,
   groupLegsByBrokerSignal,
   logMgmtModifyBrokerSummaries,
+  mgmtSlApplicableToMarket,
   mgmtUseChannelStopApply,
   verifyLegStopOnBroker,
 } from './channelStopApply'
@@ -174,6 +175,124 @@ describe('channelStopApply', () => {
     assert.equal(grouped.get('b2|sig-a')?.length, 1)
   })
 
+  it('rejects a stop on the wrong side of the live market for its direction', () => {
+    assert.equal(mgmtSlApplicableToMarket(4060, 4070, 4070.2, 'buy'), true)
+    assert.equal(mgmtSlApplicableToMarket(4135, 4070, 4070.2, 'buy'), false)
+    assert.equal(mgmtSlApplicableToMarket(4135, 4129, 4129.2, 'sell'), true)
+    assert.equal(mgmtSlApplicableToMarket(4100, 4129, 4129.2, 'sell'), false)
+  })
+
+  it('skips a buy basket when the channel SL is above its entry', async () => {
+    const legs: ChannelStopLeg[] = [testLeg({ id: 'buy-1', direction: 'buy', entry_price: 4119, sl: 4097.35 })]
+    const broker = testBroker()
+    let modifyCalls = 0
+    const api = {
+      seedPlatformCache: () => {},
+      openedOrders: async () => [{ ticket: 1001, stopLoss: 4097.35 }],
+      quote: async () => ({ bid: 4070, ask: 4070.2 }),
+      orderModify: async () => {
+        modifyCalls += 1
+        return {}
+      },
+    }
+
+    const { supabase } = recordingSupabase()
+    const result = await applyChannelStopsToBaskets({
+      supabase: supabase as never,
+      apiFor: () => api as never,
+      userId: 'user-1',
+      channelId: 'ch-1',
+      signalId: 'sig-mod',
+      brokersById: new Map([['b1', broker]]),
+      rowsByBrokerSignal: new Map([['b1|anchor', legs]]),
+      hasNewSl: true,
+      hasNewTp: false,
+      parsedSl: 4135,
+      parsedTpLevels: [],
+      verifyOnBroker: false,
+    })
+
+    assert.equal(modifyCalls, 0, 'invalid buy stop must not be sent')
+    assert.equal(result.totalModified, 0)
+    assert.equal(result.totalSkipped, 1)
+    assert.equal(result.brokers[0]?.errors[0]?.skipReason, 'sl_wrong_side')
+  })
+
+  it('skips the whole basket when the quote read fails (fail-closed, no blind SL)', async () => {
+    const legs: ChannelStopLeg[] = [testLeg({ id: 'buy-1', direction: 'buy', entry_price: 4119, sl: 4097.35 })]
+    const broker = testBroker()
+    let modifyCalls = 0
+    const api = {
+      seedPlatformCache: () => {},
+      quote: async () => { throw new Error('bridge timeout') },
+      openedOrders: async () => [{ ticket: 1001, stopLoss: 4097.35 }],
+      orderModify: async () => {
+        modifyCalls += 1
+        return {}
+      },
+    }
+
+    const { supabase } = recordingSupabase()
+    const result = await applyChannelStopsToBaskets({
+      supabase: supabase as never,
+      apiFor: () => api as never,
+      userId: 'user-1',
+      channelId: 'ch-1',
+      signalId: 'sig-mod',
+      brokersById: new Map([['b1', broker]]),
+      rowsByBrokerSignal: new Map([['b1|anchor', legs]]),
+      hasNewSl: true,
+      hasNewTp: false,
+      parsedSl: 4135,
+      parsedTpLevels: [],
+      verifyOnBroker: false,
+    })
+
+    assert.equal(modifyCalls, 0, 'no blind SL apply when the market side is unverifiable')
+    assert.equal(result.totalModified, 0)
+    assert.equal(result.totalSkipped, 1)
+    assert.equal(result.brokers[0]?.errors[0]?.skipReason, 'sl_quote_unavailable')
+  })
+
+  it('does not apply the live-market guard to a pending stop order', async () => {
+    // Pending Buy Stop: entry 4100, live bid 4070, SL 4085 sits above the
+    // current market but below entry — a valid pending-stop SL. Judging it
+    // against the live market (4085 < 4070 is false) would wrongly skip it, so
+    // pending legs must bypass the live-market guard.
+    const legs: ChannelStopLeg[] = [testLeg({ id: 'pending-1', status: 'pending', entry_price: 4100, sl: null, tp: null })]
+    const broker = testBroker()
+    let modifyCalls = 0
+    const api = {
+      seedPlatformCache: () => {},
+      quote: async () => ({ bid: 4070, ask: 4070.2 }),
+      openedOrders: async () => [{ ticket: 1001 }],
+      orderModify: async () => {
+        modifyCalls += 1
+        return {}
+      },
+    }
+
+    const { supabase } = recordingSupabase()
+    const result = await applyChannelStopsToBaskets({
+      supabase: supabase as never,
+      apiFor: () => api as never,
+      userId: 'user-1',
+      channelId: 'ch-1',
+      signalId: 'sig-mod',
+      brokersById: new Map([['b1', broker]]),
+      rowsByBrokerSignal: new Map([['b1|anchor', legs]]),
+      hasNewSl: true,
+      hasNewTp: false,
+      parsedSl: 4085,
+      parsedTpLevels: [],
+      verifyOnBroker: false,
+    })
+
+    assert.equal(modifyCalls, 1, 'pending leg SL must be applied (guard exempt)')
+    assert.equal(result.totalModified, 1)
+    assert.equal(result.totalSkipped, 0)
+  })
+
   it('verifyLegStopOnBroker compares broker order SL to target', () => {
     const map = new Map<number, unknown>([[100, { stopLoss: 4104 }]])
     assert.equal(verifyLegStopOnBroker(map, 100, 4104), true)
@@ -244,6 +363,7 @@ describe('channelStopApply', () => {
     const attempted = new Set<number>()
     const api = {
       seedPlatformCache: () => {},
+      quote: async () => ({ bid: 4150, ask: 4150.2 }),
       openedOrders: async () => {
         openedOrdersCalls += 1
         return legs.map(l => ({ ticket: Number(l.metaapi_order_id) }))
@@ -303,6 +423,7 @@ describe('channelStopApply', () => {
     const modifiedTps: number[] = []
     const api = {
       seedPlatformCache: () => {},
+      quote: async () => ({ bid: 4250, ask: 4250.2 }),
       openedOrders: async () => legs.map(l => ({ ticket: Number(l.metaapi_order_id) })),
       orderModify: async (_uuid: string, a: { takeprofit?: number }) => {
         if (a.takeprofit != null) modifiedTps.push(a.takeprofit)
@@ -355,6 +476,7 @@ describe('channelStopApply', () => {
       const leg = testLeg({ sl: 4100, metaapi_order_id: '1001' })
       const api = {
         seedPlatformCache: () => {},
+        quote: async () => ({ bid: 4250, ask: 4250.2 }),
         openedOrders: async () => [{ ticket: 1001, stopLoss: 4100 }],
         orderModify: async () => ({ stopLoss: 4180 }),
       }
@@ -394,6 +516,7 @@ describe('channelStopApply', () => {
       const leg = testLeg({ sl: 4180, metaapi_order_id: '1001' })
       const api = {
         seedPlatformCache: () => {},
+        quote: async () => ({ bid: 4250, ask: 4250.2 }),
         openedOrders: async () => [{ ticket: 1001, stopLoss: 4180 }],
         orderModify: async () => {
           orderModifyCalls += 1
@@ -433,6 +556,7 @@ describe('channelStopApply', () => {
       const leg = testLeg({ metaapi_order_id: '1001' })
       const api = {
         seedPlatformCache: () => {},
+        quote: async () => ({ bid: 4250, ask: 4250.2 }),
         openedOrders: async () => [{ ticket: 1001, stopLoss: 4100 }],
         orderModify: async () => {
           throw new Error(raw)
@@ -517,6 +641,7 @@ describe('channelStopApply', () => {
       const leg = testLeg({ metaapi_order_id: '1001' })
       const api = {
         seedPlatformCache: () => {},
+        quote: async () => ({ bid: 4250, ask: 4250.2 }),
         openedOrders: async () => [{ ticket: 1001, stopLoss: 4100 }],
         orderModify: async () => ({ stopLoss: 4180 }),
       }

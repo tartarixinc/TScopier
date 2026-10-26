@@ -12,8 +12,16 @@ import {
   resolveAutoBeTpHitTriggerPrice,
 } from '../autoManagement'
 import { stripInvalidStopsForSide } from '../channelActiveTradeParams'
-import { isInvalidStopsError } from '../orderModifySafe'
-import { humanizeOrderSendError, tradeFailureReasonFromBrokerMessage } from '../brokerTradeError'
+import {
+  BROKER_SYMBOL_TRADE_DISABLED,
+  humanizeOrderSendError,
+  isInvalidStopsMessage,
+  tradeFailureReasonFromBrokerMessage,
+} from '../brokerTradeError'
+import {
+  renewSignalBrokerDispatchClaim,
+  SIGNAL_DISPATCH_CLAIM_LEASE_MS,
+} from './signalBrokerDispatchClaim'
 import { reconcileUnknownSend } from './reconcileUnknownSend'
 import { trailingTradeRowSnapshot } from '../trailingStop'
 import { applyPostFillFollowUp, type PostFillTradeLeg } from '../postFillFollowUp'
@@ -164,6 +172,8 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
 
   const filledLegs: PostFillTradeLeg[] = []
   let lastSendError: string | null = null
+  /** What the timeout reconcile decided (attached to the failure log below). */
+  let timeoutReconcile: string | null = null
 
   // v2 entries fire PROTECTED-at-send through the strict fxClient (bounded timeout,
   // strict retcode, no blind 3x retries) instead of the old client. One pre-burst
@@ -243,7 +253,6 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
       setPipelineTimestamp(signal.pipeline_ts, 'broker_request_started_at', t0)
     }
 
-    let stopsFallback = false
     let result: NormalizedFill | null = null
     let lastAttemptError: string
     let correlation = buildPipelineCorrelation({
@@ -257,13 +266,26 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
       dispatchSource: signal.dispatch_source,
     })
 
+    // Refresh the lease while the broker call is pending, including the wait
+    // for the per-account send gate. A slow but healthy send must not be
+    // mistaken for a crashed worker and duplicated.
+    const sendWithLeaseRenewal = <T>(work: Promise<T>): Promise<T> => {
+      const timer = setInterval(() => {
+        void renewSignalBrokerDispatchClaim(ctx.supabase, signal.id, broker.id).catch(() => {})
+      }, Math.max(15_000, Math.floor(SIGNAL_DISPATCH_CLAIM_LEASE_MS / 3)))
+      return work.finally(() => clearInterval(timer))
+    }
+
     for (let attempt = 0; attempt < 2; attempt++) {
+      // Each attempt decides for itself; a stale value from an earlier attempt
+      // must not be attributed to this failure's payload.
+      timeoutReconcile = null
       try {
         // Reject a copy whose signal stop sits on the wrong side of the live price:
         // no broker can apply it, and we will not move the stop or open naked.
         if (wrongSideSl) {
           throw new Error(
-            `Invalid stops: signal stop loss ${plannedSlForSide} is on the wrong side of the live price ${refPx} for ${args.operation}`,
+            `Signal stop loss ${plannedSlForSide} is on the wrong side of the live price ${refPx} for ${args.operation}; trade not opened`,
           )
         }
         const attemptNo = attempt + 1
@@ -330,7 +352,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
               user_impact: 'none',
             },
           })
-          const r = await sendPromise
+          const r = await sendWithLeaseRenewal(sendPromise)
           if (!r.ok || !r.ticket) throw new Error(r.message || `v2 order_send rejected (${r.retcodeName})`)
           result = {
             ticket: r.ticket,
@@ -373,7 +395,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
               user_impact: 'none',
             },
           })
-          const raw = await sendPromise
+          const raw = await sendWithLeaseRenewal(sendPromise)
           result = {
             ticket: raw.ticket,
             openPrice: raw.openPrice ?? null,
@@ -385,19 +407,17 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
         break
       } catch (err) {
         setPipelineTimestamp(signal.pipeline_ts ?? (signal.pipeline_ts = {}), 'broker_response_received_at', Date.now())
-        lastAttemptError = humanizeOrderSendError(
-          err instanceof Error ? err.message : String(err),
-          sendArgs.symbol,
-        )
+        const rawAttemptError = err instanceof Error ? err.message : String(err)
+        lastAttemptError = humanizeOrderSendError(rawAttemptError, sendArgs.symbol)
         const hasStops = (Number(sendArgs.stoploss) || 0) > 0 || (Number(sendArgs.takeprofit) || 0) > 0
-        if (attempt === 0 && isInvalidStopsError(lastAttemptError) && hasStops && !wrongSideSl) {
+        if (isInvalidStopsMessage(rawAttemptError) && hasStops && !wrongSideSl) {
+          // Never resend without the stops: that opens a naked position the user
+          // did not ask for. Fail the copy and say why.
           console.warn(
-            `[tradeExecutor] retry without stops signal=${signal.id} broker=${broker.id} leg=${leg.idx + 1}/${totalCount}`
+            `[tradeExecutor] broker rejected stops; copy failed without opening naked`
+            + ` signal=${signal.id} broker=${broker.id} leg=${leg.idx + 1}/${totalCount}`
             + ` reason="${lastAttemptError}" (sl=${sendArgs.stoploss} tp=${sendArgs.takeprofit})`,
           )
-          sendArgs = { ...sendArgs, stoploss: 0, takeprofit: 0 }
-          stopsFallback = true
-          continue
         }
         lastSendError = lastAttemptError
         if (isBrokerDisconnectedMessage(lastAttemptError) && !isMtBridgeGlitchMessage(lastAttemptError)) {
@@ -418,6 +438,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
           && api
           && process.env.MTAPI_RECONCILE_ON_TIMEOUT !== 'false'
         ) {
+          timeoutReconcile = 'inconclusive'
           try {
             const rec = await reconcileUnknownSend(api, uuid, {
               symbol: sendArgs.symbol,
@@ -425,6 +446,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
               volume: sendArgs.volume,
               comment: sendArgs.comment,
             })
+            timeoutReconcile = rec.status === 'inconclusive' ? `inconclusive: ${rec.reason}` : rec.status
             if (rec.status === 'adopted') {
               result = {
                 ticket: rec.ticket,
@@ -457,7 +479,17 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
             }
             // 'absent' on the last attempt, or 'inconclusive' -> fall through to
             // the ambiguous capture below.
-          } catch { /* best-effort; fall through to ambiguous */ }
+          } catch (reconcileErr) {
+            timeoutReconcile = `inconclusive: reconcile threw ${reconcileErr instanceof Error ? reconcileErr.message : String(reconcileErr)}`
+            /* fall through to the ambiguous capture below */
+          }
+        } else if (isOrderOpTimedOutMessage(lastAttemptError)) {
+          // A timeout we declined to reconcile: record why in the failure log.
+          timeoutReconcile = process.env.MTAPI_RECONCILE_ON_TIMEOUT === 'false'
+            ? 'disabled'
+            : useV2
+              ? 'skipped: v2 path does not reconcile'
+              : (api ? 'skipped' : 'skipped: no api')
         }
         if (isOrderOpTimedOutMessage(lastAttemptError)) {
           captureBusinessIssue({
@@ -492,7 +524,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
             },
           })
         } else {
-          const reasonCode = classifyBrokerFailureReason(lastAttemptError)
+          const reasonCode = classifyBrokerFailureReason(rawAttemptError)
           captureBusinessIssue({
             category: 'trade',
             event: reasonCode === 'INSUFFICIENT_MARGIN'
@@ -528,7 +560,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
             },
           })
         }
-        const tradeFailure = tradeFailureReasonFromBrokerMessage(lastAttemptError, {
+        const tradeFailure = tradeFailureReasonFromBrokerMessage(rawAttemptError, {
           requestedSymbol,
           brokerSymbol: sendArgs.symbol,
           operation: sendArgs.operation,
@@ -542,6 +574,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
           request_payload: {
             ...sendArgs,
             ...orderLogContext,
+            ...(timeoutReconcile ? { timeout_reconcile: timeoutReconcile } : {}),
             ...(tradeFailure
               ? {
                 reason_code: tradeFailure.reasonCode,
@@ -592,18 +625,20 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
         leg: leg.idx + 1,
         total: totalCount,
         latency_ms: latencyMs,
-        stops_fallback: stopsFallback || undefined,
       },
     })
     console.log(
       `[tradeExecutor] OrderSend ok signal=${signal.id} broker=${broker.id} ticket=${result.ticket} leg=${leg.idx + 1}/${totalCount}`
-      + ` price=${sendArgs.price ?? 0} ${latencyMs}ms v2=${useV2}${stopsFallback ? ' stops_fallback' : ''}`,
+      + ` price=${sendArgs.price ?? 0} ${latencyMs}ms v2=${useV2}`,
     )
 
     const isBuy = !sendArgs.operation.toLowerCase().includes('sell')
     const entryPx = result.openPrice ?? sendArgs.price ?? null
-    const openSl = stopsFallback ? (plannedSl > 0 ? plannedSl : null) : (result.stopLoss ?? sendArgs.stoploss ?? null)
-    const openTp = stopsFallback ? (plannedTp > 0 ? plannedTp : null) : (result.takeProfit ?? sendArgs.takeprofit ?? null)
+    // The broker either accepts the order with its stops or rejects the whole
+    // order, so the requested stops are broker-verified when the send succeeds.
+    // Prefer the values the broker echoes back, then the accepted request.
+    const openSl = Number(result.stopLoss) > 0 ? Number(result.stopLoss) : (Number(sendArgs.stoploss) > 0 ? Number(sendArgs.stoploss) : null)
+    const openTp = Number(result.takeProfit) > 0 ? Number(result.takeProfit) : (Number(sendArgs.takeprofit) > 0 ? Number(sendArgs.takeprofit) : null)
     const trailCols = trailingTradeRowSnapshot(
       manual,
       entryPx,
@@ -763,7 +798,6 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
         request_payload: {
           ...sendArgs,
           ...orderLogContext,
-          ...(stopsFallback ? { stops_fallback: true } : {}),
         } as unknown as Record<string, unknown>,
         response_payload: {
           ticket: result.ticket,
@@ -1225,12 +1259,26 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
     }
   }
   const openedOrMerged = anyImmediateOpened || materializedBrokerPendings || strictBrokerPlaced
+  // Derive the code from the final error, not from a per-leg variable: legs run
+  // in parallel and the last failure may not be the one that set the code.
+  const finalFailure = !openedOrMerged && lastSendError
+    ? tradeFailureReasonFromBrokerMessage(lastSendError, {
+      requestedSymbol,
+      brokerSymbol: symbol,
+      operation: op,
+    })
+    : null
   return {
     openedOrMerged,
     channelDelayMs,
     channelDelaySkipped,
     ...(!openedOrMerged
-      ? { failureReason: lastSendError ?? SKIP_REASON_ENTRY_NOT_OPENED }
+      ? {
+        failureReason: lastSendError ?? SKIP_REASON_ENTRY_NOT_OPENED,
+        ...(finalFailure?.reasonCode === BROKER_SYMBOL_TRADE_DISABLED
+          ? { failureReasonCode: finalFailure.reasonCode }
+          : {}),
+      }
       : {}),
   }
 }

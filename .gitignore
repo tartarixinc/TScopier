@@ -35,6 +35,8 @@ scripts/cline-bridge.mjs
 scripts/cline-review.sh
 scripts/cline-runner.mjs
 scripts/opencode-bridge.mjs
+# Local-only pipeline test tool (AGENTS: never committed/pushed)
+scripts/test-signal.mjs
 
 # Firecrawl research cache (local only)
 .firecrawl/

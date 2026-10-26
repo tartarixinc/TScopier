@@ -141,15 +141,25 @@ function parsedTpLevels(parsed: Record<string, unknown> | null | undefined): num
     .filter((v): v is number => v != null && v > 0)
 }
 
+function positive(v: unknown): number | null {
+  const n = num(v)
+  return n != null && n > 0 ? n : null
+}
+
 function extractSlValues(row: TradeExecutionLogRow): { oldSl: number | null; newSl: number | null } {
   const payload = row.request_payload ?? {}
   const parsed = row.signals?.parsed_data as Record<string, unknown> | null | undefined
-  const oldSl = num(payload.old_sl)
-  const newSl =
-    num(payload.new_sl) ??
-    num(payload.target_sl) ??
-    num(payload.sl) ??
-    (parsed ? num(parsed.sl) : null)
+  const oldSl = positive(payload.old_sl)
+
+  // When the payload carries a stop field, it is the authoritative value for this
+  // action. A zero/null target means "no stop change", so never fall back to the
+  // signal's original stop and report it as if it had just been applied.
+  let newSl: number | null
+  if ('new_sl' in payload) newSl = positive(payload.new_sl)
+  else if ('target_sl' in payload) newSl = positive(payload.target_sl)
+  else if ('sl' in payload) newSl = positive(payload.sl)
+  else newSl = parsed ? positive(parsed.sl) : null
+
   return { oldSl, newSl }
 }
 
@@ -157,18 +167,34 @@ function extractTpValues(row: TradeExecutionLogRow): { newTp: number | null; new
   const payload = row.request_payload ?? {}
   const parsed = row.signals?.parsed_data as Record<string, unknown> | null | undefined
   const parsedLevels = parsedTpLevels(parsed)
-  const targetTp = num(payload.target_tp)
-  const singleTp = num(payload.new_tp) ?? num(payload.takeprofit)
-  let levels = parsedLevels
-  if (!levels.length && targetTp != null && targetTp > 0) levels = [targetTp]
-  if (!levels.length && singleTp != null && singleTp > 0) levels = [singleTp]
-  if (!levels.length && Array.isArray(payload.tp)) {
-    levels = (payload.tp as unknown[])
-      .map(v => num(v))
-      .filter((v): v is number => v != null && v > 0)
+
+  // Prefer the values actually applied by this action over the signal's original
+  // levels. Basket legs often carry a different target per leg, and using the
+  // signal levels labels the notification with the wrong price.
+  const explicitLevels: number[] = []
+  if ('target_tp' in payload) {
+    const targetTp = positive(payload.target_tp)
+    if (targetTp != null) explicitLevels.push(targetTp)
   }
+  if ('new_tp' in payload) {
+    const newTp = positive(payload.new_tp)
+    if (newTp != null) explicitLevels.push(newTp)
+  }
+  if ('takeprofit' in payload) {
+    const tp = positive(payload.takeprofit)
+    if (tp != null) explicitLevels.push(tp)
+  }
+  if (Array.isArray(payload.tp)) {
+    explicitLevels.push(
+      ...(payload.tp as unknown[])
+        .map(v => positive(v))
+        .filter((v): v is number => v != null),
+    )
+  }
+
+  const levels = explicitLevels.length ? explicitLevels : parsedLevels
   return {
-    newTp: levels[0] ?? targetTp ?? singleTp,
+    newTp: levels[0] ?? null,
     newTpLevels: levels,
   }
 }
@@ -184,10 +210,16 @@ function resolveChannelId(row: TradeExecutionLogRow): string | null {
   return row.signals?.channel_id ?? null
 }
 
+function isInternalRebalanceRow(row: TradeExecutionLogRow): boolean {
+  const value = row.request_payload?.internal_rebalance
+  return value === true || value === 'true'
+}
+
 function classifyRow(row: TradeExecutionLogRow): TradeNotificationHeadline | null {
   if (!isSuccessStatus(row.status)) return null
   const action = row.action.toLowerCase()
   if (SUPPRESSED_ACTIONS.has(action)) return null
+  if (isInternalRebalanceRow(row)) return null
   if (AUTOMATED_MODIFY_ACTIONS.has(action)) return null
   if (['attempt', 'failed', 'skipped'].includes(row.status.toLowerCase())) return null
   if (MANUAL_OVERRIDE_ACTIONS.has(action)) return 'manual_override_reverted'

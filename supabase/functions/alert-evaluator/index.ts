@@ -35,9 +35,15 @@
  *   workers_offline        { }                               // zero leases sustained for window_minutes
  *   trade_workers_offline  { max_stale_minutes: number }      // worker_trade heartbeat
  *   queue_stuck            { max_oldest_minutes: number, max_pending: number }
- *   executions_failing     { max_failed: number }            // windowed
+ *   executions_failing     { max_failed: number }            // windowed; distinct failing signals, order_close_audit excluded
  *   dead_letters_high      { max_open: number }
- *   telegram_gap           { max_not_listening: number }
+ *   telegram_gap           { max_not_listening: number }     // paying subscribers only (active/trialing)
+ *   openai_credits_exhausted { grace_seconds: number }
+ *
+ * OpenAI credits are the one external dependency this evaluator probes
+ * itself: every run makes a one-token request and writes the outcome to
+ * system_probe_state target 'openai_api'. That row also powers the admin
+ * Systems Health page, so the screen and the email always agree.
  *
  * Principles: never treat unknown as healthy (a stale probe row fires), never
  * invent an outage from an unreadable table (skip and log instead), and keep
@@ -63,7 +69,7 @@ const SERVICE_ROLE_KEY =
   Deno.env.get("ALERT_EVALUATOR_SERVICE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const RESEND_FROM = Deno.env.get("ALERT_RESEND_FROM") || "TScopier <alerts@tscopier.ai>";
-const ADMIN_ALERTS_URL = (Deno.env.get("ADMIN_ALERTS_URL") || "https://app.tscopier.ai/monitoring/alerts").replace(/\/$/, "");
+const ADMIN_ALERTS_URL = (Deno.env.get("ADMIN_ALERTS_URL") || "http://panel.tscopier.cloud/monitoring/alerts").replace(/\/$/, "");
 // Emails must never look like production when they come from staging (or the
 // other way round). Derive the label from the project ref; ALERT_ENV overrides.
 const ALERT_ENV =
@@ -83,6 +89,7 @@ const NEXT_ACTION: Record<string, string> = {
   executions_failing: "Open the Execution logs page and filter by failure reason.",
   dead_letters_high: "Open the dead-letter view and replay or discard the parked messages.",
   telegram_gap: "Linked accounts without a listener are not being copied — check worker leases on the Systems Health page.",
+  openai_credits_exhausted: "Add OpenAI credits now (Billing → Add credits). Until then AI parsing is refused and only the regex parser runs, so complex signals may be missed.",
 };
 
 const EMAIL_BATCH_LIMIT = 25;
@@ -164,6 +171,119 @@ async function headCount(
   const { count, error } = await q;
   if (error) return null;
   return count ?? 0;
+}
+
+// ---------------------------------------------------------------------------
+// OpenAI credit probe.
+//
+// A one-token chat request is the only reliable way to learn that the
+// organization can no longer spend: OpenAI's billing errors (429
+// credit_balance_exhausted / insufficient_quota, spend limits) are returned
+// only when a real request is made. The outcome is written to
+// system_probe_state target 'openai_api' so the alert rule and the admin
+// Systems Health page read the exact same fact.
+//
+// Other failures are deliberately NOT treated as "credits exhausted":
+//   - 401/403 (bad key)            -> down, detail "auth:…"  (page shows warn)
+//   - 429 without a billing code   -> up,   detail "rate_limited:…"
+//   - 5xx / timeout / network      -> unknown (never a false all-clear)
+// ---------------------------------------------------------------------------
+
+const OPENAI_CREDITS_PROBE_MODEL = Deno.env.get("OPENAI_CREDITS_PROBE_MODEL") || "gpt-4o-mini";
+const OPENAI_CREDITS_PROBE_TIMEOUT_MS = 8_000;
+const OPENAI_BILLING_CODES = new Set([
+  "credit_balance_exhausted",
+  "insufficient_quota",
+  "billing_hard_limit_reached",
+  "organization_spend_limit_exceeded",
+  "project_spend_limit_exceeded",
+  "organization_usage_limit_exceeded",
+]);
+
+interface OpenAiProbeResult {
+  ran: boolean;
+  state?: "up" | "down" | "unknown";
+  detail?: string;
+}
+
+async function recordOpenAiProbe(
+  sb: any,
+  state: "up" | "down" | "unknown",
+  latencyMs: number | null,
+  detail: string,
+): Promise<void> {
+  const { error } = await sb.rpc("record_probe_result", {
+    p_target: "openai_api",
+    p_state: state,
+    p_latency_ms: latencyMs,
+    p_detail: detail.slice(0, 300),
+  });
+  if (error) console.warn(`[alert-evaluator] openai probe write failed err=${error.message}`);
+}
+
+async function probeOpenAiCredits(sb: any): Promise<OpenAiProbeResult> {
+  const apiKey = Deno.env.get("OPENAI_API_KEY") ?? "";
+  if (!apiKey) {
+    // Record the gap so the page cannot show an old green row forever.
+    const detail = "probe_error:OPENAI_API_KEY not configured";
+    await recordOpenAiProbe(sb, "unknown", null, detail);
+    return { ran: true, state: "unknown", detail };
+  }
+
+  const startedAt = Date.now();
+  try {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: OPENAI_CREDITS_PROBE_MODEL,
+        messages: [{ role: "user", content: "ping" }],
+        max_tokens: 1,
+        temperature: 0,
+      }),
+      signal: AbortSignal.timeout(OPENAI_CREDITS_PROBE_TIMEOUT_MS),
+    });
+    const latencyMs = Date.now() - startedAt;
+    const body = await res.json().catch(() => ({}) as Record<string, unknown>);
+    const err = (body as { error?: { code?: string; type?: string; message?: string } }).error;
+
+    if (res.ok) {
+      const detail = `credits ok (${OPENAI_CREDITS_PROBE_MODEL})`;
+      await recordOpenAiProbe(sb, "up", latencyMs, detail);
+      return { ran: true, state: "up", detail };
+    }
+
+    const code = String(err?.code ?? err?.type ?? "");
+    const message = String(err?.message ?? `HTTP ${res.status}`).slice(0, 160);
+
+    if (res.status === 429 && OPENAI_BILLING_CODES.has(code)) {
+      const detail = `billing:${code || "insufficient_quota"} — ${message}`;
+      await recordOpenAiProbe(sb, "down", latencyMs, detail);
+      return { ran: true, state: "down", detail };
+    }
+    if (res.status === 401 || res.status === 403) {
+      const detail = `auth:${code || `HTTP_${res.status}`} — ${message}`;
+      await recordOpenAiProbe(sb, "down", latencyMs, detail);
+      return { ran: true, state: "down", detail };
+    }
+    if (res.status === 429) {
+      // Rate limited, but the account can still spend: not a credits outage.
+      const detail = `rate_limited:${code || `HTTP_429`}`;
+      await recordOpenAiProbe(sb, "up", latencyMs, detail);
+      return { ran: true, state: "up", detail };
+    }
+
+    const detail = `probe_error:HTTP_${res.status}${code ? `:${code}` : ""} — ${message}`;
+    await recordOpenAiProbe(sb, "unknown", latencyMs, detail);
+    return { ran: true, state: "unknown", detail };
+  } catch (err) {
+    const detail = `probe_error:${err instanceof Error ? err.message : String(err)}`;
+    await recordOpenAiProbe(sb, "unknown", null, detail);
+    return { ran: true, state: "unknown", detail };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -333,17 +453,54 @@ async function evalQueueStuck(sb: any, rule: RuleRow, nowMs: number): Promise<Ev
   };
 }
 
+/**
+ * Failed executions.
+ *
+ * Three noise corrections, all learned from the 2026-10-23 incident review:
+ *
+ *  1. `order_close_audit` rows are the audit trail of broker close *attempts*
+ *     (the stuck-pending retry loop wrote one every few minutes — 215 in 24h).
+ *     They describe an attempt, not an execution outcome, so they never count.
+ *  2. Distinct failing signals, not raw rows: one chronic failure retried every
+ *     cycle must not look like twenty different failing executions.
+ *  3. A raw-row storm still fires on its own at 3x `max_failed`, so a
+ *     systematic single-account failure (one broker down, every execution for
+ *     it retrying) cannot hide under the distinct count.
+ */
+const EXECUTIONS_FAILING_MAX_ROWS = 5000;
+const EXECUTIONS_FAILING_STORM_MULTIPLIER = 3;
+
+export function countDistinctFailingSignals(rows: Array<{ signal_id?: string | null }>): number {
+  const signals = new Set<string>();
+  for (const row of rows) {
+    const id = String(row.signal_id ?? "").trim();
+    if (id) signals.add(id);
+  }
+  return signals.size;
+}
+
 async function evalExecutionsFailing(sb: any, rule: RuleRow, nowMs: number): Promise<EvalOutcome> {
   const maxFailed = num(rule.threshold.max_failed, 20);
+  const stormCap = maxFailed * EXECUTIONS_FAILING_STORM_MULTIPLIER;
   const since = new Date(nowMs - rule.window_minutes * 60_000).toISOString();
-  const count = await headCount(sb, "trade_execution_logs", q =>
-    q.eq("status", "failed").gte("created_at", since));
-  if (count == null) return { kind: "skip", reason: "trade_execution_logs unreadable" };
+  const { data, error } = await sb
+    .from("trade_execution_logs")
+    .select("signal_id")
+    .eq("status", "failed")
+    .neq("action", "order_close_audit")
+    .gte("created_at", since)
+    .limit(EXECUTIONS_FAILING_MAX_ROWS);
+  if (error) return { kind: "skip", reason: "trade_execution_logs unreadable" };
+  const rows = (data ?? []) as Array<{ signal_id?: string | null }>;
+  const distinct = countDistinctFailingSignals(rows);
+  const rowsFailed = rows.length;
+  const fired = distinct > maxFailed || rowsFailed > stormCap;
   return {
     kind: "ok",
-    fired: count > maxFailed,
-    value: count,
-    message: `${count} failed executions in ${rule.window_minutes}m (max ${maxFailed})`,
+    fired,
+    value: fired ? Math.max(distinct, rowsFailed) : distinct,
+    message: `${distinct} distinct signal(s) with failed executions in ${rule.window_minutes}m`
+      + ` (${rowsFailed} failure rows; limits ${maxFailed} signals / ${stormCap} rows)`,
   };
 }
 
@@ -360,10 +517,42 @@ async function evalDeadLettersHigh(sb: any, rule: RuleRow): Promise<EvalOutcome>
 }
 
 /**
+ * Users whose subscription currently pays for copying.
+ *
+ * The gap alert must measure "customers whose copies stopped", and a linked
+ * Telegram session with an expired/cancelled trial is not one of them. Counting
+ * every session made the rule a permanent false positive (2026-10-23: 177
+ * sessions vs 37 active/trialing subscribers, a reported gap of ~140 against a
+ * real gap of 0). A trialing row only counts while `trial_ends_at` is in the
+ * future — the same rule `planLimits.ts` applies for entitlement.
+ */
+export function payingSubscriberIds(
+  rows: Array<{ user_id: string; status?: string | null; trial_ends_at?: string | null }>,
+  nowMs: number,
+): Set<string> {
+  const out = new Set<string>();
+  for (const row of rows) {
+    const userId = String(row.user_id ?? "").trim();
+    if (!userId) continue;
+    const status = String(row.status ?? "").toLowerCase();
+    if (status === "trialing") {
+      const ends = row.trial_ends_at ? Date.parse(row.trial_ends_at) : NaN;
+      if (Number.isFinite(ends) && ends <= nowMs) continue;
+    }
+    out.add(userId);
+  }
+  return out;
+}
+
+/**
  * Telegram listening gap — mirrors tscopier-admin systemHealth.ts: prefer the
  * copier_listener_health truth table when it has fresh reporting rows, fall
  * back to session leases otherwise, and never count an unreadable health table
  * as an outage.
+ *
+ * Scope: users with an active/trialing subscription. An unreadable
+ * `subscriptions` table falls back to every linked session (over-counting is
+ * the safe direction — a broken read must not hide a real gap).
  */
 async function evalTelegramGap(sb: any, rule: RuleRow, nowMs: number): Promise<EvalOutcome> {
   const maxGap = num(rule.threshold.max_not_listening, 2);
@@ -373,6 +562,24 @@ async function evalTelegramGap(sb: any, rule: RuleRow, nowMs: number): Promise<E
   if (sessionsRes.error) return { kind: "skip", reason: "telegram_sessions unreadable" };
   const linked = new Set<string>((sessionsRes.data ?? []).map((r: any) => r.user_id));
   if (linked.size === 0) return { kind: "ok", fired: false, value: 0, message: "" };
+
+  // Set when the scope was narrowed to paying subscribers (null = all linked).
+  let payingTotal: number | null = null;
+  const subsRes = await sb
+    .from("subscriptions")
+    .select("user_id,status,trial_ends_at")
+    .in("status", ["active", "trialing"]);
+  if (!subsRes.error && Array.isArray(subsRes.data)) {
+    const paying = payingSubscriberIds(subsRes.data as any[], nowMs);
+    if (paying.size > 0) {
+      for (const userId of [...linked]) {
+        if (!paying.has(userId)) linked.delete(userId);
+      }
+      payingTotal = paying.size;
+    }
+    // paying.size === 0: keep every linked session — no entitled user must
+    // silently fall out of the gap calculation.
+  }
 
   const leasesRes = await sb.from("worker_session_leases").select("user_id").gte("expires_at", nowIso);
   const leaseListening = new Set<string>(
@@ -403,12 +610,49 @@ async function evalTelegramGap(sb: any, rule: RuleRow, nowMs: number): Promise<E
     if (useHealth ? healthLive.has(userId) : leaseListening.has(userId)) listening.add(userId);
   }
   const gap = linked.size - listening.size;
+  const message = payingTotal != null
+    ? `${gap} of ${linked.size} paying-subscriber session(s) not listening`
+      + ` (${payingTotal} paying subscribers total; max ${maxGap})`
+    : `${gap} of ${linked.size} linked session(s) not listening (max ${maxGap})`;
   return {
     kind: "ok",
     fired: gap > maxGap,
     value: gap,
-    message: `${gap} of ${linked.size} linked Telegram accounts not listening (max ${maxGap})`,
+    message,
   };
+}
+
+/**
+ * OpenAI credits — reads the probe row written by probeOpenAiCredits on this
+ * same run. Only a billing-coded down state fires; auth/probe errors are
+ * surfaced on the Systems Health page but must not claim credits ran out.
+ */
+async function evalOpenAiCredits(sb: any, rule: RuleRow, nowMs: number): Promise<EvalOutcome> {
+  const graceMs = num(rule.threshold.grace_seconds, 60) * 1000;
+  const { data, error } = await sb
+    .from("system_probe_state")
+    .select("state, down_since, detail, updated_at")
+    .eq("target", "openai_api")
+    .maybeSingle();
+  if (error) return { kind: "skip", reason: error.message };
+  if (!data) return { kind: "skip", reason: "openai_api probe has not reported yet" };
+  if (data.state !== "down") return { kind: "ok", fired: false, value: null, message: "" };
+
+  const detail = String(data.detail ?? "");
+  if (!detail.startsWith("billing:")) {
+    return { kind: "skip", reason: `openai probe down for a non-billing reason: ${detail}` };
+  }
+  const since = data.down_since ? Date.parse(data.down_since) : NaN;
+  const ageMs = Number.isFinite(since) ? nowMs - since : graceMs;
+  if (ageMs >= graceMs) {
+    return {
+      kind: "ok",
+      fired: true,
+      value: Math.round(ageMs / 1000),
+      message: `OpenAI is refusing requests: ${detail}`,
+    };
+  }
+  return { kind: "ok", fired: false, value: 0, message: "" };
 }
 
 async function evaluate(sb: any, rule: RuleRow, nowMs: number): Promise<EvalOutcome> {
@@ -423,6 +667,7 @@ async function evaluate(sb: any, rule: RuleRow, nowMs: number): Promise<EvalOutc
     case "executions_failing": return evalExecutionsFailing(sb, rule, nowMs);
     case "dead_letters_high": return evalDeadLettersHigh(sb, rule);
     case "telegram_gap": return evalTelegramGap(sb, rule, nowMs);
+    case "openai_credits_exhausted": return evalOpenAiCredits(sb, rule, nowMs);
     default:
       return { kind: "skip", reason: `no evaluator for rule ${rule.code}` };
   }
@@ -592,6 +837,13 @@ Deno.serve(async (req) => {
     const rules = (rulesRes.data ?? []) as RuleRow[];
     summary.rules = rules.length;
     const codes = rules.map(r => r.code);
+
+    // Probe before evaluating so the openai_credits_exhausted rule always sees
+    // this run's fresh result. Failures are recorded as unknown, never thrown.
+    const openaiProbe = await probeOpenAiCredits(sb);
+    if (openaiProbe.ran && openaiProbe.state !== "up") {
+      summary.warnings.push(`openai probe: ${openaiProbe.state} — ${openaiProbe.detail ?? ""}`);
+    }
 
     const openRes = await sb
       .from("alert_events")

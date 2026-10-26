@@ -102,6 +102,8 @@ export interface OrderCloseArgs {
 export interface OrderResult {
   /** Backward-compatible canonical ticket used by existing callers. */
   ticket: number
+  /** The raw bridge reply this result was normalized from (for audit logs). */
+  raw?: unknown
   /** Broker order identity when the bridge exposes it separately (notably MT5). */
   orderTicket?: number
   /** Broker execution/deal identity when the bridge exposes it separately (notably MT5). */
@@ -229,7 +231,7 @@ export function normalizeOrderResponse(
   options: NormalizeOrderResponseOptions = {},
 ): OrderResult {
   if (body == null || typeof body !== 'object') {
-    return { ticket: NaN }
+    return { ticket: NaN, raw: body }
   }
   const root = body as Record<string, unknown>
 
@@ -266,6 +268,7 @@ export function normalizeOrderResponse(
 
   return {
     ticket: ticket ?? NaN,
+    raw: body,
     ...(orderTicket != null ? { orderTicket } : {}),
     ...(dealTicket != null ? { dealTicket } : {}),
     ...(positionTicket != null ? { positionTicket } : {}),

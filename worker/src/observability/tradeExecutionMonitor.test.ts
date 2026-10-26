@@ -133,3 +133,15 @@ test('reset clears history and allows a fresh alert', () => {
   for (let i = 0; i < 3; i++) m.recordExecution(false, 'b1', 'ERR')
   assert.equal(alerted, 2)
 })
+
+test('per-account trading-disabled failures do not trip the systemic alert', () => {
+  let alerted = 0
+  const m = new TradeExecutionMonitor({
+    windowMs: 300_000,
+    minAttempts: 10,
+    failureThresholdPct: 50,
+    onAlert: () => { alerted += 1 },
+  })
+  for (let i = 0; i < 12; i++) m.recordExecution(false, 'b1', 'BROKER_SYMBOL_TRADE_DISABLED')
+  assert.equal(alerted, 0)
+})

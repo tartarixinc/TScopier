@@ -92,3 +92,6 @@ verify_jwt = false
 
 [functions.systems-health-assistant]
 verify_jwt = true
+
+[functions.billing-backfill]
+verify_jwt = false

@@ -21,6 +21,32 @@ describe('evaluateParsedSignalExecutionEligibility', () => {
     assert.equal(eligibility.skipReason, COMMENTARY_NOT_SIGNAL_REASON)
   })
 
+  it('rejects a results recap whose pip total was parsed as the entry price', () => {
+    const eligibility = evaluateParsedSignalExecutionEligibility({
+      action: 'sell',
+      symbol: 'XAUUSD',
+      entry_price: 130,
+      sl: null,
+      tp: [],
+    }, 'AMAZING SETUP\nTP2 & 3 HIT\nGOLD SELL 130+ PIPS')
+    assert.equal(eligibility.eligible, false)
+    assert.equal(eligibility.skipReason, COMMENTARY_NOT_SIGNAL_REASON)
+  })
+
+  it('rejects an implausible entry price even with no results language (isolates the price guard)', () => {
+    // The commentary guard already catches "TP HIT" recaps; this case has no
+    // result wording, so only the entry-price floor (XAUUSD >= 500) can reject it.
+    const eligibility = evaluateParsedSignalExecutionEligibility({
+      action: 'sell',
+      symbol: 'XAUUSD',
+      entry_price: 130,
+      sl: null,
+      tp: [],
+    }, 'GOLD SELL NOW 130')
+    assert.equal(eligibility.eligible, false)
+    assert.equal(eligibility.skipReason, COMMENTARY_NOT_SIGNAL_REASON)
+  })
+
   it('allows bare Gold buy now market entry', () => {
     const eligibility = evaluateParsedSignalExecutionEligibility({
       action: 'buy',

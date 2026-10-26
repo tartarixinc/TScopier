@@ -21,6 +21,16 @@ export type SendOrderOutcome = {
   finalizeSkipReason?: string
   /** Broker-level failure detail for entry finalize aggregation. */
   failureReason?: string
+  /** Stable failure code for the signal row, alerting and UI. */
+  failureReasonCode?: string
+  /**
+   * True when this dispatcher did not attempt a send because another
+   * dispatcher holds the claim (or the send is already in flight). Such an
+   * outcome must not finalize the signal: the owning dispatcher reports the
+   * real result. Without this, the loser writes the generic entry_not_opened
+   * and can replace a specific broker failure.
+   */
+  deferredToOtherDispatcher?: boolean
   /** Channel `delay_msec` from Copier Engine (skipped on live fast path). */
   channelDelayMs?: number
   channelDelaySkipped?: boolean

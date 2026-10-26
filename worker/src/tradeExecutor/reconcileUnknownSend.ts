@@ -56,7 +56,11 @@ function ticketOf(row: Record<string, unknown>): number | null {
   return null
 }
 
-function directionOf(row: Record<string, unknown>): 'buy' | 'sell' | null {
+/**
+ * Side from a broker row (operation string, bridge word-side, numeric kind).
+ * Shared with the orphan sweep — one reader, not two mirrors.
+ */
+export function directionOf(row: Record<string, unknown>): 'buy' | 'sell' | null {
   const op = String(row.operation ?? row.Operation ?? row.orderType ?? row.OrderType
     ?? row.dealType ?? row.DealType ?? row.type ?? row.Type ?? '').toLowerCase()
   if (op.includes('buy')) return 'buy'
