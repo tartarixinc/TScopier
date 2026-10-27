@@ -64,6 +64,7 @@ on:
       - "worker/src/socialCopyMonitor.test.ts"
 permissions:
   contents: read
+  packages: read
 
 jobs:
   social-follow:
@@ -87,16 +88,17 @@ jobs:
         run: npm ci --prefix worker
 
       - name: Run Social Follow and Copy preview tests
-        run: npx vitest run src/lib/socialFollow.test.ts src/lib/socialCopyPreview.test.ts
+        run: npx vitest run src/lib/socialFollow.test.ts src/lib/socialCopyPreview.test.ts src/hooks/useSocialTradingPreview.test.ts src/lib/socialAccount.test.ts
 
       - name: Run Social Follow hook race tests
         run: npx vitest run src/hooks/useSocialFollow.test.ts
 
       - name: Run Social Copy persistence tests
-        run: node --import tsx --import ./test/preload.ts --test src/lib/socialCopy.test.ts src/lib/socialReviews.test.ts src/lib/socialTradeHistory.test.ts src/lib/socialPerformancePresentation.test.ts src/lib/socialTradingProductionBoundary.test.ts
+        run: node --import tsx --import ./test/preload.ts --test scripts/seed-social-trading-demo.test.ts src/lib/socialAccountManagement.test.ts src/lib/socialCopy.test.ts src/lib/socialFullFlowMigration.test.ts src/lib/socialReviews.test.ts src/lib/socialTradeHistory.test.ts src/lib/socialPerformancePresentation.test.ts src/lib/socialTradingProductionBoundary.test.ts
 
-      - name: Run worker tests (including Social Copy lifecycle)
-        run: npm --prefix worker test
+      - name: Run Social Copy lifecycle worker tests
+        working-directory: worker
+        run: node --require ts-node/register --test src/socialCopyMonitor.test.ts
 
       - name: Run copy-risk Node tests
         run: node --import tsx --import ./test/preload.ts --test src/lib/copyRiskEvaluate.test.ts
@@ -142,11 +144,46 @@ jobs:
         with:
           version: "2.39.2"
 
+      - name: Limit GHCR pull concurrency
+        run: |
+          daemon_config="$(mktemp)"
+          if sudo test -s /etc/docker/daemon.json; then
+            sudo jq '.["max-concurrent-downloads"] = 1' /etc/docker/daemon.json > "$daemon_config"
+          else
+            jq -n '{"max-concurrent-downloads": 1}' > "$daemon_config"
+          fi
+          sudo install -d -m 0755 /etc/docker
+          sudo install -m 0644 "$daemon_config" /etc/docker/daemon.json
+          sudo systemctl restart docker
+
+      - name: Authenticate GitHub Container Registry pulls
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Remove incompatible local Supabase metadata
         run: rm -f supabase/.temp/storage-version supabase/.temp/postgres-version
 
       - name: Start isolated Supabase stack
-        run: supabase start
+        run: |
+          registries=(ghcr.io docker.io docker.io)
+          for attempt in 1 2 3; do
+            registry="${registries[$((attempt - 1))]}"
+            if SUPABASE_INTERNAL_IMAGE_REGISTRY="$registry" supabase start; then
+              exit 0
+            fi
+
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::Supabase stack failed to start after ${attempt} attempts"
+              exit 1
+            fi
+
+            delay=$((attempt * 60))
+            echo "::warning::Supabase stack startup via ${registry} failed; retrying in ${delay}s"
+            sleep "$delay"
+          done
 
       - name: Apply migrations to isolated database
         run: supabase db reset --local

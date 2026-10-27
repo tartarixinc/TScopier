@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   assertPreviewConfiguration,
+  assertSyntheticPreviewOptIn,
   buildDemoBrokerAccounts,
   buildDemoTrades,
   CLOSED_TRADES_PER_TRADER,
@@ -21,10 +22,17 @@ test('accepts only the Migration preview URL and a service-role key', () => {
 
 test('uses stable reserved identities and unique source/account ids', () => {
   assert.equal(DEMO_TRADERS.length, 8)
+
   assert.equal(new Set(DEMO_TRADERS.map(item => item.userId)).size, 8)
   assert.equal(new Set(DEMO_TRADERS.map(item => item.brokerAccountId)).size, 8)
   assert.equal(new Set(DEMO_TRADERS.map(item => item.sourceId)).size, 8)
   assert.ok(DEMO_TRADERS.every(item => item.email.endsWith('@tscopier.invalid') && item.displayName.includes('[DEMO]')))
+})
+
+test('requires an explicit server-side synthetic preview opt-in', () => {
+  assert.doesNotThrow(() => assertSyntheticPreviewOptIn('true'))
+  assert.throws(() => assertSyntheticPreviewOptIn(undefined), /SYNTHETIC/)
+  assert.throws(() => assertSyntheticPreviewOptIn('false'), /SYNTHETIC/)
 })
 
 test('creates only credential-free DEMO broker rows for persisted performance', () => {

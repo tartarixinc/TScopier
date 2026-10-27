@@ -18,13 +18,14 @@ const ELIGIBILITY_REASONS: Record<string, string> = {
 }
 
 export function canOpenCopyTrader(trader: SocialTrader): boolean {
-  if (!trader.sourceId) return false
-  return trader.syntheticDemo === true || trader.copyEligible === true
+  return trader.sources?.some(source => source.isCopyEligible) ?? Boolean(trader.sourceId && trader.copyEligible)
 }
 
 export function copyTraderUnavailableReason(trader: SocialTrader): string | null {
   if (canOpenCopyTrader(trader)) return null
-  if (!trader.sourceId) return trader.performanceError ?? ELIGIBILITY_REASONS.source_missing
-  if (trader.syntheticDemo) return ELIGIBILITY_REASONS.synthetic_demo
+  if (!trader.sourceId && !trader.sources?.length) return trader.performanceError ?? ELIGIBILITY_REASONS.source_missing
+  if (trader.syntheticDemo) return trader.sources?.[0]?.eligibilityReason === 'synthetic_preview_disabled'
+    ? 'Synthetic participation is disabled for this environment.'
+    : ELIGIBILITY_REASONS.synthetic_demo
   return ELIGIBILITY_REASONS[trader.copyEligibilityReason ?? ''] ?? 'This trader is not currently eligible for copying.'
 }

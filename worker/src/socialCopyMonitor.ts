@@ -30,6 +30,9 @@ export type SocialCopySubscriptionRow = {
   max_lot: number
   max_daily_loss: number | null
   requested_account_mode: 'demo' | 'live'
+  source_account_mode: 'demo' | 'live' | 'unknown'
+  destination_account_mode: 'demo' | 'live' | 'unknown'
+  execution_path: 'broker' | 'synthetic_simulation'
   symbol_map: Record<string, string> | null
   status: 'pending' | 'active' | 'paused' | 'stopped' | 'error' | 'emergency_stopped'
   desired_status: 'active' | 'paused' | 'stopped'
@@ -72,6 +75,7 @@ export type SocialCopyMonitorOptions = {
   workerId?: string
   executionEnabled?: boolean
   allowLive?: boolean
+  syntheticSimulationEnabled?: boolean
   intervalMs?: number
   providerFor?: (row: BrokerRow, write: boolean) => BrokerProvider | null
 }
@@ -82,12 +86,15 @@ export class SocialCopyMonitor {
   private readonly workerId: string
   private readonly executionEnabled: boolean
   private readonly allowLive: boolean
+  private readonly syntheticSimulationEnabled: boolean
   private readonly intervalMs: number
 
   constructor(private readonly supabase: SupabaseClient, private readonly options: SocialCopyMonitorOptions = {}) {
     this.workerId = options.workerId ?? `social-copy-${process.pid}`
     this.executionEnabled = options.executionEnabled ?? /^(1|true|yes)$/i.test(process.env.SOCIAL_COPY_EXECUTION_ENABLED ?? '')
     this.allowLive = options.allowLive ?? /^(1|true|yes)$/i.test(process.env.SOCIAL_COPY_ALLOW_LIVE ?? '')
+    this.syntheticSimulationEnabled = options.syntheticSimulationEnabled
+      ?? /^(1|true|yes)$/i.test(process.env.SOCIAL_COPY_SYNTHETIC_SIMULATION_ENABLED ?? '')
     this.intervalMs = Math.max(2_000, options.intervalMs ?? Number(process.env.SOCIAL_COPY_RECONCILE_MS ?? 10_000))
   }
 
@@ -151,7 +158,9 @@ export class SocialCopyMonitor {
     }
     const context = await this.loadContext(subscription)
     if (subscription.desired_status === 'stopped') {
-      await this.closeAll(subscription, context.destinationBroker)
+      if (subscription.execution_path === 'broker') {
+        await this.closeAll(subscription, context.destinationBroker)
+      }
       const terminal = subscription.error_code === 'EMERGENCY_STOP_REQUESTED' ? 'emergency_stopped' : 'stopped'
       await this.patchSubscription(subscription.id, { status: terminal, stopped_at: new Date().toISOString(), last_reconciled_at: new Date().toISOString() })
       return
@@ -165,6 +174,38 @@ export class SocialCopyMonitor {
       await this.failSubscription(subscription.id, 'EXECUTION_DISABLED', new Error('Social copy execution is disabled on this worker'))
       return
     }
+    const syntheticSimulation = subscription.execution_path === 'synthetic_simulation'
+    if (syntheticSimulation) {
+      if (!this.syntheticSimulationEnabled) {
+        await this.failSubscription(subscription.id, 'SYNTHETIC_SIMULATION_DISABLED', new Error('Synthetic social copy simulation is disabled on this worker'))
+        return
+      }
+      const event = await this.claimEvent(
+        subscription.id,
+        null,
+        'synthetic-preview',
+        'simulation',
+        `simulation:${subscription.id}`,
+        {
+          source_account_mode: subscription.source_account_mode,
+          destination_account_mode: subscription.destination_account_mode,
+        },
+      )
+      if (event) {
+        await this.finishEvent(event, 'succeeded', {
+          simulated: true,
+          broker_orders_created: 0,
+        })
+      }
+      await this.patchSubscription(subscription.id, {
+        status: 'active',
+        worker_acknowledged_at: new Date().toISOString(),
+        last_reconciled_at: new Date().toISOString(),
+        error_code: null,
+        error_detail: null,
+      })
+      return
+    }
     if (subscription.max_daily_loss != null) {
       await this.failSubscription(subscription.id, 'MAX_DAILY_LOSS_UNAVAILABLE', new Error('Daily-loss enforcement is not available for social copy subscriptions'))
       return
@@ -176,8 +217,8 @@ export class SocialCopyMonitor {
       await this.failSubscription(subscription.id, 'LIVE_EXECUTION_DISABLED', new Error('Only demo-to-demo social copying is enabled'))
       return
     }
-    if (subscription.requested_account_mode === 'demo' && (!isDemo(context.sourceBroker) || !isDemo(context.destinationBroker))) {
-      await this.failSubscription(subscription.id, 'ACCOUNT_MODE_MISMATCH', new Error('Demo subscription requires demo source and destination accounts'))
+    if (subscription.requested_account_mode !== subscription.destination_account_mode) {
+      await this.failSubscription(subscription.id, 'ACCOUNT_MODE_MISMATCH', new Error('Requested mode does not match the captured destination mode'))
       return
     }
     const sourceApi = this.provider(context.sourceBroker, false)

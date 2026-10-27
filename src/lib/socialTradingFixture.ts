@@ -1,4 +1,5 @@
 import type { AccountGrowthSeries, TradeVolumeDay } from './dashboardCharts'
+import type { SocialCopySource } from './socialCopy'
 
 export type SocialTradeSide = 'buy' | 'sell'
 
@@ -105,6 +106,7 @@ export interface SocialTrader {
   sourceProvider?: string | null
   sourcePlatform?: string | null
   sourceAccountMode?: 'demo' | 'live' | 'unknown'
+  sources?: SocialCopySource[]
   copyEligible?: boolean
   copyEligibilityReason?: string | null
   performanceStatus?: string
