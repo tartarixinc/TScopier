@@ -367,6 +367,35 @@ begin
     raise exception 'Join the social directory before copying a trader' using errcode = '55000';
   end if;
 
+  -- Return a specific error for visible, published providers with stale history.
+  -- Preserve privacy: do not reveal eligibility details for inaccessible sources.
+  if exists (
+    select 1
+    from public.social_copy_sources s
+    join public.social_profiles sp
+      on sp.user_id = s.trader_user_id
+    cross join lateral
+      public.social_source_performance_eligibility(s.id) eligibility
+    where s.id = p_source_id
+      and s.status = 'published'
+      and sp.is_listed = true
+      and eligibility.reason = 'history_stale'
+      and (
+        sp.access_mode = 'open'
+        or s.trader_user_id = v_actor
+        or exists (
+          select 1
+          from public.social_follow_relationships r
+          where r.follower_user_id = v_actor
+            and r.followed_user_id = s.trader_user_id
+            and r.status = 'accepted'
+        )
+      )
+  ) then
+    raise exception 'Provider is not eligible for copying: history_stale'
+      using errcode = '55000';
+  end if;
+
   select
     s as source,
     sp.access_mode as access_mode,
