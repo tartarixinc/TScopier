@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, ChevronUp, OctagonAlert, Pause, Play, Plus, Settings, Square, Trash2, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, Pause, Play, Plus, Settings, Square, Trash2, X } from 'lucide-react'
 import clsx from 'clsx'
 import { SlaveConfigureModal } from '../../components/configure/SlaveConfigureModal'
 import { SlaveChannelConflictModal } from '../../components/dashboard/SlaveChannelConflictModal'
@@ -534,15 +534,6 @@ export function MirrorTradingPage() {
     settingsSaveRef.current = task.then(() => undefined, () => undefined)
   }, [user?.id])
 
-  const setSlaveEmergency = useCallback((slaveId: string, enabled: boolean) => {
-    const current = linksRef.current.find(link => link.destination_broker_account_id === slaveId)
-    if (!current) return
-    const profile = copyRiskForEditor(current.manual_settings)
-    profile.protection.emergency_stop = enabled
-    profile.lifecycle.pause_new = enabled
-    patchSlaveSettings(slaveId, manualSettingsFromCopyRisk(profile))
-  }, [patchSlaveSettings])
-
   const masters = useMemo(
     () => brokers.filter(broker => broker.copy_source === true),
     [brokers],
@@ -669,7 +660,6 @@ export function MirrorTradingPage() {
                           removing={removingSlaveId === slave.id}
                           copy={copy}
                           modes={t.copyRisk.modes}
-                          emergencyLabel={link?.manual_settings.copy_risk?.protection.emergency_stop ? t.copyRisk.resumeEmergency : t.copyRisk.emergencyStop}
                           onCopyingChange={next => { if (link) changeCopying(link, next) }}
                           onConfigure={() => {
                             setConfigSaveError(null)
@@ -677,7 +667,6 @@ export function MirrorTradingPage() {
                           }}
                           onActiveChange={active => setAccountActive(slave.id, active)}
                           onDelete={() => removeSlave(slave.id)}
-                          onEmergency={() => setSlaveEmergency(slave.id, link?.manual_settings.copy_risk?.protection.emergency_stop !== true)}
                         />
                       )
                     }) : null}
@@ -949,9 +938,7 @@ function SlaveRow({
   removing,
   copy,
   modes,
-  emergencyLabel,
   onConfigure,
-  onEmergency,
   onActiveChange,
   onCopyingChange,
   onDelete,
@@ -965,8 +952,6 @@ function SlaveRow({
   copy: {
     slave: string
     configure: string
-    pause: string
-    resume: string
     delete: string
     riskFixedLot: string
     riskBalancePercent: string
@@ -982,14 +967,13 @@ function SlaveRow({
     statusError?: string
   }
   modes: CopyRiskTranslations['modes']
-  emergencyLabel: string
   onConfigure: () => void
-  onEmergency: () => void
   onActiveChange: (active: boolean) => void
   onCopyingChange: (status: MirrorCopyDesiredStatus) => void
   onDelete: () => void
 }) {
   const active = broker.is_active !== false
+  const t = useT()
   const risk = riskCells(link, copy, modes)
   const sourceLogin = source?.account_login?.trim() || (source ? getBrokerDisplayLabel(source) : '—')
   const desired = linkState?.desired_status ?? 'paused'
@@ -1021,6 +1005,9 @@ function SlaveRow({
             <div className="flex flex-wrap items-center gap-1.5">
               <Badge variant="warning" size="sm">{copy.slave}</Badge>
               {linkState ? <Badge variant={mirrorCopyStatusTone(linkState)} size="sm">{statusLabel}</Badge> : null}
+              {link?.manual_settings.copy_risk?.protection.emergency_stop === true ? (
+                <Badge variant="error" size="sm">{t.copyRisk.emergencyStop}</Badge>
+              ) : null}
             </div>
             {linkState?.error_code ? (
               <div className="mt-1 max-w-[240px] text-[11px] leading-snug text-error-600 dark:text-error-300">
@@ -1075,14 +1062,6 @@ function SlaveRow({
           <RowAction label={copy.configure} disabled={!link || removing} onClick={onConfigure}>
             <Settings className="h-3.5 w-3.5" />
             {copy.configure}
-          </RowAction>
-          <RowAction label={emergencyLabel} disabled={!link || removing} danger={link?.manual_settings.copy_risk?.protection.emergency_stop === true} onClick={onEmergency}>
-            <OctagonAlert className="h-3.5 w-3.5" />
-            {emergencyLabel}
-          </RowAction>
-          <RowAction label={active ? copy.pause : copy.resume} disabled={removing} onClick={() => onActiveChange(!active)}>
-            {active ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-            {active ? copy.pause : copy.resume}
           </RowAction>
           <RowAction label={removing ? removingLabel : copy.delete} danger disabled={removing} onClick={onDelete}>
             <Trash2 className="h-3.5 w-3.5" />
