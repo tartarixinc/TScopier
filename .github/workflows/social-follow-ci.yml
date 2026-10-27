@@ -64,6 +64,7 @@ on:
       - "worker/src/socialCopyMonitor.test.ts"
 permissions:
   contents: read
+  packages: read
 
 jobs:
   social-follow:
@@ -143,25 +144,18 @@ jobs:
         with:
           version: "2.39.2"
 
+      - name: Authenticate GitHub Container Registry pulls
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Remove incompatible local Supabase metadata
         run: rm -f supabase/.temp/storage-version supabase/.temp/postgres-version
 
       - name: Start isolated Supabase stack
-        run: |
-          for attempt in 1 2 3; do
-            if supabase start; then
-              exit 0
-            fi
-
-            if [ "$attempt" -eq 3 ]; then
-              echo "::error::Supabase stack failed to start after ${attempt} attempts"
-              exit 1
-            fi
-
-            delay=$((attempt * 30))
-            echo "::warning::Supabase stack startup failed; retrying in ${delay}s"
-            sleep "$delay"
-          done
+        run: supabase start
 
       - name: Apply migrations to isolated database
         run: supabase db reset --local
