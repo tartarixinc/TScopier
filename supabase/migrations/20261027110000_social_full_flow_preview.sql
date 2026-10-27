@@ -218,17 +218,32 @@ begin
   if not public.social_follow_profile_is_eligible(v_actor) then
     raise exception 'Join the social directory before publishing a copy source' using errcode = '55000';
   end if;
-  if not exists (
-    select 1 from public.broker_accounts b
-    where b.id = p_broker_account_id and b.user_id = v_actor
-      and b.is_active = true
-      and lower(coalesce(b.connection_status, '')) in ('connected', 'healthy')
-      and lower(coalesce(nullif(b.provider, ''), 'fxsocket')) in ('fxsocket', 'mtapi')
-      and upper(coalesce(b.platform, '')) in ('MT4', 'MT5')
-      and public.social_broker_account_mode(b.id) in ('demo', 'live')
-  ) then
-    raise exception 'Broker account is not connected, supported, or mode-verified for Social Trading' using errcode = '55000';
-  end if;
+  -- First: verify ownership so another user's account is never publishable.
+if not exists (
+  select 1
+  from public.broker_accounts b
+  where b.id = p_broker_account_id
+    and b.user_id = v_actor
+) then
+  raise exception 'Broker account is not owned by the current user'
+    using errcode = '42501';
+end if;
+
+-- Second: verify eligibility for Social Trading.
+if not exists (
+  select 1
+  from public.broker_accounts b
+  where b.id = p_broker_account_id
+    and b.user_id = v_actor
+    and b.is_active = true
+    and lower(coalesce(b.connection_status, '')) in ('connected', 'healthy')
+    and lower(coalesce(nullif(b.provider, ''), 'fxsocket')) in ('fxsocket', 'mtapi')
+    and upper(coalesce(b.platform, '')) in ('MT4', 'MT5')
+    and public.social_broker_account_mode(b.id) in ('demo', 'live')
+) then
+  raise exception 'Broker account is not connected, supported, or mode-verified for Social Trading'
+    using errcode = '55000';
+end if;
 
   insert into public.social_copy_sources (trader_user_id, broker_account_id, status, label)
   values (v_actor, p_broker_account_id, 'published', nullif(btrim(p_label), ''))
