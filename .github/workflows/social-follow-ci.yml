@@ -168,8 +168,10 @@ jobs:
 
       - name: Start isolated Supabase stack
         run: |
+          registries=(ghcr.io docker.io docker.io)
           for attempt in 1 2 3; do
-            if supabase start; then
+            registry="${registries[$((attempt - 1))]}"
+            if SUPABASE_INTERNAL_IMAGE_REGISTRY="$registry" supabase start; then
               exit 0
             fi
 
@@ -179,7 +181,7 @@ jobs:
             fi
 
             delay=$((attempt * 60))
-            echo "::warning::Supabase stack startup failed; retrying in ${delay}s"
+            echo "::warning::Supabase stack startup via ${registry} failed; retrying in ${delay}s"
             sleep "$delay"
           done
 
