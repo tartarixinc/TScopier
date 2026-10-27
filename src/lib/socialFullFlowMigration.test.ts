@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 const migration = readFileSync(
-  new URL('../../supabase/migrations/20261026130000_social_full_flow_preview.sql', import.meta.url),
+  new URL('../../supabase/migrations/20261027110000_social_full_flow_preview.sql', import.meta.url),
   'utf8',
 )
 const worker = readFileSync(new URL('../../worker/src/socialCopyMonitor.ts', import.meta.url), 'utf8')

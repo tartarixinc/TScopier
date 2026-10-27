@@ -35,7 +35,7 @@ const migration = readFileSync(
 );
 const fullFlowMigration = readFileSync(
   new URL(
-    "../../supabase/migrations/20261026130000_social_full_flow_preview.sql",
+    "../../supabase/migrations/20261027110000_social_full_flow_preview.sql",
     import.meta.url,
   ),
   "utf8",

@@ -6,7 +6,7 @@ const settings = readFileSync(new URL('../components/settings/SocialTradingSetti
 const selector = readFileSync(new URL('../components/social/OwnAccountSelector.tsx', import.meta.url), 'utf8')
 const ownView = readFileSync(new URL('../hooks/useOwnSocialAccountView.ts', import.meta.url), 'utf8')
 const modal = readFileSync(new URL('../components/social/CopyTraderModal.tsx', import.meta.url), 'utf8')
-const migration = readFileSync(new URL('../../supabase/migrations/20261026120000_social_multi_account_sources.sql', import.meta.url), 'utf8')
+const migration = readFileSync(new URL('../../supabase/migrations/20261027100000_social_multi_account_sources.sql', import.meta.url), 'utf8')
 
 test('settings scopes owned source management and keeps profile publication separate', () => {
   assert.match(settings, /fetchOwnSocialCopySources\(supabase, userId\)/)
