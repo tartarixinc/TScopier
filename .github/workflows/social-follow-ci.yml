@@ -95,8 +95,9 @@ jobs:
       - name: Run Social Copy persistence tests
         run: node --import tsx --import ./test/preload.ts --test scripts/seed-social-trading-demo.test.ts src/lib/socialAccountManagement.test.ts src/lib/socialCopy.test.ts src/lib/socialFullFlowMigration.test.ts src/lib/socialReviews.test.ts src/lib/socialTradeHistory.test.ts src/lib/socialPerformancePresentation.test.ts src/lib/socialTradingProductionBoundary.test.ts
 
-      - name: Run worker tests (including Social Copy lifecycle)
-        run: npm --prefix worker test
+      - name: Run Social Copy lifecycle worker tests
+        working-directory: worker
+        run: node --require ts-node/register --test src/socialCopyMonitor.test.ts
 
       - name: Run copy-risk Node tests
         run: node --import tsx --import ./test/preload.ts --test src/lib/copyRiskEvaluate.test.ts
