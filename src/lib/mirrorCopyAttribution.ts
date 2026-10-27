@@ -3,6 +3,10 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 export interface MirrorCopyAttribution {
   masterLogin: string
   sourceTicket: string
+  /** Ledger row for this copy (one per link+source ticket); null when unreadable. */
+  mappingId: string | null
+  /** Ledger state: open / closing / closed / uncertain / error / opening. */
+  mappingState: string | null
 }
 
 /**
@@ -21,7 +25,9 @@ export function parseMirrorCopyComment(
 /**
  * Resolve the master account behind a slave trade's `mc:` comment. Returns null
  * when the comment is absent, or when the link (or master account) can no longer
- * be found — the note is best-effort and must never block the modal.
+ * be found — the note is best-effort and must never block the modal. The ledger
+ * mapping is read best-effort too: its absence (or a missing SELECT policy)
+ * degrades to `mappingId: null`, which only hides the close button.
  */
 export async function fetchMirrorCopyAttribution(
   supabase: SupabaseClient,
@@ -42,15 +48,30 @@ export async function fetchMirrorCopyAttribution(
   )
   if (!link) return null
 
-  const { data: master, error: masterError } = await supabase
-    .from('broker_accounts')
-    .select('account_login')
-    .eq('id', link.source_broker_account_id)
-    .eq('user_id', userId)
-    .maybeSingle()
-  if (masterError || !master) return null
+  const [master, mapping] = await Promise.all([
+    supabase
+      .from('broker_accounts')
+      .select('account_login')
+      .eq('id', link.source_broker_account_id)
+      .eq('user_id', userId)
+      .maybeSingle(),
+    supabase
+      .from('mirror_copy_trade_mappings')
+      .select('id, state')
+      .eq('link_id', link.id)
+      .eq('source_ticket', parsed.sourceTicket)
+      .maybeSingle(),
+  ])
+  if (master.error || !master.data) return null
 
-  const masterLogin = String((master as { account_login?: unknown }).account_login ?? '').trim()
+  const masterLogin = String((master.data as { account_login?: unknown }).account_login ?? '').trim()
   if (!masterLogin) return null
-  return { masterLogin, sourceTicket: parsed.sourceTicket }
+
+  const mappingRow = mapping.error ? null : (mapping.data as { id?: unknown; state?: unknown } | null)
+  return {
+    masterLogin,
+    sourceTicket: parsed.sourceTicket,
+    mappingId: mappingRow && typeof mappingRow.id === 'string' ? mappingRow.id : null,
+    mappingState: mappingRow && typeof mappingRow.state === 'string' ? mappingRow.state : null,
+  }
 }

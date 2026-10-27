@@ -29,6 +29,7 @@ class Query implements PromiseLike<{ data: unknown; error: Row | null }> {
   select(): this { return this }
   order(): this { return this }
   eq(key: string, value: unknown): this { this.filters.push(row => row[key] === value); return this }
+  neq(key: string, value: unknown): this { this.filters.push(row => row[key] !== value); return this }
   in(key: string, values: unknown[]): this { this.filters.push(row => values.includes(row[key])); return this }
   single(): this { this.wantsSingle = true; return this }
   insert(payload: Row): this { this.mutation = 'insert'; this.payload = payload; return this }
@@ -61,12 +62,15 @@ class Query implements PromiseLike<{ data: unknown; error: Row | null }> {
       rows.push(row)
       return { data: this.wantsSingle ? row : [row], error: null }
     }
-    const data = this.wantsSingle ? (matches[0] ?? null) : matches
+    const data = this.wantsSingle ? (matches[0] ? { ...matches[0] } : null) : matches.map(row => ({ ...row }))
+    if (this.mutation === null && this.table === 'mirror_copy_trade_mappings') this.db.onTableRead?.(this.table)
     return { data, error: this.wantsSingle && !data ? { message: 'not found' } : null }
   }
 }
 
 class FakeDb {
+  /** Test hook: fired after the worker reads mirror_copy_trade_mappings (select only). */
+  onTableRead?: (table: string) => void
   tables: Record<string, Row[]> = {
     broker_accounts: [broker('src'), broker('dst')],
     broker_copy_links: [{
@@ -485,3 +489,146 @@ test('a failing /Symbols endpoint falls back to the planned symbol', async () =>
   assert.equal(db.tables.mirror_copy_trade_mappings[0]!.destination_symbol, 'XAUUSDm')
   assert.equal(db.linkState().status, 'active')
 })
+function closingMapping(patch: Row = {}): Row {
+  return {
+    id: 'map-1', link_id: LINK_ID, source_ticket: '42', destination_ticket: '9001',
+    source_symbol: 'EURUSD', destination_symbol: 'EURUSD', source_side: 'buy',
+    source_volume: 0.3, destination_volume: 0.12, source_stop_loss: 1.05, source_take_profit: 1.2,
+    state: 'closing', broker_comment: 'mc', ...patch,
+  }
+}
+
+const openDestOrder = { ticket: 9001, symbol: 'EURUSD', operation: 'Buy', lots: 0.12 }
+
+test('a user-requested close runs on the next tick even while the source is still open', async () => {
+  const db = new FakeDb()
+  db.tables.mirror_copy_trade_mappings = [closingMapping()]
+  // Source still holds ticket 42: without the drain it would be synced (stop
+  // modify), and re-opening must not happen once the copy is closed.
+  const source = provider({ orders: [sourcePosition] })
+  const destination = provider({ orders: [openDestOrder] })
+  await monitor(db, source, destination).tick()
+  assert.equal(destination.closes, 1)
+  assert.equal(destination.modifies, 0, 'a closing copy must not receive stop syncs')
+  assert.equal(destination.sends, 0, 'a closed copy must never be re-opened')
+  assert.equal(db.tables.mirror_copy_trade_mappings[0]?.state, 'closed')
+  assert.equal(db.linkState().status, 'active')
+})
+
+test('a user-requested close needs no source-history confirmation', async () => {
+  const db = new FakeDb()
+  db.tables.mirror_copy_trade_mappings = [closingMapping()]
+  // Source gone and history empty: the confirmSourceClosed gate would refuse,
+  // but an explicit request is intent and must still close.
+  const source = provider({ orders: [], closedOrdersHistory: [] })
+  const destination = provider({ orders: [openDestOrder] })
+  await monitor(db, source, destination).tick()
+  assert.equal(destination.closes, 1)
+  assert.equal(db.tables.mirror_copy_trade_mappings[0]?.state, 'closed')
+  const unresolved = db.tables.mirror_copy_execution_events.find(row => row.action === 'reconcile')
+  assert.equal(unresolved, undefined, 'a requested close must not record an unresolved source')
+})
+
+test('a paused link still honours a requested close, then stays paused', async () => {
+  const db = new FakeDb()
+  Object.assign(db.linkState(), { desired_status: 'paused' })
+  db.tables.mirror_copy_trade_mappings = [closingMapping()]
+  const destination = provider({ orders: [openDestOrder] })
+  await monitor(db, provider(), destination).tick()
+  assert.equal(destination.closes, 1)
+  assert.equal(db.tables.mirror_copy_trade_mappings[0]?.state, 'closed')
+  assert.equal(db.linkState().status, 'paused')
+})
+
+test('a failed requested close keeps the request alive for the next tick', async () => {
+  const db = new FakeDb()
+  db.tables.mirror_copy_trade_mappings = [closingMapping({ destination_ticket: null, broker_comment: `mc:${LINK_ID.slice(0, 8)}:42` })]
+  const source = provider({ orders: [sourcePosition] })
+  const destination = provider({
+    orders: [{ ...openDestOrder, comment: `mc:${LINK_ID.slice(0, 8)}:42` }],
+    closeErrorAt: 1,
+  })
+  await monitor(db, source, destination).tick()
+  assert.equal(destination.closes, 1)
+  const mapping = db.tables.mirror_copy_trade_mappings[0]!
+  // finalizeOpen adopted the recovered ticket but must not have flipped the row
+  // back to 'open': the user's request survives the failure.
+  assert.equal(mapping.destination_ticket, '9001')
+  assert.equal(mapping.state, 'closing')
+  const event = db.tables.mirror_copy_execution_events.find(row => row.action === 'close')
+  assert.equal(event?.status, 'uncertain')
+  assert.equal(db.linkState().status, 'error')
+  assert.equal(db.linkState().error_code, 'RECONCILE_PARTIAL')
+})
+
+test('stop flattens a pending requested close along with the open copies', async () => {
+  const db = new FakeDb()
+  Object.assign(db.linkState(), { desired_status: 'stopped', status: 'active' })
+  db.tables.mirror_copy_trade_mappings = [closingMapping()]
+  const destination = provider({ orders: [openDestOrder] })
+  await monitor(db, provider(), destination).tick()
+  assert.equal(destination.closes, 1)
+  assert.equal(db.tables.mirror_copy_trade_mappings[0]?.state, 'closed')
+  assert.equal(db.linkState().status, 'stopped')
+})
+
+test('a close requested while an uncertain open is being adopted is not resurrected to open', async () => {
+  const db = new FakeDb()
+  const comment = `mc:${LINK_ID.slice(0, 8)}:42`
+  // Read 1 is the requested-close sweep (row still 'uncertain', nothing to do).
+  // Read 2 is the main mappings select: the worker snapshots the row as
+  // 'uncertain', then the RPC flips the live row to 'closing' before
+  // finalizeOpen runs — the guard must not write 'open' over that request.
+  db.tables.mirror_copy_trade_mappings = [{
+    id: 'map-1', link_id: LINK_ID, source_ticket: '42', destination_ticket: null,
+    source_symbol: 'EURUSD', destination_symbol: 'EURUSD', source_side: 'buy',
+    source_volume: 0.3, destination_volume: 0.12, source_stop_loss: 1.05, source_take_profit: 1.2,
+    state: 'uncertain', broker_comment: comment,
+  }]
+  let reads = 0
+  db.onTableRead = () => {
+    reads++
+    if (reads !== 2) return
+    const row = db.tables.mirror_copy_trade_mappings[0]
+    if (row && row.state === 'uncertain') row.state = 'closing'
+  }
+  const source = provider({ orders: [sourcePosition] })
+  const destination = provider({ orders: [{ ...openDestOrder, comment }] })
+  await monitor(db, source, destination).tick()
+  const mapping = db.tables.mirror_copy_trade_mappings[0]!
+  assert.equal(mapping.destination_ticket, '9001', 'the recovered ticket is still adopted')
+  assert.equal(mapping.state, 'closing', 'the mid-tick close request must survive finalizeOpen')
+  // The next tick drains it through the normal requested-close path.
+  db.onTableRead = undefined
+  const destination2 = provider({ orders: [{ ...openDestOrder, comment }] })
+  await monitor(db, provider({ orders: [sourcePosition] }), destination2).tick()
+  assert.equal(destination2.closes, 1)
+  assert.equal(db.tables.mirror_copy_trade_mappings[0]?.state, 'closed')
+})
+
+test('a requested close still runs when the destination account mode is unsupported', async () => {
+  const db = new FakeDb()
+  db.tables.broker_accounts = [broker('src'), broker('dst', { margin_mode: 'netting' })]
+  db.tables.mirror_copy_trade_mappings = [closingMapping()]
+  const destination = provider({ orders: [openDestOrder] })
+  await monitor(db, provider(), destination).tick()
+  assert.equal(destination.closes, 1, 'closing by ticket is safe on any account mode')
+  assert.equal(db.tables.mirror_copy_trade_mappings[0]?.state, 'closed')
+  assert.equal(db.linkState().status, 'unsupported_provider')
+  assert.equal(db.linkState().error_code, 'ACCOUNT_MODE_UNSUPPORTED')
+})
+
+test('a requested close still runs when the source account is down', async () => {
+  const db = new FakeDb()
+  db.tables.broker_accounts = [broker('src', { is_active: false }), broker('dst')]
+  db.tables.mirror_copy_trade_mappings = [closingMapping()]
+  const destination = provider({ orders: [openDestOrder] })
+  // The source is down: the normal reconcile would throw BROKER_DISCONNECTED
+  // before ever reaching the drain, so the sweep must run ahead of that gate.
+  await monitor(db, provider(), destination).tick()
+  assert.equal(destination.closes, 1, 'closing needs only the destination')
+  assert.equal(db.tables.mirror_copy_trade_mappings[0]?.state, 'closed')
+  assert.equal(db.linkState().status, 'error')
+  assert.equal(db.linkState().error_code, 'BROKER_DISCONNECTED')
+})
+

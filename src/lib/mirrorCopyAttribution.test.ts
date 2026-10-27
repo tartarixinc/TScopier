@@ -59,15 +59,35 @@ function fakeSupabase(handler: Handler): SupabaseClient {
 }
 
 describe('fetchMirrorCopyAttribution', () => {
-  it('resolves the master login through the link prefix', async () => {
+  it('resolves the master login and the ledger mapping through the link prefix', async () => {
     const client = fakeSupabase(table =>
       table === 'broker_copy_links'
         ? { data: [{ id: 'bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb', source_broker_account_id: 'src-1' }], error: null }
-        : { data: { account_login: '476205231' }, error: null },
+        : table === 'mirror_copy_trade_mappings'
+          ? { data: { id: 'map-1', state: 'open' }, error: null }
+          : { data: { account_login: '476205231' }, error: null },
     )
     expect(await fetchMirrorCopyAttribution(client, 'user-1', 'mc:bbbbbbbb:99')).toEqual({
       masterLogin: '476205231',
       sourceTicket: '99',
+      mappingId: 'map-1',
+      mappingState: 'open',
+    })
+  })
+
+  it('degrades to a null mapping when the ledger read fails or finds nothing', async () => {
+    const noMapping = fakeSupabase(table =>
+      table === 'broker_copy_links'
+        ? { data: [{ id: 'bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb', source_broker_account_id: 'src-1' }], error: null }
+        : table === 'mirror_copy_trade_mappings'
+          ? { data: null, error: null }
+          : { data: { account_login: '476205231' }, error: null },
+    )
+    expect(await fetchMirrorCopyAttribution(noMapping, 'user-1', 'mc:bbbbbbbb:99')).toEqual({
+      masterLogin: '476205231',
+      sourceTicket: '99',
+      mappingId: null,
+      mappingState: null,
     })
   })
 
@@ -79,7 +99,9 @@ describe('fetchMirrorCopyAttribution', () => {
     const noLogin = fakeSupabase(table =>
       table === 'broker_copy_links'
         ? { data: [{ id: 'bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb', source_broker_account_id: 'src-1' }], error: null }
-        : { data: { account_login: '' }, error: null },
+        : table === 'mirror_copy_trade_mappings'
+          ? { data: { id: 'map-1', state: 'open' }, error: null }
+          : { data: { account_login: '' }, error: null },
     )
     expect(await fetchMirrorCopyAttribution(noLogin, 'user-1', 'mc:bbbbbbbb:1')).toBeNull()
   })

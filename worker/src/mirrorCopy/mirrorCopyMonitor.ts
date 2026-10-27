@@ -107,8 +107,13 @@ const BROKER_COLUMNS =
   + 'mtapi_session_id,fxsocket_account_id,metaapi_account_id,ctrader_account_id,'
   + 'writer_epoch,provider_transition_state,margin_mode'
 
-/** Mapping states that mean "the copy is still ours to manage". */
-const OPEN_MAPPING_STATES = ['opening', 'open', 'uncertain', 'error']
+/**
+ * Mapping states that mean "the copy is still ours to manage". `closing` is a
+ * user-requested close (request_mirror_copy_close RPC) that has not reached the
+ * broker yet — it is swept here so it runs on every path that closes copies
+ * (active reconcile, pause drain, stop flatten) instead of sitting forever.
+ */
+const OPEN_MAPPING_STATES = ['opening', 'open', 'closing', 'uncertain', 'error']
 
 /** Upper bound on automatic retries of a close/resize event left `uncertain`. */
 const MAX_EVENT_ATTEMPTS = 5
@@ -238,6 +243,14 @@ export class MirrorCopyMonitor {
 
   private async reconcileLink(link: LinkRow, state: LinkStateRow): Promise<void> {
     if (state.desired_status === 'paused') {
+      // Pause only stops NEW copies — a close the user already asked for must still
+      // run, or the request would sit forever. Failures surface as the link error
+      // and skip the paused patch below so the error is not wiped on the same tick.
+      const pausedFailures = await this.processRequestedCloses(link)
+      if (pausedFailures.length > 0) {
+        await this.failLink(link.id, 'RECONCILE_PARTIAL', new Error(`Requested closes could not be completed: ${pausedFailures.join(', ')}`))
+        return
+      }
       await this.patchLinkState(link.id, {
         status: 'paused', worker_acknowledged_at: new Date().toISOString(), last_reconciled_at: new Date().toISOString(),
         error_code: null, error_detail: null,
@@ -275,6 +288,18 @@ export class MirrorCopyMonitor {
       await this.patchLinkState(link.id, {
         status: 'stopped', stopped_at: new Date().toISOString(), last_reconciled_at: new Date().toISOString(),
       })
+      return
+    }
+
+    // User-requested closes (state 'closing') run before every gate below. Closing
+    // by ticket needs only the destination — never the source, never the sizing
+    // mode, never a hedging account — so a sticky gate (unsupported mode/sizing, a
+    // down source) must never strand a request. Failures surface as the link
+    // error; on success the link continues through its gate, which then reports
+    // the real reason copying is blocked.
+    const sweepFailures = await this.processRequestedCloses(link)
+    if (sweepFailures.length > 0) {
+      await this.failLink(link.id, 'RECONCILE_PARTIAL', new Error(`Requested closes could not be completed: ${sweepFailures.join(', ')}`))
       return
     }
 
@@ -322,6 +347,23 @@ export class MirrorCopyMonitor {
     // One bad position must not stop the others (or the close loop below) from being
     // handled. Failures are collected and surfaced once every position is processed.
     const failures: string[] = []
+
+    // User-requested closes (state 'closing') run first and are removed from the map:
+    // they must never fall through to a stop/volume sync below, and a source that is
+    // still open must not trigger a re-open (the unique key would make that insert a
+    // no-op anyway, but skipping it keeps the intent explicit). A request is explicit
+    // intent, so no source-history confirmation is required — the close loop's
+    // confirmSourceClosed gate does not apply to it.
+    for (const mapping of [...bySource.values()]) {
+      if (mapping.state !== 'closing') continue
+      bySource.delete(mapping.source_ticket)
+      try {
+        await this.closeMapping(link, context.destination, destinationApi, destinationOrders, mapping)
+      } catch (error) {
+        failures.push(`close:${mapping.source_ticket}:${brokerErrorCode(error)}`)
+      }
+    }
+
     for (const position of sourcePositions) {
       const mapping = bySource.get(position.ticket)
       try {
@@ -636,6 +678,51 @@ export class MirrorCopyMonitor {
     }
   }
 
+  /**
+   * Run user-requested closes (state 'closing') for links whose normal reconcile
+   * path does not execute: a paused link still has to honour a close the user
+   * already asked for, or the request would sit until copying is resumed.
+   * Returns one `ticket:CODE` entry per failure (empty = all done / nothing to do).
+   * Deliberately mirrors the stop path's gates: destination-only (closing needs no
+   * source session), no hedging gate (closing by ticket is safe on any account).
+   */
+  private async processRequestedCloses(link: LinkRow): Promise<string[]> {
+    const { data, error } = await this.supabase.from('mirror_copy_trade_mappings').select('*')
+      .eq('link_id', link.id).eq('state', 'closing')
+    if (error) throw error
+    const pending = (data ?? []) as MappingRow[]
+    if (pending.length === 0) return []
+    if (!this.executionEnabled) {
+      return pending.map(row => `${row.source_ticket}:EXECUTION_DISABLED`)
+    }
+    const context = await this.loadContext(link)
+    if (link.user_id !== context.source.user_id || link.user_id !== context.destination.user_id) {
+      return pending.map(row => `${row.source_ticket}:OWNER_MISMATCH`)
+    }
+    if (!context.destination.is_active) return pending.map(row => `${row.source_ticket}:BROKER_DISCONNECTED`)
+    if (!sessionId(context.destination)) return pending.map(row => `${row.source_ticket}:BROKER_SESSION_UNAVAILABLE`)
+    if (!isDemo(context.destination) && !this.allowLive) {
+      return pending.map(row => `${row.source_ticket}:LIVE_EXECUTION_DISABLED`)
+    }
+    const api = this.provider(context.destination, true)
+    if (!api) return pending.map(row => `${row.source_ticket}:UNSUPPORTED_PROVIDER`)
+    let orders: unknown[]
+    try {
+      orders = await api.openedOrders(sessionId(context.destination))
+    } catch (readError) {
+      return pending.map(row => `${row.source_ticket}:${brokerErrorCode(readError)}`)
+    }
+    const failures: string[] = []
+    for (const mapping of pending) {
+      try {
+        await this.closeMapping(link, context.destination, api, orders, mapping)
+      } catch (closeError) {
+        failures.push(`${mapping.source_ticket}:${brokerErrorCode(closeError)}`)
+      }
+    }
+    return failures
+  }
+
   private async closeAll(link: LinkRow, destination: BrokerRow): Promise<void> {
     const api = this.provider(destination, true)
     if (!api) throw new Error('UNSUPPORTED_PROVIDER')
@@ -807,10 +894,22 @@ export class MirrorCopyMonitor {
 
   private async finalizeOpen(mapping: MappingRow, ticket: number): Promise<void> {
     if (!(ticket > 0)) throw new Error('BROKER_TICKET_MISSING')
+    // Ticket/audit fields first, then the state transition with a server-side
+    // guard: a close requested while this open was in flight (state 'closing'
+    // written to the row by the RPC mid-tick) must survive. The in-memory
+    // mapping.state predates that request, so the guard goes on the UPDATE
+    // filter itself — writing 'open' over a live 'closing' would silently
+    // drop the user's intent.
     const { error } = await this.supabase.from('mirror_copy_trade_mappings').update({
-      destination_ticket: String(ticket), state: 'open', opened_at: new Date().toISOString(), last_error_code: null, last_error_detail: null,
+      destination_ticket: String(ticket),
+      opened_at: new Date().toISOString(), last_error_code: null, last_error_detail: null,
     }).eq('id', mapping.id)
     if (error) throw error
+    const { error: stateError } = await this.supabase.from('mirror_copy_trade_mappings')
+      .update({ state: 'open' })
+      .eq('id', mapping.id)
+      .neq('state', 'closing')
+    if (stateError) throw stateError
   }
 
   private async updateMappingVolumes(id: string, sourceVolume: number, destinationVolume: number): Promise<void> {

@@ -1346,6 +1346,14 @@ export interface TradesTranslations {
   imageSignal: string
   copiedFromMasterTitle?: string
   copiedFromMaster?: string
+  closeCopy?: string
+  closeCopyConfirm?: string
+  closeCopyWorking?: string
+  closeCopyDone?: string
+  closeCopyTimeout?: string
+  closeCopyRetry?: string
+  closeCopyError?: string
+  closeCopyErrorFallback?: string
   execNotesTitle?: string
   execNoteTpSplit?: string
   execNoteStaleEntry?: string
