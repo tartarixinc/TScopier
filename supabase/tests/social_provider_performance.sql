@@ -148,7 +148,7 @@ select is((select count(*)::integer from public.get_social_source_trade_history(
 select is((select count(*)::integer from public.get_social_source_trade_history((select source_id from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001'))) where symbol = 'XAUUSD'), 0, 'same-owner unrelated account is isolated');
 select is((select count(*)::integer from public.get_social_source_trade_history((select source_id from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001'))) where symbol = 'GBPUSD'), 0, 'internally copied destination trade is excluded');
 select ok(public.create_social_copy_subscription(
-  current_setting('test.source_a_id')::uuid
+  (select source_id from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')),
   '41000000-0000-0000-0000-000000000003', 'fixed_lot', 0.01, 1, 0.1, null, 'demo', '{}'
 ) is not null, 'server permits a fresh complete demo provider meeting the minimum policy');
 
@@ -184,7 +184,7 @@ select set_config('request.jwt.claim.sub', '40000000-0000-0000-0000-000000000002
 select is((select performance_status from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), 'stale', 'old successful sync is reported as stale');
 select throws_ok(
   $$select public.create_social_copy_subscription(
-    (select source_id from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')),
+    current_setting('test.source_a_id')::uuid,
     '41000000-0000-0000-0000-000000000003', 'fixed_lot', 0.01, 1, 0.1, null, 'demo', '{}')$$,
   '55000', 'Provider is not eligible for copying: history_stale',
   'server blocks copy creation when history is stale'
