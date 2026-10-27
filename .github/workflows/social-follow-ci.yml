@@ -147,7 +147,21 @@ jobs:
         run: rm -f supabase/.temp/storage-version supabase/.temp/postgres-version
 
       - name: Start isolated Supabase stack
-        run: supabase start
+        run: |
+          for attempt in 1 2 3; do
+            if supabase start; then
+              exit 0
+            fi
+
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::Supabase stack failed to start after ${attempt} attempts"
+              exit 1
+            fi
+
+            delay=$((attempt * 30))
+            echo "::warning::Supabase stack startup failed; retrying in ${delay}s"
+            sleep "$delay"
+          done
 
       - name: Apply migrations to isolated database
         run: supabase db reset --local
