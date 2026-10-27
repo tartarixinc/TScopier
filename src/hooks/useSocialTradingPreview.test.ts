@@ -1,3 +1,5 @@
+// @vitest-environment happy-dom
+
 import { describe, expect, it } from 'vitest'
 import { hydrateTrader } from './useSocialTradingPreview'
 import { canOpenCopyTrader } from '../lib/socialCopyAvailability'
