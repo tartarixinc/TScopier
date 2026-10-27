@@ -249,8 +249,8 @@ select is((select count(*)::integer from public.get_social_source_trade_history(
   current_setting('test.source_a_id')::uuid)), 11, 'owner retains access to source-scoped open and closed history after unpublishing');
 
 select ok(public.publish_social_copy_source('41000000-0000-0000-0000-000000000005', 'Empty live account') is not null, 'provider can select an owned live account without claiming demo status');
-select is((select performance_status from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001') where source_status = 'published'), 'no_history', 'selected account with no trades reports no qualifying history');
-select is((select account_mode from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001') where source_status = 'published'), 'live', 'account environment is derived from the broker account and reported as LIVE');
+select is((select performance_status from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001') where source_label = 'Empty live account'), 'no_history', 'selected account with no trades reports no qualifying history');
+select is((select account_mode from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001') where source_label = 'Empty live account'), 'live', 'account environment is derived from the broker account and reported as LIVE');
 
 select * from finish();
 rollback;
