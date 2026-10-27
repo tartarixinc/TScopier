@@ -16,6 +16,15 @@ test('captures exact source and destination modes without a Demo-only source rul
   assert.doesNotMatch(migration, /when sc\.account_mode <> 'demo'/)
 })
 
+test('loads the composite source row and related authorization fields through one valid record target', () => {
+  assert.match(migration, /v_source_selection record;/)
+  assert.match(migration, /s as source,[\s]+sp[.]access_mode as access_mode,[\s]+[(]s[.]is_synthetic = true or sp[.]is_synthetic_demo = true[)] as is_synthetic[\s]+into v_source_selection/s)
+  assert.match(migration, /v_source := v_source_selection[.]source;/)
+  assert.match(migration, /v_access := v_source_selection[.]access_mode;/)
+  assert.match(migration, /v_source_synthetic := v_source_selection[.]is_synthetic;/)
+  assert.doesNotMatch(migration, /into[\s]+v_source[\s]*,/)
+})
+
 test('keeps ownership, sharing, provider, connection, follow, and history authorization', () => {
   assert.match(migration, /destination_account\.user_id = s\.subscriber_user_id/)
   assert.match(migration, /src\.status = 'published'/)

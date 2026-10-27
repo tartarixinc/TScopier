@@ -338,6 +338,7 @@ language plpgsql security definer set search_path = pg_catalog, public as $$
 declare
   v_actor uuid := auth.uid();
   v_source public.social_copy_sources%rowtype;
+  v_source_selection record;
   v_access text;
   v_source_mode text;
   v_destination_mode text;
@@ -351,14 +352,20 @@ begin
     raise exception 'Join the social directory before copying a trader' using errcode = '55000';
   end if;
 
-  select s, sp.access_mode, (s.is_synthetic = true or sp.is_synthetic_demo = true)
-  into v_source, v_access, v_source_synthetic
+  select
+    s as source,
+    sp.access_mode as access_mode,
+    (s.is_synthetic = true or sp.is_synthetic_demo = true) as is_synthetic
+  into v_source_selection
   from public.social_copy_sources s
   join public.social_profiles sp on sp.user_id = s.trader_user_id
   cross join lateral public.social_source_performance_eligibility(s.id) eligibility
   where s.id = p_source_id and s.status = 'published' and sp.is_listed = true
     and eligibility.eligible = true;
   if not found then raise exception 'Social copy source is unavailable or ineligible' using errcode = 'P0002'; end if;
+  v_source := v_source_selection.source;
+  v_access := v_source_selection.access_mode;
+  v_source_synthetic := v_source_selection.is_synthetic;
   if v_source.trader_user_id = v_actor then raise exception 'Users cannot copy themselves' using errcode = '23514'; end if;
   if v_access = 'private' and not exists (
     select 1 from public.social_follow_relationships r
