@@ -38,6 +38,12 @@ export const DEMO_TRADERS: readonly DemoTrader[] = [
   identity(7, { displayName: 'Aisha Bello [DEMO]', username: 'demo_aisha', country: 'Nigeria', accessMode: 'open', instruments: ['XAUUSD', 'GBPJPY', 'EURUSD'], profits: [176, -49, 118, 82, -71, 139, 0, 65, -43, 151, 92, -56] }),
   identity(8, { displayName: 'Daniel Kim [DEMO]', username: 'demo_daniel', country: 'South Korea', accessMode: 'private', instruments: ['NAS100', 'USDJPY', 'XAUUSD'], profits: [87, -34, 73, 46, -59, 101, 38, -27, 79, 0, 66, -41] }),
 ] as const
+export function assertSyntheticPreviewOptIn(value: string | undefined): void {
+  if (!/^(1|true|yes)$/i.test(value ?? '')) {
+    throw new Error('SOCIAL_COPY_PREVIEW_SYNTHETIC_ENABLED=true is required for the isolated preview seed')
+  }
+}
+
 
 export function assertPreviewConfiguration(urlValue: string | undefined, serviceRoleKey: string | undefined): URL {
   if (!urlValue) throw new Error('SUPABASE_URL is required')
@@ -152,7 +158,14 @@ async function ensureAuthUsers(client: SupabaseClient): Promise<Map<string, User
   return result
 }
 
-export async function seedSocialTradingDemo(client: SupabaseClient, anchor = new Date()) {
+export async function seedSocialTradingDemo(client: SupabaseClient, anchor = new Date(), syntheticPreviewEnabled = false) {
+  if (!syntheticPreviewEnabled) throw new Error('Synthetic preview participation was not explicitly enabled')
+  await requireNoError(client.from('social_copy_runtime_config').upsert({
+    singleton: true,
+    environment_name: 'migration-preview',
+    allow_synthetic_participants: true,
+    updated_at: anchor.toISOString(),
+  }, { onConflict: 'singleton' }), 'Enabling Migration preview synthetic participation')
   const markerCheck = await client.from('social_copy_sources').select('id,is_synthetic').limit(1)
   if (markerCheck.error) throw new Error('Synthetic-source migration is not available; aborting before writes', { cause: markerCheck.error })
   const guardCheck = await client.rpc('social_source_performance_eligibility', { p_source_id: randomUUID() })
@@ -217,19 +230,20 @@ export async function seedSocialTradingDemo(client: SupabaseClient, anchor = new
   for (const trader of DEMO_TRADERS) {
     const eligibility = await client.rpc('social_source_performance_eligibility', { p_source_id: trader.sourceId })
     const row = Array.isArray(eligibility.data) ? eligibility.data[0] : null
-    if (eligibility.error || row?.eligible !== false || row?.reason !== 'synthetic_demo') {
-      throw new Error(`Synthetic copy guard verification failed for ${trader.username}`, { cause: eligibility.error })
+    if (eligibility.error || row?.eligible !== true || row?.reason !== 'eligible') {
+      throw new Error(`Synthetic preview eligibility verification failed for ${trader.username}`, { cause: eligibility.error })
     }
   }
   return { users: DEMO_TRADERS.length, trades: tradeRows.length, summaries: DEMO_TRADERS.map(trader => ({ username: trader.username, ...summarizeDemoTrades((verification.data ?? []).filter(row => row.user_id === trader.userId) as Array<Record<string, unknown>>)})) }
 }
 
 export async function main() {
+  assertSyntheticPreviewOptIn(process.env.SOCIAL_COPY_PREVIEW_SYNTHETIC_ENABLED)
   const url = assertPreviewConfiguration(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
   const client = createClient(url.toString(), process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } })
   const authCheck = await client.auth.admin.listUsers({ page: 1, perPage: 1 })
   if (authCheck.error) throw new Error(`Could not positively verify Migration preview ${PREVIEW_PROJECT_REF}`, { cause: authCheck.error })
-  const result = await seedSocialTradingDemo(client)
+  const result = await seedSocialTradingDemo(client, new Date(), true)
   console.log(`Seeded and verified ${result.users} synthetic DEMO users and ${result.trades} trade rows in ${PREVIEW_PROJECT_REF}.`)
   for (const summary of result.summaries) console.log(summary)
 }

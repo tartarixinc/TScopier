@@ -157,16 +157,16 @@ update public.social_copy_sources set is_synthetic = true
 where id = current_setting('test.source_a_id')::uuid;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '40000000-0000-0000-0000-000000000002', true);
-select is((select eligibility_reason from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), 'synthetic_demo', 'synthetic source is visibly identified by performance RPC');
-select is((select desired_status from public.social_copy_subscriptions where subscriber_user_id = '40000000-0000-0000-0000-000000000002'), 'paused', 'marking a source synthetic pauses existing subscriptions');
-select is((select is_copy_eligible from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), false, 'synthetic source is never copy-eligible');
-select is((select eligibility_reason from public.get_social_copy_sources('40000000-0000-0000-0000-000000000001')), 'synthetic_demo', 'source discovery exposes the synthetic demo block');
+select is((select eligibility_reason from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), 'synthetic_preview_disabled', 'synthetic source is visibly blocked while preview participation is disabled');
+select is((select desired_status from public.social_copy_subscriptions where subscriber_user_id = '40000000-0000-0000-0000-000000000002'), 'active', 'refreshing a synthetic fixture marker does not alter subscription lifecycle state');
+select is((select is_copy_eligible from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), false, 'synthetic source is ineligible while the server preview gate is disabled');
+select is((select eligibility_reason from public.get_social_copy_sources('40000000-0000-0000-0000-000000000001')), 'synthetic_preview_disabled', 'source discovery exposes the disabled preview gate');
 select throws_ok(
   $$select public.create_social_copy_subscription(
     current_setting('test.source_a_id')::uuid,
     '41000000-0000-0000-0000-000000000003', 'fixed_lot', 0.01, 1, 0.1, null, 'demo', '{}')$$,
-  '55000', 'Provider is not eligible for copying: synthetic_demo',
-  'subscription creation rejects synthetic demo sources server-side'
+  'P0002', 'Social copy source is unavailable or ineligible',
+  'subscription creation rejects synthetic sources while the preview gate is disabled'
 );
 reset role;
 set local role service_role;
@@ -215,20 +215,20 @@ reset role;
 delete from public.trades where metaapi_order_id = 'missing-result';
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '40000000-0000-0000-0000-000000000001', true);
-select ok(public.publish_social_copy_source('41000000-0000-0000-0000-000000000002', 'Published B') is not null, 'provider can replace the selected source with another owned account');
-select is((select count(*)::integer from public.social_copy_sources where trader_user_id = '40000000-0000-0000-0000-000000000001' and status = 'published'), 1, 'exactly one source account remains selected and published');
-select is((select status from public.social_copy_sources where id = current_setting('test.source_a_id')::uuid), 'paused', 'replaced source is retained but no longer published');
+select ok(public.publish_social_copy_source('41000000-0000-0000-0000-000000000002', 'Published B') is not null, 'provider can publish another owned account independently');
+select is((select count(*)::integer from public.social_copy_sources where trader_user_id = '40000000-0000-0000-0000-000000000001' and status = 'published'), 2, 'multiple owned source accounts can remain published');
+select is((select status from public.social_copy_sources where id = current_setting('test.source_a_id')::uuid), 'published', 'publishing another account leaves the existing source unchanged');
 select set_config('request.jwt.claim.sub', '40000000-0000-0000-0000-000000000002', true);
-select is((select desired_status from public.social_copy_subscriptions where source_id = current_setting('test.source_a_id')::uuid and subscriber_user_id = '40000000-0000-0000-0000-000000000002'), 'paused', 'replacing a source pauses existing subscriptions through the worker lifecycle');
+select is((select desired_status from public.social_copy_subscriptions where source_id = current_setting('test.source_a_id')::uuid and subscriber_user_id = '40000000-0000-0000-0000-000000000002'), 'active', 'publishing another source leaves existing subscriptions active');
 select set_config('request.jwt.claim.sub', '40000000-0000-0000-0000-000000000001', true);
-select is((select count(*)::integer from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), 2, 'owner can audit the selected and prior account scopes without mixing them');
+select is((select count(*)::integer from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), 2, 'owner can audit both account scopes without mixing them');
 select is((select performance_status from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001') where source_label = 'Published B'), 'available', 'second account reports its own available history');
 select lives_ok($$select public.set_social_copy_source_status(
   current_setting('test.source_a_id')::uuid,
-  'published')$$, 'status RPC can reselect a prior source without violating the one-selected-account invariant');
-select is((select count(*)::integer from public.social_copy_sources where trader_user_id = '40000000-0000-0000-0000-000000000001' and status = 'published'), 1, 'status RPC leaves exactly one selected source');
+  'paused')$$, 'status RPC can revoke one shared source independently');
+select is((select count(*)::integer from public.social_copy_sources where trader_user_id = '40000000-0000-0000-0000-000000000001' and status = 'published'), 1, 'revocation leaves the other source published');
 select set_config('request.jwt.claim.sub', '40000000-0000-0000-0000-000000000002', true);
-select is((select source_id from public.social_copy_subscriptions where subscriber_user_id = '40000000-0000-0000-0000-000000000002' and desired_status = 'paused'), current_setting('test.source_a_id')::uuid, 'source replacement never resumes a paused subscription implicitly');
+select is((select source_id from public.social_copy_subscriptions where subscriber_user_id = '40000000-0000-0000-0000-000000000002' and desired_status = 'paused'), current_setting('test.source_a_id')::uuid, 'revoking one source requests a worker-acknowledged pause');
 select set_config('request.jwt.claim.sub', '40000000-0000-0000-0000-000000000001', true);
 select public.publish_social_copy_source('41000000-0000-0000-0000-000000000002', 'Published B');
 select lives_ok($$select public.set_social_copy_source_status(

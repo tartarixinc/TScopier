@@ -15,7 +15,8 @@ const base: SocialTrader = {
 }
 
 const source: SocialCopySource = {
-  sourceId: 'source', traderUserId: 'trader', label: 'Source', provider: 'fxsocket', platform: 'MT5',
+  sourceId: 'source', label: 'Source', provider: 'fxsocket', platform: 'MT5',
+  accountHint: '•••1234',
   accountMode: 'demo', connectionHealthy: true, isCopyEligible: true, eligibilityReason: 'eligible', isSynthetic: false,
 }
 
@@ -61,10 +62,10 @@ describe('social trading preview hydration', () => {
     expect(empty.closedTrades).toBe(0)
   })
 
-  it('recognizes source-marked synthetic traders and permits the simulated modal', () => {
-    const trader = hydrateTrader(base, [flatTrade], performance, { ...source, isCopyEligible: false, eligibilityReason: 'synthetic_demo', isSynthetic: true })
+  it('recognizes server-authorized synthetic traders and permits the persisted simulated flow', () => {
+    const trader = hydrateTrader(base, [flatTrade], performance, { ...source, isCopyEligible: true, eligibilityReason: 'eligible', isSynthetic: true })
     expect(trader.syntheticDemo).toBe(true)
-    expect(trader.copyEligible).toBe(false)
+    expect(trader.copyEligible).toBe(true)
     expect(canOpenCopyTrader(trader)).toBe(true)
   })
 
@@ -73,6 +74,7 @@ describe('social trading preview hydration', () => {
     const ineligible = hydrateTrader(base, [flatTrade], performance, { ...source, isCopyEligible: false, eligibilityReason: 'minimum_trades_not_met' })
     expect(canOpenCopyTrader(eligible)).toBe(true)
     expect(canOpenCopyTrader(ineligible)).toBe(false)
-    expect(canOpenCopyTrader({ ...eligible, sourceId: null })).toBe(false)
+    expect(canOpenCopyTrader({ ...eligible, sourceId: null })).toBe(true)
+    expect(canOpenCopyTrader({ ...eligible, sourceId: null, sources: [] })).toBe(false)
   })
 })

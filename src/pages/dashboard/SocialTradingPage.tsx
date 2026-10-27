@@ -22,10 +22,12 @@ import type { SocialTradingPageTranslations } from '../../i18n/locales/types'
 import { useTheme } from '../../context/ThemeContext'
 import { useFormatMoney } from '../../hooks/useFormatMoney'
 import { useSocialTradingPreview } from '../../hooks/useSocialTradingPreview'
+import { useOwnSocialAccountView } from '../../hooks/useOwnSocialAccountView'
 import { interpolate } from '../../i18n/interpolate'
 import { chartThemeColors, chartTooltipProps } from '../../lib/chartTheme'
 import { copyPriceOfferLabel } from '../../lib/socialCopyPrice'
 import { canOpenCopyTrader, copyTraderUnavailableReason } from '../../lib/socialCopyAvailability'
+import { OwnAccountSelector } from '../../components/social/OwnAccountSelector'
 
 import { resolveUserAvatarUrl } from '../../lib/userAvatar'
 import {
@@ -464,7 +466,10 @@ export function SocialTraderActivityPage() {
   const { openAddTradingAccount } = useAddTradingAccount()
   const { traderId } = useParams()
   const social = useSocialTradingPreview()
-  const trader = traderId ? social.traders.find(item => item.id === traderId) : undefined
+  const directoryTrader = traderId ? social.traders.find(item => item.id === traderId) : undefined
+  const [selectedOwnAccountId, setSelectedOwnAccountId] = useState('')
+  const ownAccountView = useOwnSocialAccountView(directoryTrader, selectedOwnAccountId)
+  const trader = ownAccountView.trader
   const ownAvatarUrl = useOwnAvatarUrl()
   const [copyModalOpen, setCopyModalOpen] = useState(false)
   const [profileTab, setProfileTab] = useState<'performance' | 'trading' | 'portfolio'>('performance')
@@ -556,6 +561,14 @@ export function SocialTraderActivityPage() {
           </div>
         </Card>
       </div>
+      {trader.isYou ? (
+        <OwnAccountSelector
+          selectedAccountId={selectedOwnAccountId}
+          onChange={setSelectedOwnAccountId}
+          loading={ownAccountView.loading}
+          error={ownAccountView.error}
+        />
+      ) : null}
       {trader.isYou && access === 'private' ? (
         <Card padding="none" className="overflow-hidden">
           <h2 className="border-b border-neutral-100 px-4 py-3 text-sm font-semibold text-neutral-900 dark:border-neutral-800 dark:text-neutral-50">

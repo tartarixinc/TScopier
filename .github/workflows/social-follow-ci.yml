@@ -87,13 +87,13 @@ jobs:
         run: npm ci --prefix worker
 
       - name: Run Social Follow and Copy preview tests
-        run: npx vitest run src/lib/socialFollow.test.ts src/lib/socialCopyPreview.test.ts
+        run: npx vitest run src/lib/socialFollow.test.ts src/lib/socialCopyPreview.test.ts src/hooks/useSocialTradingPreview.test.ts src/lib/socialAccount.test.ts
 
       - name: Run Social Follow hook race tests
         run: npx vitest run src/hooks/useSocialFollow.test.ts
 
       - name: Run Social Copy persistence tests
-        run: node --import tsx --import ./test/preload.ts --test src/lib/socialCopy.test.ts src/lib/socialReviews.test.ts src/lib/socialTradeHistory.test.ts src/lib/socialPerformancePresentation.test.ts src/lib/socialTradingProductionBoundary.test.ts
+        run: node --import tsx --import ./test/preload.ts --test scripts/seed-social-trading-demo.test.ts src/lib/socialAccountManagement.test.ts src/lib/socialCopy.test.ts src/lib/socialFullFlowMigration.test.ts src/lib/socialReviews.test.ts src/lib/socialTradeHistory.test.ts src/lib/socialPerformancePresentation.test.ts src/lib/socialTradingProductionBoundary.test.ts
 
       - name: Run worker tests (including Social Copy lifecycle)
         run: npm --prefix worker test

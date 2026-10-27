@@ -106,7 +106,7 @@ select throws_ok(
   $$select public.create_social_copy_subscription(
     (select source_id from public.get_social_copy_sources('20000000-0000-0000-0000-000000000001') limit 1),
     '21000000-0000-0000-0000-000000000003', 'fixed_lot', 0.01, 1, 0.1, null, 'demo', '{}')$$,
-  '42501', 'Destination broker account is not owned by the current user',
+  '42501', 'Destination account is not owned, connected, or supported for Social Trading',
   'subscriber cannot route copying into another user account'
 );
 select ok(public.create_social_copy_subscription(

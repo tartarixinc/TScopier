@@ -8,7 +8,8 @@ const subscription = (patch: Partial<SocialCopySubscriptionRow> = {}): SocialCop
   source_id: 'source-1',
   destination_broker_account_id: 'dst',
   sizing_mode: 'fixed_lot', fixed_lot: 0.12, lot_multiplier: 1, max_lot: 0.2,
-  max_daily_loss: null, requested_account_mode: 'demo', symbol_map: {},
+  max_daily_loss: null, requested_account_mode: 'demo',
+  source_account_mode: 'demo', destination_account_mode: 'demo', execution_path: 'broker', symbol_map: {},
   status: 'pending', desired_status: 'active', error_code: null, ...patch,
 })
 
@@ -177,4 +178,76 @@ test('pause is acknowledged without broker writes and stop closes mapped positio
   await stopping.tick()
   assert.equal(destination.closes, 1)
   assert.equal(db.tables.social_copy_subscriptions[0]?.status, 'stopped')
+})
+
+
+
+test('synthetic subscriptions are persisted and acknowledged without resolving or writing to a broker', async () => {
+  const db = new FakeDb()
+  const sub = subscription({ execution_path: 'synthetic_simulation' })
+  db.claimed = [sub]
+  db.tables.social_copy_subscriptions = [{ ...sub }]
+  let providerCalls = 0
+  const monitor = new SocialCopyMonitor(db as never, {
+    executionEnabled: true,
+    syntheticSimulationEnabled: true,
+    providerFor: () => { providerCalls++; return provider() },
+  })
+  await monitor.tick()
+  assert.equal(providerCalls, 0)
+  assert.equal(db.tables.social_copy_subscriptions[0]?.status, 'active')
+  assert.equal(db.tables.social_copy_execution_events[0]?.action, 'simulation')
+  assert.deepEqual(db.tables.social_copy_execution_events[0]?.result_payload, {
+    simulated: true,
+    broker_orders_created: 0,
+  })
+})
+
+test('supports every verified Demo and Live source/destination mode combination when live execution is enabled', async () => {
+  const combinations = [
+    ['demo', 'demo'],
+    ['demo', 'live'],
+    ['live', 'demo'],
+    ['live', 'live'],
+  ] as const
+  for (const [sourceMode, destinationMode] of combinations) {
+    const db = new FakeDb()
+    db.tables.broker_accounts = [
+      broker('src'),
+      broker('dst'),
+    ]
+    db.tables.broker_accounts[0]!.linked_account_type = sourceMode
+    db.tables.broker_accounts[1]!.linked_account_type = destinationMode
+    const sub = subscription({
+      requested_account_mode: destinationMode,
+      source_account_mode: sourceMode,
+      destination_account_mode: destinationMode,
+    })
+    db.claimed = [sub]
+    db.tables.social_copy_subscriptions = [{ ...sub }]
+    const source = provider()
+    const destination = provider()
+    const monitor = new SocialCopyMonitor(db as never, {
+      executionEnabled: true,
+      allowLive: true,
+      providerFor: row => String((row as Row).id) === 'src' ? source : destination,
+    })
+    await monitor.tick()
+    assert.equal(db.tables.social_copy_subscriptions[0]?.status, 'active', `${sourceMode}-to-${destinationMode}`)
+    assert.equal(source.sends + destination.sends, 0)
+  }
+})
+
+test('live-involved broker execution fails observably when SOCIAL_COPY_ALLOW_LIVE is disabled', async () => {
+  const db = new FakeDb()
+  db.tables.broker_accounts[0]!.linked_account_type = 'live'
+  const sub = subscription({ source_account_mode: 'live' })
+  db.claimed = [sub]
+  db.tables.social_copy_subscriptions = [{ ...sub }]
+  const api = provider()
+  const monitor = new SocialCopyMonitor(db as never, { executionEnabled: true, allowLive: false, providerFor: () => api })
+  await monitor.tick()
+  assert.equal(db.tables.social_copy_subscriptions[0]?.status, 'error')
+  assert.equal(db.tables.social_copy_subscriptions[0]?.error_code, 'LIVE_EXECUTION_DISABLED')
+  assert.equal(api.sends, 0)
 })
