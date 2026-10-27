@@ -1026,6 +1026,12 @@ export interface MirrorTradingPageTranslations {
   statusStopped?: string
   statusStopping?: string
   statusError?: string
+  slaveChannelConflictTitle?: string
+  slaveChannelConflictBody?: string
+  slaveChannelConflictChannelsLabel?: string
+  slaveChannelConflictUseDifferent?: string
+  slaveChannelConflictDisconnect?: string
+  slaveChannelConflictDisconnecting?: string
   setup: {
     title: string
     preview: string
@@ -1069,6 +1075,16 @@ export interface MirrorTradingPageTranslations {
       stop_distance: string
     }
   }
+}
+
+/** Shared warning shown when linking a mirror-slave broker to a channel. */
+export interface MirrorSlaveGuardTranslations {
+  channelConnectTitle?: string
+  channelConnectBody?: string
+  masterAccountLabel?: string
+  proceed?: string
+  disconnectMirror?: string
+  disconnectingMirror?: string
 }
 
 export interface SocialTradingPageTranslations {
@@ -2260,6 +2276,7 @@ export interface Translations {
   pricing: PricingTranslations
   landing: LandingTranslations
   mirrorTradingPage: MirrorTradingPageTranslations
+  mirrorSlaveGuard?: MirrorSlaveGuardTranslations
   copyRisk: CopyRiskTranslations
   socialTradingPage: SocialTradingPageTranslations
   configurationsPage: ConfigurationsPageTranslations

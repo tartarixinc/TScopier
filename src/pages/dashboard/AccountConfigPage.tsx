@@ -50,6 +50,7 @@ import {
 } from '../../lib/brokerAccountSelect'
 import { triggerBackgroundChannelAiTraining } from '../../lib/channelAiTrainingBackground'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
+import { useMirrorSlaveChannelGuard } from '../../hooks/useMirrorSlaveChannelGuard'
 import { useSubscription } from '../../context/SubscriptionContext'
 import {
   effectivePlan as resolveEffectivePlan,
@@ -881,6 +882,7 @@ export function AccountConfigPage() {
     setHealthPollingPaused,
     upsertBroker,
   } = useBrokerAccounts()
+  const { guardBroker, modal: mirrorGuardModal } = useMirrorSlaveChannelGuard()
   const brokerBalanceRefreshStartedRef = useRef(false)
   const configureQueryHandledRef = useRef<string | null>(null)
   const { openAddTradingAccount, pendingConfigureBrokerId, clearPendingConfigureBroker } = useAddTradingAccount()
@@ -1912,6 +1914,9 @@ export function AccountConfigPage() {
     const channelId = configDraft.selectedChannelId
     if (configDraft.channelIds.includes(channelId)) return
 
+    const approved = await guardBroker(configAccount)
+    if (!approved) return
+
     setChannelConnecting(true)
     setError('')
     try {
@@ -2445,6 +2450,14 @@ export function AccountConfigPage() {
     if (shouldBlockMultiTradeSave({ requestedMulti, effectivePlan: savePlanCtx.effectivePlan })) {
       setError(`${cm.risk.basicPlanTradeStyleLimit} Subscription upgrade may still be syncing. Please wait a few seconds and save again.`)
       return false
+    }
+
+    // After the cheap validations, right before the first write, so a
+    // destructive "disconnect mirror" choice is never wasted on a failed save.
+    const newlyLinkedChannelIds = channelIds.filter(id => !previouslyLinkedChannelIds.includes(id))
+    if (newlyLinkedChannelIds.length > 0) {
+      const approved = await guardBroker(configAccount)
+      if (!approved) return false
     }
 
     setConfigSaving(true)
@@ -5062,6 +5075,7 @@ export function AccountConfigPage() {
         </div>,
         document.body,
       )}
+      {mirrorGuardModal}
     </PageShell>
   )
 }

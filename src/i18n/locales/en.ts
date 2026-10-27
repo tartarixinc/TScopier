@@ -472,6 +472,12 @@ broker: {
     statusStopped: 'Stopped',
     statusStopping: 'Stopping…',
     statusError: 'Copy error',
+    slaveChannelConflictTitle: 'Account connected to Telegram channels',
+    slaveChannelConflictBody: 'This account is currently connected to Telegram channels you own. For it to be a slave account, you need to disconnect the channels. This is being done to prevent duplicate trades.',
+    slaveChannelConflictChannelsLabel: 'Connected channels',
+    slaveChannelConflictUseDifferent: 'Use a different account',
+    slaveChannelConflictDisconnect: 'Disconnect channels',
+    slaveChannelConflictDisconnecting: 'Disconnecting channels…',
     setup: {
       title: 'Configure {account}',
       preview: 'Preview setup',
@@ -515,6 +521,14 @@ broker: {
         stop_distance: "Scale the lot from the master's stop distance.",
       },
     },
+  },
+  mirrorSlaveGuard: {
+    channelConnectTitle: 'Already used in mirror trading',
+    channelConnectBody: 'This account is currently being used in mirror trading as a slave. Connecting it to a channel that the master already copies might lead to duplicate trades.',
+    masterAccountLabel: 'Master account',
+    proceed: 'Proceed',
+    disconnectMirror: 'Disconnect mirror trading',
+    disconnectingMirror: 'Disconnecting…',
   },
   socialTradingPage: {
     title: 'Social Trading',

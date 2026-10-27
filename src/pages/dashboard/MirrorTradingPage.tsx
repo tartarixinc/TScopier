@@ -3,11 +3,12 @@ import { createPortal } from 'react-dom'
 import { ChevronDown, ChevronUp, OctagonAlert, Pause, Play, Plus, Settings, Square, Trash2, X } from 'lucide-react'
 import clsx from 'clsx'
 import { SlaveConfigureModal } from '../../components/configure/SlaveConfigureModal'
+import { SlaveChannelConflictModal } from '../../components/dashboard/SlaveChannelConflictModal'
 import { useAuth } from '../../context/AuthContext'
 import { useAddTradingAccount } from '../../context/AddTradingAccountContext'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
 import { useT } from '../../context/LocaleContext'
-import { getBrokerDisplayLabel } from '../../lib/brokerChannelLink'
+import { disconnectChannelFromBroker, getBrokerDisplayLabel, normalizeSignalChannelIds } from '../../lib/brokerChannelLink'
 import {
   connectBrokerCopyLink,
   disconnectBrokerCopyLinkSafely,
@@ -197,6 +198,13 @@ export function MirrorTradingPage() {
   const [linkStates, setLinkStates] = useState<Record<string, MirrorCopyLinkStateRow>>({})
   const [busyLinkId, setBusyLinkId] = useState<string | null>(null)
   const [removingSlaveId, setRemovingSlaveId] = useState<string | null>(null)
+  const [channelConflict, setChannelConflict] = useState<{
+    brokerId: string
+    masterId: string | null
+    channels: { id: string; name: string }[]
+  } | null>(null)
+  const [channelConflictBusy, setChannelConflictBusy] = useState(false)
+  const [channelConflictError, setChannelConflictError] = useState<string | null>(null)
   const assignAfterConnectRef = useRef<string | null>(null)
   const chainRef = useRef(Promise.resolve())
   const settingsSaveRef = useRef(Promise.resolve())
@@ -408,6 +416,82 @@ export function MirrorTradingPage() {
     })
   }, [copy.loadError, enqueue, fail, undismissDestination, user?.id])
 
+  // Slave accounts linked to owned Telegram channels are blocked until the
+  // user disconnects them, so the same signal cannot trade twice on one broker.
+  const currentUserId = user?.id ?? null
+  const selectSlaveAccount = useCallback((brokerId: string, masterId: string | null) => {
+    const proceed = () => {
+      addSlave(brokerId)
+      if (masterId) assignMaster(brokerId, masterId)
+    }
+    if (!currentUserId) {
+      proceed()
+      return
+    }
+    const broker = brokersRef.current.find(item => item.id === brokerId)
+    const channelIds = normalizeSignalChannelIds(broker?.signal_channel_ids)
+    if (channelIds.length === 0) {
+      proceed()
+      return
+    }
+    setChannelConflictError(null)
+    void (async () => {
+      let channels: { id: string; name: string }[]
+      try {
+        const { data, error } = await supabase
+          .from('telegram_channels')
+          .select('id,display_name,channel_username')
+          .eq('user_id', currentUserId)
+          .in('id', channelIds)
+        if (error) throw error
+        const byId = new Map((data ?? []).map(row => [row.id as string, row as { display_name: string | null; channel_username: string | null }]))
+        channels = channelIds.map(id => {
+          const row = byId.get(id)
+          return {
+            id,
+            name: row?.display_name?.trim() || row?.channel_username?.trim() || id,
+          }
+        })
+      } catch {
+        // A rejected read must not leave the user with a silent no-op after
+        // the chooser closed; open the modal with the raw channel ids.
+        channels = channelIds.map(id => ({ id, name: id }))
+      }
+      setChannelConflict({ brokerId, masterId, channels })
+    })()
+  }, [addSlave, assignMaster, currentUserId])
+
+  const disconnectChannelsAndContinue = useCallback(async () => {
+    if (!currentUserId || !channelConflict || channelConflictBusy) return
+    setChannelConflictBusy(true)
+    setChannelConflictError(null)
+    try {
+      const broker = brokersRef.current.find(item => item.id === channelConflict.brokerId)
+      if (!broker) {
+        setChannelConflict(null)
+        return
+      }
+      let updated: BrokerAccount | null = broker
+      for (const channel of channelConflict.channels) {
+        const result = await disconnectChannelFromBroker(supabase, currentUserId, updated, channel.id)
+        if (result.error || !result.broker) {
+          // Keep the channels already removed in this loop visible as removed.
+          if (updated !== broker) replaceBroker(updated)
+          setChannelConflictError(result.error ?? copy.loadError)
+          return
+        }
+        updated = result.broker
+      }
+      replaceBroker(updated)
+      const { brokerId, masterId } = channelConflict
+      setChannelConflict(null)
+      addSlave(brokerId)
+      if (masterId) assignMaster(brokerId, masterId)
+    } finally {
+      setChannelConflictBusy(false)
+    }
+  }, [addSlave, assignMaster, channelConflict, channelConflictBusy, copy.loadError, currentUserId, replaceBroker])
+
   useEffect(() => {
     if (!pendingSourceBroker || !user?.id) return
     const brokerId = pendingSourceBroker.id
@@ -421,11 +505,12 @@ export function MirrorTradingPage() {
     const masterId = assignAfterConnectRef.current
     assignAfterConnectRef.current = null
     clearPendingDestinationBrokers()
+    // Route through the channel-conflict check: a reconnected pre-existing
+    // account can already own channel links.
     for (const id of ids) {
-      addSlave(id)
-      if (masterId) assignMaster(id, masterId)
+      selectSlaveAccount(id, masterId)
     }
-  }, [addSlave, assignMaster, clearPendingDestinationBrokers, pendingDestinationBrokers, user?.id])
+  }, [clearPendingDestinationBrokers, pendingDestinationBrokers, selectSlaveAccount, user?.id])
 
   const patchSlaveSettings = useCallback((slaveId: string, patch: Partial<ManualSettings>) => {
     const task = settingsSaveRef.current.then(async () => {
@@ -659,10 +744,7 @@ export function MirrorTradingPage() {
             setChooser(null)
             setSlaveForMasterId(null)
             if (chooser === 'master') promoteMaster(brokerId)
-            else {
-              addSlave(brokerId)
-              if (masterId) assignMaster(brokerId, masterId)
-            }
+            else selectSlaveAccount(brokerId, masterId)
           }}
           onConnectNew={() => {
             const role = chooser
@@ -677,6 +759,36 @@ export function MirrorTradingPage() {
             assignAfterConnectRef.current = masterId
             openAddTradingAccount({ asDestination: true })
           }}
+        />
+      ) : null}
+      {channelConflict ? (
+        <SlaveChannelConflictModal
+          brokerLabel={(() => {
+            const broker = brokers.find(item => item.id === channelConflict.brokerId)
+            return broker ? accountTitle(broker) : 'Account'
+          })()}
+          channels={channelConflict.channels}
+          labels={{
+            title: copy.slaveChannelConflictTitle,
+            body: copy.slaveChannelConflictBody,
+            channelsLabel: copy.slaveChannelConflictChannelsLabel,
+            useDifferent: copy.slaveChannelConflictUseDifferent,
+            disconnect: copy.slaveChannelConflictDisconnect,
+            disconnecting: copy.slaveChannelConflictDisconnecting,
+          }}
+          closeLabel={closeLabel}
+          busy={channelConflictBusy}
+          error={channelConflictError}
+          onUseDifferentAccount={() => {
+            const masterId = channelConflict.masterId
+            setChannelConflict(null)
+            if (masterId) {
+              setSlaveForMasterId(masterId)
+              setChooser('slave')
+            }
+          }}
+          onDisconnectChannels={() => void disconnectChannelsAndContinue()}
+          onClose={() => setChannelConflict(null)}
         />
       ) : null}
       {configuringSlave && configuringLink ? (

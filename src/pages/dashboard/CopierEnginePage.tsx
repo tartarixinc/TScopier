@@ -31,6 +31,7 @@ import {
 } from '../../lib/telegramChannelReconcile'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
 import { useSubscription } from '../../context/SubscriptionContext'
+import { useMirrorSlaveChannelGuard } from '../../hooks/useMirrorSlaveChannelGuard'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import { Toggle } from '../../components/ui/Toggle'
@@ -149,6 +150,7 @@ export function CopierEnginePage() {
   const initialTgCache = user?.id ? getCachedTgChannels(user.id) : null
   const initialTgSession = user?.id ? getCachedTgSession(user.id) : null
   const { brokers, replaceBroker, setBrokers, refreshBrokers } = useBrokerAccounts()
+  const { guardBroker, modal: mirrorGuardModal } = useMirrorSlaveChannelGuard()
   const {
     hasActiveSubscription,
     canAddChannel,
@@ -565,6 +567,8 @@ export function CopierEnginePage() {
     if (!user) return
     const broker = brokers.find(b => b.id === brokerId)
     if (!broker) return
+    const approved = await guardBroker(broker)
+    if (!approved) return
     setConnectingBrokerId(brokerId)
     setError('')
     const { broker: updated, error: linkErr } = await connectChannelToBroker(
@@ -597,6 +601,8 @@ export function CopierEnginePage() {
     setError('')
     let nextBrokers = [...brokers]
     for (const broker of toLink) {
+      const approved = await guardBroker(broker)
+      if (!approved) continue
       const { broker: updated, error: linkErr } = await connectChannelToBroker(
         supabase,
         user.id,
@@ -1359,6 +1365,7 @@ export function CopierEnginePage() {
         onSelect={addSignalSource}
         labelFor={sourceTabLabel}
       />
+      {mirrorGuardModal}
     </PageShell>
   )
 }
