@@ -1541,6 +1541,8 @@ export const es: Translations = {
     reasonTakeProfit: 'El bróker la cerró en el take profit ({price}).',
     reasonUnknown: 'No se registró el motivo del cierre de esta operación.',
     cancel: 'Cancelar',
+    reasonMirrorSourceClosed: 'La operación original se cerró, así que esta copia se cerró con ella.',
+    reasonMirrorCopyClosed: 'Esta operación copiada se cerró antes de que se registraran los motivos de cierre.',
   },
   channelsPage: {
     title: 'Fuente de señales',

@@ -38,16 +38,22 @@ export function useMirrorSlaveChannelGuard(options: MirrorSlaveGuardOptions = {}
   const [disconnecting, setDisconnecting] = useState(false)
   const [guardError, setGuardError] = useState<string | null>(null)
   const resolverRef = useRef<((proceed: boolean) => void) | null>(null)
+  // Each guard request gets an id so a superseded disconnect cannot settle a
+  // newer request (same pattern as ConfirmDialogContext).
+  const activeRequestIdRef = useRef(0)
 
   // A caller awaiting a superseded or unmounted request must not hang forever.
   useEffect(() => () => {
     resolverRef.current?.(false)
     resolverRef.current = null
+    activeRequestIdRef.current = 0
   }, [])
 
-  const settle = useCallback((proceed: boolean) => {
+  const settle = useCallback((proceed: boolean, requestId = activeRequestIdRef.current) => {
+    if (requestId !== activeRequestIdRef.current) return
     resolverRef.current?.(proceed)
     resolverRef.current = null
+    activeRequestIdRef.current = 0
     setRequest(null)
     setGuardError(null)
     setDisconnecting(false)
@@ -82,6 +88,7 @@ export function useMirrorSlaveChannelGuard(options: MirrorSlaveGuardOptions = {}
         // Single-flight: an overlapping call cancels the pending one.
         resolverRef.current?.(false)
         resolverRef.current = resolve
+        activeRequestIdRef.current += 1
         setGuardError(null)
         setDisconnecting(false)
         setRequest({ broker, links, masters })
@@ -91,19 +98,23 @@ export function useMirrorSlaveChannelGuard(options: MirrorSlaveGuardOptions = {}
 
   const disconnectMirror = useCallback(async () => {
     if (!userId || !request || disconnecting) return
+    const requestId = activeRequestIdRef.current
     setDisconnecting(true)
     setGuardError(null)
     for (const link of request.links) {
       const result = await disconnectBrokerCopyLinkSafely(supabase, userId, link)
       if (result.error) {
-        setGuardError(humanizeMirrorDeleteError(result.error))
-        setDisconnecting(false)
+        if (requestId === activeRequestIdRef.current) {
+          setGuardError(humanizeMirrorDeleteError(result.error))
+          setDisconnecting(false)
+        }
         return
       }
     }
+    if (requestId !== activeRequestIdRef.current) return
     removeMirrorSlaveId(userId, request.broker.id)
     onMirrorLinksRemoved?.()
-    settle(true)
+    settle(true, requestId)
   }, [disconnecting, onMirrorLinksRemoved, request, settle, userId])
 
   const modal: ReactNode = request ? (

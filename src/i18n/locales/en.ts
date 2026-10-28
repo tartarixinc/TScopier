@@ -1619,6 +1619,8 @@ broker: {
     reasonTakeProfit: 'The broker closed it at the take profit ({price}).',
     reasonUnknown: 'No close reason was recorded for this trade.',
     cancel: 'Cancel',
+    reasonMirrorSourceClosed: 'The original trade closed, so this copy was closed with it.',
+    reasonMirrorCopyClosed: 'This copied trade was closed before close reasons were recorded.',
   },
   channelsPage: {
     title: 'Signal Source',

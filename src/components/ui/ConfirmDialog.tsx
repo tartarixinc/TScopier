@@ -41,10 +41,11 @@ export function ConfirmDialog({
   useEffect(() => {
     if (!open) return
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || busy) return
-      // Capture phase + stopPropagation so the modal underneath does not also close.
+      if (event.key !== 'Escape') return
+      // Always consume Escape while the dialog is open (capture phase) so the
+      // modal underneath does not also close — even while busy.
       event.stopPropagation()
-      onCancel()
+      if (!busy) onCancel()
     }
     document.addEventListener('keydown', onKey, true)
     return () => document.removeEventListener('keydown', onKey, true)

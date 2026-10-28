@@ -1541,6 +1541,8 @@ export const fr: Translations = {
     reasonTakeProfit: 'Le courtier l’a clôturée sur le take profit ({price}).',
     reasonUnknown: 'Aucun motif de clôture n\'a été enregistré pour cette opération.',
     cancel: 'Annuler',
+    reasonMirrorSourceClosed: 'L’opération d’origine a été clôturée, donc cette copie a été clôturée avec elle.',
+    reasonMirrorCopyClosed: 'Cette opération copiée a été clôturée avant que les motifs de clôture ne soient enregistrés.',
   },
   channelsPage: {
     title: 'Source de signaux',
