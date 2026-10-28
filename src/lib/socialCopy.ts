@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { normalizeEligibilityDiagnostics, type SocialEligibilityDiagnostic } from './socialEligibility'
 
 export type SocialCopySource = {
   sourceId: string
@@ -10,6 +11,7 @@ export type SocialCopySource = {
   connectionHealthy: boolean
   isCopyEligible: boolean
   eligibilityReason: string
+  eligibilityDiagnostics: SocialEligibilityDiagnostic[]
   isSynthetic: boolean
 }
 
@@ -45,6 +47,7 @@ type SourceRow = {
   connection_healthy: boolean
   is_copy_eligible: boolean
   eligibility_reason: string
+  eligibility_diagnostics?: unknown
   is_synthetic: boolean
 }
 
@@ -93,6 +96,7 @@ export async function fetchSocialCopySources(client: SupabaseClient, traderUserI
     connectionHealthy: row.connection_healthy,
     isCopyEligible: row.is_copy_eligible === true,
     eligibilityReason: row.eligibility_reason,
+    eligibilityDiagnostics: normalizeEligibilityDiagnostics(row.eligibility_diagnostics, row.eligibility_reason),
     isSynthetic: row.is_synthetic === true,
   }))
 }

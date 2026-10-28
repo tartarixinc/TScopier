@@ -6,6 +6,7 @@ import { canOpenCopyTrader } from '../lib/socialCopyAvailability'
 import type { SocialCopySource } from '../lib/socialCopy'
 import type { SocialProviderPerformance, SocialTradeHistoryItem } from '../lib/socialTradeHistory'
 import type { SocialTrader } from '../lib/socialTradingFixture'
+import { eligibilityDiagnosticForReason } from '../lib/socialEligibility'
 
 const base: SocialTrader = {
   id: 'trader', displayName: 'Trader', username: 'trader', isYou: false, access: 'open',
@@ -19,7 +20,8 @@ const base: SocialTrader = {
 const source: SocialCopySource = {
   sourceId: 'source', label: 'Source', provider: 'fxsocket', platform: 'MT5',
   accountHint: '•••1234',
-  accountMode: 'demo', connectionHealthy: true, isCopyEligible: true, eligibilityReason: 'eligible', isSynthetic: false,
+  accountMode: 'demo', connectionHealthy: true, isCopyEligible: true, eligibilityReason: 'eligible',
+  eligibilityDiagnostics: [eligibilityDiagnosticForReason('eligible')], isSynthetic: false,
 }
 
 const performance: SocialProviderPerformance = {
