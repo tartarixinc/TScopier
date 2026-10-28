@@ -89,6 +89,17 @@ Suggested risk: 1%`
     assert.equal(looksLikeResultsOrSuggestedCommentary(signal), false)
     assert.equal(looksLikeCasualNonTradeMessage(signal), false)
   })
+
+  it('blocks compound TP-and-TP result wording (TP2 & 3 DONE / SECURED)', () => {
+    assert.equal(looksLikeResultsOrSuggestedCommentary('AMAZING SETUP / TP2 & 3 DONE / GOLD SELL 130+ PIPS'), true)
+    assert.equal(looksLikeResultsOrSuggestedCommentary('TP2 & 3 SECURED today, great ride'), true)
+    assert.equal(looksLikeResultsOrSuggestedCommentary('TP1 and TP2 COMPLETED'), true)
+  })
+
+  it('does not block a fresh signal that merely mentions a secured TP level', () => {
+    // No TP-and-TP conjunction, so this is an instruction, not a result recap.
+    assert.equal(looksLikeResultsOrSuggestedCommentary('BUY GOLD TP 2400 secured above resistance'), false)
+  })
 })
 
 describe('messageHasMarketNowIntent', () => {

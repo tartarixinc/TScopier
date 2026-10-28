@@ -324,6 +324,18 @@ export function virtualPendingTriggerAllowed(args: {
   return true
 }
 
+/**
+ * Broker-reported open time in epoch milliseconds, or null when unreadable.
+ *
+ * Shared by the pending TTL sweep and the orphan-position sweep — one reader,
+ * not two mirrors. Values arrive as epoch milliseconds (> 1e12), epoch seconds
+ * (current epoch ~1.8e9), or a date string (MT4 writes '2026.10.25 10:33:00',
+ * which Date.parse rejects until the dots are treated as dashes).
+ *
+ * A numeric value at or below 1e9 is junk, not seconds: a garbage timestamp
+ * must never look like 1970, because callers use "old" to decide an order is
+ * expired and cancels it. Returning null makes them skip instead.
+ */
 export function brokerOrderOpenMs(o: Record<string, unknown>): number | null {
   const candidates = [
     o.timeSetup,
@@ -336,14 +348,19 @@ export function brokerOrderOpenMs(o: Record<string, unknown>): number | null {
     o.OpenTime,
     o.created,
     o.Created,
+    o.createTime,
+    o.CreateTime,
+    o.timeOpen,
   ]
   for (const c of candidates) {
-    if (typeof c === 'number' && Number.isFinite(c) && c > 0) {
+    if (typeof c === 'number' && Number.isFinite(c) && c > 1e9) {
       return c > 1e12 ? c : c * 1000
     }
     if (typeof c === 'string' && c.trim()) {
       const p = Date.parse(c)
       if (Number.isFinite(p)) return p
+      const dotted = Date.parse(c.replace(/\./g, '-'))
+      if (Number.isFinite(dotted)) return dotted
     }
   }
   return null

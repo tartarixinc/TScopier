@@ -51,6 +51,12 @@ export interface BrokerProvider {
   orderSend(id: string, args: OrderSendArgs): Promise<OrderResult>
   orderModify(id: string, args: OrderModifyArgs): Promise<OrderResult>
   orderClose(id: string, args: OrderCloseArgs): Promise<OrderResult>
+  /**
+   * Cancel a resting pending order, where the transport distinguishes that from
+   * closing a position (MTAPI: `OrderCancelTask`; see `pendingOrderCancel`).
+   * Optional so simpler providers keep the `orderClose` semantics.
+   */
+  orderCancel?(id: string, args: { ticket: number }): Promise<OrderResult>
 
   openedOrders(id: string): Promise<unknown[]>
   closedOrders(id: string): Promise<unknown[]>

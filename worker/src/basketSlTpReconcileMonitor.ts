@@ -495,6 +495,7 @@ export class BasketSlTpReconcileMonitor {
           symbol: row.symbol,
           modify_only: true,
           reconcile_job_id: row.id,
+          internal_rebalance: manual.range_trading === true,
           user_message: partialMsg,
           ...summary,
           leg_errors: legErrors.slice(0, 10),

@@ -618,11 +618,23 @@ export function stripInvalidStopsForSide(args: {
    * a fresh fill, without rejecting healthy FX stops.
    */
   minDistance?: number
-}): { stoploss: number; takeprofit: number; stripped: string[] } {
+}): {
+  stoploss: number
+  takeprofit: number
+  stripped: string[]
+  slWrongSide: boolean
+  tpWrongSide: boolean
+} {
   const { referencePrice, isBuy } = args
   const ref = referencePrice
   if (!Number.isFinite(ref) || ref <= 0) {
-    return { stoploss: args.stoploss, takeprofit: args.takeprofit, stripped: [] }
+    return {
+      stoploss: args.stoploss,
+      takeprofit: args.takeprofit,
+      stripped: [],
+      slWrongSide: false,
+      tpWrongSide: false,
+    }
   }
   const minDistance = Number.isFinite(args.minDistance) && (args.minDistance as number) > 0
     ? (args.minDistance as number)
@@ -630,12 +642,15 @@ export function stripInvalidStopsForSide(args: {
   let stoploss = args.stoploss
   let takeprofit = args.takeprofit
   const stripped: string[] = []
+  let slWrongSide = false
+  let tpWrongSide = false
   if (stoploss > 0) {
     const badSide = isBuy ? stoploss >= ref : stoploss <= ref
     const tooClose = Math.abs(stoploss - ref) < minDistance
     if (badSide || tooClose) {
       stripped.push(`sl ${stoploss}${tooClose && !badSide ? ' (too_close)' : ''}`)
       stoploss = 0
+      slWrongSide = badSide
     }
   }
   if (takeprofit > 0) {
@@ -644,9 +659,10 @@ export function stripInvalidStopsForSide(args: {
     if (badSide || tooClose) {
       stripped.push(`tp ${takeprofit}${tooClose && !badSide ? ' (too_close)' : ''}`)
       takeprofit = 0
+      tpWrongSide = badSide
     }
   }
-  return { stoploss, takeprofit, stripped }
+  return { stoploss, takeprofit, stripped, slWrongSide, tpWrongSide }
 }
 
 export function estimateBasketTotalPlannedLegs(args: {

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { FxsocketBrokerClient } from './fxsocketClient'
+import { cancelPendingOrderAtBroker } from './pendingOrderCancel'
 import { writeExecutionLog } from './observability/executionLog'
 export type SignalEntryPendingRow = {
   id: string
@@ -181,8 +182,8 @@ export function findClosedRowForTicket(
 }
 
 /**
- * Delete broker pending via OrderClose (MT REST convention for removing pendings)
- * and mark DB rows terminal.
+ * Cancel the broker pending (prefer the provider's pending-cancel endpoint,
+ * see `pendingOrderCancel`) and mark DB rows terminal.
  */
 export async function cancelSignalEntryRowAtBroker(
   supabase: SupabaseClient,
@@ -196,7 +197,7 @@ export async function cancelSignalEntryRowAtBroker(
     return { ok: false, error: 'invalid_ticket' }
   }
   try {
-    await api.orderClose(uuid, { ticket })
+    await cancelPendingOrderAtBroker(api, uuid, ticket)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     await supabase

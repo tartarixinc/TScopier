@@ -5,6 +5,20 @@
 
 export type TradeFailureCategory = 'signal' | 'broker' | 'account' | 'risk' | 'system'
 
+/**
+ * True when the broker refused the stops themselves — "Invalid stops",
+ * "Invalid S/L", "stops too close", or the MTAPI retcode name `INVALID_STOPS`.
+ * Shared by the failure reason, the user-facing message and the send paths so
+ * they never disagree about what happened.
+ */
+export function isInvalidStopsMessage(message: string | null | undefined): boolean {
+  const lower = String(message ?? '').toLowerCase()
+  return /invalid[\s_/-]*(?:stops?|s\/l|t\/p|sl|tp)\b/.test(lower)
+    || /wrong\s+stops?\b/.test(lower)
+    || /stops?\s+too\s+close/.test(lower)
+}
+
+
 export type TradeFailureReason = {
   reasonCode: string
   category: TradeFailureCategory
@@ -19,6 +33,8 @@ export type TradeFailureReason = {
 export const SIGNAL_MISSING_REQUIRED_SL = 'SIGNAL_MISSING_REQUIRED_SL'
 export const ENTRY_TP_WITHOUT_SL = 'entry_tp_without_sl'
 export const BROKER_SYMBOL_NOT_FOUND = 'BROKER_SYMBOL_NOT_FOUND'
+/** Broker refused the stop loss itself (too close to price, or outside the symbol's limits). */
+export const BROKER_REJECTED_STOPS = 'BROKER_REJECTED_STOPS'
 
 function cleanSymbol(value: unknown): string | undefined {
   const s = typeof value === 'string' ? value.trim().toUpperCase() : ''
@@ -70,6 +86,15 @@ function tradeFailureCopy(
           : 'This signal listed take-profit level(s) but no stop loss. Enable Override signal SL and set Stop loss (pips from entry) in Account Configuration so the copier can place the trade.',
         recommendedAction: 'Open Account Configuration for this broker, turn on Override signal SL, and set Stop loss (pips from entry).',
         retryable: false,
+        userActionRequired: true,
+      }
+    case BROKER_REJECTED_STOPS:
+      return {
+        category: 'broker',
+        title: 'Broker rejected the stop loss — trade not opened',
+        explanation: `The broker refused the stop loss for ${instrument} because it is too close to the current price or outside the distance the symbol allows. We did not open the position without a stop, so nothing is running unprotected.`,
+        recommendedAction: 'Widen the stop: enable Override signal SL and set a larger Stop loss (pips from entry) in Account Configuration for this broker.',
+        retryable: true,
         userActionRequired: true,
       }
     case BROKER_SYMBOL_NOT_FOUND:
@@ -179,6 +204,9 @@ export function tradeFailureReasonFromBrokerMessage(
   safeContext?: Record<string, unknown>,
 ): TradeFailureReason | null {
   const lower = String(message ?? '').toLowerCase()
+  if (isInvalidStopsMessage(lower)) {
+    return tradeFailureReasonFromCode(BROKER_REJECTED_STOPS, safeContext)
+  }
   if (
     /symbolselect/.test(lower)
     || (/symbol|instrument/.test(lower) && /not found|unknown|disabled|unsupported|invalid|select\s*failed/.test(lower))
@@ -333,6 +361,11 @@ export function humanizeOrderSendError(message: string, symbol?: string | null):
     return sym
       ? `Broker rejected the order for ${sym}. Check symbol mapping and try again.`
       : 'Broker rejected this order. Check symbol mapping and connection, then try again.'
+  }
+  if (isInvalidStopsMessage(m)) {
+    return sym
+      ? `Broker rejected the stop loss for ${sym} (too close to the current price or not allowed by the symbol)`
+      : 'Broker rejected the stop loss (too close to the current price or not allowed by the symbol)'
   }
   if (/^invalid\s+request$/i.test(m)) {
     return 'Broker rejected order: invalid request. Check symbol availability and order parameters.'

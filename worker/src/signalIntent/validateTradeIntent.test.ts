@@ -37,6 +37,39 @@ describe('validateTradeIntent', () => {
     assert.match(result.reason ?? '', /invented_sl/)
   })
 
+  it('rejects any price invented for a message without numbers', () => {
+    const result = validateTradeIntent({
+      kind: 'modify',
+      side: 'BUY',
+      symbol: 'XAUUSD',
+      entry: [],
+      sl: 4122,
+      tp: [],
+      sl_unit: 'price',
+      tp_unit: 'price',
+      flags: {},
+      confidence: 0.9,
+    }, 'Set SL TO BE  & take partials NOW.')
+    assert.equal(result.ok, false)
+    assert.match(result.reason ?? '', /invented_sl/)
+  })
+
+  it('allows a price-free breakeven instruction', () => {
+    const result = validateTradeIntent({
+      kind: 'breakeven',
+      side: 'BUY',
+      symbol: 'XAUUSD',
+      entry: [],
+      sl: null,
+      tp: [],
+      sl_unit: 'price',
+      tp_unit: 'price',
+      flags: {},
+      confidence: 0.92,
+    }, 'Set SL TO BE  & take partials NOW.')
+    assert.equal(result.ok, true)
+  })
+
   it('passes commentary intent', () => {
     const result = validateTradeIntent({
       kind: 'commentary',

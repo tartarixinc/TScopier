@@ -98,9 +98,31 @@ describe('reconcileOpenTradesForBroker', () => {
         return [{ ticket: 100, type: 0, symbol: 'EURUSD', lots: 0.1, openPrice: 1.1 }]
       },
     }
+    // The only write a resolved second snapshot may produce is the identity
+    // backfill (broker_position_ticket CAS'd on IS NULL). Anything that
+    // re-statuses the trade would be the false close this test guards against.
+    const updates: Array<Record<string, unknown>> = []
     const supabase = {
       from() {
-        throw new Error('DB must not be mutated when the second snapshot restores identity')
+        const query = {
+          update(payload: Record<string, unknown>) {
+            updates.push(payload)
+            return query
+          },
+          eq() {
+            return query
+          },
+          is() {
+            return query
+          },
+          select() {
+            return query
+          },
+          async maybeSingle() {
+            return { data: { id: 'a' }, error: null }
+          },
+        }
+        return query
       },
     }
     const closed = await reconcileOpenTradesForBroker(
@@ -119,6 +141,9 @@ describe('reconcileOpenTradesForBroker', () => {
     )
     assert.equal(closed, 0)
     assert.equal(openedCalls, 2)
+    for (const patch of updates) {
+      assert.equal(patch.status, undefined, `trade must not be re-statused: ${JSON.stringify(patch)}`)
+    }
   })
 
   it('acts on an empty snapshot when the session answers its health check (flat, not disconnected)', async () => {

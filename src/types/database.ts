@@ -154,6 +154,7 @@ export interface UserProfileRow {
   referred_by_user_id: string | null
   notification_sound_enabled: boolean
   copier_paused: boolean
+  copier_pause_reason: string | null
   created_at: string
   updated_at: string
 }
