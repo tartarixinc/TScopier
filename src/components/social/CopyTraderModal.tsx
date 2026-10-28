@@ -20,7 +20,9 @@ import type { BrokerAccount } from '../../types/database'
 import { changeSocialCopySubscription, createSocialCopySubscription } from '../../lib/socialCopy'
 import { supabase } from '../../lib/supabase'
 import { isSocialDestinationEligible, maskBrokerAccountIdentifier, resolveSocialAccountMode } from '../../lib/socialAccount'
+import { eligibilityDiagnosticForReason } from '../../lib/socialEligibility'
 import { AccountModeBadge } from './AccountModeBadge'
+import { SocialEligibilityDiagnostics } from './SocialEligibilityDiagnostics'
 
 const MULTIPLIERS = [0.25, 0.5, 0.75, 1, 1.5, 2] as const
 
@@ -109,6 +111,7 @@ export function CopyTraderModal({
     connectionHealthy: true,
     isCopyEligible: trader.copyEligible === true,
     eligibilityReason: trader.copyEligibilityReason ?? 'source_missing',
+    eligibilityDiagnostics: [eligibilityDiagnosticForReason(trader.copyEligibilityReason ?? 'source_missing')],
     isSynthetic: trader.syntheticDemo === true,
   }] : []
   const selectedBroker = destinations.find(broker => broker.id === selectedBrokerId) ?? null
@@ -296,10 +299,13 @@ export function CopyTraderModal({
                   ))}
                 </select>
                 {!selectedSource ? <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">Select an eligible provider source. No account is selected automatically.</p> : (
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-neutral-600 dark:text-neutral-300">
-                    <AccountModeBadge mode={selectedSource.accountMode} />
-                    <span>{selectedSource.label}</span>
-                    <span>{selectedSource.accountHint}</span>
+                  <div className="mt-2 space-y-2">
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-600 dark:text-neutral-300">
+                      <AccountModeBadge mode={selectedSource.accountMode} />
+                      <span>{selectedSource.label}</span>
+                      <span>{selectedSource.accountHint}</span>
+                    </div>
+                    <SocialEligibilityDiagnostics diagnostics={selectedSource.eligibilityDiagnostics} />
                   </div>
                 )}
               </section>

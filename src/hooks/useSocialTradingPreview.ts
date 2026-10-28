@@ -7,6 +7,7 @@ import {
   fetchSocialTradeHistoryAccess,
   type SocialTradeHistoryItem,
 } from '../lib/socialTradeHistory'
+import { eligibilityDiagnosticForReason } from '../lib/socialEligibility'
 import { supabase } from '../lib/supabase'
 import type { SocialDirectoryProfile } from '../lib/socialFollow'
 import type { SocialTrader } from '../lib/socialTradingFixture'
@@ -184,7 +185,7 @@ export function useSocialTradingPreview() {
       if (!source) {
         const detail = sourcesResult.status === 'rejected'
           ? `Copy-source request failed: ${errorMessage(sourcesResult.reason)}`
-          : 'No published source account is available for this trader.'
+          : eligibilityDiagnosticForReason('source_not_published').explanation
         return hydrateTrader(base, null, null, null, detail, sources)
       }
       const [performanceResult, historyResult] = await Promise.allSettled([

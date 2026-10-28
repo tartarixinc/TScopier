@@ -4,6 +4,7 @@ import {
   assertPreviewConfiguration,
   assertSyntheticPreviewOptIn,
   buildDemoBrokerAccounts,
+  buildDemoSubscriptions,
   buildDemoTrades,
   CLOSED_TRADES_PER_TRADER,
   DEMO_TRADERS,
@@ -41,6 +42,18 @@ test('creates only credential-free DEMO broker rows for persisted performance', 
   assert.ok(rows.every(row => row.metaapi_account_id === ''))
   assert.ok(rows.every(row => row.linked_account_type === 'Demo'))
   assert.ok(rows.every(row => String(row.label).includes('synthetic')))
+  assert.ok(rows.every(row => row.fxsocket_account_id === ''))
+  assert.ok(rows.every(row => row.fxsocket_status === 'disconnected'))
+  assert.ok(rows.every(row => row.terminal_connected === false && row.trade_allowed === false))
+})
+
+test('creates deterministic synthetic preview plan entitlements', () => {
+  const rows = buildDemoSubscriptions(new Date('2026-10-21T12:00:00Z'))
+  assert.equal(rows.length, 8)
+  assert.equal(new Set(rows.map(row => row.id)).size, 8)
+  assert.ok(rows.every(row => row.plan === 'basic' && row.status === 'trialing'))
+  assert.ok(rows.every(row => String(row.stripe_customer_id).startsWith('synthetic_preview_')))
+  assert.ok(rows.every(row => String(row.stripe_subscription_id).startsWith('synthetic_preview_')))
 })
 
 test('builds stable, internally consistent rows without hardcoded summary records', () => {

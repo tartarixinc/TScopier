@@ -63,10 +63,15 @@ export function buildDemoBrokerAccounts(anchor = new Date()): Array<Record<strin
   return DEMO_TRADERS.map(trader => ({
     id: trader.brokerAccountId,
     user_id: trader.userId,
-    label: `${trader.displayName} synthetic MT5`,
+    label: `${trader.displayName} synthetic preview (not broker-connected)`,
     platform: 'MT5',
     provider: 'fxsocket',
     metaapi_account_id: '',
+    fxsocket_account_id: '',
+    fxsocket_status: 'disconnected',
+    terminal_connected: false,
+    trade_allowed: false,
+    connection_error: 'Synthetic preview only; no broker connection exists.',
     is_active: true,
     connection_status: 'connected',
     linked_account_type: 'Demo',
@@ -75,8 +80,24 @@ export function buildDemoBrokerAccounts(anchor = new Date()): Array<Record<strin
   }))
 }
 
+export function buildDemoSubscriptions(anchor = new Date()): Array<Record<string, unknown>> {
+  const trialEndsAt = new Date(anchor.getTime() + 365 * 24 * 60 * 60 * 1000).toISOString()
+  return DEMO_TRADERS.map((trader, index) => ({
+    id: `d0500000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+    user_id: trader.userId,
+    stripe_customer_id: `synthetic_preview_customer_${trader.username}`,
+    stripe_subscription_id: `synthetic_preview_subscription_${trader.username}`,
+    plan: 'basic',
+    status: 'trialing',
+    extra_accounts: 0,
+    trial_ends_at: trialEndsAt,
+    current_period_end: trialEndsAt,
+    updated_at: anchor.toISOString(),
+  }))
+}
+
 export function buildDemoTrades(trader: DemoTrader, anchor = new Date()): Array<Record<string, unknown>> {
-  const rows = trader.profits.map((profit, index) => {
+  const rows: Array<Record<string, unknown>> = trader.profits.map((profit, index) => {
     const closedAt = new Date(anchor.getTime() - (CLOSED_TRADES_PER_TRADER - index) * 24 * 60 * 60 * 1000)
     const openedAt = new Date(closedAt.getTime() - (3 + index % 7) * 60 * 60 * 1000)
     const sequence = index + 1
@@ -129,7 +150,14 @@ export function summarizeDemoTrades(rows: Array<Record<string, unknown>>) {
 
 async function requireNoError<T extends { error: unknown }>(promise: PromiseLike<T>, context: string): Promise<T> {
   const result = await promise
-  if (result.error) throw new Error(`${context} failed`, { cause: result.error })
+  if (result.error) {
+    const error = result.error as { code?: unknown; message?: unknown; details?: unknown; hint?: unknown }
+    const describe = (value: unknown) => value == null ? 'null' : String(value)
+    throw new Error(
+      `${context} failed: code=${describe(error.code)}; message=${describe(error.message)}; details=${describe(error.details)}; hint=${describe(error.hint)}`,
+      { cause: result.error },
+    )
+  }
   return result
 }
 
@@ -195,7 +223,24 @@ export async function seedSocialTradingDemo(client: SupabaseClient, anchor = new
     is_synthetic_demo: true,
   })), { onConflict: 'user_id' }), 'Upserting social profiles')
 
-  await requireNoError(client.from('broker_accounts').upsert(buildDemoBrokerAccounts(anchor), { onConflict: 'id' }), 'Upserting synthetic broker accounts')
+  await requireNoError(client.from('subscriptions').upsert(buildDemoSubscriptions(anchor), { onConflict: 'user_id' }), 'Upserting synthetic preview subscriptions')
+
+  const brokerRows = buildDemoBrokerAccounts(anchor)
+  const existingBrokerAccounts = await requireNoError(
+    client.from('broker_accounts').select('id').in('id', brokerRows.map(row => String(row.id))),
+    'Checking synthetic broker accounts',
+  )
+  const existingBrokerIds = new Set((existingBrokerAccounts.data ?? []).map(row => row.id))
+  const missingBrokerRows = brokerRows.filter(row => !existingBrokerIds.has(row.id))
+  if (missingBrokerRows.length) {
+    await requireNoError(client.from('broker_accounts').insert(missingBrokerRows), 'Inserting synthetic broker accounts')
+  }
+  for (const row of brokerRows.filter(item => existingBrokerIds.has(item.id))) {
+    await requireNoError(
+      client.from('broker_accounts').update(row).eq('id', row.id).eq('user_id', row.user_id),
+      `Updating synthetic broker account ${String(row.id)}`,
+    )
+  }
 
   await requireNoError(client.from('social_copy_sources').upsert(DEMO_TRADERS.map(trader => ({
     id: trader.sourceId,

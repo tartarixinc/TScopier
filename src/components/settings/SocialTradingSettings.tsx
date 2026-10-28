@@ -7,10 +7,13 @@ import { useSocialFollow } from '../../hooks/useSocialFollow'
 import { resolveAccountLogin } from '../../lib/brokerFromServer'
 import {
   fetchOwnSocialCopySources,
+  fetchSocialCopySources,
   publishSocialCopySource,
   setSocialCopySourceStatus,
   type OwnSocialCopySource,
+  type SocialCopySource,
 } from '../../lib/socialCopy'
+import { publishingEligibilityDiagnostics } from '../../lib/socialEligibility'
 import {
   brokerConnectionLabel,
   isSocialDestinationEligible,
@@ -20,6 +23,7 @@ import {
 } from '../../lib/socialAccount'
 import { supabase } from '../../lib/supabase'
 import { AccountModeBadge } from '../social/AccountModeBadge'
+import { SocialEligibilityDiagnostics } from '../social/SocialEligibilityDiagnostics'
 import { Alert } from '../ui/Alert'
 import { Button } from '../ui/Button'
 import { Toggle } from '../ui/Toggle'
@@ -30,6 +34,7 @@ export function SocialTradingSettings() {
   const { brokers, loading: accountsLoading, loadError, refreshBrokers } = useBrokerAccounts()
   const social = useSocialFollow()
   const [sources, setSources] = useState<OwnSocialCopySource[]>([])
+  const [detailedSources, setDetailedSources] = useState<SocialCopySource[]>([])
   const [sourcesLoading, setSourcesLoading] = useState(true)
   const [pendingBrokerId, setPendingBrokerId] = useState<string | null>(null)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -37,12 +42,18 @@ export function SocialTradingSettings() {
   const refreshSources = useCallback(async () => {
     if (!userId) {
       setSources([])
+      setDetailedSources([])
       setSourcesLoading(false)
       return
     }
     setSourcesLoading(true)
     try {
-      setSources(await fetchOwnSocialCopySources(supabase, userId))
+      const [own, detailed] = await Promise.all([
+        fetchOwnSocialCopySources(supabase, userId),
+        fetchSocialCopySources(supabase, userId),
+      ])
+      setSources(own)
+      setDetailedSources(detailed)
     } catch (cause) {
       setMessage({ type: 'error', text: cause instanceof Error ? cause.message : 'Unable to load account sharing.' })
     } finally {
@@ -58,6 +69,10 @@ export function SocialTradingSettings() {
   const sourceByBroker = useMemo(
     () => new Map(sources.map(source => [source.brokerAccountId, source])),
     [sources],
+  )
+  const detailedSourceByBroker = useMemo(
+    () => new Map(sources.map(source => [source.brokerAccountId, detailedSources.find(item => item.sourceId === source.sourceId)])),
+    [detailedSources, sources],
   )
 
   const changeSharing = async (brokerId: string, shared: boolean) => {
@@ -163,6 +178,7 @@ export function SocialTradingSettings() {
               const shared = source?.status === 'published'
               const mode = resolveSocialAccountMode(account)
               const connection = brokerConnectionLabel(account)
+              const diagnostics = publishingEligibilityDiagnostics(account, detailedSourceByBroker.get(account.id)?.eligibilityDiagnostics)
               return (
                 <li key={account.id} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:px-6">
                   <div className="min-w-0 flex-1">
@@ -177,6 +193,8 @@ export function SocialTradingSettings() {
                     {shared && !isSocialDestinationEligible(account) ? (
                       <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">Shared, but unavailable to new copiers until its mode is known and it meets the connection, provider, sync, and history rules.</p>
                     ) : null}
+                    <p className="mt-2 text-xs text-neutral-500">Publishing authorization is checked separately from eligibility and includes your identity, Social directory membership, and account ownership.</p>
+                    <div className="mt-2"><SocialEligibilityDiagnostics diagnostics={diagnostics} title={shared ? 'Published source eligibility' : 'Pre-publication account checks'} /></div>
                   </div>
                   <label className="flex items-center justify-between gap-3 text-sm font-medium text-neutral-800 dark:text-neutral-100 sm:justify-end">
                     <span>Share for Copying</span>
