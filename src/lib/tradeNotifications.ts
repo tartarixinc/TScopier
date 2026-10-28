@@ -536,6 +536,11 @@ export function formatHolisticNotification(
       title = t.headlines.reviewRequired
       body = interpolate(t.bodies.reviewRequired, { channel })
       break
+    case 'social_follow_accepted':
+    case 'social_copy_activated':
+    case 'social_copy_stopped':
+    case 'social_copy_suspended':
+      throw new Error('Persistent social notifications must be formatted from their stored row')
   }
 
   return {
