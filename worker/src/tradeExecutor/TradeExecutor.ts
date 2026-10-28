@@ -456,15 +456,10 @@ export class TradeExecutor {
   }
 
   private applyBrokerCacheRow(row: BrokerRow) {
-    const preNormalizedConfigs = row.channel_trading_configs
     const normalized = this.normalizeBrokerRow(row)
-    void persistHealedChannelConfigs(
-      this.supabase,
-      row.user_id,
-      row.id,
-      preNormalizedConfigs,
-      normalized.channel_trading_configs as Record<string, unknown>,
-    )
+    // Cache-only path (realtime events and refreshes). Persisting healed configs
+    // here fed a write→realtime-event→write loop that saturated the database on
+    // 2026-10-28; heals are persisted exclusively from loadBrokers().
     const sessionId = brokerSessionUuid(normalized)
     if (sessionId) this.apiFor(normalized)?.seedPlatformCache(sessionId, mtPlatformFrom(normalized.platform))
     const previous = this.brokersById.get(row.id)

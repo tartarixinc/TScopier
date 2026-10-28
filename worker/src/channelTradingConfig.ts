@@ -4,6 +4,7 @@ import type { ManualSettings } from './manualPlanning/types'
 import { normalizeSignalChannelIds } from './brokerChannelFilter'
 import { normalizeCopyLimitState, type CopyLimitState } from './copyLimitTypes'
 import { resolveBrokerTotalBalance } from './effectiveBrokerBalance'
+import { stableStringify } from './stableJson'
 
 export interface ChannelTradingConfig {
   copier_mode?: 'ai' | 'manual'
@@ -291,9 +292,59 @@ export function withChannelTradingConfig<T extends BrokerChannelTradingFields>(
 }
 
 /**
+ * True when persisting the healed config would actually change the stored row.
+ * Content is compared with the shared `stableStringify` so key order is
+ * irrelevant. `copy_limit_state` is deliberately excluded: the heal passes it
+ * through, and the copy-limit monitor owns it. Writing identical content back
+ * is a no-op that can feed a write→realtime-event→write loop (incident
+ * 2026-10-28).
+ */
+export function healedConfigPersistDiffers(
+  stored: ChannelTradingConfig | undefined,
+  cfg: ChannelTradingConfig,
+): boolean {
+  if (!stored) return true
+  return stableStringify(stored.copier_mode ?? null) !== stableStringify(cfg.copier_mode ?? null)
+    || stableStringify(stored.manual_settings ?? null) !== stableStringify(cfg.manual_settings ?? null)
+    || stableStringify(stored.ai_settings ?? null) !== stableStringify(cfg.ai_settings ?? null)
+}
+
+/** Minimum spacing between heal-persists for one broker|channel (incident 2026-10-28). */
+const HEAL_PERSIST_COOLDOWN_MS = 10 * 60 * 1000
+const healPersistLastAttemptAtByKey = new Map<string, number>()
+
+/**
+ * Rate guard for heal-persists. Returns true when a persist for `key` was
+ * already attempted inside the cooldown window (caller must skip); otherwise
+ * records this attempt and returns false.
+ */
+export function healPersistWithinCooldown(
+  key: string,
+  now: number = Date.now(),
+  cooldownMs: number = HEAL_PERSIST_COOLDOWN_MS,
+): boolean {
+  const last = healPersistLastAttemptAtByKey.get(key)
+  if (last != null && now - last < cooldownMs) return true
+  healPersistLastAttemptAtByKey.set(key, now)
+  if (healPersistLastAttemptAtByKey.size > 5000) {
+    for (const [k, t] of healPersistLastAttemptAtByKey) {
+      if (now - t >= cooldownMs) healPersistLastAttemptAtByKey.delete(k)
+    }
+  }
+  return false
+}
+
+export function resetHealPersistCooldownsForTests(): void {
+  healPersistLastAttemptAtByKey.clear()
+}
+
+/**
  * Persist healed per-channel configs to the `broker_channel_trading_configs` table.
- * Only writes channels whose original config was missing or incomplete — after
- * the first write, subsequent calls find the DB already populated and skip.
+ * Only writes channels whose original config was missing or incomplete, only when
+ * the healed content differs from what is stored, and at most once per channel
+ * per cooldown window — so no configuration state can ever loop (incident
+ * 2026-10-28: a realtime-event handler called this routine, and rows that could
+ * never pass the completeness check were rewritten hundreds of times per second).
  */
 export async function persistHealedChannelConfigs(
   supabase: SupabaseClient,
@@ -315,6 +366,13 @@ export async function persistHealedChannelConfigs(
     const orig = originalMap[key]
     if (orig && storedPerChannelConfigComplete({ [key]: orig }, key)) continue
     const cfg = raw as ChannelTradingConfig
+    if (orig && !healedConfigPersistDiffers(orig, cfg)) continue
+    // A heal that is still incomplete cannot help execution (execution rejects
+    // incomplete configs anyway); writing it would only materialize a row that
+    // wins the JSONB merge forever. The heal's console.warn tells the user to
+    // re-save Account Configuration — that save is the real fix.
+    if (!channelManualSettingsComplete(cfg.manual_settings)) continue
+    if (healPersistWithinCooldown(`${userId}|${brokerId}|${key}`)) continue
     const { error } = await supabase
       .from('broker_channel_trading_configs')
       .upsert({
@@ -327,6 +385,9 @@ export async function persistHealedChannelConfigs(
         copy_limit_state: cfg.copy_limit_state ?? null,
       }, { onConflict: 'broker_account_id,channel_id', ignoreDuplicates: false })
     if (error) {
+      // Release the cooldown window: the persist did not happen, so a legitimate
+      // heal must not be delayed by a failed attempt.
+      healPersistLastAttemptAtByKey.delete(`${userId}|${brokerId}|${key}`)
       console.warn(
         `[channelTradingConfig] failed to persist healed config for broker=${brokerId} channel=${key}: ${error.message}`,
       )
