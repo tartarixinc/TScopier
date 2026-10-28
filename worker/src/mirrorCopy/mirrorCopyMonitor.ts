@@ -1072,10 +1072,12 @@ export class MirrorCopyMonitor {
     // written to the row by the RPC mid-tick) must survive. The in-memory
     // mapping.state predates that request, so the guard goes on the UPDATE
     // filter itself — writing 'open' over a live 'closing' would silently
-    // drop the user's intent.
+    // drop the user's intent. Only the ticket and opened_at are written here;
+    // last_error_* is left alone so a row that was closed mid-tick (e.g. with
+    // DESTINATION_CLOSED_EXTERNALLY) keeps its audit detail.
     const { error } = await this.supabase.from('mirror_copy_trade_mappings').update({
       destination_ticket: String(ticket),
-      opened_at: new Date().toISOString(), last_error_code: null, last_error_detail: null,
+      opened_at: new Date().toISOString(),
     }).eq('id', mapping.id)
     if (error) throw error
     const { error: stateError } = await this.supabase.from('mirror_copy_trade_mappings')

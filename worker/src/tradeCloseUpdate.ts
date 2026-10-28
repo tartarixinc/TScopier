@@ -34,10 +34,16 @@ export async function applyCloseColumnUpdate<
 ): Promise<R> {
   const first = await run(patch)
   const error = first.error
+  const message = error?.message ?? ''
+  // PGRST204 is PostgREST's dedicated "column not in the schema cache" error;
+  // our patches only ever add close_reason as a new column, so any PGRST204 on
+  // them is that column. Postgres 42703 (undefined column) can also be about a
+  // different column, so it must name close_reason before we strip it and
+  // retry — otherwise a half-migrated schema could silently lose the reason.
   const missingColumn =
     !!error &&
     ('close_reason' in patch) &&
-    (error.code === 'PGRST204' || error.code === '42703' || /close_reason/.test(error.message ?? ''))
+    (error.code === 'PGRST204' || (error.code === '42703' && /close_reason/.test(message)))
   if (!missingColumn) return first
 
   console.warn(

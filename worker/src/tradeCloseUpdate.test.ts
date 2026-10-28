@@ -61,6 +61,15 @@ test('retries without close_reason when Postgres reports an undefined column (42
   assert.ok(!('close_reason' in seen[1]!))
 })
 
+test('a 42703 about a different column does not strip close_reason', async () => {
+  const { seen, run } = scripted([
+    { error: { code: '42703', message: 'column trades.last_error_code does not exist' } },
+  ])
+  const res = await applyCloseUpdate(patch(), run)
+  assert.ok(res.error)
+  assert.equal(seen.length, 1, 'must not retry for an unrelated missing column')
+})
+
 test('a missing-column style error on a patch without close_reason is not retried', async () => {
   const { seen, run } = scripted([{ error: { code: 'PGRST204', message: 'other column' } }])
   const res = await applyCloseUpdate({ status: 'closed' }, run)
