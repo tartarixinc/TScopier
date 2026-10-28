@@ -41,7 +41,7 @@ language sql stable security definer set search_path = pg_catalog, public as $$
       coalesce(f.incomplete_count, 0) as incomplete_count, f.period_start, f.period_end
     from (select 1) seed left join source_context sc on true cross join facts f
   ), checks as (
-    select * from context c cross join lateral (values
+    select v.* from context c cross join lateral (values
       (0, case when c.id is null then 'source_missing' else 'source_present' end,
         case when c.id is null then 'blocked' else 'passed' end,
         case when c.id is null then 'error' else 'success' end,
