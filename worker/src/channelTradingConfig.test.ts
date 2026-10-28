@@ -3,7 +3,11 @@ import assert from 'node:assert/strict'
 import {
   buildDefaultChannelTradingConfig,
   channelConfigReadyForExecution,
+  healPersistWithinCooldown,
+  healedConfigPersistDiffers,
   normalizeChannelTradingConfigsMap,
+  persistHealedChannelConfigs,
+  resetHealPersistCooldownsForTests,
   resolveChannelTradingConfig,
   withChannelTradingConfig,
 } from './channelTradingConfig'
@@ -247,4 +251,153 @@ test('normalizeChannelTradingConfigsMap skips invalid entries', () => {
   })
   assert.ok(map.ok)
   assert.equal(Object.keys(map).length, 1)
+})
+
+test('healedConfigPersistDiffers ignores key order and copy_limit_state', () => {
+  const stored = {
+    copier_mode: 'manual' as const,
+    manual_settings: { fixed_lot: 0.05, trade_style: 'single', nested: { a: 1, b: 2 } },
+    ai_settings: { x: 1 },
+  }
+  const same = {
+    copier_mode: 'manual' as const,
+    manual_settings: { nested: { b: 2, a: 1 }, trade_style: 'single', fixed_lot: 0.05 },
+    ai_settings: { x: 1 },
+  }
+  assert.equal(healedConfigPersistDiffers(stored, same), false)
+  assert.equal(
+    healedConfigPersistDiffers(stored, { ...same, manual_settings: { ...same.manual_settings, fixed_lot: 0.06 } }),
+    true,
+  )
+  assert.equal(healedConfigPersistDiffers(undefined, same), true)
+  assert.equal(
+    healedConfigPersistDiffers(
+      { ...stored, copy_limit_state: { paused: true } } as never,
+      { ...same, copy_limit_state: { paused: false } } as never,
+    ),
+    false,
+  )
+})
+
+test('healPersistWithinCooldown blocks repeats inside the window and recovers after', () => {
+  resetHealPersistCooldownsForTests()
+  const key = 'user|broker|channel'
+  assert.equal(healPersistWithinCooldown(key, 1000, 60_000), false)
+  assert.equal(healPersistWithinCooldown(key, 60_000, 60_000), true)
+  assert.equal(healPersistWithinCooldown(key, 61_001, 60_000), false)
+  assert.equal(healPersistWithinCooldown('other|broker|channel', 61_002, 60_000), false)
+  resetHealPersistCooldownsForTests()
+  assert.equal(healPersistWithinCooldown(key, 61_003, 60_000), false)
+})
+
+test('persistHealedChannelConfigs never rewrites identical content and respects cooldown', async () => {
+  resetHealPersistCooldownsForTests()
+  const upserts: Array<Record<string, unknown>> = []
+  const supabase = {
+    from: () => ({
+      upsert: async (row: Record<string, unknown>) => {
+        upserts.push(row)
+        return { error: null }
+      },
+    }),
+  }
+  const storedManual = { fixed_lot: 0, trade_style: 'multi', risk_mode: 'dynamic', schema_version: 1 }
+  const originalRaw = {
+    'Chan-Nel': {
+      copier_mode: 'manual',
+      manual_settings: storedManual,
+      ai_settings: {},
+    },
+  }
+  // Identical healed content (the 2026-10-28 loop shape: incomplete row that can
+  // never pass the completeness check) must produce zero writes.
+  await persistHealedChannelConfigs(
+    supabase as never,
+    'user-1',
+    'broker-1',
+    originalRaw,
+    {
+      'chan-nel': {
+        copier_mode: 'manual',
+        manual_settings: { ...storedManual },
+        ai_settings: {},
+        copy_limit_state: null,
+      },
+    },
+  )
+  assert.equal(upserts.length, 0)
+
+  // Changed content writes once; an immediate repeat is suppressed by cooldown.
+  await persistHealedChannelConfigs(
+    supabase as never,
+    'user-1',
+    'broker-1',
+    originalRaw,
+    {
+      'chan-nel': {
+        copier_mode: 'manual',
+        manual_settings: { ...storedManual, fixed_lot: 0.01 },
+        ai_settings: {},
+        copy_limit_state: null,
+      },
+    },
+  )
+  assert.equal(upserts.length, 1)
+  assert.equal((upserts[0]!.manual_settings as Record<string, unknown>).fixed_lot, 0.01)
+
+  await persistHealedChannelConfigs(
+    supabase as never,
+    'user-1',
+    'broker-1',
+    originalRaw,
+    {
+      'chan-nel': {
+        copier_mode: 'manual',
+        manual_settings: { ...storedManual, fixed_lot: 0.02 },
+        ai_settings: {},
+        copy_limit_state: null,
+      },
+    },
+  )
+  assert.equal(upserts.length, 1)
+  resetHealPersistCooldownsForTests()
+})
+
+test('persistHealedChannelConfigs skips a heal that is still incomplete even when content differs', async () => {
+  resetHealPersistCooldownsForTests()
+  const upserts: Array<Record<string, unknown>> = []
+  const supabase = {
+    from: () => ({
+      upsert: async (row: Record<string, unknown>) => {
+        upserts.push(row)
+        return { error: null }
+      },
+    }),
+  }
+  // Stored row is incomplete (fixed_lot 0) and the healed content DIFFERS
+  // (trade_style changed) but is still incomplete — the heal cannot improve
+  // anything, so it must not write (incident 2026-10-28 shape).
+  const originalRaw = {
+    'chan-nel': {
+      copier_mode: 'manual',
+      manual_settings: { fixed_lot: 0, trade_style: 'single', risk_mode: 'dynamic', schema_version: 1 },
+      ai_settings: {},
+    },
+  }
+  await persistHealedChannelConfigs(
+    supabase as never,
+    'user-1',
+    'broker-1',
+    originalRaw,
+    {
+      'chan-nel': {
+        copier_mode: 'manual',
+        manual_settings: { fixed_lot: 0, trade_style: 'multi', risk_mode: 'dynamic', schema_version: 1 },
+        ai_settings: {},
+        copy_limit_state: null,
+      },
+    },
+  )
+  assert.equal(upserts.length, 0)
+  resetHealPersistCooldownsForTests()
 })
