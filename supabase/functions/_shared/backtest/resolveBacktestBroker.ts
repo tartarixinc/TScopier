@@ -70,7 +70,7 @@ export class BacktestProviderAuthorityError extends Error {
   }
 }
 
-/** Load active brokers without preselecting a provider or prepared session. */
+/** Load the user's brokers without preselecting a provider or prepared session. */
 export async function loadBrokerCandidates(
   supabase: SupabaseClient,
   userId: string,
@@ -79,7 +79,6 @@ export async function loadBrokerCandidates(
     .from("broker_accounts")
     .select("id,label,provider,platform,fxsocket_account_id,mtapi_session_id,fxsocket_status,mtapi_status,connection_status,provider_transition_state,is_active")
     .eq("user_id", userId)
-    .eq("is_active", true)
     .order("created_at", { ascending: false })
 
   if (error) throw new Error(error.message)
@@ -121,6 +120,14 @@ export async function resolveBacktestBroker(
     )
   }
 
+  const activeCandidates = candidates.filter((broker) => broker.is_active)
+  if (activeCandidates.length === 0) {
+    throw new BacktestProviderAuthorityError(
+      "Your linked broker account is paused. Enable Copy trades in Brokers to use it for backtesting.",
+      "BROKER_ACCOUNT_PAUSED",
+    )
+  }
+
   const normalized = normalizeBacktestSymbol(symbol)
   let fallback: BacktestBrokerContext | null = null
   let symbolsFetchFailures = 0
@@ -128,7 +135,7 @@ export async function resolveBacktestBroker(
   let lastSymbolsError: string | null = null
   let authorityError: BacktestProviderAuthorityError | null = null
 
-  for (const broker of candidates) {
+  for (const broker of activeCandidates) {
     if (!broker.id) {
       authorityError = new BacktestProviderAuthorityError(
         "The active broker account identity is unavailable. Reconnect the account and try again.",
@@ -152,6 +159,24 @@ export async function resolveBacktestBroker(
     }
 
     const provider = broker.provider as BacktestBrokerProvider
+    const connectionStatus = (
+      (provider === "mtapi" ? broker.mtapi_status : broker.fxsocket_status)
+        ?? broker.connection_status
+        ?? ""
+    ).trim().toLowerCase()
+    if (connectionStatus !== "connected") {
+      const isInProgress = connectionStatus === "connecting"
+        || connectionStatus === "pending"
+        || connectionStatus === "recovering"
+      authorityError = new BacktestProviderAuthorityError(
+        isInProgress
+          ? "Your broker account is still connecting. Wait until Brokers shows Connected, then try again."
+          : "Your broker account is disconnected. Reconnect it in Brokers, then try again.",
+        isInProgress ? "BROKER_ACCOUNT_CONNECTING" : "BROKER_ACCOUNT_DISCONNECTED",
+      )
+      continue
+    }
+
     const platform = String(broker.platform ?? "").trim().toUpperCase()
     if (provider === "mtapi" && platform !== "MT4" && platform !== "MT5") {
       authorityError = new BacktestProviderAuthorityError(
