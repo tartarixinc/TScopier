@@ -12,6 +12,7 @@ import { supabase } from '../../lib/supabase'
 import { platformIconSrc } from '../../lib/activityRoute'
 import { humanizeMirrorDeleteError } from '../../lib/brokerCopyLink'
 import { useAuth } from '../../context/AuthContext'
+import { useConfirm } from '../../context/ConfirmDialogContext'
 import { useT } from '../../context/LocaleContext'
 import { interpolate } from '../../i18n/interpolate'
 import { Toggle } from '../../components/ui/Toggle'
@@ -50,6 +51,7 @@ import {
 } from '../../lib/brokerAccountSelect'
 import { triggerBackgroundChannelAiTraining } from '../../lib/channelAiTrainingBackground'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
+import { useMirrorSlaveChannelGuard } from '../../hooks/useMirrorSlaveChannelGuard'
 import { useSubscription } from '../../context/SubscriptionContext'
 import {
   effectivePlan as resolveEffectivePlan,
@@ -832,6 +834,7 @@ async function resolveLatestManualSettingsPlanContext(args: {
 
 export function AccountConfigPage() {
   const t = useT()
+  const confirm = useConfirm()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const cm = t.accountConfig.configureModal
@@ -881,6 +884,7 @@ export function AccountConfigPage() {
     setHealthPollingPaused,
     upsertBroker,
   } = useBrokerAccounts()
+  const { guardBroker, modal: mirrorGuardModal } = useMirrorSlaveChannelGuard()
   const brokerBalanceRefreshStartedRef = useRef(false)
   const configureQueryHandledRef = useRef<string | null>(null)
   const { openAddTradingAccount, pendingConfigureBrokerId, clearPendingConfigureBroker } = useAddTradingAccount()
@@ -1912,6 +1916,9 @@ export function AccountConfigPage() {
     const channelId = configDraft.selectedChannelId
     if (configDraft.channelIds.includes(channelId)) return
 
+    const approved = await guardBroker(configAccount)
+    if (!approved) return
+
     setChannelConnecting(true)
     setError('')
     try {
@@ -1978,7 +1985,7 @@ export function AccountConfigPage() {
     return () => clearInterval(timer)
   }, [configDraft.selectedChannelId, trainingRunningByChannel, trainingSavingByChannel])
 
-  const closeConfigureModal = (options?: { force?: boolean }) => {
+  const closeConfigureModal = async (options?: { force?: boolean }): Promise<boolean> => {
     if (!options?.force && configAccount) {
       const draftForSignature = applyPendingConfigureDraftFields(
         configDraft,
@@ -2000,7 +2007,13 @@ export function AccountConfigPage() {
         && !storedPerChannelConfigComplete(healChannelTradingConfigsMap(configAccount), selectedId),
       )
       if (dirty || needsPersistedSave) {
-        if (!window.confirm(cm.closeUnsavedConfirm)) return
+        const discard = await confirm({
+          title: cm.closeUnsavedTitle ?? 'Discard changes',
+          body: cm.closeUnsavedConfirm,
+          confirmLabel: cm.discardChanges ?? 'Discard',
+          cancelLabel: t.common.cancel,
+        })
+        if (!discard) return false
       }
     }
     setConfigAccount(null)
@@ -2016,6 +2029,7 @@ export function AccountConfigPage() {
     setPendingDeletePreset(null)
     setChannelLinkEditMode(false)
     setError('')
+    return true
   }
 
   const toggleDraftChannel = (channelId: string) => {
@@ -2412,7 +2426,13 @@ export function AccountConfigPage() {
     }
 
     if (channelIds.length === 0) {
-      const proceed = window.confirm(bl.channelsEmptySaveWarning)
+      const proceed = await confirm({
+        title: bl.channelsEmptySaveTitle ?? 'Save without channels',
+        body: bl.channelsEmptySaveWarning,
+        confirmLabel: t.common.save,
+        cancelLabel: t.common.cancel,
+        tone: 'primary',
+      })
       if (!proceed) return false
     }
 
@@ -2445,6 +2465,14 @@ export function AccountConfigPage() {
     if (shouldBlockMultiTradeSave({ requestedMulti, effectivePlan: savePlanCtx.effectivePlan })) {
       setError(`${cm.risk.basicPlanTradeStyleLimit} Subscription upgrade may still be syncing. Please wait a few seconds and save again.`)
       return false
+    }
+
+    // After the cheap validations, right before the first write, so a
+    // destructive "disconnect mirror" choice is never wasted on a failed save.
+    const newlyLinkedChannelIds = channelIds.filter(id => !previouslyLinkedChannelIds.includes(id))
+    if (newlyLinkedChannelIds.length > 0) {
+      const approved = await guardBroker(configAccount)
+      if (!approved) return false
     }
 
     setConfigSaving(true)
@@ -3181,8 +3209,9 @@ export function AccountConfigPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        closeConfigureModal()
-                        navigate('/channels')
+                        void (async () => {
+                          if (await closeConfigureModal()) navigate('/channels')
+                        })()
                       }}
                       className="shrink-0 rounded-md p-1.5 transition-colors min-h-[32px] min-w-[32px] flex items-center justify-center text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 hover:bg-neutral-100 dark:hover:text-neutral-50 dark:hover:bg-neutral-800"
                       aria-label={cm.addChannel}
@@ -5062,6 +5091,7 @@ export function AccountConfigPage() {
         </div>,
         document.body,
       )}
+      {mirrorGuardModal}
     </PageShell>
   )
 }

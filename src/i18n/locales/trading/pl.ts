@@ -80,6 +80,8 @@ export const tradingPl: TradingPagesBundleTranslations = {
     reasonCopyLimitFlatten: 'Zamknięta automatycznie po osiągnięciu limitu kopiowania.',
     reasonUserForceClose: 'Zamknięta przez Ciebie.',
     reasonPositionGone: 'Pozycja była już zamknięta u brokera, gdy to sprawdziliśmy.',
+    reasonMirrorSourceClosed: 'Transakcja źródłowa została zamknięta, więc ta kopia również została zamknięta.',
+    reasonMirrorCopyClosed: 'Ta skopiowana transakcja została zamknięta, zanim zaczęto zapisywać powody zamknięcia.',
     reasonStopLoss: 'Broker zamknął ją na stop loss ({price}).',
     reasonTakeProfit: 'Broker zamknął ją na take profit ({price}).',
     reasonUnknown: 'Nie zapisano powodu zamknięcia tej transakcji.',

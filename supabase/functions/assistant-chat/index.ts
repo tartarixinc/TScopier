@@ -681,7 +681,7 @@ type ToolResult = {
 async function toolGetSetupStatus(supabase: SupabaseClient, userId: string): Promise<ToolResult> {
   const [{ data: session }, { data: profile }, { data: brokers }, { data: channels }, { data: sub }] =
     await Promise.all([
-      supabase.from("telegram_sessions").select("user_id,session_string").eq("user_id", userId).maybeSingle(),
+      supabase.from("telegram_sessions").select("id").eq("user_id", userId).maybeSingle(),
       supabase.from("user_profiles").select("copier_paused,display_name").eq("user_id", userId).maybeSingle(),
       supabase
         .from("broker_accounts")
@@ -695,7 +695,7 @@ async function toolGetSetupStatus(supabase: SupabaseClient, userId: string): Pro
       supabase.from("subscriptions").select("plan,status").eq("user_id", userId).maybeSingle(),
     ]);
 
-  const telegramLinked = Boolean(session?.session_string && String(session.session_string).length > 0);
+  const telegramLinked = Boolean(session?.id);
   const brokerList = brokers ?? [];
   const connected = brokerList.filter((b) => {
     if (!b.is_active) return false;

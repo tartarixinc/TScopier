@@ -23,7 +23,7 @@ import {
   isCopierSignalRetryEligible,
 } from '../../lib/retrySignalDisplay'
 import { formatCopierSkipReasonShort } from '../../lib/copierLogDetail'
-import { fetchMirrorCopyLogs, planMergedLogPage, type MirrorCopyLogRow } from '../../lib/mirrorCopyLogs'
+import { fetchMirrorCopyLogs, pageMirrorSlice, type MirrorCopyLogRow } from '../../lib/mirrorCopyLogs'
 import { CopierLogDetailModal } from '../../components/dashboard/CopierLogDetailModal'
 import { MirrorLogDetailModal } from '../../components/dashboard/MirrorLogDetailModal'
 import { SignalSourceLogo } from '../../components/dashboard/SignalSourceLogo'
@@ -80,10 +80,20 @@ type CopierLogView = {
 }
 
 /** One row on the list — a signal or a mirror copy, never both. */
-type LogViewEntry = { key: string; view: CopierLogView } & (
+type LogViewEntry = { key: string; view: CopierLogView; at: string } & (
   | { signal: Signal; mirror?: never }
   | { mirror: MirrorCopyLogRow; signal?: never }
 )
+
+/** Where the loaded signal page sits in time, so mirror rows can be spliced in. */
+type SignalWindow = {
+  /** Page these bounds belong to. */
+  page: number
+  /** Oldest signal of that page — the next page's exclusive upper bound. */
+  oldest: string | null
+  /** Bound inherited from the page before it, when the reader paged forward. */
+  previousOldest: string | null
+}
 
 function formatLogTime(iso: string): string {
   return new Date(iso).toLocaleString([], {
@@ -381,8 +391,14 @@ export function CopierLogsPage() {
   const [filter, setFilter] = useState<Filter>('all')
   const [loading, setLoading] = useState(true)
   const [totalCount, setTotalCount] = useState(0)
+  // Signals only (mirrors are excluded) — pages are laid out on this count.
+  const [signalRowCount, setSignalRowCount] = useState(0)
   // Monotonic token so a slower, older load can never commit over a newer one.
   const loadSeqRef = useRef(0)
+  // Where the last loaded signal page ended in time, and the bound inherited
+  // from the page before it. Held in state (not a ref) so the render that splices
+  // mirror rows sees a tracked value rather than a ref read during render.
+  const [signalWindow, setSignalWindow] = useState<SignalWindow | null>(null)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<PageSizeOption>(25)
   const [retryingSignalIds, setRetryingSignalIds] = useState<Set<string>>(() => new Set())
@@ -401,7 +417,11 @@ export function CopierLogsPage() {
     window.setTimeout(() => setToast(null), 5000)
   }, [])
 
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
+  // Pages are counted in signal rows: mirror events ride along inside their
+  // signal's span instead of adding pages of their own. Counting them here would
+  // create trailing pages with nothing left to show.
+  const totalPages = Math.max(1, Math.ceil(signalRowCount / pageSize))
+  const isLastSignalPage = page >= totalPages
 
   useEffect(() => {
     setPage(1)
@@ -418,8 +438,8 @@ export function CopierLogsPage() {
 
     try {
       // Mirror copies carry no signal, so they are read from their own ledger and
-      // merged in front of the signal list. Their count shifts the signal window,
-      // so that read goes first; the channel lookup runs alongside it.
+      // spliced into the page that owns their time span. The channel lookup runs
+      // alongside that read.
       const channelsQuery = supabase
         .from('telegram_channels')
         .select('id,display_name,channel_username,source_kind')
@@ -430,7 +450,8 @@ export function CopierLogsPage() {
       ])
       const visibleMirror = filter === 'all' ? mirror : mirror.filter(row => row.status === filter)
 
-      const plan = planMergedLogPage(page, pageSize, visibleMirror.length)
+      const from = (page - 1) * pageSize
+      const to = from + pageSize - 1
 
       let query = supabase
         .from('signals')
@@ -440,10 +461,12 @@ export function CopierLogsPage() {
         .order('created_at', { ascending: false })
 
       if (filter !== 'all') query = query.eq('status', filter)
-      if (plan.signalFrom != null && plan.signalTo != null) query = query.range(plan.signalFrom, plan.signalTo)
-      else query = query.limit(0)
+      query = query.range(from, to)
 
       const signalsRes = await query
+      // The count and the rows come from one request, so a failure here must not
+      // be committed as "this page has no signals" — keep the previous view.
+      if (signalsRes.error) throw signalsRes.error
 
       const loaded = ((signalsRes.data ?? []) as Signal[]).filter(s => !isNonTradeSkipReason(s.skip_reason))
       const nextSymbolContext = await buildSignalSymbolLookup(supabase, user.id, loaded)
@@ -453,9 +476,25 @@ export function CopierLogsPage() {
       // signal window must never be written a request apart, or a slower older
       // load could pair its mirror rows with a newer load's signal page.
       if (seq !== loadSeqRef.current) return
-      const signalCount = signalsRes.count ?? loaded.length
+      // Record where this page ended in time. The bound is handed on only when
+      // the reader moved to the very next page — after a jump there is no
+      // continuous window to inherit, so the next page falls back to its own span.
+      const oldestSignal = loaded[loaded.length - 1]?.created_at ?? null
+      setSignalWindow(prev => ({
+        page,
+        // Keep the chain alive when a page returns no signals at all: without a
+        // bound the next page could not place its window and would show nothing.
+        // A middle page coming back empty would widen the window instead and
+        // repeat rows — impossible in practice, because the count and the rows
+        // come from the same request and `totalPages` is derived from that count.
+        oldest: oldestSignal ?? prev?.oldest ?? null,
+        previousOldest: prev && prev.page === page - 1 ? prev.oldest : null,
+      }))
+      const signalsTotal = signalsRes.count ?? loaded.length
+      const signalTotal = Number.isFinite(signalsTotal) ? signalsTotal : loaded.length
+      setSignalRowCount(signalTotal)
       setMirrorLogs(visibleMirror)
-      setTotalCount((Number.isFinite(signalCount) ? signalCount : loaded.length) + visibleMirror.length)
+      setTotalCount(signalTotal + visibleMirror.length)
       setChannelDisplayNames(buildChannelDisplayNames(channelRows))
       setChannelSourceKinds(buildChannelSourceKinds(channelRows))
       setSymbolContext(nextSymbolContext)
@@ -496,9 +535,6 @@ export function CopierLogsPage() {
     void loadSignals()
   }, [user, loadSignals])
 
-  const rangeStart = totalCount === 0 ? 0 : (page - 1) * pageSize + 1
-  const rangeEnd = Math.min(page * pageSize, totalCount)
-
   const filters: { value: Filter; label: string }[] = useMemo(
     () => [
       { value: 'all', label: t.copierLogs.filterAll },
@@ -531,32 +567,48 @@ export function CopierLogsPage() {
 
   const viewDetailsLabel = t.copierLogs.detailModal?.viewDetails ?? DEFAULT_DETAIL_MODAL.viewDetails
 
-  /** Mirror copies and signals as one renderable list, mirror first (newest). */
+  /**
+   * One page of the log: this page's signals, with the mirror events that share
+   * their time span spliced in, newest first. Mirror events never sit in front
+   * of every signal — they appear in the page that owns their moment.
+   */
   const logViews = useMemo(() => {
-    // Mirror rows are held in full (their count drives the signal window), so
-    // slice them to this page here — otherwise every page would re-show them.
-    const { mirrorStart, mirrorCount } = planMergedLogPage(page, pageSize, mirrorLogs.length)
-    const mirrorPage = mirrorLogs.slice(mirrorStart, mirrorStart + mirrorCount)
-    const mirrorViews: LogViewEntry[] = mirrorPage.map(row => ({
-      key: row.id,
-      view: buildMirrorLogView(row, statusConfig, t.copierLogs),
-      mirror: row,
-    }))
-    const signalViews: LogViewEntry[] = signals.map(signal => ({
-      key: signal.id,
-      view: buildSignalLogView(
+    const bound = signalWindow && signalWindow.page === page ? signalWindow.previousOldest : null
+    const mirrorRows = pageMirrorSlice(mirrorLogs, signals, page, bound, isLastSignalPage)
+    const entries: LogViewEntry[] = [
+      ...mirrorRows.map(row => ({
+        key: row.id,
+        at: row.createdAt,
+        view: buildMirrorLogView(row, statusConfig, t.copierLogs),
+        mirror: row,
+      })),
+      ...signals.map(signal => ({
+        key: signal.id,
+        at: signal.created_at,
+        view: buildSignalLogView(
+          signal,
+          channelDisplayNames,
+          channelSourceKinds,
+          symbolContext,
+          signals,
+          statusConfig,
+          t.copierLogs,
+        ),
         signal,
-        channelDisplayNames,
-        channelSourceKinds,
-        symbolContext,
-        signals,
-        statusConfig,
-        t.copierLogs,
-      ),
-      signal,
-    }))
-    return [...mirrorViews, ...signalViews]
-  }, [mirrorLogs, signals, statusConfig, channelDisplayNames, channelSourceKinds, symbolContext, t, page, pageSize])
+      })),
+    ]
+    return entries.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
+  }, [mirrorLogs, signals, page, signalWindow, isLastSignalPage, statusConfig, channelDisplayNames, channelSourceKinds, symbolContext, t])
+
+  // Positions are counted in signal rows, but a page can carry more rows than
+  // the page size once mirror events splice in, so the end of the range comes
+  // from what is actually on screen rather than from `page * pageSize`. The two
+  // numbers are therefore approximate when mirrors span several pages: the total
+  // is exact (every row is reachable exactly once), the window is not.
+  const rangeStart = totalCount === 0 ? 0 : (page - 1) * pageSize + 1
+  const rangeEnd = totalCount === 0
+    ? 0
+    : Math.max(rangeStart, Math.min(rangeStart + logViews.length - 1, totalCount))
 
   const detailDisplay = useMemo(() => {
     if (!detailSignal) return null
@@ -695,7 +747,13 @@ export function CopierLogsPage() {
             rangeStart={rangeStart}
             rangeEnd={rangeEnd}
             total={totalCount}
-            onPageChange={setPage}
+            onPageChange={(next) => {
+              setPage(next)
+              // Raise the skeleton in the same tick as the navigation. Effects run
+              // after paint, so without this one frame would show the new page
+              // number paired with the previous page's rows.
+              setLoading(true)
+            }}
             onPageSizeChange={setPageSize}
             labels={{
               show: t.common.show,

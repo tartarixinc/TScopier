@@ -4,6 +4,11 @@ import { runEphemeralBacktestSync, runWithEphemeralListener } from './backtestSy
 import { TelegramSessionInvalidError } from './telegramClient'
 import { envNumber } from './envNumber'
 import {
+  openTelegramSession,
+  telegramSessionKeyFingerprints,
+  TelegramSessionDecryptError,
+} from './telegramSessionCrypto'
+import {
   ChannelInfo,
   ListenerStatus,
   UserListener,
@@ -74,6 +79,31 @@ function shouldRunGramjsForSession(session: { listener_engine?: string | null })
   if (!gramjsListenerEnabled()) return false
   const engine = String(session.listener_engine ?? 'gramjs').toLowerCase().trim()
   return engine !== 'telethon'
+}
+
+/**
+ * Decrypt a stored session string before handing it to GramJS. A value no
+ * configured key can open is skipped rather than connected (ciphertext is not
+ * a session) and is never rewritten.
+ */
+const decryptFailuresLogged = new Set<string>()
+
+function openSessionForUser(stored: string | null | undefined, userId: string): string | null {
+  try {
+    return openTelegramSession(stored)
+  } catch (err) {
+    // syncSessions retries every 30s; one line per user per process keeps the
+    // signal without drowning the logs (see the 2026-09-29 log-volume incident).
+    if (!decryptFailuresLogged.has(userId)) {
+      decryptFailuresLogged.add(userId)
+      console.error(
+        `[sessionManager] session_string unreadable for ${userId} `
+        + '(further failures for this user are suppressed until restart):',
+        err instanceof Error ? err.message : err,
+      )
+    }
+    return null
+  }
 }
 
 /** Wait after disconnect so Telegram releases the auth key before a new connect. */
@@ -272,10 +302,12 @@ export class UserSessionManager {
         await new Promise(r => setTimeout(r, staggerMs))
       }
       try {
+        const sessionString = openSessionForUser(session.session_string, session.user_id)
+        if (!sessionString) continue
         // Bound each connect so one wedged listener (e.g. a hung Telegram
         // warm-up) cannot stall startup for every other session.
         await withTimeout(
-          this.startListener(session.user_id, session.session_string),
+          this.startListener(session.user_id, sessionString),
           startTimeoutMs,
           `startListener ${session.user_id}`,
         )
@@ -759,8 +791,10 @@ export class UserSessionManager {
       .eq('user_id', userId)
       .maybeSingle()
     if (!sess?.session_string || !sess.is_active || !shouldRunGramjsForSession(sess)) return
+    const sessionString = openSessionForUser(sess.session_string, userId)
+    if (!sessionString) return
     try {
-      await this.startListener(userId, sess.session_string)
+      await this.startListener(userId, sessionString)
     } catch (err) {
       console.warn(`[sessionManager] restart after auth cleared failed for ${userId}:`, err)
     }
@@ -797,8 +831,10 @@ export class UserSessionManager {
       const failedAt = this.recentlyFailed.get(userId)
       if (failedAt && now - failedAt < cooldownMs) continue
       try {
+        const sessionString = openSessionForUser(session.session_string, userId)
+        if (!sessionString) continue
         await withTimeout(
-          this.startListener(userId, session.session_string),
+          this.startListener(userId, sessionString),
           listenerStartTimeoutMs(),
           `syncSessions startListener ${userId}`,
         )
@@ -868,6 +904,7 @@ export class UserSessionManager {
     lease_mismatch: boolean
     lease_gap: number
     lease_mismatch_user_ids?: string[]
+    session_encryption: { primary: string | null; previous: string[] }
     metrics: Record<string, number>
     checked_at: string
   }> {
@@ -925,6 +962,7 @@ export class UserSessionManager {
       ...(leaseMismatchUserIds.length > 0
         ? { lease_mismatch_user_ids: leaseMismatchUserIds }
         : {}),
+      session_encryption: telegramSessionKeyFingerprints(),
       metrics: getMetricsSnapshot(),
       checked_at: new Date(now).toISOString(),
     }
@@ -1077,7 +1115,8 @@ export class UserSessionManager {
     }
     if (!sess.is_active) throw new Error('Telegram session is paused')
 
-    const sessionString = sess.session_string
+    const sessionString = openSessionForUser(sess.session_string, userId)
+    if (!sessionString) throw new TelegramSessionDecryptError()
     const delays = authKeyDupReconnectDelaysMs(authKeyReleaseDelayMs(), authKeyDupReconnectDelayMs())
     let lastErr: unknown
 
@@ -1190,7 +1229,9 @@ export class UserSessionManager {
     if (!sess?.session_string) throw new Error('No Telegram session for this user')
     if (!sess.is_active) throw new Error('Telegram session is paused')
 
-    await this.startListener(userId, sess.session_string)
+    const sessionString = openSessionForUser(sess.session_string, userId)
+    if (!sessionString) throw new TelegramSessionDecryptError()
+    await this.startListener(userId, sessionString)
     const listener = this.listeners.get(userId)
     if (!listener) throw new Error('Failed to start listener for user')
     return listener
@@ -1286,11 +1327,17 @@ export class UserSessionManager {
     let crossServiceHold = false
 
     if (pauseLiveLocal) {
-      sessionString = (await this.supabase
+      const storedSession = (await this.supabase
         .from('telegram_sessions')
         .select('session_string')
         .eq('user_id', userId)
         .maybeSingle()).data?.session_string ?? null
+      if (storedSession) {
+        // Decrypt before stopping a healthy listener: if the row cannot be
+        // opened we must not take the copier offline for nothing.
+        sessionString = openSessionForUser(storedSession, userId)
+        if (!sessionString) throw new TelegramSessionDecryptError()
+      }
       hadLiveListener = this.listeners.has(userId)
       if (hadLiveListener) {
         console.log(`[sessionManager] pausing live listener for ephemeral Telegram user=${userId}`)

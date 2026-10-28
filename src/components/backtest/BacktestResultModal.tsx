@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { CheckCircle2, Clock, Loader2, Pencil, Scale, Trash2, TrendingUp, X } from 'lucide-react'
 import clsx from 'clsx'
+import { useConfirm } from '../../context/ConfirmDialogContext'
 import { useT } from '../../context/LocaleContext'
 import { backtestApi } from '../../lib/backtestApi'
 import type { BacktestRunRow, BacktestTradeRow } from '../../lib/backtestTypes'
@@ -39,6 +40,7 @@ export function BacktestResultModal({
   onTradeDeleted,
 }: BacktestResultModalProps) {
   const t = useT()
+  const confirm = useConfirm()
   const bt = t.backtest
   const btLabels = backtestDisplayLabels(bt)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -104,7 +106,13 @@ export function BacktestResultModal({
           : 'bg-neutral-50 border-neutral-200 text-neutral-900 dark:text-neutral-50 dark:bg-neutral-800/50 dark:border-neutral-700'
 
   const handleDelete = async () => {
-    if (!window.confirm(bt.deleteConfirm)) return
+    const approved = await confirm({
+      title: bt.deleteResult,
+      body: bt.deleteConfirm,
+      confirmLabel: t.common.delete,
+      cancelLabel: t.common.cancel,
+    })
+    if (!approved) return
     setFormError('')
     setBusy(true)
     try {

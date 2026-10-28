@@ -12,6 +12,8 @@ import type {
 } from './fxsocketClient'
 import type { MtHistoryProfile } from './mtTradeFields'
 import type { BrokerProvider } from './brokerProvider'
+import type { BrokerAccountMode } from './copyShared/brokerAccountMode'
+import { noteObservedClose, observedCloseRows, type ObservedClose } from './copyShared/observedCloses'
 import {
   BinanceApiError,
   BinanceFuturesClient,
@@ -70,6 +72,8 @@ type AccountState = {
   loadedAt: number
   client: BinanceFuturesClient
   legs: Map<number, Leg>
+  /** Positions watched disappearing from the book — see `noteClosedPosition`. */
+  closed: ObservedClose[]
   hydrated: boolean
   applied: Set<string>
   hedge?: { value: boolean; at: number }
@@ -203,6 +207,38 @@ export class BinanceProvider implements BrokerProvider {
     const status = await this.mtStatus(id)
     return status.account?.tradeAllowed === true
   }
+
+  /**
+   * Account-wide dual-side position mode: hedge mode gives each side its own
+   * position, one-way merges them. Read here instead of through `hedgeMode`
+   * so a failed call surfaces as unknown (no mode) rather than being reported
+   * as one-way and persisted as the wrong answer.
+   */
+  async accountMode(id: string): Promise<BrokerAccountMode | null> {
+    const st = await this.state(id)
+    const body = asRecord(await st.client.signed('GET', '/fapi/v1/positionSide/dual'))
+    const raw = body.dualSidePosition
+    if (raw === true || raw === 'true') return 'hedging'
+    if (raw === false || raw === 'false') return 'netting'
+    return null
+  }
+  /**
+   * The exchange's own answer, read straight from the position list rather than
+   * from the copier's leg book (which can miss a leg after a restart). A failed
+   * read returns null so the caller keeps the copy open instead of guessing.
+   */
+  async stillHoldsPosition(id: string, symbol: string, side: 'buy' | 'sell'): Promise<boolean | null> {
+    try {
+      // `state()` is inside the try as well: a missing or unreadable credential is
+      // just another "cannot answer", which the contract says returns null.
+      const st = await this.state(id)
+      const positions = await this.positions(st)
+      return this.netFor(positions, symbol, side === 'buy' ? 'BUY' : 'SELL') > 0
+    } catch {
+      return null
+    }
+  }
+
 
   // ── Orders ──────────────────────────────────────────────────────────────
 
@@ -461,10 +497,17 @@ export class BinanceProvider implements BrokerProvider {
           profit: realized,
           commission: -(finite(fill.commission) ?? 0),
           comment: closedTicket ? this.commentForTicket(st, closedTicket) : clientId,
+          // Only fills with realized PnL reach this loop, i.e. closing fills, so
+          // the fill time is the close time: history readers use a close time to
+          // tell a real close from an open echo (and to write the trade's fill).
           time: finite(fill.time),
+          closeTime: finite(fill.time),
         })
       }
     }
+    // Positions this worker watched disappear from Binance's book, reported
+    // under the ticket the copier tracks (see `noteClosedPosition`).
+    rows.push(...observedCloseRows(st.closed, startTime, endTime))
     return rows
   }
 
@@ -581,6 +624,7 @@ export class BinanceProvider implements BrokerProvider {
       loadedAt: this.now(),
       client: new BinanceFuturesClient(credential, { fetchImpl: this.fetchImpl, now: this.now }),
       legs: new Map(),
+      closed: [],
       hydrated: false,
       applied: new Set(),
     }
@@ -940,6 +984,31 @@ export class BinanceProvider implements BrokerProvider {
   }
 
   /**
+   * Remember a position as closed once the exchange itself reports nothing
+   * left for it.
+   *
+   * Binance USDT-M futures have no per-position id: a history row carries the
+   * id of the order that produced the fill, which is the ticket the copier
+   * tracks only when the copier placed that close. A stop-loss, take-profit,
+   * manual or liquidated close therefore never matches the tracked ticket —
+   * and the mirror engine, which refuses to close a copy without history
+   * confirming the source is gone, would leave that copy open forever.
+   * Noting the leg as it leaves the live book lets `orderHistory` answer with
+   * the tracked ticket instead.
+   *
+   * Recorded only when the exchange reports no remaining position for the
+   * leg's symbol and side, so a protective order that merely disappeared
+   * (cancelled, not executed) can never confirm a close that did not happen.
+   */
+  private noteClosedPosition(st: AccountState, positions: PositionRow[], leg: Leg): void {
+    if (leg.kind !== 'position') return
+    if (this.netFor(positions, leg.symbol, leg.side) > 0) return
+    noteObservedClose(st.closed, {
+      ticket: leg.ticket, symbol: leg.symbol, operation: operationOf(leg), lots: leg.qty, at: this.now(),
+    })
+  }
+
+  /**
    * Reconcile our legs with Binance: drop legs whose position is gone or whose
    * protective order fired (cancelling the surviving partner), and trim quantities
    * to what the position still holds.
@@ -958,6 +1027,7 @@ export class BinanceProvider implements BrokerProvider {
         if (!slGone && !tpGone) continue
         // One of the pair fired. Cancel the partner so it cannot reduce another leg.
         await this.cancelProtection(st, leg).catch(() => undefined)
+        this.noteClosedPosition(st, positions, leg)
         st.legs.delete(leg.ticket)
       }
     }
@@ -974,6 +1044,7 @@ export class BinanceProvider implements BrokerProvider {
         const take = Math.min(leg.qty, left)
         if (!(take > 0)) {
           await this.cancelProtection(st, leg).catch(() => undefined)
+          this.noteClosedPosition(st, positions, leg)
           st.legs.delete(leg.ticket)
           continue
         }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   MIRROR_STOP_TIMEOUT_MESSAGE,
   disconnectBrokerCopyLinkSafely,
+  fetchBrokerCopyDestinationLinks,
   fetchMirrorCopyLinkStates,
   humanizeMirrorDeleteError,
   isMirrorOpenCopiesError,
@@ -77,6 +78,57 @@ describe('mirror copy link actions', () => {
   it('does not query when there are no links', async () => {
     const client = { from: () => { throw new Error('must not query') } }
     expect(await fetchMirrorCopyLinkStates(client as never, [])).toEqual({ states: {}, error: null })
+  })
+})
+
+describe('fetchBrokerCopyDestinationLinks', () => {
+  function destinationClient(rows: unknown[], error?: { message: string }) {
+    return {
+      from: (table: string) => {
+        expect(table).toBe('broker_copy_links')
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => Promise.resolve({ data: error ? null : rows, error: error ?? null }),
+            }),
+          }),
+        }
+      },
+    }
+  }
+
+  it('returns the links where the broker is the slave', async () => {
+    const client = destinationClient([
+      {
+        id: 'link-1',
+        source_broker_account_id: 'master-1',
+        destination_broker_account_id: 'slave-1',
+        manual_settings: { fixed_lot: 0.02 },
+      },
+    ])
+    const result = await fetchBrokerCopyDestinationLinks(client as never, 'user-1', 'slave-1')
+    expect(result.error).toBeNull()
+    expect(result.links).toHaveLength(1)
+    expect(result.links[0]).toMatchObject({
+      id: 'link-1',
+      source_broker_account_id: 'master-1',
+      destination_broker_account_id: 'slave-1',
+    })
+    expect(result.links[0].manual_settings.fixed_lot).toBe(0.02)
+  })
+
+  it('treats a missing table as no links', async () => {
+    const client = destinationClient([], {
+      message: 'relation "public.broker_copy_links" does not exist in the schema cache',
+    })
+    expect(await fetchBrokerCopyDestinationLinks(client as never, 'user-1', 'slave-1'))
+      .toEqual({ links: [], error: null })
+  })
+
+  it('surfaces other database errors', async () => {
+    const client = destinationClient([], { message: 'not authorized' })
+    expect(await fetchBrokerCopyDestinationLinks(client as never, 'user-1', 'slave-1'))
+      .toEqual({ links: [], error: 'not authorized' })
   })
 })
 

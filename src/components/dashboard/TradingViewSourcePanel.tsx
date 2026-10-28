@@ -5,6 +5,7 @@ import clsx from 'clsx'
 import { Copy, Plus, RefreshCw, Trash2, X } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { useConfirm } from '../../context/ConfirmDialogContext'
 import { useT } from '../../context/LocaleContext'
 import { interpolate } from '../../i18n/interpolate'
 import { TRADINGVIEW_ALERT_TEMPLATE } from '../../../supabase/functions/_shared/tradingViewAlert'
@@ -53,6 +54,7 @@ export function TradingViewSourcePanel({
 }) {
   const { user } = useAuth()
   const t = useT()
+  const confirm = useConfirm()
   const copy = t.channelsPage
   const [webhooks, setWebhooks] = useState<WebhookRow[]>([])
   const [deliveries, setDeliveries] = useState<DeliveryRow[]>([])
@@ -246,12 +248,21 @@ export function TradingViewSourcePanel({
                   void run(() => setTradingViewWebhookActive(supabase, user.id, webhook.id, checked))
                 }}
                 onDelete={() => {
-                  if (!user?.id || !window.confirm(copy.tradingViewDelete)) return
-                  void run(async () => {
-                    const result = await deleteTradingViewWebhook(supabase, user.id, webhook, brokers)
-                    for (const broker of result.brokers) replaceBroker(broker)
-                    if (!result.error) setSelectedId(current => (current === webhook.id ? null : current))
-                    return { error: result.error }
+                  if (!user?.id) return
+                  void confirm({
+                    title: copy.tradingViewDelete,
+                    body: copy.tradingViewDeleteConfirm
+                      ?? 'Delete this TradingView webhook? Its alert URL will stop working.',
+                    confirmLabel: copy.tradingViewDelete,
+                    cancelLabel: t.common.cancel,
+                  }).then(approved => {
+                    if (!approved) return
+                    void run(async () => {
+                      const result = await deleteTradingViewWebhook(supabase, user.id, webhook, brokers)
+                      for (const broker of result.brokers) replaceBroker(broker)
+                      if (!result.error) setSelectedId(current => (current === webhook.id ? null : current))
+                      return { error: result.error }
+                    })
                   })
                 }}
               />
@@ -295,8 +306,18 @@ export function TradingViewSourcePanel({
             statusLabel={statusLabel}
             onCopy={copyText}
             onRotate={() => {
-              if (!user?.id || !window.confirm(copy.tradingViewRotate)) return
-              void run(() => rotateTradingViewWebhook(supabase, user.id, selected.id))
+              if (!user?.id) return
+              void confirm({
+                title: copy.tradingViewRotate,
+                body: copy.tradingViewRotateConfirm
+                  ?? 'Rotate this alert URL? The old URL will stop accepting alerts immediately.',
+                confirmLabel: copy.tradingViewRotate,
+                cancelLabel: t.common.cancel,
+                tone: 'primary',
+              }).then(approved => {
+                if (!approved) return
+                void run(() => rotateTradingViewWebhook(supabase, user.id, selected.id))
+              })
             }}
           />
         </ModalFrame>

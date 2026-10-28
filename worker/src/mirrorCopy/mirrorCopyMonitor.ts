@@ -19,8 +19,12 @@
  *    merge into the first.
  *  - One copy per source ticket is enforced by the mirror_copy_trade_mappings unique key and
  *    the mirror_copy_execution_events idempotency key. An uncertain open is never retried.
- *  - A source ticket that disappears is only closed once closed history confirms it is gone;
- *    an inconclusive read leaves the copy open rather than silently dropping a live ticket.
+ *  - A source ticket that disappears is only closed once the venue itself confirms it is
+ *    gone, in this order: the venue's own position list still holds nothing for that
+ *    symbol and side (the answer on venues whose history cannot name our ticket), or
+ *    closed history names the ticket and a fresh open-list read does not list it.
+ *    Any inconclusive read leaves the copy open rather than silently dropping a live
+ *    ticket.
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { BrokerProvider, OrderSendArgs } from '../brokerProvider'
@@ -33,17 +37,27 @@ import {
   brokerErrorCode,
   commentsMatch,
   constrainedCopyVolume,
+  COPY_BROKER_COLUMNS,
   isDemo,
+  LEGACY_COPY_BROKER_COLUMNS,
+  missingProviderIdColumn,
   normalizeSourcePosition,
   sessionId,
   symbolLimits,
   type NormalizedSourcePosition,
 } from '../copyShared/copyHelpers'
 import { mirrorCopyAccountModeSupported } from './mirrorCopyAccountMode'
+import { accountModeFromBrokerRow, type BrokerAccountMode } from '../copyShared/brokerAccountMode'
 import { mirrorCopyStops, planMirrorCopy, type MirrorCopyPlan } from './mirrorCopyPlan'
-import { parseMirrorCopySettings, type MirrorCopySettings } from './mirrorCopyTypes'
+import {
+  MIRROR_CLOSE_REASON,
+  parseMirrorCopySettings,
+  type MirrorCloseReason,
+  type MirrorCopySettings,
+} from './mirrorCopyTypes'
 import { historyContainsClosedPosition, mappingIsOpen, mirrorCopyComment } from './mirrorCopyReconcile'
 import { matchBrokerSymbolFromInventory, parseSymbolListResponse } from '../tradeExecutor/brokerSymbolCache'
+import { applyCloseColumnUpdate } from '../tradeCloseUpdate'
 
 type Json = Record<string, unknown>
 
@@ -64,9 +78,16 @@ type BrokerRow = {
   fxsocket_account_id: string | null
   metaapi_account_id: string | null
   ctrader_account_id: string | null
+  binance_account_id: string | null
+  bybit_account_id: string | null
+  kucoin_account_id: string | null
+  dxtrade_account_id: string | null
+  tradelocker_account_id: string | null
+  matchtrader_account_id: string | null
   writer_epoch: number | null
   provider_transition_state: string | null
   margin_mode: string | null
+  dxtrade_is_position_based: boolean | null
 }
 
 type LinkRow = {
@@ -98,17 +119,32 @@ type MappingRow = {
   source_take_profit: number | null
   state: string
   broker_comment: string
+  close_reason?: string | null
 }
 
 type BrokerContext = { source: BrokerRow; destination: BrokerRow }
 
-const BROKER_COLUMNS =
-  'id,user_id,provider,platform,is_active,connection_status,linked_account_type,'
-  + 'mtapi_session_id,fxsocket_account_id,metaapi_account_id,ctrader_account_id,'
-  + 'writer_epoch,provider_transition_state,margin_mode'
+/** Why a source ticket could not be confirmed closed (see `confirmSourceClosed`). */
+type SourceCloseDecision =
+  | { confirmed: true }
+  | { confirmed: false; reason: 'still_held_on_venue' | 'still_in_open_list' | 'not_confirmed' }
 
-/** Mapping states that mean "the copy is still ours to manage". */
-const OPEN_MAPPING_STATES = ['opening', 'open', 'uncertain', 'error']
+/**
+ * Every provider id column must be selected: `sessionId()` reads the column of
+ * the row's own provider, so an omitted one resolves to an empty session and
+ * the link fails with BROKER_SESSION_UNAVAILABLE. `margin_mode` drives the
+ * destination hedging gate and `dxtrade_is_position_based` resolves the mode
+ * for DXtrade accounts (which have no other mode source).
+ */
+const BROKER_COLUMNS = `${COPY_BROKER_COLUMNS},margin_mode,dxtrade_is_position_based`
+
+/**
+ * Mapping states that mean "the copy is still ours to manage". `closing` is a
+ * user-requested close (request_mirror_copy_close RPC) that has not reached the
+ * broker yet — it is swept here so it runs on every path that closes copies
+ * (active reconcile, pause drain, stop flatten) instead of sitting forever.
+ */
+const OPEN_MAPPING_STATES = ['opening', 'open', 'closing', 'uncertain', 'error']
 
 /** Upper bound on automatic retries of a close/resize event left `uncertain`. */
 const MAX_EVENT_ATTEMPTS = 5
@@ -132,15 +168,6 @@ export type MirrorCopyMonitorOptions = {
 
 function envFlag(name: string, fallback = false): boolean {
   return parseEnvBool(process.env[name], fallback)
-}
-
-/**
- * The mode used by the hedging gate. MT4 has no netting concept and is always hedging;
- * every other platform must have a confirmed stored mode.
- */
-function destinationAccountMode(row: BrokerRow): string {
-  if (String(row.platform ?? '').trim().toUpperCase() === 'MT4') return 'hedging'
-  return String(row.margin_mode ?? 'unknown').trim() || 'unknown'
 }
 
 /** Read a positive number from the environment, ignoring NaN/absent values. */
@@ -213,6 +240,65 @@ export class MirrorCopyMonitor {
     return apiForBrokerAccount(row.provider, sessionId(row), authority)
   }
 
+  /**
+   * Hedging/netting for the destination account, resolved once per tick and
+   * stored so the gate, the UI and the next tick all read one answer:
+   *
+   *  1. what the row already knows — stored `margin_mode`, the MT4 rule, the
+   *     hedging-only platforms and the DXtrade position-based flag
+   *     (`accountModeFromBrokerRow`);
+   *  2. otherwise ask the venue itself through the optional `accountMode`
+   *     method (the crypto venues report their position mode);
+   *  3. anything still unknown stays unknown, and the gate keeps failing closed.
+   *
+   * A learned mode is written back to `broker_accounts.margin_mode`, which the
+   * worker owns: `supabase/migrations/20261026150100_*` restores the guard
+   * trigger's handling of that column (a later migration had dropped it), and
+   * clients only hold a column-scoped update grant anyway. A failed write only
+   * means the mode is re-derived next tick.
+   */
+  private async resolveDestinationAccountMode(row: BrokerRow): Promise<{ mode: string; detail: string }> {
+    const fromRow = accountModeFromBrokerRow(row)
+    if (fromRow === 'unknown') {
+      let queried: BrokerAccountMode | null
+      let failure: unknown = null
+      try {
+        queried = (await this.provider(row, true)?.accountMode?.(sessionId(row))) ?? null
+      } catch (error) {
+        queried = null
+        failure = error
+      }
+      if (queried !== 'hedging' && queried !== 'netting') {
+        const reason = failure
+          ? `the mode could not be read from the broker (${failure instanceof Error ? failure.message : String(failure)})`
+          : 'the broker did not report a mode for this account'
+        return {
+          mode: 'unknown',
+          detail: `Destination account mode is unknown: ${reason}; mirror copy requires a confirmed hedging account`,
+        }
+      }
+      await this.rememberAccountMode(row.id, queried, row.margin_mode)
+      return { mode: queried, detail: `Destination account mode is ${queried}; mirror copy requires a confirmed hedging account` }
+    }
+    if (String(row.margin_mode ?? '').trim() !== fromRow) {
+      await this.rememberAccountMode(row.id, fromRow, row.margin_mode)
+    }
+    return {
+      mode: fromRow,
+      detail: `Destination account mode is ${fromRow}; mirror copy requires a confirmed hedging account`,
+    }
+  }
+
+  private async rememberAccountMode(brokerAccountId: string, mode: string, current: string | null): Promise<void> {
+    if (String(current ?? '').trim() === mode) return
+    const { error } = await this.supabase.from('broker_accounts').update({ margin_mode: mode }).eq('id', brokerAccountId)
+    if (error) {
+      console.warn(`[mirror-copy] could not store margin_mode=${mode} for ${brokerAccountId}: ${error.message}`)
+      return
+    }
+    console.log(`[mirror-copy] margin_mode=${mode} stored for ${brokerAccountId}`)
+  }
+
   private async reconcileMaster(master: MirrorCopyMasterRow): Promise<void> {
     const masterId = master.broker_account_id
     const { data: links, error } = await this.supabase.from('broker_copy_links')
@@ -238,6 +324,14 @@ export class MirrorCopyMonitor {
 
   private async reconcileLink(link: LinkRow, state: LinkStateRow): Promise<void> {
     if (state.desired_status === 'paused') {
+      // Pause only stops NEW copies — a close the user already asked for must still
+      // run, or the request would sit forever. Failures surface as the link error
+      // and skip the paused patch below so the error is not wiped on the same tick.
+      const pausedFailures = await this.processRequestedCloses(link)
+      if (pausedFailures.length > 0) {
+        await this.failLink(link.id, 'RECONCILE_PARTIAL', new Error(`Requested closes could not be completed: ${pausedFailures.join(', ')}`))
+        return
+      }
       await this.patchLinkState(link.id, {
         status: 'paused', worker_acknowledged_at: new Date().toISOString(), last_reconciled_at: new Date().toISOString(),
         error_code: null, error_detail: null,
@@ -278,12 +372,24 @@ export class MirrorCopyMonitor {
       return
     }
 
-    const accountMode = destinationAccountMode(context.destination)
-    if (!mirrorCopyAccountModeSupported(accountMode)) {
+    // User-requested closes (state 'closing') run before every gate below. Closing
+    // by ticket needs only the destination — never the source, never the sizing
+    // mode, never a hedging account — so a sticky gate (unsupported mode/sizing, a
+    // down source) must never strand a request. Failures surface as the link
+    // error; on success the link continues through its gate, which then reports
+    // the real reason copying is blocked.
+    const sweepFailures = await this.processRequestedCloses(link)
+    if (sweepFailures.length > 0) {
+      await this.failLink(link.id, 'RECONCILE_PARTIAL', new Error(`Requested closes could not be completed: ${sweepFailures.join(', ')}`))
+      return
+    }
+
+    const accountMode = await this.resolveDestinationAccountMode(context.destination)
+    if (!mirrorCopyAccountModeSupported(accountMode.mode)) {
       await this.patchLinkState(link.id, {
         status: 'unsupported_provider',
         error_code: 'ACCOUNT_MODE_UNSUPPORTED',
-        error_detail: `Destination account mode is ${accountMode}; mirror copy requires a confirmed hedging account`,
+        error_detail: accountMode.detail,
         worker_acknowledged_at: new Date().toISOString(),
         last_reconciled_at: new Date().toISOString(),
       })
@@ -322,6 +428,26 @@ export class MirrorCopyMonitor {
     // One bad position must not stop the others (or the close loop below) from being
     // handled. Failures are collected and surfaced once every position is processed.
     const failures: string[] = []
+
+    // User-requested closes (state 'closing') run first and are removed from the map:
+    // they must never fall through to a stop/volume sync below, and a source that is
+    // still open must not trigger a re-open (the unique key would make that insert a
+    // no-op anyway, but skipping it keeps the intent explicit). A request is explicit
+    // intent, so no source-history confirmation is required — the close loop's
+    // confirmSourceClosed gate does not apply to it.
+    for (const mapping of [...bySource.values()]) {
+      if (mapping.state !== 'closing') continue
+      bySource.delete(mapping.source_ticket)
+      try {
+        await this.closeMapping(
+          link, context.destination, destinationApi, destinationOrders, mapping,
+          MIRROR_CLOSE_REASON.USER_FORCE_CLOSE,
+        )
+      } catch (error) {
+        failures.push(`close:${mapping.source_ticket}:${brokerErrorCode(error)}`)
+      }
+    }
+
     for (const position of sourcePositions) {
       const mapping = bySource.get(position.ticket)
       try {
@@ -344,11 +470,15 @@ export class MirrorCopyMonitor {
     for (const mapping of bySource.values()) {
       if (openTickets.has(mapping.source_ticket) || !mappingIsOpen(mapping.state)) continue
       try {
-        if (!await this.confirmSourceClosed(sourceApi, context, mapping.source_ticket)) {
-          await this.recordUnresolvedSource(link.id, mapping)
+        const decision = await this.confirmSourceClosed(sourceApi, context, mapping)
+        if (!decision.confirmed) {
+          await this.recordUnresolvedSource(link.id, mapping, decision.reason)
           continue
         }
-        await this.closeMapping(link, context.destination, destinationApi, destinationOrders, mapping)
+        await this.closeMapping(
+          link, context.destination, destinationApi, destinationOrders, mapping,
+          MIRROR_CLOSE_REASON.SOURCE_CLOSED,
+        )
       } catch (error) {
         failures.push(`close:${mapping.source_ticket}:${brokerErrorCode(error)}`)
       }
@@ -365,11 +495,25 @@ export class MirrorCopyMonitor {
     })
   }
 
+  /**
+   * Broker rows for both ends of a link.
+   *
+   * The wide column list fails outright on a database that has not received the
+   * later provider migrations, so a missing per-provider column is retried with
+   * the legacy set: the link keeps working for the providers those columns do
+   * cover, and a provider whose column is absent then fails on its own session
+   * (BROKER_SESSION_UNAVAILABLE) instead of taking the whole read down.
+   */
   private async loadContext(link: LinkRow): Promise<BrokerContext> {
-    const [sourceResult, destinationResult] = await Promise.all([
-      this.supabase.from('broker_accounts').select(BROKER_COLUMNS).eq('id', link.source_broker_account_id).single(),
-      this.supabase.from('broker_accounts').select(BROKER_COLUMNS).eq('id', link.destination_broker_account_id).single(),
+    const read = (columns: string) => Promise.all([
+      this.supabase.from('broker_accounts').select(columns).eq('id', link.source_broker_account_id).single(),
+      this.supabase.from('broker_accounts').select(columns).eq('id', link.destination_broker_account_id).single(),
     ])
+    let [sourceResult, destinationResult] = await read(BROKER_COLUMNS)
+    const readError = sourceResult.error ?? destinationResult.error
+    if (readError && missingProviderIdColumn(readError.message)) {
+      ;[sourceResult, destinationResult] = await read(`${LEGACY_COPY_BROKER_COLUMNS},margin_mode`)
+    }
     if (sourceResult.error || !sourceResult.data) throw new Error('SOURCE_UNAVAILABLE')
     if (destinationResult.error || !destinationResult.data) throw new Error('DESTINATION_UNAVAILABLE')
     return {
@@ -542,11 +686,10 @@ export class MirrorCopyMonitor {
     if (!destinationOrder) {
       // The destination position is gone (closed manually or by another system). Do not
       // compute deltas or send stop changes against a missing ticket; retire the ledger row.
-      await this.supabase.from('mirror_copy_trade_mappings').update({
-        state: 'closed', closed_at: new Date().toISOString(),
+      await this.markMappingClosed(mapping.id, MIRROR_CLOSE_REASON.POSITION_GONE, {
         last_error_code: 'DESTINATION_CLOSED_EXTERNALLY',
         last_error_detail: 'Destination position was not found in open orders',
-      }).eq('id', mapping.id)
+      })
       return
     }
 
@@ -582,11 +725,10 @@ export class MirrorCopyMonitor {
           const fresh = await api.openedOrders(sessionId(context.destination)).catch(() => null)
           const freshOrder = fresh?.find(row => rawOrderTicket(row as Json) === destinationTicket)
           if (fresh && !freshOrder) {
-            await this.supabase.from('mirror_copy_trade_mappings').update({
-              state: 'closed', closed_at: new Date().toISOString(),
+            await this.markMappingClosed(mapping.id, MIRROR_CLOSE_REASON.POSITION_GONE, {
               last_error_code: 'DESTINATION_CLOSED_EXTERNALLY',
               last_error_detail: 'Destination position disappeared before a resize close',
-            }).eq('id', mapping.id)
+            })
             await this.finishEvent(event, 'succeeded', { recovered: true })
             return
           }
@@ -636,6 +778,54 @@ export class MirrorCopyMonitor {
     }
   }
 
+  /**
+   * Run user-requested closes (state 'closing') for links whose normal reconcile
+   * path does not execute: a paused link still has to honour a close the user
+   * already asked for, or the request would sit until copying is resumed.
+   * Returns one `ticket:CODE` entry per failure (empty = all done / nothing to do).
+   * Deliberately mirrors the stop path's gates: destination-only (closing needs no
+   * source session), no hedging gate (closing by ticket is safe on any account).
+   */
+  private async processRequestedCloses(link: LinkRow): Promise<string[]> {
+    const { data, error } = await this.supabase.from('mirror_copy_trade_mappings').select('*')
+      .eq('link_id', link.id).eq('state', 'closing')
+    if (error) throw error
+    const pending = (data ?? []) as MappingRow[]
+    if (pending.length === 0) return []
+    if (!this.executionEnabled) {
+      return pending.map(row => `${row.source_ticket}:EXECUTION_DISABLED`)
+    }
+    const context = await this.loadContext(link)
+    if (link.user_id !== context.source.user_id || link.user_id !== context.destination.user_id) {
+      return pending.map(row => `${row.source_ticket}:OWNER_MISMATCH`)
+    }
+    if (!context.destination.is_active) return pending.map(row => `${row.source_ticket}:BROKER_DISCONNECTED`)
+    if (!sessionId(context.destination)) return pending.map(row => `${row.source_ticket}:BROKER_SESSION_UNAVAILABLE`)
+    if (!isDemo(context.destination) && !this.allowLive) {
+      return pending.map(row => `${row.source_ticket}:LIVE_EXECUTION_DISABLED`)
+    }
+    const api = this.provider(context.destination, true)
+    if (!api) return pending.map(row => `${row.source_ticket}:UNSUPPORTED_PROVIDER`)
+    let orders: unknown[]
+    try {
+      orders = await api.openedOrders(sessionId(context.destination))
+    } catch (readError) {
+      return pending.map(row => `${row.source_ticket}:${brokerErrorCode(readError)}`)
+    }
+    const failures: string[] = []
+    for (const mapping of pending) {
+      try {
+        await this.closeMapping(
+          link, context.destination, api, orders, mapping,
+          MIRROR_CLOSE_REASON.USER_FORCE_CLOSE,
+        )
+      } catch (closeError) {
+        failures.push(`${mapping.source_ticket}:${brokerErrorCode(closeError)}`)
+      }
+    }
+    return failures
+  }
+
   private async closeAll(link: LinkRow, destination: BrokerRow): Promise<void> {
     const api = this.provider(destination, true)
     if (!api) throw new Error('UNSUPPORTED_PROVIDER')
@@ -646,7 +836,10 @@ export class MirrorCopyMonitor {
     const failures: string[] = []
     for (const mapping of (data ?? []) as MappingRow[]) {
       try {
-        await this.closeMapping(link, destination, api, orders, mapping)
+        await this.closeMapping(
+          link, destination, api, orders, mapping,
+          MIRROR_CLOSE_REASON.USER_FORCE_CLOSE,
+        )
       } catch (closeError) {
         failures.push(`${mapping.source_ticket}:${brokerErrorCode(closeError)}`)
       }
@@ -660,19 +853,20 @@ export class MirrorCopyMonitor {
     api: BrokerProvider,
     destinationOrders: unknown[],
     mapping: MappingRow,
+    reason: MirrorCloseReason,
   ): Promise<void> {
     let ticket = Number(mapping.destination_ticket)
     if (!(ticket > 0)) {
       const recovered = destinationOrders.find(row => commentsMatch(row, mapping.broker_comment))
       if (!recovered) {
-        await this.supabase.from('mirror_copy_trade_mappings').update({ state: 'closed', closed_at: new Date().toISOString() }).eq('id', mapping.id)
+        await this.markMappingClosed(mapping.id, reason)
         return
       }
       ticket = rawOrderTicket(recovered as Json)
       await this.finalizeOpen(mapping, ticket)
     }
     if (!destinationOrders.some(row => rawOrderTicket(row as Json) === ticket)) {
-      await this.supabase.from('mirror_copy_trade_mappings').update({ state: 'closed', closed_at: new Date().toISOString() }).eq('id', mapping.id)
+      await this.markMappingClosed(mapping.id, reason)
       return
     }
     const event = await this.claimEvent(link.id, mapping.id, mapping.source_ticket, 'close', `close:${mapping.source_ticket}`, { ticket }, true)
@@ -683,7 +877,7 @@ export class MirrorCopyMonitor {
       // distinct error so an operator sees a close that is not taking effect.
       const current = await api.openedOrders(sessionId(destination)).catch(() => destinationOrders)
       if (!current.some(row => rawOrderTicket(row as Json) === ticket)) {
-        await this.supabase.from('mirror_copy_trade_mappings').update({ state: 'closed', closed_at: new Date().toISOString() }).eq('id', mapping.id)
+        await this.markMappingClosed(mapping.id, reason)
         return
       }
       throw new Error('CLOSE_NOT_CONFIRMED')
@@ -693,17 +887,17 @@ export class MirrorCopyMonitor {
       // event and closed the position after this tick's snapshot.
       const fresh = await api.openedOrders(sessionId(destination)).catch(() => null)
       if (fresh && !fresh.some(row => rawOrderTicket(row as Json) === ticket)) {
-        await this.supabase.from('mirror_copy_trade_mappings').update({ state: 'closed', closed_at: new Date().toISOString() }).eq('id', mapping.id)
+        await this.markMappingClosed(mapping.id, reason)
         await this.finishEvent(event, 'succeeded', { recovered: true })
         return
       }
       await api.orderClose(sessionId(destination), { ticket })
-      await this.supabase.from('mirror_copy_trade_mappings').update({ state: 'closed', closed_at: new Date().toISOString() }).eq('id', mapping.id)
+      await this.markMappingClosed(mapping.id, reason)
       await this.finishEvent(event, 'succeeded', {})
     } catch (error) {
       const after = await api.openedOrders(sessionId(destination)).catch(() => destinationOrders)
       if (!after.some(row => rawOrderTicket(row as Json) === ticket)) {
-        await this.supabase.from('mirror_copy_trade_mappings').update({ state: 'closed', closed_at: new Date().toISOString() }).eq('id', mapping.id)
+        await this.markMappingClosed(mapping.id, reason)
         await this.finishEvent(event, 'succeeded', { recovered: true })
         return
       }
@@ -712,30 +906,96 @@ export class MirrorCopyMonitor {
     }
   }
 
+  private async markMappingClosed(
+    mappingId: string,
+    reason: MirrorCloseReason,
+    extra: Record<string, unknown> = {},
+  ): Promise<void> {
+    const { error } = await applyCloseColumnUpdate(
+      { ...extra, state: 'closed', closed_at: new Date().toISOString(), close_reason: reason },
+      patch => this.supabase.from('mirror_copy_trade_mappings').update(patch).eq('id', mappingId),
+      {
+        table: 'mirror_copy_trade_mappings',
+        migration: 'supabase/migrations/20261027120000_mirror_copy_close_reason.sql',
+      },
+    )
+    if (error) throw error
+  }
+
   /**
-   * Confirm a source ticket is really closed before closing its copy. A read gap or a
-   * provider without history must not be treated as a close: return false so the copy
-   * stays open (decision #6 — never silently drop a live source ticket).
+   * Confirm a source trade is really closed before closing its copy.
+   *
+   * Three readings, in order of strength, and anything inconclusive leaves the
+   * copy open (a read gap must never drop a live ticket):
+   *
+   *  1. **The venue's own position list**, for the venues that can answer
+   *     (`stillHoldsPosition`): flat for this trade's symbol and side proves the
+   *     ticket is gone even when the closed history names a different id — which
+   *     is exactly what a stop-loss or manual close on Binance/Bybit/KuCoin
+   *     looks like, including one that happened while this worker was down. Still
+   *     holding, or a failed read, means unconfirmed.
+   *  2. **Closed history**, for the venues whose rows carry the tracked ticket
+   *     (`historyContainsClosedPosition`).
+   *  3. **A fresh open-list read** before believing history: a partial close
+   *     shows up in history while the position is still open, and the loop that
+   *     got us here used an earlier snapshot. A ticket the venue still lists
+   *     must never confirm.
    */
-  private async confirmSourceClosed(sourceApi: BrokerProvider, context: BrokerContext, ticket: string): Promise<boolean> {
+  private async confirmSourceClosed(sourceApi: BrokerProvider, context: BrokerContext, mapping: MappingRow): Promise<SourceCloseDecision> {
+    const ticket = mapping.source_ticket
     const to = new Date().toISOString()
     const from = new Date(Date.now() - this.historyWindowMs).toISOString()
     const id = sessionId(context.source)
     const provider = context.source.provider as string | null | undefined
+    if (sourceApi.stillHoldsPosition) {
+      try {
+        const held = await sourceApi.stillHoldsPosition(id, mapping.source_symbol, mapping.source_side)
+        if (held === false) return { confirmed: true }
+        // `true` means another position on the same symbol and side keeps the venue
+        // non-flat, so this ticket cannot be told apart from a live sibling: hold the
+        // copy open (the safe direction) and say so precisely.
+        return { confirmed: false, reason: held === true ? 'still_held_on_venue' : 'not_confirmed' }
+      } catch {
+        return { confirmed: false, reason: 'not_confirmed' }
+      }
+    }
     try {
-      if (historyContainsClosedPosition(await sourceApi.closedOrdersHistory(id, from, to), ticket, provider)) return true
-      return historyContainsClosedPosition(await sourceApi.historyPositions(id, from, to), ticket, provider)
+      const inHistory = historyContainsClosedPosition(await sourceApi.closedOrdersHistory(id, from, to), ticket, provider)
+        || historyContainsClosedPosition(await sourceApi.historyPositions(id, from, to), ticket, provider)
+      if (!inHistory) return { confirmed: false, reason: 'not_confirmed' }
+      const openNow = await sourceApi.openedOrders(id)
+      if (openNow.some(row => rawOrderTicket(row as Json) === Number(ticket))) {
+        return { confirmed: false, reason: 'still_in_open_list' }
+      }
+      return { confirmed: true }
     } catch {
-      return false
+      return { confirmed: false, reason: 'not_confirmed' }
     }
   }
 
-  private async recordUnresolvedSource(linkId: string, mapping: MappingRow): Promise<void> {
+  /**
+   * Record why a copy is being held open. The reason is the first one seen for
+   * this ticket (the idempotency key does not include it, so one ticket keeps
+   * one reconcile event instead of one per reason), which is the reason an
+   * operator sees.
+   */
+  private async recordUnresolvedSource(
+    linkId: string,
+    mapping: MappingRow,
+    reason: 'still_held_on_venue' | 'still_in_open_list' | 'not_confirmed',
+  ): Promise<void> {
     const event = await this.claimEvent(linkId, mapping.id, mapping.source_ticket, 'reconcile', `unresolved:${mapping.source_ticket}`, {})
     if (!event) return
+    const held = reason === 'still_held_on_venue'
+    const detail = reason === 'still_held_on_venue'
+      ? `The broker still holds a ${mapping.source_side} position on ${mapping.source_symbol} for the master account, `
+        + 'so the copy stays open even though this ticket has left the master\u2019s open list'
+      : reason === 'still_in_open_list'
+        ? 'The broker still lists this ticket when it is read again; leaving the copy open to avoid dropping a live ticket'
+        : 'Source position is no longer open but is not in closed history; leaving the copy open to avoid dropping a live ticket'
     await this.finishEvent(
-      event, 'skipped', {}, 'SOURCE_TICKET_UNRESOLVED',
-      new Error('Source position is no longer open but is not in closed history; leaving the copy open to avoid dropping a live ticket'),
+      event, 'skipped', {}, held ? 'SOURCE_STILL_HELD_ON_VENUE' : 'SOURCE_TICKET_UNRESOLVED',
+      new Error(detail),
     )
   }
 
@@ -807,10 +1067,23 @@ export class MirrorCopyMonitor {
 
   private async finalizeOpen(mapping: MappingRow, ticket: number): Promise<void> {
     if (!(ticket > 0)) throw new Error('BROKER_TICKET_MISSING')
+    // Ticket/audit fields first, then the state transition with a server-side
+    // guard: a close requested while this open was in flight (state 'closing'
+    // written to the row by the RPC mid-tick) must survive. The in-memory
+    // mapping.state predates that request, so the guard goes on the UPDATE
+    // filter itself — writing 'open' over a live 'closing' would silently
+    // drop the user's intent.
     const { error } = await this.supabase.from('mirror_copy_trade_mappings').update({
-      destination_ticket: String(ticket), state: 'open', opened_at: new Date().toISOString(), last_error_code: null, last_error_detail: null,
+      destination_ticket: String(ticket),
+      opened_at: new Date().toISOString(), last_error_code: null, last_error_detail: null,
     }).eq('id', mapping.id)
     if (error) throw error
+    const { error: stateError } = await this.supabase.from('mirror_copy_trade_mappings')
+      .update({ state: 'open' })
+      .eq('id', mapping.id)
+      .neq('state', 'closing')
+      .neq('state', 'closed')
+    if (stateError) throw stateError
   }
 
   private async updateMappingVolumes(id: string, sourceVolume: number, destinationVolume: number): Promise<void> {

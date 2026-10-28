@@ -27,22 +27,22 @@ describe('parseMirrorCopyComment', () => {
   })
 })
 
-type Handler = (table: string) => { data: unknown; error: null }
+type Handler = (table: string, columns: string) => { data: unknown; error: { code?: string; message?: string } | null }
 
 function fakeSupabase(handler: Handler): SupabaseClient {
-  const run = (table: string) => ({
+  const run = (table: string, columns: string) => ({
     eq() {
       return {
         eq() {
           return {
-            maybeSingle: async () => handler(table),
+            maybeSingle: async () => handler(table, columns),
             then(resolve: (v: { data: unknown; error: null }) => unknown) {
-              return Promise.resolve(handler(table)).then(resolve)
+              return Promise.resolve(handler(table, columns)).then(resolve)
             },
           }
         },
         then(resolve: (v: { data: unknown; error: null }) => unknown) {
-          return Promise.resolve(handler(table)).then(resolve)
+          return Promise.resolve(handler(table, columns)).then(resolve)
         },
       }
     },
@@ -50,8 +50,8 @@ function fakeSupabase(handler: Handler): SupabaseClient {
   return {
     from(table: string) {
       return {
-        select() {
-          return run(table)
+        select(columns?: string) {
+          return run(table, columns ?? '')
         },
       }
     },
@@ -59,15 +59,75 @@ function fakeSupabase(handler: Handler): SupabaseClient {
 }
 
 describe('fetchMirrorCopyAttribution', () => {
-  it('resolves the master login through the link prefix', async () => {
+  it('resolves the master login and the ledger mapping through the link prefix', async () => {
     const client = fakeSupabase(table =>
       table === 'broker_copy_links'
         ? { data: [{ id: 'bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb', source_broker_account_id: 'src-1' }], error: null }
-        : { data: { account_login: '476205231' }, error: null },
+        : table === 'mirror_copy_trade_mappings'
+          ? { data: { id: 'map-1', state: 'open', close_reason: null }, error: null }
+          : { data: { account_login: '476205231' }, error: null },
     )
     expect(await fetchMirrorCopyAttribution(client, 'user-1', 'mc:bbbbbbbb:99')).toEqual({
       masterLogin: '476205231',
       sourceTicket: '99',
+      mappingId: 'map-1',
+      mappingState: 'open',
+      mappingCloseReason: null,
+    })
+  })
+
+  it('degrades to a null mapping when the ledger read fails or finds nothing', async () => {
+    const noMapping = fakeSupabase(table =>
+      table === 'broker_copy_links'
+        ? { data: [{ id: 'bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb', source_broker_account_id: 'src-1' }], error: null }
+        : table === 'mirror_copy_trade_mappings'
+          ? { data: null, error: null }
+          : { data: { account_login: '476205231' }, error: null },
+    )
+    expect(await fetchMirrorCopyAttribution(noMapping, 'user-1', 'mc:bbbbbbbb:99')).toEqual({
+      masterLogin: '476205231',
+      sourceTicket: '99',
+      mappingId: null,
+      mappingState: null,
+      mappingCloseReason: null,
+    })
+  })
+
+  it('returns the stored close reason for a closed copy', async () => {
+    const client = fakeSupabase(table =>
+      table === 'broker_copy_links'
+        ? { data: [{ id: 'bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb', source_broker_account_id: 'src-1' }], error: null }
+        : table === 'mirror_copy_trade_mappings'
+          ? { data: { id: 'map-1', state: 'closed', close_reason: 'user_force_close' }, error: null }
+          : { data: { account_login: '476205231' }, error: null },
+    )
+    expect(await fetchMirrorCopyAttribution(client, 'user-1', 'mc:bbbbbbbb:99')).toEqual({
+      masterLogin: '476205231',
+      sourceTicket: '99',
+      mappingId: 'map-1',
+      mappingState: 'closed',
+      mappingCloseReason: 'user_force_close',
+    })
+  })
+
+  it('retries without close_reason when the column is not deployed yet', async () => {
+    const client = fakeSupabase((table, columns) => {
+      if (table === 'broker_copy_links') {
+        return { data: [{ id: 'bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb', source_broker_account_id: 'src-1' }], error: null }
+      }
+      if (table === 'mirror_copy_trade_mappings') {
+        return columns.includes('close_reason')
+          ? { data: null, error: { code: 'PGRST204', message: "Could not find the 'close_reason' column" } }
+          : { data: { id: 'map-1', state: 'closed' }, error: null }
+      }
+      return { data: { account_login: '476205231' }, error: null }
+    })
+    expect(await fetchMirrorCopyAttribution(client, 'user-1', 'mc:bbbbbbbb:99')).toEqual({
+      masterLogin: '476205231',
+      sourceTicket: '99',
+      mappingId: 'map-1',
+      mappingState: 'closed',
+      mappingCloseReason: null,
     })
   })
 
@@ -79,7 +139,9 @@ describe('fetchMirrorCopyAttribution', () => {
     const noLogin = fakeSupabase(table =>
       table === 'broker_copy_links'
         ? { data: [{ id: 'bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb', source_broker_account_id: 'src-1' }], error: null }
-        : { data: { account_login: '' }, error: null },
+        : table === 'mirror_copy_trade_mappings'
+          ? { data: { id: 'map-1', state: 'open', close_reason: null }, error: null }
+          : { data: { account_login: '' }, error: null },
     )
     expect(await fetchMirrorCopyAttribution(noLogin, 'user-1', 'mc:bbbbbbbb:1')).toBeNull()
   })

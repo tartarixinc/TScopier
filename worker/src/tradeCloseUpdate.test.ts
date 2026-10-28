@@ -50,6 +50,17 @@ test('retries without close_reason when PostgREST cannot find the column', async
   assert.equal(seen[1]!.metaapi_order_id, '400780254', 'retry must keep every other field')
 })
 
+test('retries without close_reason when Postgres reports an undefined column (42703)', async () => {
+  const { seen, run } = scripted([
+    { error: { code: '42703', message: 'column mirror_copy_trade_mappings.close_reason does not exist' } },
+    { error: null },
+  ])
+  const res = await applyCloseUpdate(patch(), run)
+  assert.equal(res.error, null)
+  assert.equal(seen.length, 2)
+  assert.ok(!('close_reason' in seen[1]!))
+})
+
 test('a missing-column style error on a patch without close_reason is not retried', async () => {
   const { seen, run } = scripted([{ error: { code: 'PGRST204', message: 'other column' } }])
   const res = await applyCloseUpdate({ status: 'closed' }, run)

@@ -19,6 +19,7 @@ import type {
   SymbolParams,
 } from './fxsocketClient'
 import type { MtHistoryProfile } from './mtTradeFields'
+import type { BrokerAccountMode } from './copyShared/brokerAccountMode'
 
 export type BrokerProviderName = 'fxsocket' | 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin' | 'dxtrade' | 'tradelocker' | 'matchtrader'
 
@@ -78,6 +79,26 @@ export interface BrokerProvider {
   ): Promise<unknown[]>
 
   accountSummary(id: string): Promise<AccountSummary>
+  /**
+   * Hedging vs netting for this account, asked of the venue itself.
+   *
+   * Optional on purpose: only providers that can answer authoritatively
+   * implement it (the crypto venues read their position mode; the MT and FX
+   * platforms either report it elsewhere or have no such field). Callers treat
+   * a missing method, a null and a thrown error the same way — "unknown" — and
+   * must keep failing closed on unknown rather than assuming a mode.
+   */
+  accountMode?(id: string): Promise<BrokerAccountMode | null>
+  /**
+   * Whether the venue still holds a position for this symbol and side.
+   *
+   * Used to confirm that a source trade is gone on venues whose closed history
+   * cannot name the ticket we track (no per-position id, so a stop-loss or a
+   * manual close is recorded against the closing order). "Flat for that symbol
+   * and side" proves the ticket is gone; "still holding" and "could not answer"
+   * both mean unconfirmed, so the copy must stay open.
+   */
+  stillHoldsPosition?(id: string, symbol: string, side: 'buy' | 'sell'): Promise<boolean | null>
   quote(id: string, symbol: string): Promise<QuoteResult>
   symbolParams(id: string, symbol: string): Promise<SymbolParams>
   symbols(id: string): Promise<unknown[]>

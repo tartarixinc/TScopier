@@ -6,6 +6,7 @@ import {
   Save,
   Shield,
   User,
+  Users,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../../context/AuthContext'
@@ -27,8 +28,9 @@ import { Button } from '../../components/ui/Button'
 import { Alert } from '../../components/ui/Alert'
 import { Toggle } from '../../components/ui/Toggle'
 import { normalizeSocialProfileLinks, SOCIAL_PROFILE_PLATFORMS, validateSocialProfileLinks } from '../../lib/socialProfileLinks'
+import { SocialTradingSettings } from '../../components/settings/SocialTradingSettings'
 
-type SettingsSection = 'personal' | 'general' | 'security'
+type SettingsSection = 'personal' | 'social' | 'general' | 'security'
 
 function SettingsCard({
   title,
@@ -89,6 +91,7 @@ export function SettingsPage() {
 
   const sections: { id: SettingsSection; label: string; icon: typeof User }[] = [
     { id: 'personal', label: t.settings.sections.personal, icon: User },
+    { id: 'social', label: 'Social Trading', icon: Users },
     { id: 'general', label: t.settings.sections.general, icon: Globe },
     { id: 'security', label: t.settings.sections.security, icon: Shield },
   ]
@@ -476,6 +479,8 @@ export function SettingsPage() {
               </div>
             </SettingsCard>
           ) : null}
+
+          {section === 'social' ? <SocialTradingSettings /> : null}
 
           {section === 'security' ? (
             <SettingsCard

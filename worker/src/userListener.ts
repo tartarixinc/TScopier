@@ -19,6 +19,7 @@ import {
   TelegramSessionInvalidError,
 } from './telegramClient'
 import { envNumber } from './envNumber'
+import { sealTelegramSession } from './telegramSessionCrypto'
 import {
   authKeyDupDeferredRetryMs,
   authKeyDupMaxRecoveryAttempts,
@@ -5197,9 +5198,21 @@ export class UserListener {
     }
     if (!current || current === this.lastSavedSession) return
 
+    let sealed: string
+    try {
+      sealed = sealTelegramSession(current)
+    } catch (err) {
+      // Never fall back to storing the plaintext session.
+      console.error(
+        `[userListener] session_string encryption failed for ${this.userId}:`,
+        err instanceof Error ? err.message : err,
+      )
+      return
+    }
+
     const { error } = await this.supabase
       .from('telegram_sessions')
-      .update({ session_string: current })
+      .update({ session_string: sealed })
       .eq('user_id', this.userId)
 
     if (error) {

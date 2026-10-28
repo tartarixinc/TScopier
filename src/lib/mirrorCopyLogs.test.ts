@@ -1,54 +1,71 @@
 import { describe, expect, it } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { fetchMirrorCopyLogs, normalizeMirrorCopyLogs, planMergedLogPage } from './mirrorCopyLogs'
+import { fetchMirrorCopyLogs, normalizeMirrorCopyLogs, pageMirrorSlice, type MirrorCopyLogRow } from './mirrorCopyLogs'
 
-describe('planMergedLogPage', () => {
-  it('puts mirror rows first and offsets the signal window by their count', () => {
-    // 3 mirror rows, page size 25: page 1 shows the 3 + signals 0..21.
-    expect(planMergedLogPage(1, 25, 3)).toEqual({
-      mirrorStart: 0,
-      mirrorCount: 3,
-      signalFrom: 0,
-      signalTo: 21,
-    })
-    expect(planMergedLogPage(1, 25, 3).mirrorCount + (21 - 0 + 1)).toBe(25)
+function mirrorAt(createdAt: string): MirrorCopyLogRow {
+  return {
+    id: `m-${createdAt}`,
+    createdAt,
+    status: 'executed',
+    action: 'open',
+    side: 'buy',
+    symbol: 'BTCUSDm',
+    sourceTicket: '1',
+    lot: 0.01,
+    channelName: 'MT5 • 476205231',
+    destinationAccount: 'MT5 • 477608729',
+    destinationTicket: '2',
+    reason: null,
+  }
+}
+
+const signalAt = (created_at: string) => ({ created_at })
+
+describe('pageMirrorSlice', () => {
+  const at = (time: string) => `2026-10-25T${time}:00Z`
+  const mirrors = ['12:08', '11:00', '10:30', '09:00', '08:45', '07:30', '06:10'].map(t => mirrorAt(at(t)))
+  const signalPair = (newest: string, oldest: string) => [signalAt(at(newest)), signalAt(at(oldest))]
+
+  it('keeps page 1 events both above its newest signal and inside its own span', () => {
+    // The gap this guards: 11:00 and 10:30 sit between page 1's signals, and no
+    // later page reaches above the previous page's oldest signal — so an
+    // upper-bounded page 1 would strand them on no page at all.
+    const rows = pageMirrorSlice(mirrors, signalPair('11:30', '09:30'), 1, null)
+    expect(rows.map(r => r.createdAt)).toEqual([at('12:08'), at('11:00'), at('10:30')])
   })
 
-  it('emits no mirror rows past their range, so page 2 does not repeat them', () => {
-    const page2 = planMergedLogPage(2, 25, 3)
-    expect(page2.mirrorCount).toBe(0)
-    expect(page2.signalFrom).toBe(22)
-    expect(page2.signalTo).toBe(46)
-    expect(page2.signalTo! - page2.signalFrom! + 1).toBe(25)
+  it('places every event on exactly one page in a sequential walk', () => {
+    const page1 = pageMirrorSlice(mirrors, signalPair('11:30', '09:30'), 1, null)
+    const page2 = pageMirrorSlice(mirrors, signalPair('09:30', '08:00'), 2, at('09:30'))
+    const page3 = pageMirrorSlice(mirrors, signalPair('08:00', '07:00'), 3, at('08:00'), true)
+
+    expect(page1.map(r => r.createdAt)).toEqual([at('12:08'), at('11:00'), at('10:30')])
+    expect(page2.map(r => r.createdAt)).toEqual([at('09:00'), at('08:45')])
+    expect(page3.map(r => r.createdAt)).toEqual([at('07:30'), at('06:10')])
+
+    const shown = [...page1, ...page2, ...page3].map(r => r.createdAt).sort()
+    expect(shown).toEqual(mirrors.map(m => m.createdAt).sort())
   })
 
-  it('fetches no signals for a page made of mirror rows alone', () => {
-    // The pre-fix clamp turned this into range(0, 0), i.e. one extra signal.
-    const plan = planMergedLogPage(1, 10, 10)
-    expect(plan).toEqual({ mirrorStart: 0, mirrorCount: 10, signalFrom: null, signalTo: null })
+  it('absorbs events older than every signal on the last signal page', () => {
+    const rows = pageMirrorSlice(mirrors, signalPair('08:00', '07:00'), 3, at('08:00'), true)
+    expect(rows.map(r => r.createdAt)).toEqual([at('07:30'), at('06:10')])
   })
 
-  it('slices a mirror list longer than one page across pages', () => {
-    const page1 = planMergedLogPage(1, 25, 30)
-    expect(page1.mirrorCount).toBe(25)
-    expect(page1.signalFrom).toBeNull()
-
-    const page2 = planMergedLogPage(2, 25, 30)
-    expect(page2.mirrorStart).toBe(25)
-    expect(page2.mirrorCount).toBe(5)
-    expect(page2.signalFrom).toBe(0)
-    expect(page2.signalTo).toBe(19)
-    expect(page2.mirrorCount + (20 - 0)).toBe(25)
+  it('falls back to the page own span after a jump, so rows still appear', () => {
+    const rows = pageMirrorSlice(mirrors, signalPair('11:30', '10:00'), 9, null)
+    expect(rows.map(r => r.createdAt)).toEqual([at('11:00'), at('10:30')])
   })
 
-  it('behaves like plain signal pagination when there are no mirror rows', () => {
-    expect(planMergedLogPage(1, 25, 0)).toEqual({
-      mirrorStart: 0,
-      mirrorCount: 0,
-      signalFrom: 0,
-      signalTo: 24,
-    })
-    expect(planMergedLogPage(3, 10, 0)).toMatchObject({ mirrorCount: 0, signalFrom: 20, signalTo: 29 })
+  it('shows every event of a dense window instead of dropping the oldest', () => {
+    // No per-page cap: a dropped event would sit above the next page's bound
+    // (its signal) and could never be shown again.
+    const burst = Array.from({ length: 30 }, (_, i) => mirrorAt(at(`12:${String(i).padStart(2, '0')}`)))
+    expect(pageMirrorSlice(burst, signalPair('11:30', '09:30'), 1, null)).toHaveLength(30)
+  })
+
+  it('keeps signals alone when there are no mirror events', () => {
+    expect(pageMirrorSlice([], signalPair('11:30', '09:30'), 1, null)).toEqual([])
   })
 })
 

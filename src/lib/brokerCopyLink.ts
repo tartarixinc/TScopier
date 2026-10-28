@@ -15,14 +15,18 @@ function asSettings(value: unknown): ManualSettings {
   return ensurePersistedManualSettings({ ...DEFAULT_MANUAL_SETTINGS, ...(value as ManualSettings) })
 }
 
-export async function fetchBrokerCopyLinks(
+/** Shared read of the user's copy links; optional destination narrows to slave links. */
+async function fetchCopyLinkRows(
   supabase: SupabaseClient,
   userId: string,
+  destinationBrokerId?: string,
 ): Promise<{ links: BrokerCopyLinkRow[]; error: string | null }> {
-  const { data, error } = await supabase
+  let query = supabase
     .from('broker_copy_links')
     .select('id,source_broker_account_id,destination_broker_account_id,manual_settings')
     .eq('user_id', userId)
+  if (destinationBrokerId) query = query.eq('destination_broker_account_id', destinationBrokerId)
+  const { data, error } = await query
   if (error) {
     if (/broker_copy_links/i.test(error.message) && /schema cache|does not exist|could not find/i.test(error.message)) {
       return { links: [], error: null }
@@ -36,6 +40,22 @@ export async function fetchBrokerCopyLinks(
     manual_settings: asSettings(row.manual_settings),
   }))
   return { links, error: null }
+}
+
+export async function fetchBrokerCopyLinks(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<{ links: BrokerCopyLinkRow[]; error: string | null }> {
+  return fetchCopyLinkRows(supabase, userId)
+}
+
+/** Read the copy links where this broker is the slave (destination). */
+export async function fetchBrokerCopyDestinationLinks(
+  supabase: SupabaseClient,
+  userId: string,
+  destinationBrokerId: string,
+): Promise<{ links: BrokerCopyLinkRow[]; error: string | null }> {
+  return fetchCopyLinkRows(supabase, userId, destinationBrokerId)
 }
 
 export async function setBrokerCopySource(

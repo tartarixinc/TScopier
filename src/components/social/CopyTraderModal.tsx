@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowDown, ArrowRight, Check, CheckCircle2, ShieldCheck, X } from 'lucide-react'
+import { ArrowDown, ArrowRight, Check, CheckCircle2, X } from 'lucide-react'
 import clsx from 'clsx'
 import { Button } from '../ui/Button'
 import { Alert } from '../ui/Alert'
-import { Toggle } from '../ui/Toggle'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
 import { useFormatMoney } from '../../hooks/useFormatMoney'
 import { interpolate } from '../../i18n/interpolate'
@@ -18,19 +17,14 @@ import {
 import type { SocialTrader } from '../../lib/socialTradingFixture'
 import type { SocialTradingPageTranslations } from '../../i18n/locales/types'
 import type { BrokerAccount } from '../../types/database'
-import { createSocialCopySubscription } from '../../lib/socialCopy'
+import { changeSocialCopySubscription, createSocialCopySubscription } from '../../lib/socialCopy'
 import { supabase } from '../../lib/supabase'
+import { isSocialDestinationEligible, maskBrokerAccountIdentifier, resolveSocialAccountMode } from '../../lib/socialAccount'
+import { eligibilityDiagnosticForReason } from '../../lib/socialEligibility'
+import { AccountModeBadge } from './AccountModeBadge'
+import { SocialEligibilityDiagnostics } from './SocialEligibilityDiagnostics'
 
 const MULTIPLIERS = [0.25, 0.5, 0.75, 1, 1.5, 2] as const
-
-type ProtectionKey =
-  | 'copyStopLoss'
-  | 'copyTakeProfit'
-  | 'closeWithTrader'
-  | 'copyOpenPositions'
-  | 'respectRiskLimits'
-
-type ProtectionState = Record<ProtectionKey, boolean>
 
 function AccountLogo({ platform }: { platform: string }) {
   const [failed, setFailed] = useState(false)
@@ -54,42 +48,9 @@ function AccountLogo({ platform }: { platform: string }) {
     </span>
   )
 }
-
 function accountRouteLabel(account: BrokerAccount): string {
   const broker = account.broker_name?.trim() || getBrokerDisplayLabel(account)
   return `${broker} ${account.platform.toUpperCase()}`
-}
-
-function SettingToggle({
-  label,
-  checked,
-  onChange,
-  description,
-  safety,
-}: {
-  label: string
-  checked: boolean
-  onChange: (checked: boolean) => void
-  description?: string
-  safety?: boolean
-}) {
-  return (
-    <div className={clsx(
-      'flex items-start justify-between gap-4 rounded-xl px-3 py-2.5',
-      safety && 'bg-teal-50/70 ring-1 ring-teal-200/70 dark:bg-teal-950/20 dark:ring-teal-900',
-    )}>
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          {safety ? <ShieldCheck className="h-4 w-4 shrink-0 text-green-400 dark:text-green-400" aria-hidden /> : null}
-          <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{label}</p>
-        </div>
-        {description ? (
-          <p className="mt-0.5 text-xs leading-5 text-neutral-900 dark:text-neutral-50">{description}</p>
-        ) : null}
-      </div>
-      <Toggle checked={checked} onChange={onChange} />
-    </div>
-  )
 }
 
 function PreviewValue({ label, value }: { label: string; value: string }) {
@@ -115,21 +76,17 @@ export function CopyTraderModal({
   const c = copy.copySetup
   const { brokers, loading } = useBrokerAccounts()
   const { formatMoney } = useFormatMoney()
-  const [selectedBrokerId, setSelectedBrokerId] = useState(() => brokers[0]?.id ?? '')
-  const [riskMode, setRiskMode] = useState<SocialCopyRiskMode>('proportional')
+  const [selectedBrokerId, setSelectedBrokerId] = useState('')
+  const [selectedSourceId, setSelectedSourceId] = useState('')
+  const [riskMode, setRiskMode] = useState<SocialCopyRiskMode>(() => trader.syntheticDemo ? 'fixed_lot' : 'proportional')
   const [fixedLot, setFixedLot] = useState(0.1)
   const [multiplier, setMultiplier] = useState(0.75)
-  const [protections, setProtections] = useState<ProtectionState>({
-    copyStopLoss: true,
-    copyTakeProfit: true,
-    closeWithTrader: true,
-    copyOpenPositions: false,
-    respectRiskLimits: true,
-  })
+  const [maxLot, setMaxLot] = useState(0.1)
   const [ready, setReady] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
+  const [subscriptionId, setSubscriptionId] = useState<string | null>(null)
+  const [subscriptionState, setSubscriptionState] = useState<'pending' | 'pause_requested' | 'stop_requested'>('pending')
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
@@ -143,10 +100,26 @@ export function CopyTraderModal({
     }
   }, [onClose])
 
-  const destinations = brokers.filter(broker => broker.is_active)
-  const effectiveSelectedBrokerId = selectedBrokerId || destinations[0]?.id
-  const selectedBroker = destinations.find(broker => broker.id === effectiveSelectedBrokerId) ?? null
-  const previewTrade = trader.openTrades[0] ?? null
+  const destinations = brokers.filter(isSocialDestinationEligible)
+  const sources = trader.sources?.length ? trader.sources : trader.sourceId ? [{
+    sourceId: trader.sourceId,
+    label: trader.sourceLabel ?? 'Copy source',
+    provider: trader.sourceProvider ?? 'fxsocket',
+    platform: trader.sourcePlatform ?? 'MT5',
+    accountHint: 'Identifier unavailable',
+    accountMode: trader.sourceAccountMode ?? 'unknown',
+    connectionHealthy: true,
+    isCopyEligible: trader.copyEligible === true,
+    eligibilityReason: trader.copyEligibilityReason ?? 'source_missing',
+    eligibilityDiagnostics: [eligibilityDiagnosticForReason(trader.copyEligibilityReason ?? 'source_missing')],
+    isSynthetic: trader.syntheticDemo === true,
+  }] : []
+  const selectedBroker = destinations.find(broker => broker.id === selectedBrokerId) ?? null
+  const selectedSource = sources.find(source => source.sourceId === selectedSourceId) ?? null
+  const selectedSourceUsesLoadedPerformance = selectedSource?.sourceId === trader.sourceId
+  const previewTrade = selectedSourceUsesLoadedPerformance ? trader.openTrades[0] ?? null : null
+  const isSyntheticSimulation = selectedSource?.isSynthetic === true
+  const destinationMode = selectedBroker ? resolveSocialAccountMode(selectedBroker) : 'unknown'
   const destinationBalance = selectedBroker ? resolveBrokerTotalBalance(selectedBroker) : null
   const copiedLot = previewTrade?.previewLot != null && trader.previewBalance != null
     ? estimateSocialCopyLot({
@@ -172,28 +145,27 @@ export function CopyTraderModal({
       : c.copiedLot
 
   const accountBalanceLabel = selectedBroker ? formatMoney(resolveBrokerTotalBalance(selectedBroker)) : null
-
-  const patchProtection = (key: ProtectionKey, checked: boolean) => {
-    setProtections(current => ({ ...current, [key]: checked }))
-  }
+  const configurationValid = Number.isFinite(maxLot) && maxLot > 0 && maxLot <= 1000
+    && (riskMode !== 'fixed_lot' || (Number.isFinite(fixedLot) && fixedLot > 0 && fixedLot <= maxLot))
+    && (riskMode !== 'risk_multiplier' || (Number.isFinite(multiplier) && multiplier > 0 && multiplier <= 100))
 
   const submitCopy = async () => {
-    if (!selectedBroker || !trader.sourceId || !trader.copyEligible || copiedLot == null || copiedLot <= 0 || submitting) return
+    if (!selectedBroker || !selectedSource?.isCopyEligible || destinationMode === 'unknown' || !configurationValid || submitting) return
     setSubmitting(true)
     setError(null)
     try {
       const sizingMode = riskMode === 'fixed_lot' ? 'fixed_lot' : riskMode === 'risk_multiplier' ? 'lot_multiplier' : 'equity_ratio'
-      const destinationMode = ['demo', 'practice'].includes(String(selectedBroker.linked_account_type ?? '').toLowerCase()) ? 'demo' : 'live'
-      const accountMode = trader.sourceAccountMode === 'live' || destinationMode === 'live' ? 'live' : 'demo'
-      await createSocialCopySubscription(supabase, {
-        sourceId: trader.sourceId,
+      const createdSubscriptionId = await createSocialCopySubscription(supabase, {
+        sourceId: selectedSource.sourceId,
         destinationBrokerAccountId: selectedBroker.id,
         sizingMode,
         fixedLot: sizingMode === 'fixed_lot' ? fixedLot : null,
         lotMultiplier: sizingMode === 'lot_multiplier' ? multiplier : 1,
-        maxLot: Math.max(0.01, copiedLot),
-        accountMode,
+        maxLot,
+        accountMode: destinationMode,
       })
+      setSubscriptionId(createdSubscriptionId)
+      setSubscriptionState('pending')
       setReady(true)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to create the copy subscription.')
@@ -201,6 +173,22 @@ export function CopyTraderModal({
       setSubmitting(false)
     }
   }
+
+  const requestSubscriptionChange = async (action: 'pause' | 'stop') => {
+    if (!subscriptionId || submitting) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      await changeSocialCopySubscription(supabase, subscriptionId, action)
+      setSubscriptionState(action === 'pause' ? 'pause_requested' : 'stop_requested')
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to update the copy subscription.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+  const disabled = !selectedBroker || !selectedSource?.isCopyEligible || destinationMode === 'unknown' || !configurationValid || submitting
+
   if (ready && selectedBroker) {
     return createPortal(
       <div
@@ -222,17 +210,34 @@ export function CopyTraderModal({
           <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-teal-50 text-green-400 dark:bg-teal-950/40 dark:text-teal-300">
             <CheckCircle2 className="h-7 w-7" aria-hidden />
           </span>
-          <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.12em] text-green-500 dark:text-teal-300">{c.previewLabel}</p>
-          <h2 id="copy-trader-success-title" className="mt-1 text-xl font-semibold text-neutral-900 dark:text-neutral-50">{c.successTitle}</h2>
+          <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.12em] text-green-500 dark:text-teal-300">{isSyntheticSimulation ? 'SIMULATED DEMO \u2014 NO BROKER ORDERS' : c.previewLabel}</p>
+          <h2 id="copy-trader-success-title" className="mt-1 text-xl font-semibold text-neutral-900 dark:text-neutral-50">{isSyntheticSimulation ? c.successTitle : 'Subscription request created'}</h2>
           <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-neutral-900 dark:text-neutral-50">
-            {interpolate(c.successBody, { trader: trader.displayName })}
+            {`Your request to copy ${trader.displayName} is persisted and pending worker acknowledgement. No active status is claimed until the worker confirms it.`}
           </p>
           <div className="mt-5 flex items-center justify-center gap-2 rounded-xl bg-neutral-50 px-4 py-3 text-sm font-medium text-neutral-900 ring-1 ring-neutral-200/70 dark:bg-neutral-900 dark:text-neutral-100 dark:ring-neutral-800">
             <span>{trader.displayName}</span>
             <ArrowRight className="h-4 w-4 shrink-0 text-green-400 dark:text-green-400" aria-hidden />
             <span>{accountRouteLabel(selectedBroker)}</span>
           </div>
-          <Button type="button" className="mt-6 w-full" onClick={onClose}>{c.done}</Button>
+          {isSyntheticSimulation ? <Alert variant="warning">Synthetic simulation only. The worker will acknowledge the persisted lifecycle state without creating broker orders or contacting a broker.</Alert> : null}
+          {(
+            <div className="mt-4 space-y-3 text-left">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+                <strong>Status:</strong> {subscriptionState === 'pending' ? 'Pending worker acknowledgement' : subscriptionState === 'pause_requested' ? 'Pause requested' : 'Stop requested'}
+                {subscriptionId ? <span className="mt-1 block break-all text-[10px] opacity-75">Subscription {subscriptionId}</span> : null}
+              </div>
+              <p className="text-xs leading-5 text-neutral-600 dark:text-neutral-300">Sizing: {profileLabel}; maximum lot {maxLot.toFixed(2)}. Broker execution can differ because of market conditions and account constraints.</p>
+              {error ? <Alert variant="error">{error}</Alert> : null}
+              {subscriptionState !== 'stop_requested' ? (
+                <div className="flex gap-2">
+                  <Button type="button" size="sm" variant="secondary" disabled={submitting || subscriptionState === 'pause_requested'} onClick={() => void requestSubscriptionChange('pause')}>Request pause</Button>
+                  <Button type="button" size="sm" variant="secondary" disabled={submitting} onClick={() => void requestSubscriptionChange('stop')}>Stop copying</Button>
+                </div>
+              ) : null}
+            </div>
+          )}
+          <Button type="button" className="mt-6 w-full" disabled={submitting} onClick={onClose}>{c.done}</Button>
         </div>
       </div>,
       document.body,
@@ -255,7 +260,7 @@ export function CopyTraderModal({
                 {interpolate(c.title, { trader: trader.displayName })}
               </h2>
               <span className="rounded-full bg-teal-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-green-500 dark:bg-teal-950/40 dark:text-teal-300">
-                {c.previewLabel}
+                {isSyntheticSimulation ? 'SIMULATED DEMO \u2014 NO BROKER ORDERS' : c.previewLabel}
               </span>
             </div>
             <p className="mt-0.5 text-sm text-neutral-900 dark:text-neutral-50">{c.subtitle}</p>
@@ -279,6 +284,32 @@ export function CopyTraderModal({
         <div className="overflow-y-auto px-5 py-4 sm:px-6">
           <div className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
             <div className="space-y-4">
+              <section aria-labelledby="copy-source-heading">
+                <h3 id="copy-source-heading" className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Provider source account</h3>
+                <select
+                  value={selectedSourceId}
+                  onChange={event => setSelectedSourceId(event.target.value)}
+                  className="mt-2 block w-full rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50"
+                >
+                  <option value="" disabled>Select an eligible source account</option>
+                  {sources.map(source => (
+                    <option key={source.sourceId} value={source.sourceId} disabled={!source.isCopyEligible}>
+                      {source.label} / {source.platform} / {source.accountHint} / {source.accountMode.toUpperCase()} / {source.isCopyEligible ? 'Eligible' : 'Unavailable'}
+                    </option>
+                  ))}
+                </select>
+                {!selectedSource ? <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">Select an eligible provider source. No account is selected automatically.</p> : (
+                  <div className="mt-2 space-y-2">
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-600 dark:text-neutral-300">
+                      <AccountModeBadge mode={selectedSource.accountMode} />
+                      <span>{selectedSource.label}</span>
+                      <span>{selectedSource.accountHint}</span>
+                    </div>
+                    <SocialEligibilityDiagnostics diagnostics={selectedSource.eligibilityDiagnostics} />
+                  </div>
+                )}
+              </section>
+
               <section aria-labelledby="copy-destination-heading">
                 <h3 id="copy-destination-heading" className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{c.destinationAccount}</h3>
                 {loading ? (
@@ -292,7 +323,6 @@ export function CopyTraderModal({
                 ) : (
                   <div className="mt-2 max-h-52 space-y-2 overflow-y-auto pr-1">
                     {destinations.map(broker => {
-                      const selected = broker.id === effectiveSelectedBrokerId
                       const login = resolveAccountLogin(broker)
                       return (
                         <button
@@ -300,11 +330,11 @@ export function CopyTraderModal({
                           type="button"
                           className={clsx(
                             'flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-start transition-colors',
-                            selected
+                            broker.id === selectedBrokerId
                               ? 'border-green-400 bg-teal-50/60 ring-1 ring-green-400 dark:bg-teal-950/20'
                               : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50 dark:border-neutral-800 dark:hover:border-neutral-700 dark:hover:bg-neutral-900',
                           )}
-                          aria-pressed={selected}
+                          aria-pressed={broker.id === selectedBrokerId}
                           onClick={() => setSelectedBrokerId(broker.id)}
                         >
                           <AccountLogo platform={broker.platform} />
@@ -316,7 +346,7 @@ export function CopyTraderModal({
                               {login ? <span>{c.login} {login}</span> : null}
                             </span>
                           </span>
-                          {selected ? <Check className="h-5 w-5 shrink-0 text-green-400 dark:text-green-400" aria-hidden /> : null}
+                          {broker.id === selectedBrokerId ? <Check className="h-5 w-5 shrink-0 text-green-400 dark:text-green-400" aria-hidden /> : null}
                         </button>
                       )
                     })}
@@ -388,30 +418,29 @@ export function CopyTraderModal({
                     ))}
                   </div>
                 ) : null}
+                <label className="mt-3 flex items-center gap-3 text-sm text-neutral-900 dark:text-neutral-50">
+                  <span>Maximum lot</span>
+                  <input
+                    type="number"
+                    min="0.01"
+                    max="1000"
+                    step="0.01"
+                    value={maxLot}
+                    onChange={event => setMaxLot(Number(event.target.value))}
+                    className="w-24 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm tabular-nums text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50"
+                  />
+                  <span className="text-xs text-neutral-900 dark:text-neutral-50">{c.lots}</span>
+                </label>
+                {!configurationValid ? <p className="mt-2 text-xs text-red-600 dark:text-red-400">Enter positive sizing values. Fixed lot cannot exceed the maximum lot.</p> : null}
               </section>
 
-              <section aria-labelledby="copy-protection-heading">
-                <h3 id="copy-protection-heading" className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{c.protections}</h3>
-                <div className="mt-2 space-y-0.5">
-                  <SettingToggle label={c.copyStopLoss} checked={protections.copyStopLoss} onChange={checked => patchProtection('copyStopLoss', checked)} />
-                  <SettingToggle label={c.copyTakeProfit} checked={protections.copyTakeProfit} onChange={checked => patchProtection('copyTakeProfit', checked)} />
-                  <SettingToggle label={c.closeWhenTraderCloses} checked={protections.closeWithTrader} onChange={checked => patchProtection('closeWithTrader', checked)} />
-                  <SettingToggle label={c.copyOpenPositions} checked={protections.copyOpenPositions} onChange={checked => patchProtection('copyOpenPositions', checked)} />
-                  <SettingToggle
-                    label={c.respectRiskLimits}
-                    description={c.respectRiskLimitsHint}
-                    checked={protections.respectRiskLimits}
-                    onChange={checked => patchProtection('respectRiskLimits', checked)}
-                    safety
-                  />
-                </div>
-              </section>
+              <Alert variant="warning">Only the sizing mode and maximum-lot cap shown here are saved by social copying. Broker execution, slippage, symbol availability, margin, and account risk limits can change or reject a copied order.</Alert>
             </div>
 
             <section aria-labelledby="copy-preview-heading" className="self-start rounded-2xl border border-neutral-200/80 bg-neutral-50/70 p-4 dark:border-neutral-800 dark:bg-neutral-900/60 sm:p-5 lg:sticky lg:top-0">
               <div className="flex items-center justify-between gap-3">
                 <h3 id="copy-preview-heading" className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{c.setupPreview}</h3>
-                <span className="text-[10px] font-semibold uppercase tracking-widest text-green-500 dark:text-teal-300">{c.previewLabel}</span>
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-green-500 dark:text-teal-300">{isSyntheticSimulation ? 'SIMULATED DEMO \u2014 NO BROKER ORDERS' : c.previewLabel}</span>
               </div>
               {previewTrade ? (
                 <div className="mt-4">
@@ -440,13 +469,12 @@ export function CopyTraderModal({
                           <AccountLogo platform={selectedBroker.platform} />
                           <div className="min-w-0">
                             <p className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">{accountRouteLabel(selectedBroker)}</p>
-                            {resolveAccountLogin(selectedBroker) ? <p className="truncate text-xs text-neutral-900 dark:text-neutral-50">{c.login} {resolveAccountLogin(selectedBroker)}</p> : null}
+                            <div className="mt-1 flex items-center gap-2"><AccountModeBadge mode={destinationMode} /><p className="truncate text-xs text-neutral-900 dark:text-neutral-50">{maskBrokerAccountIdentifier(resolveAccountLogin(selectedBroker))}</p></div>
                           </div>
                         </div>
                         <dl className="mt-4 space-y-2 border-t border-neutral-100 pt-3 dark:border-neutral-800">
-                          <PreviewValue label={copiedLotLabel} value={copiedLot == null ? c.estimateUnavailable : `${copiedLot.toFixed(2)} ${c.lots}`} />
-                          <PreviewValue label={c.stopLoss} value={protections.copyStopLoss ? c.copied : c.notCopied} />
-                          <PreviewValue label={c.takeProfit} value={protections.copyTakeProfit ? c.copied : c.notCopied} />
+                          <PreviewValue label={copiedLotLabel} value={copiedLot == null ? 'Calculated by the worker when a trade arrives' : `${copiedLot.toFixed(2)} ${c.lots}`} />
+                          <PreviewValue label="Maximum lot" value={`${maxLot.toFixed(2)} ${c.lots}`} />
                           <PreviewValue label={c.riskProfile} value={profileLabel} />
                         </dl>
                       </>
@@ -470,15 +498,21 @@ export function CopyTraderModal({
         </div>
 
         {error ? <div className="px-5 pb-3 sm:px-6"><Alert variant="error">{error}</Alert></div> : null}
+        {selectedBroker ? (
+          <div className="border-t border-neutral-100 bg-neutral-50 px-5 py-3 text-xs leading-5 text-neutral-700 dark:border-neutral-800 dark:bg-neutral-900/60 dark:text-neutral-200 sm:px-6" aria-label="Copy confirmation summary">
+            {isSyntheticSimulation ? 'Simulated only: ' : 'Subscription request: '}
+            <strong>{selectedSource?.label ?? 'No source selected'}</strong> ({selectedSource?.accountMode ?? 'unknown'}) to <strong>{accountRouteLabel(selectedBroker)}</strong> ({destinationMode}), {profileLabel}, maximum lot {maxLot.toFixed(2)}.
+          </div>
+        ) : null}
         <footer className="flex shrink-0 flex-col-reverse gap-2 border-t border-neutral-100 bg-white px-5 py-4 dark:border-neutral-800 dark:bg-neutral-950 sm:flex-row sm:justify-end sm:px-6">
           <Button type="button" variant="secondary" disabled={submitting} onClick={onClose}>{c.cancel}</Button>
           <Button
             type="button"
             loading={submitting}
-            disabled={!selectedBroker || !trader.sourceId || !trader.copyEligible || copiedLot == null || copiedLot <= 0 || submitting}
+            disabled={disabled}
             onClick={() => void submitCopy()}
           >
-            {c.startCopying}
+            {isSyntheticSimulation ? 'Create simulated subscription' : c.startCopying}
           </Button>
         </footer>
       </div>
@@ -486,4 +520,3 @@ export function CopyTraderModal({
     document.body,
   )
 }
-

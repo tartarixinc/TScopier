@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import { createHmac } from 'node:crypto'
 import { BinanceProvider } from './binanceProvider'
 import { BinanceApiError, BinanceFuturesClient, type BinanceFuturesCredential } from './binance/futuresClient'
+import { historyContainsClosedPosition } from './mirrorCopy/mirrorCopyReconcile'
 
 const API_KEY = 'test-api-key'
 const API_SECRET = 'test-api-secret'
@@ -473,4 +474,59 @@ test('Binance API errors keep their code so callers can classify them', async ()
   fake.replies.set('GET /fapi/v2/account', { status: 401, body: { code: -2015, msg: 'Invalid API-key, IP, or permissions for action.' } })
   await assert.rejects(provider.accountSummary('acct-1'), (error: unknown) => error instanceof BinanceApiError && error.code === -2015)
   assert.equal(await provider.keepSessionAliveDetailed('acct-1'), 'token_reconnect_failed')
+})
+
+test('a position closed outside the copier is still confirmable from history', async () => {
+  const { fake, provider } = setup()
+  // The exchange reports the open position the copier is about to create a leg for.
+  fake.positions = [{ symbol: 'BTCUSDT', positionSide: 'BOTH', positionAmt: '0.015', entryPrice: '65000', markPrice: '65000' }]
+
+  const opened = await provider.orderSend('acct-1', {
+    symbol: 'BTCUSDT',
+    operation: 'Buy',
+    volume: 5,
+    comment: 'TScopier:chan:abcdef12',
+  })
+  const ticket = opened.ticket
+
+  const before = await provider.openedOrders('acct-1') as Array<Record<string, unknown>>
+  assert.equal(before.some(row => row.ticket === ticket), true, 'the open leg must be visible while the exchange holds it')
+
+  // A stop-loss, take-profit or manual close: the position is gone from the
+  // book, and the exchange history names the closing order — never our ticket.
+  fake.positions = []
+  const after = await provider.openedOrders('acct-1') as Array<Record<string, unknown>>
+  assert.equal(after.some(row => row.ticket === ticket), false, 'the leg must leave the book with the position')
+
+  const from = new Date(NOW - 3_600_000).toISOString()
+  const to = new Date(NOW + 3_600_000).toISOString()
+  fake.replies.set('GET /fapi/v1/income', [])
+  const history = await provider.orderHistory('acct-1', from, to) as Array<Record<string, unknown>>
+  const observed = history.find(row => row.ticket === ticket)
+  assert.ok(observed, 'the observed close must be reported under the tracked ticket')
+  assert.equal(observed!.observed, 'position_gone')
+  assert.equal(observed!.closeTime, NOW)
+
+  assert.equal(historyContainsClosedPosition(history, String(ticket), 'binance'), true,
+    'a close seen live must confirm the source position is gone')
+  assert.equal(historyContainsClosedPosition(history, '424242', 'binance'), false,
+    'a ticket that never closed must stay unconfirmed')
+})
+
+test('stillHoldsPosition answers from the exchange position list, not the leg book', async () => {
+  const { fake, provider } = setup()
+  fake.positions = [{ symbol: 'BTCUSDT', positionSide: 'BOTH', positionAmt: '0.015', entryPrice: '65000', markPrice: '65000' }]
+  assert.equal(await provider.stillHoldsPosition('acct-1', 'BTCUSDT', 'buy'), true)
+  assert.equal(await provider.stillHoldsPosition('acct-1', 'BTCUSDT', 'sell'), false)
+  fake.positions = []
+  assert.equal(await provider.stillHoldsPosition('acct-1', 'BTCUSDT', 'buy'), false)
+  fake.replies.set('GET /fapi/v2/positionRisk', { status: 500, body: { code: -1, msg: 'position list unavailable' } })
+  assert.equal(await provider.stillHoldsPosition('acct-1', 'BTCUSDT', 'buy'), null,
+    'a failed read must be reported as "could not answer", never as "flat"')
+})
+
+test('stillHoldsPosition reports null when the account itself cannot be loaded', async () => {
+  const { fake } = setup()
+  const provider = new BinanceProvider({ loadCredentials: async () => null, fetchImpl: fake.fetchImpl, now: () => NOW, sleep: async () => {} })
+  assert.equal(await provider.stillHoldsPosition('acct-1', 'BTCUSDT', 'buy'), null)
 })

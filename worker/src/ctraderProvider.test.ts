@@ -439,3 +439,54 @@ test('cTrader opened orders expose ticket, side, lots, and the copy comment', as
   assert.equal(orders[1]?.operation, 'SellLimit')
   assert.equal(orders[1]?.comment, 'TScopier:pend')
 })
+
+test('cTrader history confirms a source close only from a closing deal', async () => {
+  const { provider } = providerFor([
+    ...authSteps,
+    { request: CTRADER_PAYLOAD.SYMBOLS_LIST_REQ, responseType: CTRADER_PAYLOAD.SYMBOLS_LIST_RES, payload: symbolList },
+    {
+      request: CTRADER_PAYLOAD.DEAL_LIST_REQ,
+      responseType: CTRADER_PAYLOAD.DEAL_LIST_RES,
+      payload: {
+        deal: [
+          {
+            dealId: 10,
+            positionId: 9001,
+            symbolId: 1,
+            filledVolume: 1_000_000,
+            tradeSide: 1,
+            executionPrice: 123_456,
+            executionTimestamp: 1_761_500_000_000,
+            comment: 'mc:link0000:9001',
+          },
+          {
+            dealId: 11,
+            positionId: 9001,
+            symbolId: 1,
+            filledVolume: 1_000_000,
+            tradeSide: 1,
+            executionPrice: 123_456,
+            executionTimestamp: 1_761_500_600_000,
+            comment: 'mc:link0000:9001',
+            closePositionDetail: { closedVolume: 1_000_000, grossProfit: 250, commission: -10, swap: 0 },
+          },
+        ],
+      },
+    },
+  ])
+  const rows = await provider.orderHistory('4242', '2026-10-01T00:00:00.000Z', '2026-10-26T00:00:00.000Z') as Array<Record<string, unknown>>
+  assert.equal(rows.length, 2)
+
+  const opening = rows[0]!
+  const closing = rows[1]!
+  assert.equal(opening.ticket, 9001)
+  assert.equal('closeTime' in opening, false, 'an opening fill must never publish a close time')
+  assert.equal(closing.ticket, 9001)
+  assert.equal(closing.closeTime, 1_761_500_600_000)
+  assert.equal(closing.closePrice, 123_456)
+  assert.equal(closing.profit, 2.5)
+
+  const history = (await import('./mirrorCopy/mirrorCopyReconcile')).historyContainsClosedPosition
+  assert.equal(history([closing], '9001', 'ctrader'), true, 'a closing deal confirms the source is closed')
+  assert.equal(history([opening], '9001', 'ctrader'), false, 'an opening fill alone must never confirm a close')
+})

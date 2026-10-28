@@ -17,6 +17,7 @@ import {
   upsertTelegramAccountClaim,
 } from './telegramAccountClaims'
 import { loadCachedUserIsAdmin } from './subscriptionAccess'
+import { openTelegramSession, sealTelegramSession } from './telegramSessionCrypto'
 import { logTelegramAuthFailure, logTelegramAuthSuccess, persistListenerEvent } from './listenerEvents'
 import { buildQrStatusFromPending, formatQrLoginUrl, qrStatusFromActiveSession, type QrStatusResponse } from './telegramQrAuth'
 import {
@@ -451,10 +452,17 @@ export class AuthService {
     }
 
     const awaitingPassword = Boolean(row.awaiting_password)
-    const savedAuthSession =
-      typeof row.auth_session_string === 'string' && row.auth_session_string.trim()
-        ? row.auth_session_string.trim()
-        : ''
+    let savedAuthSession = ''
+    if (typeof row.auth_session_string === 'string' && row.auth_session_string.trim()) {
+      try {
+        savedAuthSession = openTelegramSession(row.auth_session_string).trim()
+      } catch {
+        // The stored login state can no longer be opened (rotation or damage).
+        // Resuming would be unsafe, so ask for a fresh code instead.
+        console.warn(`[authService] auth_session_string unreadable for ${userId}; requesting a new code`)
+        return null
+      }
+    }
     const { sessionString: savedSession, meta } = parsePhoneAuthSessionEnvelope(savedAuthSession)
 
     // 2FA resume requires the persisted MTProto session from SignIn; without it the
@@ -505,10 +513,15 @@ export class AuthService {
       return null
     }
 
-    const sessionString =
-      typeof row.auth_session_string === 'string' && row.auth_session_string.trim()
-        ? row.auth_session_string.trim()
-        : ''
+    let sessionString = ''
+    if (typeof row.auth_session_string === 'string' && row.auth_session_string.trim()) {
+      try {
+        sessionString = openTelegramSession(row.auth_session_string).trim()
+      } catch {
+        console.warn(`[authService] QR auth_session_string unreadable for ${userId}; starting a new QR login`)
+        return null
+      }
+    }
     if (!sessionString) return null
 
     const client = this.createTelegramClient(sessionString)
@@ -544,7 +557,9 @@ export class AuthService {
         phone_code_hash: pending?.phoneCodeHash ?? null,
         expires_at: expiresAt,
         awaiting_password: true,
-        auth_session_string: pending ? serializePhoneAuthSession(authSessionString, pending) : authSessionString,
+        auth_session_string: sealTelegramSession(
+          pending ? serializePhoneAuthSession(authSessionString, pending) : authSessionString,
+        ),
       },
       { onConflict: 'user_id' },
     )
@@ -569,7 +584,7 @@ export class AuthService {
         phone_code_hash: pending.phoneCodeHash,
         expires_at: expiresAt,
         awaiting_password: Boolean(pending.awaitingPassword),
-        auth_session_string: serializePhoneAuthSession(authSessionString, pending),
+        auth_session_string: sealTelegramSession(serializePhoneAuthSession(authSessionString, pending)),
         qr_expires_at: null,
       },
       { onConflict: 'user_id' },
@@ -590,7 +605,7 @@ export class AuthService {
         phone: pending.phone ?? null,
         phone_code_hash: null,
         expires_at: expiresAt,
-        auth_session_string: authSessionString,
+        auth_session_string: sealTelegramSession(authSessionString),
         awaiting_password: pending.status === 'requires_password',
         qr_expires_at: pending.expiresAt > 0 ? new Date(pending.expiresAt).toISOString() : null,
       },
@@ -644,7 +659,7 @@ export class AuthService {
       .from('telegram_sessions')
       .upsert({
         user_id: userId,
-        session_string: sessionString,
+        session_string: sealTelegramSession(sessionString),
         phone_number: phone,
         is_active: true,
         listener_engine: 'gramjs',

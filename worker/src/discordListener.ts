@@ -18,6 +18,9 @@ import {
   type TextChannel,
 } from 'discord.js'
 import { flattenDiscordMessage } from './discordMessage'
+import { installRelayFetch } from './relayFetch'
+
+installRelayFetch()
 import { parseRawChannelMessage } from './parseSignal'
 import { pushParsedSignalToTradeWorker } from './tradeSignalPush'
 

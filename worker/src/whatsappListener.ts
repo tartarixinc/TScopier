@@ -10,6 +10,9 @@ import { isWhatsAppGroupJid, whatsappMessageText, type WhatsAppMessageContent } 
 import { parseRawChannelMessage } from './parseSignal'
 import { pushParsedSignalToTradeWorker } from './tradeSignalPush'
 import { userBelongsToShard } from './workerConfig'
+import { installRelayFetch } from './relayFetch'
+
+installRelayFetch()
 
 type SessionStatus = 'qr' | 'connected' | 'disconnected'
 

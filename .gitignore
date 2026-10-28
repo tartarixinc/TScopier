@@ -4,6 +4,10 @@ load-results/
 .env.local
 .env.*.local
 
+# Local-only pipeline test tool (holds a bot token; never commit or push)
+.env.testbot
+scripts/test-signal.mjs
+
 # Build output (Netlify/Railway build from source)
 dist/
 worker/dist/

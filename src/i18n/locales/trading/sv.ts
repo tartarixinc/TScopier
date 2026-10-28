@@ -80,6 +80,8 @@ export const tradingSv: TradingPagesBundleTranslations = {
     reasonCopyLimitFlatten: 'Stängdes automatiskt när kopieringsgränsen nåddes.',
     reasonUserForceClose: 'Stängdes av dig.',
     reasonPositionGone: 'Positionen var redan borta hos mäklaren när vi kontrollerade.',
+    reasonMirrorSourceClosed: 'Originaltransaktionen stängdes, så den här kopian stängdes med den.',
+    reasonMirrorCopyClosed: 'Den här kopierade transaktionen stängdes innan stängningsorsaker började sparas.',
     reasonStopLoss: 'Mäklaren stängde den vid stop loss ({price}).',
     reasonTakeProfit: 'Mäklaren stängde den vid take profit ({price}).',
     reasonUnknown: 'Ingen stängningsorsak sparades för den här traden.',

@@ -13,10 +13,9 @@ import {
 import { Alert } from '../ui/Alert'
 import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
-
-function accountMode(value: string | null | undefined): 'demo' | 'live' {
-  return ['demo', 'practice'].includes(String(value ?? '').toLowerCase()) ? 'demo' : 'live'
-}
+import { isSocialDestinationEligible, resolveSocialAccountMode } from '../../lib/socialAccount'
+import { eligibilityDiagnosticForReason, publishingEligibilityDiagnostics } from '../../lib/socialEligibility'
+import { SocialEligibilityDiagnostics } from './SocialEligibilityDiagnostics'
 
 function accountLabel(account: { label?: string | null; platform?: string | null; account_login?: string | null }): string {
   return account.label || `${account.platform ?? 'Broker'}${account.account_login ? ` · ${account.account_login}` : ''}`
@@ -29,26 +28,6 @@ function statusLabel(subscription: SocialCopySubscription): string {
   if (subscription.status === 'stopped') return 'Stopped'
   if (subscription.status === 'emergency_stopped') return 'Emergency stopped'
   return `Error${subscription.errorCode ? ` · ${subscription.errorCode}` : ''}`
-}
-
-function eligibilityMessage(reason: string): string {
-  const messages: Record<string, string> = {
-    synthetic_demo: 'This is synthetic DEMO data and can never be copied.',
-    source_missing: 'The published source account is missing.',
-    source_not_published: 'The provider has not published this source.',
-    source_unsupported: 'Performance verification is not supported for this broker connection.',
-    account_mode_unknown: 'Reconnect the source so its demo/live mode can be verified.',
-    demo_only: 'Phase 1 copy eligibility is limited to demo source accounts.',
-    source_inactive: 'The provider must activate the source account.',
-    sync_failed: 'The source synchronization failed. The provider must reconnect it.',
-    source_disconnected: 'The provider source is disconnected.',
-    sync_pending: 'Waiting for the first successful source synchronization.',
-    history_stale: 'Source data is stale. The provider must restore synchronization.',
-    history_incomplete: 'Some closed trades are still missing verified broker results.',
-    minimum_trades_not_met: 'At least 10 complete closed trades are required.',
-    minimum_period_not_met: 'Closed-trade history must span at least 7 days.',
-  }
-  return messages[reason] ?? 'This provider does not currently meet copy eligibility requirements.'
 }
 
 export function SocialCopyPanel({ traderUserId, isSelf }: { traderUserId: string; isSelf: boolean }) {
@@ -77,7 +56,7 @@ export function SocialCopyPanel({ traderUserId, isSelf }: { traderUserId: string
       if (request !== generation.current) return
       setSources(nextSources)
       setSubscriptions(nextSubscriptions)
-      setSourceId(current => nextSources.some(source => source.sourceId === current) ? current : (nextSources[0]?.sourceId ?? ''))
+      setSourceId(current => nextSources.some(source => source.sourceId === current) ? current : '')
       setError(null)
     } catch (cause) {
       if (request === generation.current) setError(cause instanceof Error ? cause.message : 'Unable to load copy trading')
@@ -100,11 +79,12 @@ export function SocialCopyPanel({ traderUserId, isSelf }: { traderUserId: string
     return () => window.clearInterval(timer)
   }, [isSelf, refresh, subscriptions])
 
-  const destinations = useMemo(() => brokers.filter(broker => broker.is_active), [brokers])
-  const selectedDestination = destinations.find(broker => broker.id === destinationId) ?? destinations[0] ?? null
-  const selectedSource = sources.find(source => source.sourceId === sourceId) ?? sources[0] ?? null
-  const selectedExecutionMode: 'demo' | 'live' = selectedSource?.accountMode === 'live'
-    || (selectedDestination && accountMode(selectedDestination.linked_account_type) === 'live') ? 'live' : 'demo'
+  const destinations = useMemo(() => brokers.filter(isSocialDestinationEligible), [brokers])
+  const selectedDestination = destinations.find(broker => broker.id === destinationId) ?? null
+  const selectedPublishingAccount = brokers.find(broker => broker.id === destinationId) ?? null
+  const selectedPublishingChecks = selectedPublishingAccount ? publishingEligibilityDiagnostics(selectedPublishingAccount) : []
+  const selectedSource = sources.find(source => source.sourceId === sourceId) ?? null
+  const selectedExecutionMode = selectedDestination ? resolveSocialAccountMode(selectedDestination) : 'unknown'
 
   const fixedLotNumber = Number(fixedLot)
   const multiplierNumber = Number(multiplier)
@@ -143,16 +123,19 @@ export function SocialCopyPanel({ traderUserId, isSelf }: { traderUserId: string
         {brokers.length === 0 ? <p className="mt-3 text-sm text-neutral-500">Connect a broker account before publishing a source.</p> : (
           <div className="mt-3 flex flex-wrap items-end gap-3">
             <label className="text-xs text-neutral-500">Broker account
-              <select className="mt-1 block rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900" value={destinationId || brokers[0]?.id} onChange={event => setDestinationId(event.target.value)}>
-                {brokers.map(broker => <option key={broker.id} value={broker.id}>{accountLabel(broker)} · {accountMode(broker.linked_account_type)}</option>)}
+              <select className="mt-1 block rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900" value={destinationId} onChange={event => setDestinationId(event.target.value)}>
+                <option value="" disabled>Select an eligible account</option>
+                {brokers.map(broker => <option key={broker.id} value={broker.id}>{accountLabel(broker)} · {resolveSocialAccountMode(broker)} · {isSocialDestinationEligible(broker) ? 'ready to publish' : 'needs attention'}</option>)}
               </select>
             </label>
-            <Button type="button" size="sm" disabled={Boolean(pending)} onClick={() => {
-              const id = destinationId || brokers[0]?.id
+            <Button type="button" size="sm" disabled={Boolean(pending) || !selectedPublishingAccount || !isSocialDestinationEligible(selectedPublishingAccount)} onClick={() => {
+              const id = destinationId
               if (id) void run('publish', () => publishSocialCopySource(supabase, id, accountLabel(brokers.find(item => item.id === id) ?? brokers[0]!)).then(() => undefined), 'Copy source published.')
             }}>Publish source</Button>
           </div>
         )}
+        <p className="mt-3 text-xs text-neutral-500">Authorization to publish is separate from account eligibility. The server verifies your identity, directory membership, and ownership again when you submit.</p>
+        {selectedPublishingChecks.length > 0 ? <div className="mt-3"><SocialEligibilityDiagnostics diagnostics={selectedPublishingChecks} title="Pre-publication account checks" /></div> : null}
         {sources.length > 0 ? <p className="mt-3 text-xs text-neutral-500">Published sources: {sources.map(source => `${source.label} (${source.accountMode})`).join(', ')}</p> : null}
       </Card>
     )
@@ -166,7 +149,7 @@ export function SocialCopyPanel({ traderUserId, isSelf }: { traderUserId: string
       {error ? <div className="mt-3"><Alert variant="error">{error}</Alert></div> : null}
       {notice ? <div className="mt-3"><Alert variant="success">{notice}</Alert></div> : null}
 
-      {sources.length === 0 ? <p className="mt-4 text-sm text-neutral-500">No eligible copy source is available. A private trader also requires an accepted follow.</p> : (
+      {sources.length === 0 ? <div className="mt-4"><Alert variant="warning">{eligibilityDiagnosticForReason('source_not_published').explanation} {eligibilityDiagnosticForReason('source_not_published').nextAction}</Alert></div> : (
         <div className="mt-4 space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-xs text-neutral-500">Published source
@@ -175,9 +158,9 @@ export function SocialCopyPanel({ traderUserId, isSelf }: { traderUserId: string
               </select>
             </label>
             <label className="text-xs text-neutral-500">Destination account
-              <select className="mt-1 block w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900" value={destinationId || destinations[0]?.id || ''} onChange={event => setDestinationId(event.target.value)}>
+              <select className="mt-1 block w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900" value={destinationId} onChange={event => setDestinationId(event.target.value)}>
                 <option value="" disabled>Select an account</option>
-                {destinations.map(broker => <option key={broker.id} value={broker.id}>{accountLabel(broker)} · {accountMode(broker.linked_account_type)}</option>)}
+                {destinations.map(broker => <option key={broker.id} value={broker.id}>{accountLabel(broker)} · {resolveSocialAccountMode(broker)}</option>)}
               </select>
             </label>
           </div>
@@ -194,13 +177,13 @@ export function SocialCopyPanel({ traderUserId, isSelf }: { traderUserId: string
               <input type="number" min="0.01" step="0.01" className="mt-1 block w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900" value={maxLot} onChange={event => setMaxLot(event.target.value)} />
             </label>
           </div>
-          {selectedSource?.isSynthetic ? <Alert variant="warning">DEMO DATA: synthetic performance is display-only and cannot create or authorize copy subscriptions.</Alert> : null}
+          {selectedSource?.isSynthetic ? <Alert variant="warning">Synthetic preview participant: this creates a persisted subscription that can run only through the isolated simulation path.</Alert> : null}
           {selectedSource && !selectedSource.isCopyEligible ? (
-            <Alert variant="warning">Provider not eligible for copying: {eligibilityMessage(selectedSource.eligibilityReason)}</Alert>
+            <SocialEligibilityDiagnostics diagnostics={selectedSource.eligibilityDiagnostics} />
           ) : null}
           <label className="flex gap-2 text-xs text-neutral-600 dark:text-neutral-300">
             <input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} />
-            I understand this persists a {selectedExecutionMode} subscription and can place real broker orders only after the worker acknowledges it.
+            I understand this persists a {selectedExecutionMode === 'unknown' ? 'mode-unverified' : selectedExecutionMode} destination subscription and can place real broker orders only after the worker acknowledges it.
           </label>
           {!configurationValid ? <p className="text-xs text-red-600 dark:text-red-400">Enter positive sizing values; fixed lot cannot exceed maximum lot.</p> : null}
           <Button type="button" size="sm" disabled={Boolean(pending) || !confirmed || !configurationValid || !selectedSource?.connectionHealthy || !selectedSource?.isCopyEligible || !selectedDestination} onClick={() => {
@@ -208,9 +191,10 @@ export function SocialCopyPanel({ traderUserId, isSelf }: { traderUserId: string
             void run('create', () => createSocialCopySubscription(supabase, {
               sourceId: selectedSource.sourceId, destinationBrokerAccountId: selectedDestination.id,
               sizingMode, fixedLot: fixedLotNumber, lotMultiplier: multiplierNumber, maxLot: maxLotNumber,
-              accountMode: selectedExecutionMode,
+              accountMode: selectedExecutionMode as 'demo' | 'live',
             }).then(() => undefined), 'Subscription saved. Waiting for worker acknowledgement.')
           }}>Confirm subscription</Button>
+          {!selectedSource || !selectedDestination ? <p className="text-xs text-amber-700 dark:text-amber-300">Select an eligible source and destination explicitly. Stale or unavailable selections are never replaced automatically.</p> : null}
         </div>
       )}
 

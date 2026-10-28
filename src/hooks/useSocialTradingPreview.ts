@@ -7,6 +7,7 @@ import {
   fetchSocialTradeHistoryAccess,
   type SocialTradeHistoryItem,
 } from '../lib/socialTradeHistory'
+import { eligibilityDiagnosticForReason } from '../lib/socialEligibility'
 import { supabase } from '../lib/supabase'
 import type { SocialDirectoryProfile } from '../lib/socialFollow'
 import type { SocialTrader } from '../lib/socialTradingFixture'
@@ -23,7 +24,8 @@ function previewTrader(profile: SocialDirectoryProfile, rank: number): SocialTra
     roi: null,
     winRate: null,
     maxDrawdown: null,
-    closedTrades: 0,
+    closedTrades: null,
+    openTradeCount: null,
     followerCount: profile.followerCount,
     rating: profile.averageRating,
     ratingCount: profile.reviewCount,
@@ -31,9 +33,20 @@ function previewTrader(profile: SocialDirectoryProfile, rank: number): SocialTra
     followsYou: profile.followsViewerStatus === 'accepted',
     previewBalance: null,
     sourceId: null,
+    sourceLabel: null,
+    sourceProvider: null,
+    sourcePlatform: null,
     sourceAccountMode: 'unknown',
+    sources: [],
     copyEligible: false,
+    copyEligibilityReason: 'source_missing',
     performanceStatus: 'unavailable',
+    performanceStatusReason: 'not_loaded',
+    performanceError: null,
+    historyAvailable: false,
+    performancePeriodStartedAt: null,
+    performancePeriodEndedAt: null,
+    liveCopiers: null,
     syntheticDemo: profile.syntheticDemo,
     socialLinks: profile.socialLinks,
     profile: {
@@ -50,7 +63,19 @@ function previewTrader(profile: SocialDirectoryProfile, rank: number): SocialTra
   }
 }
 
-function hydrateTrader(base: SocialTrader, rows: SocialTradeHistoryItem[], performance: Awaited<ReturnType<typeof fetchSocialProviderPerformance>>[number] | null, source: Awaited<ReturnType<typeof fetchSocialCopySources>>[number] | null): SocialTrader {
+function errorMessage(cause: unknown): string {
+  return cause instanceof Error ? cause.message : 'The request failed.'
+}
+
+export function hydrateTrader(
+  base: SocialTrader,
+  history: SocialTradeHistoryItem[] | null,
+  performance: Awaited<ReturnType<typeof fetchSocialProviderPerformance>>[number] | null,
+  source: Awaited<ReturnType<typeof fetchSocialCopySources>>[number] | null,
+  performanceError: string | null = null,
+  sources: Awaited<ReturnType<typeof fetchSocialCopySources>> = source ? [source] : [],
+): SocialTrader {
+  const rows = history ?? []
   const ordered = rows.slice().sort((a, b) => new Date(a.openedAt).getTime() - new Date(b.openedAt).getTime())
   const closed = ordered.filter((trade): trade is SocialTradeHistoryItem & { closedAt: string; realizedProfit: number } => trade.status === 'closed' && trade.closedAt != null && trade.realizedProfit != null)
   const open = ordered.filter(trade => trade.status === 'open')
@@ -76,16 +101,30 @@ function hydrateTrader(base: SocialTrader, rows: SocialTradeHistoryItem[], perfo
     profit: value.profit,
     loss: value.loss,
   }))
+  const syntheticDemo = base.syntheticDemo === true || source?.isSynthetic === true || performance?.isSynthetic === true
   return {
     ...base,
     roi: performance?.returnPercentage ?? null,
     winRate: performance?.winRate ?? null,
     maxDrawdown: performance?.maximumDrawdown ?? null,
-    closedTrades: performance?.closedTradeCount ?? closed.length,
+    closedTrades: performance?.closedTradeCount ?? (history ? closed.length : null),
+    openTradeCount: performance?.openTradeCount ?? (history ? open.length : null),
     sourceId: source?.sourceId ?? null,
+    sourceLabel: source?.label ?? null,
+    sourceProvider: source?.provider ?? null,
+    sourcePlatform: source?.platform ?? null,
     sourceAccountMode: source?.accountMode ?? 'unknown',
-    copyEligible: source?.isCopyEligible === true && !base.syntheticDemo,
+    sources,
+    copyEligible: source?.isCopyEligible === true,
+    copyEligibilityReason: source?.eligibilityReason ?? performance?.eligibilityReason ?? 'source_missing',
     performanceStatus: performance?.performanceStatus ?? 'unavailable',
+    performanceStatusReason: performance?.statusReason ?? null,
+    performanceError,
+    historyAvailable: history != null,
+    performancePeriodStartedAt: performance?.periodStartedAt ?? null,
+    performancePeriodEndedAt: performance?.periodEndedAt ?? null,
+    liveCopiers: null,
+    syntheticDemo,
     openTrades: open.map(trade => ({
       id: trade.tradeId,
       symbol: trade.symbol,
@@ -131,22 +170,37 @@ export function useSocialTradingPreview() {
     void Promise.resolve().then(() => { if (active) setPerformanceLoading(true) })
     void Promise.all(social.profiles.map(async (profile, index) => {
       const base = bases[index]
-      try {
-        const [access, sources] = await Promise.all([
-          fetchSocialTradeHistoryAccess(supabase, profile.profileUserId),
-          fetchSocialCopySources(supabase, profile.profileUserId),
-        ])
-        if (!access.canView) return base
-        const source = sources[0] ?? null
-        const [performanceRows, history] = await Promise.all([
-          fetchSocialProviderPerformance(supabase, profile.profileUserId),
-          source ? fetchSocialTradeHistory(supabase, source.sourceId) : Promise.resolve([]),
-        ])
-        const performance = performanceRows.find(row => row.sourceId === source?.sourceId) ?? performanceRows[0] ?? null
-        return hydrateTrader(base, history, performance, source)
-      } catch {
-        return base
+      const [accessResult, sourcesResult] = await Promise.allSettled([
+        fetchSocialTradeHistoryAccess(supabase, profile.profileUserId),
+        fetchSocialCopySources(supabase, profile.profileUserId),
+      ])
+      const sources = sourcesResult.status === 'fulfilled' ? sourcesResult.value : []
+      const source = sources.find(item => item.isCopyEligible) ?? sources[0] ?? null
+      if (accessResult.status === 'rejected') {
+        return hydrateTrader(base, null, null, source, `Trade-history access check failed: ${errorMessage(accessResult.reason)}`, sources)
       }
+      if (!accessResult.value.canView) {
+        return hydrateTrader(base, null, null, source, 'This trader has not shared source-account history with you.', sources)
+      }
+      if (!source) {
+        const detail = sourcesResult.status === 'rejected'
+          ? `Copy-source request failed: ${errorMessage(sourcesResult.reason)}`
+          : eligibilityDiagnosticForReason('source_not_published').explanation
+        return hydrateTrader(base, null, null, null, detail, sources)
+      }
+      const [performanceResult, historyResult] = await Promise.allSettled([
+        fetchSocialProviderPerformance(supabase, profile.profileUserId),
+        fetchSocialTradeHistory(supabase, source.sourceId),
+      ])
+      const performanceRows = performanceResult.status === 'fulfilled' ? performanceResult.value : []
+      const performance = performanceRows.find(row => row.sourceId === source.sourceId) ?? null
+      const history = historyResult.status === 'fulfilled' ? historyResult.value : null
+      const diagnostics = [
+        performanceResult.status === 'rejected' ? `Performance request failed: ${errorMessage(performanceResult.reason)}` : null,
+        historyResult.status === 'rejected' ? `Trade-history request failed: ${errorMessage(historyResult.reason)}` : null,
+        performanceResult.status === 'fulfilled' && !performance ? 'The selected source was missing from the performance response.' : null,
+      ].filter((message): message is string => Boolean(message))
+      return hydrateTrader(base, history, performance, source, diagnostics.join(' ') || null, sources)
     })).then(next => {
       if (active) setHydratedTraders(next)
     }).finally(() => {

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
-import { ArrowUpRight, Check, CircleCheck, Layers, Loader2, Pencil, RotateCcw, TriangleAlert, X } from 'lucide-react'
+import { ArrowUpRight, Check, CircleCheck, Copy, Layers, Loader2, Pencil, RotateCcw, TriangleAlert, UserPlus, X } from 'lucide-react'
 import { useNotifications } from '../../context/NotificationsContext'
 import { useLocale, useT } from '../../context/LocaleContext'
 import { formatRelative } from '../../lib/formatRelative'
@@ -33,6 +33,14 @@ function headlineMeta(headline: TradeNotificationHeadline): {
       return { icon: TriangleAlert, className: REVIEW_ICON_CLASS }
     case 'manual_override_reverted':
       return { icon: RotateCcw, className: REVIEW_ICON_CLASS }
+    case 'social_follow_accepted':
+      return { icon: UserPlus, className: HEADLINE_ICON_CLASS }
+    case 'social_copy_activated':
+      return { icon: Copy, className: HEADLINE_ICON_CLASS }
+    case 'social_copy_stopped':
+      return { icon: Check, className: HEADLINE_ICON_CLASS }
+    case 'social_copy_suspended':
+      return { icon: TriangleAlert, className: REVIEW_ICON_CLASS }
   }
 }
 

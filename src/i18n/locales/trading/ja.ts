@@ -80,6 +80,8 @@ export const tradingJa: TradingPagesBundleTranslations = {
     reasonCopyLimitFlatten: 'コピーリミットに達したため自動的に決済されました。',
     reasonUserForceClose: 'あなたが決済しました。',
     reasonPositionGone: '確認した時点でブローカー側ではすでに保有がありませんでした。',
+    reasonMirrorSourceClosed: '元の取引が決済されたため、このコピーも決済されました。',
+    reasonMirrorCopyClosed: 'このコピー取引は、決済理由が記録される前に決済されました。',
     reasonStopLoss: 'ブローカーがストップロス（{price}）で決済しました。',
     reasonTakeProfit: 'ブローカーがテイクプロフィット（{price}）で決済しました。',
     reasonUnknown: 'このトレードの終了理由は記録されていません。',

@@ -224,6 +224,9 @@ export interface CommonTranslations {
   refresh: string
   save: string
   cancel: string
+  confirm?: string
+  confirmTitle?: string
+  working?: string
   delete: string
   edit: string
   add: string
@@ -847,6 +850,7 @@ export interface AccountConfigBrokerListTranslations {
   detailEquity: string
   channelsNoneSelected: string
   channelsEmptySaveWarning: string
+  channelsEmptySaveTitle?: string
   channelsSaveChannelListNotReady: string
   channelsSaveLinkedChannelsInvalid: string
   channelsSignalChannel: string
@@ -1021,11 +1025,18 @@ export interface MirrorTradingPageTranslations {
   stopCopyingConfirm?: string
   closingCopies?: string
   removeSlaveConfirm?: string
+  removeSlaveTitle?: string
   statusActive?: string
   statusPaused?: string
   statusStopped?: string
   statusStopping?: string
   statusError?: string
+  slaveChannelConflictTitle?: string
+  slaveChannelConflictBody?: string
+  slaveChannelConflictChannelsLabel?: string
+  slaveChannelConflictUseDifferent?: string
+  slaveChannelConflictDisconnect?: string
+  slaveChannelConflictDisconnecting?: string
   setup: {
     title: string
     preview: string
@@ -1069,6 +1080,16 @@ export interface MirrorTradingPageTranslations {
       stop_distance: string
     }
   }
+}
+
+/** Shared warning shown when linking a mirror-slave broker to a channel. */
+export interface MirrorSlaveGuardTranslations {
+  channelConnectTitle?: string
+  channelConnectBody?: string
+  masterAccountLabel?: string
+  proceed?: string
+  disconnectMirror?: string
+  disconnectingMirror?: string
 }
 
 export interface SocialTradingPageTranslations {
@@ -1346,6 +1367,14 @@ export interface TradesTranslations {
   imageSignal: string
   copiedFromMasterTitle?: string
   copiedFromMaster?: string
+  closeCopy?: string
+  closeCopyConfirm?: string
+  closeCopyWorking?: string
+  closeCopyDone?: string
+  closeCopyTimeout?: string
+  closeCopyRetry?: string
+  closeCopyError?: string
+  closeCopyErrorFallback?: string
   execNotesTitle?: string
   execNoteTpSplit?: string
   execNoteStaleEntry?: string
@@ -1406,6 +1435,8 @@ export interface TradesTranslations {
   reasonCopyLimitFlatten: string
   reasonUserForceClose: string
   reasonPositionGone: string
+  reasonMirrorSourceClosed: string
+  reasonMirrorCopyClosed: string
   reasonStopLoss: string
   reasonTakeProfit: string
   reasonUnknown: string
@@ -1851,8 +1882,10 @@ export interface ChannelsPageTranslations {
   tradingViewCopy: string
   tradingViewCopied: string
   tradingViewRotate: string
+  tradingViewRotateConfirm?: string
   tradingViewActive: string
   tradingViewDelete: string
+  tradingViewDeleteConfirm?: string
   tradingViewShowDetails: string
   tradingViewEmpty: string
   tradingViewHeroTitle: string
@@ -2252,6 +2285,7 @@ export interface Translations {
   pricing: PricingTranslations
   landing: LandingTranslations
   mirrorTradingPage: MirrorTradingPageTranslations
+  mirrorSlaveGuard?: MirrorSlaveGuardTranslations
   copyRisk: CopyRiskTranslations
   socialTradingPage: SocialTradingPageTranslations
   configurationsPage: ConfigurationsPageTranslations

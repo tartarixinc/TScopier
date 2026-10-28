@@ -80,6 +80,8 @@ export const tradingAr: TradingPagesBundleTranslations = {
     reasonCopyLimitFlatten: 'أُغلقت تلقائيًا عند الوصول إلى حد النسخ.',
     reasonUserForceClose: 'أُغلقت من قبلك.',
     reasonPositionGone: 'كانت الصفقة مغلقة لدى الوسيط بالفعل عندما تحقّقنا.',
+    reasonMirrorSourceClosed: 'أُغلقت الصفقة الأصلية، لذا أُغلقت هذه النسخة معها.',
+    reasonMirrorCopyClosed: 'أُغلقت هذه الصفقة المنسوخة قبل بدء تسجيل أسباب الإغلاق.',
     reasonStopLoss: 'أغلقها الوسيط عند وقف الخسارة ({price}).',
     reasonTakeProfit: 'أغلقها الوسيط عند جنى الربح ({price}).',
     reasonUnknown: 'لم يُسجَّل سبب إغلاق هذه الصفقة.',

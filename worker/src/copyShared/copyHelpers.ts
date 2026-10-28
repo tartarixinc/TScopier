@@ -7,7 +7,7 @@
  * re-exports the previously-public members so existing imports keep working.
  */
 import type { BrokerSymbolParams } from '../brokerProvider'
-import { inferProvider } from '../providerResolver'
+import { brokerSessionId, missingProviderIdColumn } from '../mtApiByAccount'
 import { resolveMtLots } from '../mtTradeFields'
 import {
   isLikelyMarketPositionRow,
@@ -19,13 +19,23 @@ import {
 
 type Json = Record<string, unknown>
 
-/** Minimal broker row shape needed to resolve a session id or demo/live mode. */
+/**
+ * Minimal broker row shape needed to resolve a session id or demo/live mode.
+ * Every provider column the session resolver reads has to be selected by the
+ * caller: a column that is not in the SELECT resolves to an empty session.
+ */
 export type CopyBrokerSessionRow = {
   provider?: string | null
   mtapi_session_id?: string | null
   fxsocket_account_id?: string | null
   metaapi_account_id?: string | null
   ctrader_account_id?: string | null
+  binance_account_id?: string | null
+  bybit_account_id?: string | null
+  kucoin_account_id?: string | null
+  dxtrade_account_id?: string | null
+  tradelocker_account_id?: string | null
+  matchtrader_account_id?: string | null
   linked_account_type?: string | null
 }
 
@@ -56,11 +66,41 @@ export function normalizeSourcePosition(raw: unknown): NormalizedSourcePosition 
   }
 }
 
+/**
+ * Broker columns every copy engine selects: row identity, connection state,
+ * every provider's session id column and the write-fence fields. Shared so the
+ * mirror and social monitors can never drift apart — a session id column that
+ * is missing from a SELECT resolves to an empty session for that provider.
+ */
+// Written as one literal (not a concatenation) so the typed Supabase client can
+// still parse the column list; splitting it turns the select into a `string` and
+// the row type degrades to GenericStringError.
+export const COPY_BROKER_COLUMNS = 'id,user_id,provider,platform,is_active,connection_status,linked_account_type,mtapi_session_id,fxsocket_account_id,metaapi_account_id,ctrader_account_id,binance_account_id,bybit_account_id,kucoin_account_id,dxtrade_account_id,tradelocker_account_id,matchtrader_account_id,writer_epoch,provider_transition_state'
+
+/**
+ * What to select when the database has not received the later provider
+ * migrations yet: the pre-provider-fan-out set. The engines then keep copying
+ * for the providers those columns do cover (fxsocket/mtapi/ctrader) instead of
+ * failing the whole read — the same degradation `loadPlatformByFxsocketId`
+ * already has in `mtApiByAccount.ts`. Providers whose column is missing resolve
+ * to an empty session and fail closed for that account only.
+ */
+export const LEGACY_COPY_BROKER_COLUMNS = 'id,user_id,provider,platform,is_active,connection_status,linked_account_type,mtapi_session_id,fxsocket_account_id,metaapi_account_id,ctrader_account_id,writer_epoch,provider_transition_state'
+
+/**
+ * Re-exported so both copy engines can read it from here; the definition lives
+ * with the other provider-column readers in `mtApiByAccount.ts` (this module
+ * already imports that one, so it cannot be defined here).
+ */
+export { missingProviderIdColumn }
+
+/**
+ * Provider-specific broker session id, shared with the trade executor so the
+ * two paths can never disagree: every provider is resolved from its own
+ * `*_account_id` column (unknown providers resolve to '' and fail closed).
+ */
 export function sessionId(row: CopyBrokerSessionRow): string {
-  const provider = inferProvider(row)
-  if (provider === 'mtapi') return String(row.mtapi_session_id ?? '').trim()
-  if (provider === 'ctrader') return String(row.ctrader_account_id ?? '').trim()
-  return String(row.fxsocket_account_id ?? row.metaapi_account_id ?? '').trim()
+  return brokerSessionId(row)
 }
 
 export function isDemo(row: CopyBrokerSessionRow): boolean {

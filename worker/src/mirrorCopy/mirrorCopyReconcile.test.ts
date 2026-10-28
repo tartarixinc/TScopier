@@ -31,3 +31,23 @@ test('historyContainsClosedPosition is inert on empty input and bad tickets', ()
   assert.equal(historyContainsClosedPosition([null, 'x', 5], '42', 'mtapi'), false)
   assert.equal(historyContainsClosedPosition([{ position: 42, order: 0, entry: 'Out', closePrice: 1.1 }], '0', 'fxsocket'), false)
 })
+
+test('historyContainsClosedPosition confirms a value-less close row and rejects open or non-fill rows', () => {
+  // What an observed close looks like (a cTrader closing deal, or a position
+  // this worker watched disappear from a crypto book): the tracked ticket, a
+  // close time and a positive size — but no price and no profit, because a
+  // row without a value must never be written as a trade's fill.
+  const observed = {
+    ticket: 9001, positionTicket: 9001, symbol: 'EURUSD', operation: 'Buy',
+    lots: 0.1, closeTime: 1_761_500_600_000, comment: '', observed: 'position_gone',
+  }
+  assert.equal(historyContainsClosedPosition([observed], '9001', 'binance'), true)
+  assert.equal(historyContainsClosedPosition([observed], '9002', 'binance'), false)
+
+  // The same ticket without a close time is an open echo: never a close.
+  assert.equal(historyContainsClosedPosition([{ ticket: 9001, symbol: 'EURUSD', operation: 'Buy', lots: 0.1 }], '9001', 'binance'), false)
+  // A balance-style row (no size, no symbol) is not a position either.
+  assert.equal(historyContainsClosedPosition([{ ticket: 9001, symbol: '', lots: 0, closeTime: 1_761_500_600_000 }], '9001', 'binance'), false)
+  // A cancelled or pending state is never a fill.
+  assert.equal(historyContainsClosedPosition([{ ticket: 9001, symbol: 'EURUSD', lots: 0.1, closeTime: 1_761_500_600_000, state: 'Canceled' }], '9001', 'binance'), false)
+})
