@@ -497,10 +497,12 @@ export async function runBasketLegModifies(args: {
     }
 
     let ref = Number(tr.entry_price) || 0
+    let marketRef = 0
     try {
       const q = strictEntryPrefetch ?? await api.quote(uuid, symbol)
-      const marketRef = direction === 'buy' ? q.bid : q.ask
-      if (Number.isFinite(marketRef) && marketRef > 0) {
+      const quote = direction === 'buy' ? q.bid : q.ask
+      if (Number.isFinite(quote) && quote > 0) {
+        marketRef = quote
         ref = explicitChannelTargets === true ? marketRef : (ref > 0 ? ref : marketRef)
       }
     } catch {
@@ -509,6 +511,8 @@ export async function runBasketLegModifies(args: {
     if (ref <= 0) {
       try {
         const q = strictEntryPrefetch ?? await api.quote(uuid, symbol)
+        const quote = direction === 'buy' ? q.bid : q.ask
+        if (Number.isFinite(quote) && quote > 0) marketRef = quote
         ref = direction === 'buy' ? q.ask : q.bid
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
@@ -538,6 +542,14 @@ export async function runBasketLegModifies(args: {
       }
     }
 
+    // The wrong-side / min-distance guard must judge the stop against the live
+    // market, never the entry price: entry is stale the moment price moves, and
+    // comparing a profitable trail to the entry rejected every break-even move
+    // for buys as `wrong_side_sl` (incident 2026-10-28). The entry ref stays
+    // for the modify price and for the "never loosen" rule further down; when
+    // no live quote is available we keep the old entry-based behaviour.
+    const guardRef = marketRef > 0 ? marketRef : ref
+
     let stoploss = target.stoploss
     let takeprofit = cweIdx < nImmCwe ? 0 : target.takeprofit
     if (tr.cwe_close_price != null) {
@@ -546,7 +558,7 @@ export async function runBasketLegModifies(args: {
     const stripped = stripInvalidStopsForSide({
       stoploss,
       takeprofit,
-      referencePrice: ref,
+      referencePrice: guardRef,
       isBuy: direction === 'buy',
       symbol,
     })
@@ -594,7 +606,10 @@ export async function runBasketLegModifies(args: {
       symbol,
       operation: direction === 'buy' ? 'Buy' : 'Sell',
       volume: roundBasketLot(Number(tr.lot_size) || baseLot, params),
-      price: ref,
+      // Market-based reference: the clamp below measures min-distance from this
+      // price, and an entry-based reference silently rewrote profitable
+      // break-even stops to entry − minDist.
+      price: guardRef,
       stoploss,
       takeprofit,
       slippage: 20,
@@ -644,7 +659,7 @@ export async function runBasketLegModifies(args: {
     const postClampStripped = stripInvalidStopsForSide({
       stoploss: modSl,
       takeprofit: modTp,
-      referencePrice: ref,
+      referencePrice: guardRef,
       isBuy: direction === 'buy',
       symbol,
     })

@@ -698,6 +698,16 @@ function buildChannelWorkerLogMessage(row: ChannelWorkerLogRow, cw: ChannelWorke
   }
 
   if (logAction === 'plan_fallback') {
+    // A dropped partial-TP schedule is a different story from a softened order
+    // plan: say plainly that the lot cannot be split and only the final
+    // take-profit will be placed (worker reason: partial_tp_below_min_lot).
+    if (String(payload.reason ?? '') === 'partial_tp_below_min_lot') {
+      return namedOrGeneric(
+        instr,
+        s => interpolate(cw.planFallbackPartialTpMinLotNamed, { symbol: s }),
+        () => cw.planFallbackPartialTpMinLot,
+      )
+    }
     return namedOrGeneric(
       instr,
       s => interpolate(cw.planFallbackNamed, { symbol: s }),

@@ -37,6 +37,8 @@ export const channelWorkerEs: ChannelWorkerTranslations = {
 
   planFallbackNamed: 'Plan de órdenes ajustado para {symbol} (una orden en lugar de varias).',
   planFallbackGeneric: 'Plan de órdenes ajustado (una orden en lugar de varias).',
+  planFallbackPartialTpMinLot: 'Take parciales omitidos: el lote es demasiado pequeño para dividirse, así que solo se coloca el take profit final en el bróker.',
+  planFallbackPartialTpMinLotNamed: 'Take parciales omitidos para {symbol}: el lote es demasiado pequeño para dividirse, así que solo se coloca el take profit final en el bróker.',
 
   orderDidNotPlaceNamed: 'No se colocó una orden {on}{err}',
   orderDidNotPlaceGeneric: 'No se colocó una orden{err}',

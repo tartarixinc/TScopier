@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
-import { computeSingleTpLotBreakdown } from './singleTpLotBreakdown.ts'
+import { computeSingleTpLotBreakdown, computeSingleTpPartialShortfall } from './singleTpLotBreakdown.ts'
 
 const DEFAULT_ROWS = [
   { label: 'TP1', percent: 50, enabled: true },
@@ -69,4 +69,51 @@ test('invalid lot returns empty', () => {
     computeSingleTpLotBreakdown({ manualLot: 0, singleTpTarget: 'farthest', tpLots: DEFAULT_ROWS }),
     [],
   )
+})
+
+test('partial shortfall: 0.01 lot cannot split 50/30/20', () => {
+  const out = computeSingleTpPartialShortfall({
+    manualLot: 0.01,
+    singleTpTarget: 'farthest',
+    tpLots: DEFAULT_ROWS,
+  })
+  assert.ok(out)
+  assert.deepEqual(out!.dropped, ['TP1', 'TP2'])
+})
+
+test('partial shortfall: 0.08 lot schedules every level', () => {
+  const out = computeSingleTpPartialShortfall({
+    manualLot: 0.08,
+    singleTpTarget: 'farthest',
+    tpLots: DEFAULT_ROWS,
+  })
+  assert.equal(out, null)
+})
+
+test('partial shortfall: tp1 target means no partials by design', () => {
+  const out = computeSingleTpPartialShortfall({
+    manualLot: 0.01,
+    singleTpTarget: 'tp1',
+    tpLots: DEFAULT_ROWS,
+  })
+  assert.equal(out, null)
+})
+
+test('partial shortfall: single enabled row never warns', () => {
+  const out = computeSingleTpPartialShortfall({
+    manualLot: 0.01,
+    singleTpTarget: 'farthest',
+    tpLots: [{ label: 'TP1', percent: 100, enabled: true }],
+  })
+  assert.equal(out, null)
+})
+
+test('partial shortfall: 0.02 lot with 50/30/20 keeps TP1, drops TP2', () => {
+  const out = computeSingleTpPartialShortfall({
+    manualLot: 0.02,
+    singleTpTarget: 'farthest',
+    tpLots: DEFAULT_ROWS,
+  })
+  assert.ok(out)
+  assert.deepEqual(out!.dropped, ['TP2'])
 })

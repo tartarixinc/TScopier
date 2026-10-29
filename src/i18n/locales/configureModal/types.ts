@@ -204,6 +204,7 @@ export interface ConfigureModalTranslations {
     singleTpTargetTp3: string
     singleTpLotBreakdownTitle: string
     singleTpLotBreakdownSlice: string
+    partialTpMinLotWarning: string
     singleTpLotBreakdownJoin: string
     signalEntryTitle: string
     signalEntryBody: string

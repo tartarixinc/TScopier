@@ -215,6 +215,7 @@ export const configureModalFr: ConfigureModalTranslations = {
     singleTpTargetTp3: 'TP3',
     singleTpLotBreakdownTitle: 'Lot breakdown',
     singleTpLotBreakdownSlice: '{lot} lots closes @ {tp}',
+    partialTpMinLotWarning: 'Avec un volume de {lot}, ce trade ne peut pas être réparti : {levels} ne seront pas clôturés partiellement et seul le dernier take profit est placé chez le courtier. Chaque niveau nécessite au moins 0.01 de volume — augmentez le volume pour clôturer à chaque niveau.',
     singleTpLotBreakdownJoin: ', ',
     signalEntryTitle: 'Exécution de l’entrée du signal',
     signalEntryBody:
