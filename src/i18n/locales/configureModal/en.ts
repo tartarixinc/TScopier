@@ -215,6 +215,7 @@ export const configureModalEn: ConfigureModalTranslations = {
     singleTpTargetTp3: 'TP3',
     singleTpLotBreakdownTitle: 'Lot breakdown',
     singleTpLotBreakdownSlice: '{lot} lots closes @ {tp}',
+    partialTpMinLotWarning: 'With a lot of {lot} this trade cannot be split: {levels} will not close as partial take-profits, and only the final take-profit is placed on the broker. Each level needs at least 0.01 lot — increase the lot to close at every level.',
     singleTpLotBreakdownJoin: ', ',
     signalEntryTitle: 'Signal entry execution',
     signalEntryBody:

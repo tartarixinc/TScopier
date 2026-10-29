@@ -37,6 +37,8 @@ export const channelWorkerJa: ChannelWorkerTranslations = {
 
   planFallbackNamed: '{symbol}の注文プランを調整しました（複数ではなく1件の注文を使用）。',
   planFallbackGeneric: '注文プランを調整しました（複数ではなく1件の注文を使用）。',
+  planFallbackPartialTpMinLot: '一部利確をスキップしました：ロットが小さすぎて分割できないため、最終のテイクプロフィットのみブローカーに注文されます。',
+  planFallbackPartialTpMinLotNamed: '{symbol} の一部利確をスキップしました：ロットが小さすぎて分割できないため、最終のテイクプロフィットのみブローカーに注文されます。',
 
   orderDidNotPlaceNamed: '注文を発注しませんでした {on}{err}',
   orderDidNotPlaceGeneric: '注文を発注しませんでした{err}',

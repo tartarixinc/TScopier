@@ -539,3 +539,241 @@ describe('runBasketLegModifies modify outcome observability counters', () => {
     assert.match(legErrors[0]!.error, /4108/)
   })
 })
+
+describe('runBasketLegModifies market-based guard for non-explicit targets', () => {
+  it('applies a profitable buy trail (SL above entry, below market)', async () => {
+    // Incident 2026-10-28: entry 4035.03, market ~4050, channel break-even
+    // target 4035.23 was rejected as wrong_side_sl because the guard compared
+    // it to the entry price. With the market reference the same stop applies.
+    const familyLeg: BasketOpenLeg = {
+      id: 'trade-buy',
+      signal_id: 'sig-mod',
+      metaapi_order_id: '9010',
+      opened_at: new Date().toISOString(),
+      lot_size: 0.01,
+      sl: 4013,
+      tp: null,
+      entry_price: 4035.03,
+      direction: 'buy',
+      symbol: 'XAUUSD',
+    }
+    let modifiedSl: number | null = null
+    const api = {
+      quote: async () => ({ bid: 4050.1, ask: 4050.3, symbol: 'XAUUSD' }),
+      orderModify: async (_uuid: string, args: { stoploss?: number }) => {
+        modifiedSl = args.stoploss ?? null
+        return { stopLoss: args.stoploss, takeProfit: 4054 }
+      },
+    }
+    const supabase = {
+      from: () => ({
+        insert: async () => ({ error: null }),
+        update: () => ({ eq: async () => ({ error: null }) }),
+      }),
+    }
+
+    const { summary } = await runBasketLegModifies({
+      supabase: supabase as never,
+      api: api as never,
+      uuid: 'broker-uuid',
+      symbol: 'XAUUSD',
+      direction: 'buy',
+      baseLot: 0.01,
+      params: { point: 0.01, stopsLevel: 0, freezeLevel: 0, minLot: 0.01, lotStep: 0.01, contractSize: null, digits: 2 },
+      signalId: 'sig-mod',
+      userId: 'user-1',
+      brokerAccountId: 'broker-1',
+      familyTrades: [familyLeg],
+      perLegTargets: [{ stoploss: 4035.23, takeprofit: 4054 }],
+      nImmCwe: 0,
+      overrideTp: null,
+      strictEntryPrefetch: null,
+      openedTickets: new Set([9010]),
+      explicitChannelTargets: false,
+      internalRebalance: false,
+    })
+
+    assert.equal(summary.modified, 1, 'profitable trail must reach the broker')
+    assert.equal(summary.skippedUnfixable, 0)
+    assert.equal(modifiedSl, 4035.23, 'stop is sent unchanged, not rewritten against the entry price')
+  })
+
+  it('still refuses a buy stop above the live market', async () => {
+    const familyLeg: BasketOpenLeg = {
+      id: 'trade-buy-loss',
+      signal_id: 'sig-mod',
+      metaapi_order_id: '9011',
+      opened_at: new Date().toISOString(),
+      lot_size: 0.01,
+      sl: 4013,
+      tp: null,
+      entry_price: 4035,
+      direction: 'buy',
+      symbol: 'XAUUSD',
+    }
+    let modifyCalls = 0
+    const api = {
+      quote: async () => ({ bid: 4030, ask: 4030.2, symbol: 'XAUUSD' }),
+      orderModify: async () => {
+        modifyCalls += 1
+        return {}
+      },
+    }
+    const inserts: unknown[] = []
+    const supabase = {
+      from: () => ({
+        insert: async (row: unknown) => {
+          inserts.push(row)
+          return { error: null }
+        },
+        update: () => ({ eq: async () => ({ error: null }) }),
+      }),
+    }
+
+    const { summary } = await runBasketLegModifies({
+      supabase: supabase as never,
+      api: api as never,
+      uuid: 'broker-uuid',
+      symbol: 'XAUUSD',
+      direction: 'buy',
+      baseLot: 0.01,
+      params: { point: 0.01, stopsLevel: 0, freezeLevel: 0, minLot: 0.01, lotStep: 0.01, contractSize: null, digits: 2 },
+      signalId: 'sig-mod',
+      userId: 'user-1',
+      brokerAccountId: 'broker-1',
+      familyTrades: [familyLeg],
+      perLegTargets: [{ stoploss: 4036, takeprofit: 4054 }],
+      nImmCwe: 0,
+      overrideTp: null,
+      strictEntryPrefetch: null,
+      openedTickets: new Set([9011]),
+      explicitChannelTargets: false,
+      internalRebalance: false,
+    })
+
+    assert.equal(modifyCalls, 0, 'a stop above the live market must not be sent')
+    assert.equal(summary.skippedUnfixable, 1)
+    const skipped = inserts.find(
+      (row) => (row as { status?: string }).status === 'skipped',
+    ) as { request_payload?: { skip_reason?: string } } | undefined
+    assert.equal(skipped?.request_payload?.skip_reason, 'wrong_side_sl')
+  })
+
+  it('applies a profitable sell trail (SL below entry, above market)', async () => {
+    // Mirror of the buy case from the live repro: entry 4046.83, market 4045.8,
+    // break-even target 4046.53 — valid for the broker (sell SL above market)
+    // and profitable relative to entry.
+    const familyLeg: BasketOpenLeg = {
+      id: 'trade-sell',
+      signal_id: 'sig-mod',
+      metaapi_order_id: '9012',
+      opened_at: new Date().toISOString(),
+      lot_size: 0.01,
+      sl: 4065,
+      tp: null,
+      entry_price: 4046.83,
+      direction: 'sell',
+      symbol: 'XAUUSD',
+    }
+    let modifiedSl: number | null = null
+    const api = {
+      quote: async () => ({ bid: 4045.6, ask: 4045.8, symbol: 'XAUUSD' }),
+      orderModify: async (_uuid: string, args: { stoploss?: number }) => {
+        modifiedSl = args.stoploss ?? null
+        return { stopLoss: args.stoploss, takeProfit: 4035 }
+      },
+    }
+    const supabase = {
+      from: () => ({
+        insert: async () => ({ error: null }),
+        update: () => ({ eq: async () => ({ error: null }) }),
+      }),
+    }
+
+    const { summary } = await runBasketLegModifies({
+      supabase: supabase as never,
+      api: api as never,
+      uuid: 'broker-uuid',
+      symbol: 'XAUUSD',
+      direction: 'sell',
+      baseLot: 0.01,
+      params: { point: 0.01, stopsLevel: 0, freezeLevel: 0, minLot: 0.01, lotStep: 0.01, contractSize: null, digits: 2 },
+      signalId: 'sig-mod',
+      userId: 'user-1',
+      brokerAccountId: 'broker-1',
+      familyTrades: [familyLeg],
+      perLegTargets: [{ stoploss: 4046.53, takeprofit: 4035 }],
+      nImmCwe: 0,
+      overrideTp: null,
+      strictEntryPrefetch: null,
+      openedTickets: new Set([9012]),
+      explicitChannelTargets: false,
+      internalRebalance: false,
+    })
+
+    assert.equal(summary.modified, 1, 'profitable sell trail must reach the broker')
+    assert.equal(summary.skippedUnfixable, 0)
+    assert.equal(modifiedSl, 4046.53, 'stop sent unchanged')
+  })
+
+  it('still refuses a sell stop below the live market', async () => {
+    const familyLeg: BasketOpenLeg = {
+      id: 'trade-sell-loss',
+      signal_id: 'sig-mod',
+      metaapi_order_id: '9013',
+      opened_at: new Date().toISOString(),
+      lot_size: 0.01,
+      sl: 4065,
+      tp: null,
+      entry_price: 4046.83,
+      direction: 'sell',
+      symbol: 'XAUUSD',
+    }
+    let modifyCalls = 0
+    const api = {
+      quote: async () => ({ bid: 4049.8, ask: 4050, symbol: 'XAUUSD' }),
+      orderModify: async () => {
+        modifyCalls += 1
+        return {}
+      },
+    }
+    const inserts: unknown[] = []
+    const supabase = {
+      from: () => ({
+        insert: async (row: unknown) => {
+          inserts.push(row)
+          return { error: null }
+        },
+        update: () => ({ eq: async () => ({ error: null }) }),
+      }),
+    }
+
+    const { summary } = await runBasketLegModifies({
+      supabase: supabase as never,
+      api: api as never,
+      uuid: 'broker-uuid',
+      symbol: 'XAUUSD',
+      direction: 'sell',
+      baseLot: 0.01,
+      params: { point: 0.01, stopsLevel: 0, freezeLevel: 0, minLot: 0.01, lotStep: 0.01, contractSize: null, digits: 2 },
+      signalId: 'sig-mod',
+      userId: 'user-1',
+      brokerAccountId: 'broker-1',
+      familyTrades: [familyLeg],
+      perLegTargets: [{ stoploss: 4045, takeprofit: 4035 }],
+      nImmCwe: 0,
+      overrideTp: null,
+      strictEntryPrefetch: null,
+      openedTickets: new Set([9013]),
+      explicitChannelTargets: false,
+      internalRebalance: false,
+    })
+
+    assert.equal(modifyCalls, 0, 'a stop below the live market must not be sent')
+    assert.equal(summary.skippedUnfixable, 1)
+    const skipped = inserts.find(
+      (row) => (row as { status?: string }).status === 'skipped',
+    ) as { request_payload?: { skip_reason?: string } } | undefined
+    assert.equal(skipped?.request_payload?.skip_reason, 'wrong_side_sl')
+  })
+})

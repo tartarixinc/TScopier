@@ -207,6 +207,7 @@ export const configureModalJa: ConfigureModalTranslations = {
     singleTpTargetTp3: 'TP3',
     singleTpLotBreakdownTitle: 'Lot breakdown',
     singleTpLotBreakdownSlice: '{lot} lots closes @ {tp}',
+    partialTpMinLotWarning: 'ロット {lot} ではこのトレードを分割できません：{levels} は一部利確されず、最終のテイクプロフィットのみブローカーに注文されます。各レベルには最低 0.01 ロットが必要です。すべてのレベルで利確するにはロットを増やしてください。',
     singleTpLotBreakdownJoin: ', ',
     signalEntryTitle: 'シグナルエントリー実行',
     signalEntryBody: 'シグナルエントリー価格の使用は、シングルトレードモードでのみ適用されます。有効にした場合、シグナルには明示的に解析されたエントリ (価格、ゾーン、@ 価格、または「Entry Price:」などのラベル) が含まれている必要があります。チャネルの遅​​延後、ワーカーはライブ気配をそのエントリーと比較します。売りがエントリー以下の場合にのみ市場で買いが約定します。それ以外の場合は、エントリーで購入制限が設定されます。売りはその逆です。ブローカーのテイクプロフィットは、複数のターゲットがある場合、TP ラダーからのオプションの部分クローズを使用して、最後に解析された TP をターゲットにします。 Copier は保留中の厳密なエントリを追跡するため、取引リストとフィルが同期されます。バスケットが平らになると保留はキャンセルされます。エントリのない単純な「今すぐ購入」メッセージはスキップされます。',

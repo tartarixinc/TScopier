@@ -37,6 +37,8 @@ export const channelWorkerFr: ChannelWorkerTranslations = {
 
   planFallbackNamed: 'Plan d\'ordres ajusté pour {symbol} (un ordre au lieu de plusieurs).',
   planFallbackGeneric: 'Plan d\'ordres ajusté (un ordre au lieu de plusieurs).',
+  planFallbackPartialTpMinLot: 'Clôtures partielles ignorées : le volume est trop faible pour être réparti, seul le dernier take profit est placé chez le courtier.',
+  planFallbackPartialTpMinLotNamed: 'Clôtures partielles ignorées pour {symbol} : le volume est trop faible pour être réparti, seul le dernier take profit est placé chez le courtier.',
 
   orderDidNotPlaceNamed: 'Ordre non placé {on}{err}',
   orderDidNotPlaceGeneric: 'Ordre non placé{err}',

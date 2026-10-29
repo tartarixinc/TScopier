@@ -821,3 +821,46 @@ test('channelWorker skipReasons key parity across all locales', async () => {
     )
   }
 })
+
+test('channelWorkerLogMessage: explains partial take-profits dropped for a too-small lot', () => {
+  const message = channelWorkerLogMessage(
+    {
+      action: 'plan_fallback',
+      status: 'success',
+      request_payload: { reason: 'partial_tp_below_min_lot', manual_lot: 0.01, min_lot: 0.01 },
+      response_payload: null,
+      error_message: null,
+      signals: {
+        channel_id: 'ch-1',
+        parsed_data: { action: 'buy', symbol: 'XAUUSD' },
+        status: 'executed',
+      },
+    },
+    channelWorkerEn,
+    { 'ch-1': 'Smith Gold' },
+  )
+  assert.ok(message)
+  assert.match(message!, /too small to split/i)
+  assert.match(message!, /XAUUSD/)
+})
+
+test('channelWorkerLogMessage: keeps the generic plan-fallback wording for other reasons', () => {
+  const message = channelWorkerLogMessage(
+    {
+      action: 'plan_fallback',
+      status: 'success',
+      request_payload: { reason: 'multi_trade_fallback_min_lot' },
+      response_payload: null,
+      error_message: null,
+      signals: {
+        channel_id: 'ch-1',
+        parsed_data: { action: 'buy', symbol: 'XAUUSD' },
+        status: 'executed',
+      },
+    },
+    channelWorkerEn,
+    { 'ch-1': 'Smith Gold' },
+  )
+  assert.ok(message)
+  assert.match(message!, /Adjusted the order plan for XAUUSD/)
+})

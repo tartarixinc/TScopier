@@ -8,18 +8,22 @@ import {
   resolveBacktestBroker,
 } from "./resolveBacktestBroker.ts"
 
-function supabaseWith(rows: Record<string, unknown>[]) {
-  return {
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          eq: () => ({
-            order: async () => ({ data: rows, error: null }),
-          }),
-        }),
-      }),
+function supabaseWith(
+  rows: Record<string, unknown>[],
+  options: { error?: string; onEq?: (column: string, value: unknown) => void } = {},
+) {
+  const builder = {
+    select: () => builder,
+    eq: (column: string, value: unknown) => {
+      options.onEq?.(column, value)
+      return builder
+    },
+    order: async () => ({
+      data: options.error ? null : rows,
+      error: options.error ? { message: options.error } : null,
     }),
   }
+  return { from: () => builder }
 }
 
 function broker(overrides: Record<string, unknown> = {}) {
@@ -192,4 +196,69 @@ Deno.test("unknown authoritative provider fails closed", async () => {
     BacktestProviderAuthorityError,
     "unsupported active provider",
   )
+})
+
+Deno.test("connected FXSocket authority continues to use FXSocket symbols", async () => {
+  let fxCalls = 0
+  const ctx = await resolveBacktestBroker(
+    supabaseWith([broker({ provider: "fxsocket", platform: "MT5", mtapi_session_id: "" })]) as never,
+    { fxsocket: source("fxsocket", ["EURUSD"], () => fxCalls += 1) },
+    "user-1",
+    "EURUSD",
+  )
+  assertEquals(ctx.provider, "fxsocket")
+  assertEquals(ctx.sessionId, "11111111-2222-3333-4444-555555555555")
+  assertEquals(fxCalls, 1)
+})
+
+Deno.test("disconnected broker gets reconnect guidance without a provider call", async () => {
+  let calls = 0
+  await assertRejects(
+    () => resolveBacktestBroker(
+      supabaseWith([broker({ mtapi_status: "disconnected", connection_status: "disconnected" })]) as never,
+      { mtapi: source("mtapi", ["EURUSD"], () => calls += 1) },
+      "user-1",
+      "EURUSD",
+    ),
+    BacktestProviderAuthorityError,
+    "broker account is disconnected",
+  )
+  assertEquals(calls, 0)
+})
+
+Deno.test("paused linked broker gets eligibility guidance instead of connect guidance", async () => {
+  await assertRejects(
+    () => resolveBacktestBroker(
+      supabaseWith([broker({ is_active: false })]) as never,
+      { mtapi: source("mtapi", ["EURUSD"]) },
+      "user-1",
+      "EURUSD",
+    ),
+    BacktestProviderAuthorityError,
+    "broker account is paused",
+  )
+})
+
+Deno.test("broker query failure is not treated as an empty account list", async () => {
+  await assertRejects(
+    () => resolveBacktestBroker(
+      supabaseWith([], { error: "broker query failed" }) as never,
+      {},
+      "user-1",
+      "EURUSD",
+    ),
+    Error,
+    "broker query failed",
+  )
+})
+
+Deno.test("broker lookup remains scoped to the authenticated owner", async () => {
+  const filters: Array<[string, unknown]> = []
+  await resolveBacktestBroker(
+    supabaseWith([broker()], { onEq: (column, value) => filters.push([column, value]) }) as never,
+    { mtapi: source("mtapi", ["EURUSD"]) },
+    "user-1",
+    "EURUSD",
+  )
+  assertEquals(filters, [["user_id", "user-1"]])
 })
