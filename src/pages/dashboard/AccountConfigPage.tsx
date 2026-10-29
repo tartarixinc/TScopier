@@ -134,7 +134,7 @@ import {
   type LayeringModeCapabilities,
 } from '../../lib/layeringModeCapabilities'
 import { updateLayeringSettings } from '../../lib/updateLayeringSettings'
-import { computeSingleTpLotBreakdown } from '../../lib/singleTpLotBreakdown'
+import { computeSingleTpLotBreakdown, computeSingleTpPartialShortfall } from '../../lib/singleTpLotBreakdown'
 import { marketingUrl } from '../../lib/site'
 import {
   choosePersistedSelectedChannelId,
@@ -1375,6 +1375,23 @@ export function AccountConfigPage() {
     previewManualLot,
     cm.risk.singleTpLotBreakdownJoin,
     cm.risk.singleTpLotBreakdownSlice,
+  ])
+
+  /** Levels whose partial close the worker will drop at this lot (partial_tp_below_min_lot). */
+  const partialTpShortfall = useMemo(() => {
+    if (!configDraft.selectedChannelId) return null
+    if ((channelManualSettings.trade_style ?? 'single') !== 'single') return null
+    return computeSingleTpPartialShortfall({
+      manualLot: previewManualLot,
+      singleTpTarget: channelManualSettings.single_tp_target ?? 'farthest',
+      tpLots: channelManualSettings.tp_lots ?? DEFAULT_MANUAL_TP_LOTS,
+    })
+  }, [
+    configDraft.selectedChannelId,
+    channelManualSettings.trade_style,
+    channelManualSettings.single_tp_target,
+    channelManualSettings.tp_lots,
+    previewManualLot,
   ])
 
   const multiTradePreviewTooltip = useMemo(() => {
@@ -3490,6 +3507,14 @@ export function AccountConfigPage() {
                                     {singleTpLotBreakdownText}
                                   </p>
                                 </div>
+                              ) : null}
+                              {partialTpShortfall ? (
+                                <Alert variant="warning">
+                                  {interpolate(cm.risk.partialTpMinLotWarning, {
+                                    lot: String(previewManualLot),
+                                    levels: partialTpShortfall.dropped.join(', '),
+                                  })}
+                                </Alert>
                               ) : null}
                               <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3 space-y-3">
                                 <ConfigTitle info={cm.risk.signalEntryBody}>{cm.risk.signalEntryTitle}</ConfigTitle>

@@ -148,3 +148,43 @@ export function computeSingleTpLotBreakdown(args: SingleTpLotBreakdownArgs): Sin
 
   return slices
 }
+
+export type SingleTpPartialShortfall = {
+  /** Labels of TP levels that should close partially but will not, in order. */
+  dropped: string[]
+}
+
+/**
+ * Detect levels whose partial close cannot be scheduled for the current lot —
+ * the preview equivalent of the worker's `partial_tp_below_min_lot` drop
+ * (worker/src/manualPlanning/partialTpSchedule.ts). Returns null when every
+ * intended level fits, when fewer than two TP rows are enabled, or when the
+ * single-TP target deliberately puts everything on the first level.
+ */
+export function computeSingleTpPartialShortfall(
+  args: SingleTpLotBreakdownArgs,
+): SingleTpPartialShortfall | null {
+  const enabled = (args.tpLots ?? []).filter(r => r?.enabled !== false)
+  if (enabled.length < 2) return null
+
+  const finalTps = enabled.map((_, i) => i + 1)
+  const targetIndex = resolveSingleTpTargetIndex({
+    finalTps,
+    singleTpTarget: normalizeSingleTpTarget(args.singleTpTarget),
+  })
+  // Everything closes at the first level by configuration — no partials intended.
+  if (targetIndex <= 0) return null
+
+  const labels = enabled.map((r, i) => defaultLabel(i, r.label))
+  const slices = computeSingleTpLotBreakdown(args)
+  if (!slices.length) return null
+  const scheduledIdx = new Set(slices.map(s => s.tpIdx))
+
+  const dropped: string[] = []
+  for (let i = 0; i < targetIndex; i++) {
+    const pct = Number(enabled[i]?.percent)
+    if (!(Number.isFinite(pct) && pct > 0)) continue
+    if (!scheduledIdx.has(i + 1)) dropped.push(labels[i] ?? `TP${i + 1}`)
+  }
+  return dropped.length ? { dropped } : null
+}

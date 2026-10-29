@@ -215,6 +215,7 @@ export const configureModalEs: ConfigureModalTranslations = {
     singleTpTargetTp3: 'TP3',
     singleTpLotBreakdownTitle: 'Lot breakdown',
     singleTpLotBreakdownSlice: '{lot} lots closes @ {tp}',
+    partialTpMinLotWarning: 'Con un lote de {lot} este trade no se puede dividir: {levels} no se cerrarán como take parciales y solo se coloca el take profit final en el bróker. Cada nivel necesita al menos 0.01 de lote: aumenta el lote para cerrar en todos los niveles.',
     singleTpLotBreakdownJoin: ', ',
     signalEntryTitle: 'Ejecución de entrada de señal',
     signalEntryBody:

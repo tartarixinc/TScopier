@@ -37,6 +37,8 @@ export const channelWorkerNl: ChannelWorkerTranslations = {
 
   planFallbackNamed: 'Orderplan aangepast voor {symbol} (één order gebruikt in plaats van meerdere).',
   planFallbackGeneric: 'Orderplan aangepast (één order gebruikt in plaats van meerdere).',
+  planFallbackPartialTpMinLot: 'Partiële take-profits overgeslagen: de lot is te klein om te verdelen, alleen het laatste take-profit-niveau komt bij de broker.',
+  planFallbackPartialTpMinLotNamed: 'Partiële take-profits overgeslagen voor {symbol}: de lot is te klein om te verdelen, alleen het laatste take-profit-niveau komt bij de broker.',
 
   orderDidNotPlaceNamed: 'Geen order geplaatst {on}{err}',
   orderDidNotPlaceGeneric: 'Geen order geplaatst{err}',

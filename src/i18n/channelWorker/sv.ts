@@ -37,6 +37,8 @@ export const channelWorkerSv: ChannelWorkerTranslations = {
 
   planFallbackNamed: 'Orderplanen justerades för {symbol} (en order användes i stället för flera).',
   planFallbackGeneric: 'Orderplanen justerades (en order användes i stället för flera).',
+  planFallbackPartialTpMinLot: 'Delvis uttag (TP) hoppades över: loten är för liten för att delas, endast det sista take-profit-nivån läggs hos mäklaren.',
+  planFallbackPartialTpMinLotNamed: 'Delvis uttag (TP) hoppades över för {symbol}: loten är för liten för att delas, endast det sista take-profit-nivån läggs hos mäklaren.',
 
   orderDidNotPlaceNamed: 'Lade inte en order {on}{err}',
   orderDidNotPlaceGeneric: 'Lade inte en order{err}',
