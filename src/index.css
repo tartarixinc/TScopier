@@ -1,63 +1,712 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
 
-* {
-  box-sizing: border-box;
-}
+@config '../tailwind.config.js';
 
-:root {
-  color-scheme: light;
-  --tsc-page: #ffffff;
-  --tsc-surface: #ffffff;
-  --tsc-surface-muted: #f8fafc;
-  --tsc-border: #e2e8f0;
-  --tsc-border-subtle: #f1f5f9;
-  --tsc-text: #0f172a;
-  --tsc-text-muted: #0f172a;
-}
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
 
-html.dark {
-  color-scheme: dark;
-  --tsc-page: #030616;
-  --tsc-surface: #030616;
-  --tsc-surface-muted: #1e293b;
-  --tsc-border: #334155;
-  --tsc-border-subtle: #1e293b;
-  --tsc-text: #f8fafc;
-  --tsc-text-muted: #f8fafc;
-}
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
 
-html {
-  scroll-behavior: smooth;
-  font-family: "SF Pro", "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  font-optical-sizing: auto;
-}
+  input::placeholder,
+  textarea::placeholder {
+    @apply text-neutral-500;
+  }
 
-html[dir="rtl"] {
-  font-family: "SF Pro", "SF Pro Text", "SF Pro Display", "Noto Sans Arabic", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
+  .dark input::placeholder,
+  .dark textarea::placeholder {
+    @apply text-neutral-400;
   }
 }
 
-html.dark,
-html.dark body {
-  background-color: var(--tsc-page);
-  color: var(--tsc-text);
+@utility tsc-surface {
+  @apply bg-white border-neutral-200/65 dark:bg-neutral-950 dark:border-neutral-800/55;
 }
 
-body {
-  margin: 0;
-  font-family: "SF Pro", "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  font-optical-sizing: auto;
-  background-color: var(--tsc-page);
-  color: var(--tsc-text);
-  -webkit-font-smoothing: antialiased;
-  transition: background-color 0.2s ease, color 0.2s ease;
+@utility tsc-surface-muted {
+  @apply bg-neutral-50 dark:bg-neutral-900/60;
+}
+
+@utility tsc-page-heading {
+  @apply text-neutral-900 dark:text-neutral-50;
+}
+
+@utility tsc-page-subtext {
+  @apply text-neutral-900 dark:text-neutral-50;
+}
+
+@utility marketing-card {
+  @apply rounded-2xl border border-neutral-200/65 bg-white dark:border-neutral-800/55 dark:bg-neutral-900;
+}
+
+@utility marketing-card-feature {
+  @apply marketing-card p-6 transition-transform duration-300 hover:-translate-y-0.5;
+}
+
+@utility marketing-card-pricing {
+  @apply marketing-card p-8;
+}
+
+@utility marketing-bento-columns {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: stretch;
+}
+
+@utility marketing-bento-column {
+  display: flex;
+  min-height: 36rem;
+  flex-direction: column;
+  gap: 1rem;
+
+  & .marketing-bento-card--tall {
+    flex: 1.55 1 auto;
+    min-height: 14.5rem;
+  }
+
+  & .marketing-bento-card--featured {
+    flex: 1.55 1 auto;
+    min-height: 14.5rem;
+  }
+
+  & .marketing-bento-card--short {
+    flex: 1 1 auto;
+    min-height: 11.5rem;
+  }
+}
+
+@utility marketing-bento-card {
+  @apply relative isolate flex min-h-40 flex-col overflow-hidden rounded-[1.75rem] border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.05),0_12px_32px_-16px_rgba(15,23,42,0.18)] sm:min-h-44 sm:p-6;
+}
+
+@utility marketing-bento-card--tall {
+  .marketing-bento-column & {
+    flex: 1.55 1 auto;
+    min-height: 14.5rem;
+  }
+}
+
+@utility marketing-bento-card--featured {
+  .marketing-bento-column & {
+    flex: 1.55 1 auto;
+    min-height: 14.5rem;
+  }
+
+  /* The one accent card: flat brand green with black type. */
+  @apply border-green-400 bg-green-400;
+
+  /* Fine film grain on the accent card only. */
+  &::before {
+    content: '';
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    opacity: 0.18;
+    mix-blend-mode: multiply;
+    background-size: 140px 140px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.9 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+}
+
+@utility marketing-bento-card--short {
+  .marketing-bento-column & {
+    flex: 1 1 auto;
+    min-height: 11.5rem;
+  }
+}
+
+@utility marketing-step-visual-panel {
+  @apply shadow-xs;
+}
+
+@utility marketing-faq-list {
+  @apply overflow-hidden rounded-2xl border border-neutral-200/60 bg-white shadow-xs dark:border-neutral-800/55 dark:bg-neutral-900;
+}
+
+@utility marketing-faq-item {
+  @apply border-b border-neutral-100 last:border-b-0 dark:border-neutral-800;
+
+  &[open] .marketing-faq-answer {
+    @apply pt-4;
+  }
+}
+
+@utility marketing-faq-question {
+  @apply flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 text-left text-sm font-semibold text-neutral-900 transition-colors hover:bg-neutral-50 dark:text-neutral-50 dark:hover:bg-neutral-800/50 sm:px-6 sm:py-5 sm:text-base;
+
+  &::-webkit-details-marker {
+    display: none;
+  }
+}
+
+@utility marketing-faq-answer {
+  @apply border-t border-neutral-100 px-5 pb-5 pt-0 text-sm leading-relaxed text-neutral-900 dark:border-neutral-800 dark:text-neutral-50 sm:px-6 sm:pb-6;
+
+  .marketing-faq-item[open] & {
+    @apply pt-4;
+  }
+}
+
+@utility marketing-comparison-table-wrap {
+  @apply overflow-x-auto rounded-2xl border border-neutral-200/60 shadow-xs dark:border-neutral-800/55;
+}
+
+@utility marketing-comparison-table {
+  & tbody tr:last-child th {
+    border-bottom-width: 0;
+  }
+
+  & tbody tr:last-child td {
+    border-bottom-width: 0;
+  }
+}
+
+@utility trustpilot-panel-bg {
+  /* Auth Trustpilot reviews panel + landing hero */
+  @apply bg-neutral-100;
+
+  html.dark & {
+    @apply bg-neutral-900/50;
+  }
+}
+
+@utility dark {
+  &html .trustpilot-panel-bg {
+    @apply bg-neutral-900/50;
+  }
+
+  &html .trustpilot-panel-surface {
+    @apply from-neutral-900 via-teal-950/20 to-primary-950/40;
+  }
+
+  &html .trustpilot-panel-radial {
+    background: radial-gradient(
+      ellipse 70% 50% at 80% 0%,
+      rgba(74, 222, 128, 0.08),
+      transparent
+    );
+  }
+
+  &html .marketing-page-bg {
+    @apply bg-neutral-900/50 bg-linear-to-br from-neutral-900 via-teal-950/20 to-primary-950/40;
+  }
+
+  &html .hero-product-glow {
+    background:
+      radial-gradient(
+        ellipse 70% 55% at 50% 40%,
+        rgba(74, 222, 128, 0.22),
+        transparent 68%
+      ),
+      radial-gradient(
+        ellipse 45% 35% at 50% 90%,
+        rgba(74, 222, 128, 0.08),
+        transparent
+      );
+  }
+
+  &html .hero-product-reflection {
+    background: radial-gradient(
+      ellipse 80% 40% at 50% 0%,
+      rgba(74, 222, 128, 0.12),
+      transparent 70%
+    );
+  }
+
+  &html .marketing-grid-pattern {
+    opacity: 0.4;
+    background-image:
+      linear-gradient(to right, rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+  }
+
+  &html .marketing-feature-float {
+    @apply border-neutral-600 bg-neutral-700;
+  }
+}
+
+@utility trustpilot-panel-surface {
+  @apply bg-linear-to-br from-white via-teal-50/40 to-primary-50/30;
+
+  html.dark & {
+    @apply from-neutral-900 via-teal-950/20 to-primary-950/40;
+  }
+}
+
+@utility trustpilot-panel-radial {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(
+      ellipse 70% 50% at 80% 0%,
+      rgba(74, 222, 128, 0.12),
+      transparent
+    ),
+    radial-gradient(
+      ellipse 50% 40% at 0% 100%,
+      rgba(74, 222, 128, 0.08),
+      transparent
+    );
+
+  html.dark & {
+    background: radial-gradient(
+      ellipse 70% 50% at 80% 0%,
+      rgba(74, 222, 128, 0.08),
+      transparent
+    );
+  }
+}
+
+@utility marketing-hero-bg {
+  @apply min-h-screen overflow-hidden;
+}
+
+@utility marketing-page-bg {
+  /* Marketing pages: plain white in light mode, the original tinted gradient in dark mode. */
+  @apply bg-white;
+
+  html.dark & {
+    @apply bg-neutral-900/50 bg-linear-to-br from-neutral-900 via-teal-950/20 to-primary-950/40;
+  }
+}
+
+@utility marketing-footer {
+  @apply mt-4 border-t border-neutral-200/55 dark:border-neutral-800/50;
+}
+
+@utility marketing-footer-cta {
+  @apply relative overflow-hidden border-b border-neutral-200/70 bg-linear-to-b from-teal-50/50 via-white/95 to-white/95 dark:border-neutral-800/45 dark:from-teal-950/25 dark:via-neutral-900/95 dark:to-neutral-900/95;
+}
+
+@utility marketing-footer-cta-grid {
+  @apply marketing-grid-pattern pointer-events-none absolute inset-0 opacity-60;
+}
+
+@utility marketing-footer-main {
+  @apply bg-white/90 backdrop-blur-md dark:bg-neutral-900/90;
+}
+
+@utility marketing-footer-platform {
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+
+  &:hover {
+    transform: translateY(-1px);
+    @apply shadow-md;
+  }
+}
+
+@utility marketing-footer-bottom {
+  @apply border-t border-neutral-200/55 bg-neutral-50/90 dark:border-neutral-800/50 dark:bg-neutral-950/80;
+}
+
+@utility hero-product-showcase {
+  @apply relative w-full;
+}
+
+@utility hero-dashboard-viewport {
+  @apply relative w-full overflow-hidden;
+}
+
+@utility hero-product-glow {
+  @apply pointer-events-none absolute -inset-6 -z-10 sm:-inset-10;
+  background:
+    radial-gradient(
+      ellipse 70% 55% at 50% 40%,
+      rgba(74, 222, 128, 0.35),
+      transparent 68%
+    ),
+    radial-gradient(
+      ellipse 45% 35% at 50% 90%,
+      rgba(74, 222, 128, 0.12),
+      transparent
+    );
+
+  html.dark & {
+    background:
+      radial-gradient(
+        ellipse 70% 55% at 50% 40%,
+        rgba(74, 222, 128, 0.22),
+        transparent 68%
+      ),
+      radial-gradient(
+        ellipse 45% 35% at 50% 90%,
+        rgba(74, 222, 128, 0.08),
+        transparent
+      );
+  }
+}
+
+@utility hero-product-frame {
+  @apply relative z-10 overflow-hidden rounded-2xl border border-neutral-200/65 bg-white dark:border-neutral-800/55 dark:bg-neutral-900;
+  transform: perspective(1600px) rotateX(3deg);
+  transform-origin: center top;
+
+  @media (min-width: 640px) {
+    transform: perspective(1600px) rotateX(4deg);
+  }
+}
+
+@utility hero-product-chrome {
+  @apply flex items-center gap-3 border-b border-neutral-200/65 bg-neutral-50 px-3 py-2 dark:border-neutral-800/55 dark:bg-neutral-900/80 sm:px-4;
+}
+
+@utility hero-chrome-dot {
+  @apply h-2.5 w-2.5 rounded-full;
+}
+
+@utility hero-product-url {
+  @apply mx-auto flex min-w-0 max-w-[min(100%,14rem)] flex-1 items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2.5 py-0.5 text-[10px] font-medium text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-50 sm:text-[11px];
+}
+
+@utility hero-product-screen {
+  @apply overflow-hidden bg-white dark:bg-neutral-950;
+
+  & > * {
+    @apply w-full;
+  }
+}
+
+@utility hero-product-reflection {
+  @apply absolute -bottom-6 left-[8%] right-[8%] h-16 -z-10 rounded-[100%];
+  background: radial-gradient(
+    ellipse 80% 40% at 50% 0%,
+    rgba(74, 222, 128, 0.2),
+    transparent 70%
+  );
+  filter: blur(12px);
+
+  html.dark & {
+    background: radial-gradient(
+      ellipse 80% 40% at 50% 0%,
+      rgba(74, 222, 128, 0.12),
+      transparent 70%
+    );
+  }
+}
+
+@utility marketing-feature-panel {
+  @apply relative overflow-hidden rounded-2xl border border-neutral-200/65 bg-white dark:border-neutral-800/55 dark:bg-neutral-900;
+}
+
+@utility marketing-grid-pattern {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  opacity: 0.6;
+  background-image:
+    linear-gradient(to right, rgba(148, 163, 184, 0.14) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(148, 163, 184, 0.14) 1px, transparent 1px);
+  background-size: 32px 32px;
+
+  html.dark & {
+    opacity: 0.4;
+    background-image:
+      linear-gradient(to right, rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+  }
+}
+
+@utility marketing-feature-panel-grid {
+  @apply marketing-grid-pattern;
+}
+
+@utility marketing-hero-grid {
+  @apply marketing-grid-pattern;
+}
+
+@utility marketing-feature-visual {
+  @apply relative overflow-hidden rounded-xl border border-neutral-200/55 bg-neutral-50/80 dark:border-neutral-800/55 dark:bg-neutral-950/50;
+}
+
+@utility marketing-feature-node {
+  @apply rounded-xl border border-neutral-200 bg-white px-4 py-3 dark:border-neutral-700 dark:bg-neutral-800/90;
+}
+
+@utility marketing-feature-node--telegram {
+  @apply border-teal-200/80 bg-teal-50/50 dark:border-green-400/30 dark:bg-teal-950/30;
+}
+
+@utility marketing-feature-node-label {
+  @apply text-[10px] font-semibold uppercase tracking-wide text-green-400 dark:text-green-400;
+}
+
+@utility marketing-feature-node--broker {
+  @apply px-3 py-3;
+}
+
+@utility marketing-feature-hub {
+  @apply inline-flex items-center justify-center rounded-full bg-green-400 px-5 py-2.5;
+}
+
+@utility marketing-feature-flow {
+  &::before {
+    content: '';
+    @apply pointer-events-none absolute left-1/2 top-18 bottom-22 w-px -translate-x-1/2 bg-neutral-300 dark:bg-neutral-600;
+  }
+
+  &::after {
+    content: '';
+    @apply pointer-events-none absolute left-1/2 top-34 h-px w-[55%] max-w-[200px] -translate-x-1/2 bg-neutral-300 dark:bg-neutral-600;
+  }
+}
+
+@utility marketing-feature-pulse-ring {
+  @apply pointer-events-none absolute left-1/2 top-1/2 h-48 w-48 -translate-x-1/2 -translate-y-1/2 rounded-full border border-green-400/30;
+  animation: marketing-pulse-ring 3s ease-out infinite;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+@utility marketing-feature-float {
+  @apply absolute z-20 inline-flex items-center gap-1.5 rounded-full border border-neutral-700/10 bg-neutral-800 px-3 py-1.5 text-[10px] font-semibold text-white;
+  animation: marketing-float 4s ease-in-out infinite;
+
+  html.dark & {
+    @apply border-neutral-600 bg-neutral-700;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+@utility marketing-feature-float--tl {
+  @apply left-2 top-4;
+  animation-delay: 0s;
+}
+
+@utility marketing-feature-float--tr {
+  @apply right-2 top-8;
+  animation-delay: 0.6s;
+}
+
+@utility marketing-feature-float--bl {
+  @apply bottom-6 left-4;
+  animation-delay: 1.2s;
+}
+
+@utility marketing-feature-float--br {
+  @apply bottom-4 right-2;
+  animation-delay: 0.9s;
+}
+
+@utility marketing-feature-float--center {
+  @apply left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2;
+}
+
+@utility marketing-feature-log-row {
+  animation: marketing-log-in 0.5s ease-out backwards;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+@utility marketing-feature-progress {
+  width: 68%;
+  animation: marketing-progress 2.5s ease-in-out infinite alternate;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+@utility marketing-feature-bar {
+  animation: marketing-bar-grow 1.2s ease-out backwards;
+
+  &:nth-child(odd) {
+    animation-delay: 0.1s;
+  }
+
+  &:nth-child(even) {
+    animation-delay: 0.25s;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+@utility marketing-feature-orbit-ring {
+  @apply pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed border-neutral-300 dark:border-neutral-600;
+  animation: marketing-orbit-spin 48s linear infinite;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+@utility marketing-feature-orbit-ring--outer {
+  @apply h-[220px] w-[220px];
+}
+
+@utility marketing-feature-orbit-ring--inner {
+  @apply h-[160px] w-[160px];
+  animation-direction: reverse;
+  animation-duration: 32s;
+}
+
+@utility marketing-feature-orbit-icon {
+  @apply absolute z-10 flex flex-col items-center rounded-xl border border-neutral-200 bg-white px-2 py-2 dark:border-neutral-700 dark:bg-neutral-800;
+  animation: marketing-float 5s ease-in-out infinite;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+@utility marketing-feature-orbit-item {
+  @apply absolute z-10 flex flex-col items-center rounded-xl border border-neutral-200 bg-white px-2 py-2 dark:border-neutral-700 dark:bg-neutral-800;
+  animation: marketing-float 5s ease-in-out infinite;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+@utility marketing-feature-orbit-icon--1 {
+  @apply left-[8%] top-[18%];
+}
+
+@utility marketing-feature-orbit-icon--2 {
+  @apply right-[6%] top-[12%];
+  animation-delay: 0.8s;
+}
+
+@utility marketing-feature-orbit-icon--3 {
+  @apply bottom-[14%] left-1/2 -translate-x-1/2;
+  animation-delay: 1.4s;
+}
+
+@utility marketing-feature-orbit-item--1 {
+  @apply right-[4%] top-[28%];
+}
+
+@utility marketing-feature-orbit-item--2 {
+  @apply bottom-[20%] left-[6%];
+  animation-delay: 1s;
+}
+
+@utility marketing-feature-orbit-item--3 {
+  @apply left-[18%] top-[8%];
+  animation-delay: 1.6s;
+}
+
+@utility animate-fade-in {
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+@utility animate-slide-up {
+  animation: slideUp 0.3s ease-out;
+}
+
+@utility animate-in {
+  animation: fadeIn 0.15s ease-out;
+}
+
+@utility animate-modal-in {
+  animation: modalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@layer utilities {
+  * {
+    box-sizing: border-box;
+  }
+
+  :root {
+    color-scheme: light;
+    --tsc-page: #ffffff;
+    --tsc-surface: #ffffff;
+    --tsc-surface-muted: #f8fafc;
+    --tsc-border: #e2e8f0;
+    --tsc-border-subtle: #f1f5f9;
+    --tsc-text: #0f172a;
+    --tsc-text-muted: #0f172a;
+  }
+
+  html.dark {
+    color-scheme: dark;
+    --tsc-page: #030616;
+    --tsc-surface: #030616;
+    --tsc-surface-muted: #1e293b;
+    --tsc-border: #334155;
+    --tsc-border-subtle: #1e293b;
+    --tsc-text: #f8fafc;
+    --tsc-text-muted: #f8fafc;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    font-family:
+      'SF Pro',
+      'SF Pro Text',
+      'SF Pro Display',
+      -apple-system,
+      BlinkMacSystemFont,
+      system-ui,
+      sans-serif;
+    font-optical-sizing: auto;
+  }
+
+  html[dir='rtl'] {
+    font-family:
+      'SF Pro',
+      'SF Pro Text',
+      'SF Pro Display',
+      'Noto Sans Arabic',
+      -apple-system,
+      BlinkMacSystemFont,
+      system-ui,
+      sans-serif;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
+
+  html.dark,
+  html.dark body {
+    background-color: var(--tsc-page);
+    color: var(--tsc-text);
+  }
+
+  body {
+    margin: 0;
+    font-family:
+      'SF Pro',
+      'SF Pro Text',
+      'SF Pro Display',
+      -apple-system,
+      BlinkMacSystemFont,
+      system-ui,
+      sans-serif;
+    font-optical-sizing: auto;
+    background-color: var(--tsc-page);
+    color: var(--tsc-text);
+    -webkit-font-smoothing: antialiased;
+    transition:
+      background-color 0.2s ease,
+      color 0.2s ease;
+  }
 }
 
 @layer base {
@@ -66,550 +715,103 @@ body {
   }
 }
 
-/* iOS Safari zooms focused inputs when font-size < 16px */
-@media screen and (max-width: 767px) {
-  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='hidden']):not([type='file']),
-  select,
-  textarea {
-    font-size: 16px !important;
-  }
-}
-
-#root {
-  min-height: 100vh;
-}
-
-/** Applied while AppLayout is mounted — prevents iOS rubber-band dragging the chrome away. */
-html.app-viewport-lock,
-html.app-viewport-lock body {
-  height: 100%;
-  overflow: hidden;
-  overscroll-behavior: none;
-}
-
-html.app-viewport-lock #root {
-  height: 100%;
-  min-height: 100%;
-  overflow: hidden;
-}
-
-@layer components {
-  .tsc-surface {
-    @apply bg-white border-neutral-200/65 dark:bg-neutral-950 dark:border-neutral-800/55;
-  }
-
-  .tsc-surface-muted {
-    @apply bg-neutral-50 dark:bg-neutral-900/60;
-  }
-
-  .tsc-page-heading {
-    @apply text-neutral-900 dark:text-neutral-50;
-  }
-
-  .tsc-page-subtext {
-    @apply text-neutral-900 dark:text-neutral-50;
-  }
-
-  .marketing-card {
-    @apply rounded-2xl border border-neutral-200/65 bg-white dark:border-neutral-800/55 dark:bg-neutral-900;
-  }
-
-  .marketing-card-feature {
-    @apply marketing-card p-6 transition-transform duration-300 hover:-translate-y-0.5;
-  }
-
-  .marketing-card-pricing {
-    @apply marketing-card p-8;
-  }
-
-  .marketing-bento-columns {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 1rem;
-    align-items: stretch;
-  }
-
-  .marketing-bento-column {
-    display: flex;
-    min-height: 36rem;
-    flex-direction: column;
-    gap: 1rem;
-  }
-
-  .marketing-bento-card {
-    @apply relative flex min-h-[10rem] flex-col rounded-2xl border border-neutral-200/60 bg-neutral-50/90 p-5 shadow-sm dark:border-neutral-800/55 dark:bg-neutral-900/90 sm:min-h-[11rem] sm:p-6;
-  }
-
-  .marketing-bento-column .marketing-bento-card--tall,
-  .marketing-bento-column .marketing-bento-card--featured {
-    flex: 1.55 1 auto;
-    min-height: 14.5rem;
-  }
-
-  .marketing-bento-column .marketing-bento-card--short {
-    flex: 1 1 auto;
-    min-height: 11.5rem;
-  }
-
-  .marketing-bento-card--featured {
-    @apply border-teal-800 bg-teal-800 shadow-md dark:border-teal-900 dark:bg-teal-950;
-  }
-
-  .marketing-bento-watermark {
-    pointer-events: none;
-    position: absolute;
-    right: -0.25rem;
-    bottom: -0.5rem;
-    height: 5.5rem;
-    width: 5.5rem;
-    opacity: 0.06;
-  }
-
-  html.dark .marketing-bento-watermark {
-    opacity: 0.1;
-  }
-
-  .marketing-bento-card--featured .marketing-bento-watermark {
-    opacity: 0.12;
-    color: white;
-  }
-
-  .marketing-step-visual-panel {
-    @apply shadow-sm;
-  }
-
-  .marketing-faq-list {
-    @apply overflow-hidden rounded-2xl border border-neutral-200/60 bg-white shadow-sm dark:border-neutral-800/55 dark:bg-neutral-900;
-  }
-
-  .marketing-faq-item {
-    @apply border-b border-neutral-100 last:border-b-0 dark:border-neutral-800;
-  }
-
-  .marketing-faq-question {
-    @apply flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 text-left text-sm font-semibold text-neutral-900 transition-colors hover:bg-neutral-50 dark:text-neutral-50 dark:hover:bg-neutral-800/50 sm:px-6 sm:py-5 sm:text-base;
-  }
-
-  .marketing-faq-question::-webkit-details-marker {
-    display: none;
-  }
-
-  .marketing-faq-answer {
-    @apply border-t border-neutral-100 px-5 pb-5 pt-0 text-sm leading-relaxed text-neutral-900 dark:border-neutral-800 dark:text-neutral-50 sm:px-6 sm:pb-6;
-  }
-
-  .marketing-faq-item[open] .marketing-faq-answer {
-    @apply pt-4;
-  }
-
-  .marketing-comparison-table-wrap {
-    @apply overflow-x-auto rounded-2xl border border-neutral-200/60 shadow-sm dark:border-neutral-800/55;
-  }
-
-  .marketing-comparison-table tbody tr:last-child th,
-  .marketing-comparison-table tbody tr:last-child td {
-    border-bottom-width: 0;
-  }
-
-  /* Auth Trustpilot reviews panel + landing hero */
-  .trustpilot-panel-bg {
-    @apply bg-neutral-100;
-  }
-
-  html.dark .trustpilot-panel-bg {
-    @apply bg-neutral-900/50;
-  }
-
-  .trustpilot-panel-surface {
-    @apply bg-gradient-to-br from-white via-teal-50/40 to-primary-50/30;
-  }
-
-  html.dark .trustpilot-panel-surface {
-    @apply from-neutral-900 via-teal-950/20 to-primary-950/40;
-  }
-
-  .trustpilot-panel-radial {
-    pointer-events: none;
-    position: absolute;
-    inset: 0;
-    background:
-      radial-gradient(ellipse 70% 50% at 80% 0%, rgba(74, 222, 128, 0.12), transparent),
-      radial-gradient(ellipse 50% 40% at 0% 100%, rgba(74, 222, 128, 0.08), transparent);
-  }
-
-  html.dark .trustpilot-panel-radial {
-    background: radial-gradient(ellipse 70% 50% at 80% 0%, rgba(74, 222, 128, 0.08), transparent);
-  }
-
-  .marketing-hero-bg {
-    @apply min-h-screen overflow-hidden;
-  }
-
-  /* Marketing pages: plain white in light mode, the original tinted gradient in dark mode. */
-  .marketing-page-bg {
-    @apply bg-white;
-  }
-
-  html.dark .marketing-page-bg {
-    @apply bg-neutral-900/50 bg-gradient-to-br from-neutral-900 via-teal-950/20 to-primary-950/40;
-  }
-
-  .marketing-footer {
-    @apply mt-4 border-t border-neutral-200/55 dark:border-neutral-800/50;
-  }
-
-  .marketing-footer-cta {
-    @apply relative overflow-hidden border-b border-neutral-200/70 bg-gradient-to-b from-teal-50/50 via-white/95 to-white/95 dark:border-neutral-800/45 dark:from-teal-950/25 dark:via-neutral-900/95 dark:to-neutral-900/95;
-  }
-
-  .marketing-footer-cta-grid {
-    @apply marketing-grid-pattern pointer-events-none absolute inset-0 opacity-60;
-  }
-
-  .marketing-footer-main {
-    @apply bg-white/90 backdrop-blur-md dark:bg-neutral-900/90;
-  }
-
-  .marketing-footer-platform {
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-  }
-
-  .marketing-footer-platform:hover {
-    transform: translateY(-1px);
-    @apply shadow-md;
-  }
-
-  .marketing-footer-bottom {
-    @apply border-t border-neutral-200/55 bg-neutral-50/90 dark:border-neutral-800/50 dark:bg-neutral-950/80;
-  }
-
-  .hero-product-showcase {
-    @apply relative w-full;
-  }
-
-  .hero-dashboard-viewport {
-    @apply relative w-full overflow-hidden;
-  }
-
-  .hero-product-glow {
-    @apply pointer-events-none absolute -inset-6 -z-10 sm:-inset-10;
-    background:
-      radial-gradient(ellipse 70% 55% at 50% 40%, rgba(74, 222, 128, 0.35), transparent 68%),
-      radial-gradient(ellipse 45% 35% at 50% 90%, rgba(74, 222, 128, 0.12), transparent);
-  }
-
-  html.dark .hero-product-glow {
-    background:
-      radial-gradient(ellipse 70% 55% at 50% 40%, rgba(74, 222, 128, 0.22), transparent 68%),
-      radial-gradient(ellipse 45% 35% at 50% 90%, rgba(74, 222, 128, 0.08), transparent);
-  }
-
-  .hero-product-frame {
-    @apply relative z-10 overflow-hidden rounded-2xl border border-neutral-200/65 bg-white dark:border-neutral-800/55 dark:bg-neutral-900;
-    transform: perspective(1600px) rotateX(3deg);
-    transform-origin: center top;
-  }
-
-  @media (min-width: 640px) {
-    .hero-product-frame {
-      transform: perspective(1600px) rotateX(4deg);
+@layer utilities {
+  /* iOS Safari zooms focused inputs when font-size < 16px */
+  @media screen and (max-width: 767px) {
+    input:not([type='checkbox']):not([type='radio']):not([type='range']):not(
+        [type='hidden']
+      ):not([type='file']),
+    select,
+    textarea {
+      font-size: 16px !important;
     }
   }
 
-  .hero-product-chrome {
-    @apply flex items-center gap-3 border-b border-neutral-200/65 bg-neutral-50 px-3 py-2 dark:border-neutral-800/55 dark:bg-neutral-900/80 sm:px-4;
+  #root {
+    min-height: 100vh;
   }
 
-  .hero-chrome-dot {
-    @apply h-2.5 w-2.5 rounded-full;
+  /** Applied while AppLayout is mounted — prevents iOS rubber-band dragging the chrome away. */
+  html.app-viewport-lock,
+  html.app-viewport-lock body {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
   }
 
-  .hero-product-url {
-    @apply mx-auto flex min-w-0 max-w-[min(100%,14rem)] flex-1 items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2.5 py-0.5 text-[10px] font-medium text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-50 sm:text-[11px];
-  }
-
-  .hero-product-screen {
-    @apply overflow-hidden bg-white dark:bg-neutral-950;
-  }
-
-  .hero-product-screen > * {
-    @apply w-full;
-  }
-
-  .hero-product-reflection {
-    @apply absolute -bottom-6 left-[8%] right-[8%] h-16 -z-10 rounded-[100%];
-    background: radial-gradient(ellipse 80% 40% at 50% 0%, rgba(74, 222, 128, 0.2), transparent 70%);
-    filter: blur(12px);
-  }
-
-  html.dark .hero-product-reflection {
-    background: radial-gradient(ellipse 80% 40% at 50% 0%, rgba(74, 222, 128, 0.12), transparent 70%);
-  }
-
-  .marketing-feature-panel {
-    @apply relative overflow-hidden rounded-2xl border border-neutral-200/65 bg-white dark:border-neutral-800/55 dark:bg-neutral-900;
-  }
-
-  .marketing-grid-pattern {
-    pointer-events: none;
-    position: absolute;
-    inset: 0;
-    opacity: 0.6;
-    background-image:
-      linear-gradient(to right, rgba(148, 163, 184, 0.14) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(148, 163, 184, 0.14) 1px, transparent 1px);
-    background-size: 32px 32px;
-  }
-
-  html.dark .marketing-grid-pattern {
-    opacity: 0.4;
-    background-image:
-      linear-gradient(to right, rgba(148, 163, 184, 0.08) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
-  }
-
-  .marketing-feature-panel-grid {
-    @apply marketing-grid-pattern;
-  }
-
-  .marketing-hero-grid {
-    @apply marketing-grid-pattern;
-  }
-
-  .marketing-feature-visual {
-    @apply relative overflow-hidden rounded-xl border border-neutral-200/55 bg-neutral-50/80 dark:border-neutral-800/55 dark:bg-neutral-950/50;
-  }
-
-  .marketing-feature-node {
-    @apply rounded-xl border border-neutral-200 bg-white px-4 py-3 dark:border-neutral-700 dark:bg-neutral-800/90;
-  }
-
-  .marketing-feature-node--telegram {
-    @apply border-teal-200/80 bg-teal-50/50 dark:border-green-400/30 dark:bg-teal-950/30;
-  }
-
-  .marketing-feature-node-label {
-    @apply text-[10px] font-semibold uppercase tracking-wide text-green-400 dark:text-green-400;
-  }
-
-  .marketing-feature-node--broker {
-    @apply px-3 py-3;
-  }
-
-  .marketing-feature-hub {
-    @apply inline-flex items-center justify-center rounded-full bg-green-400 px-5 py-2.5;
-  }
-
-  .marketing-feature-flow::before {
-    content: '';
-    @apply pointer-events-none absolute left-1/2 top-[4.5rem] bottom-[5.5rem] w-px -translate-x-1/2 bg-neutral-300 dark:bg-neutral-600;
-  }
-
-  .marketing-feature-flow::after {
-    content: '';
-    @apply pointer-events-none absolute left-1/2 top-[8.5rem] h-px w-[55%] max-w-[200px] -translate-x-1/2 bg-neutral-300 dark:bg-neutral-600;
-  }
-
-  .marketing-feature-pulse-ring {
-    @apply pointer-events-none absolute left-1/2 top-1/2 h-48 w-48 -translate-x-1/2 -translate-y-1/2 rounded-full border border-green-400/30;
-    animation: marketing-pulse-ring 3s ease-out infinite;
-  }
-
-  .marketing-feature-float {
-    @apply absolute z-20 inline-flex items-center gap-1.5 rounded-full border border-neutral-700/10 bg-neutral-800 px-3 py-1.5 text-[10px] font-semibold text-white;
-    animation: marketing-float 4s ease-in-out infinite;
-  }
-
-  html.dark .marketing-feature-float {
-    @apply border-neutral-600 bg-neutral-700;
-  }
-
-  .marketing-feature-float--tl {
-    @apply left-2 top-4;
-    animation-delay: 0s;
-  }
-
-  .marketing-feature-float--tr {
-    @apply right-2 top-8;
-    animation-delay: 0.6s;
-  }
-
-  .marketing-feature-float--bl {
-    @apply bottom-6 left-4;
-    animation-delay: 1.2s;
-  }
-
-  .marketing-feature-float--br {
-    @apply bottom-4 right-2;
-    animation-delay: 0.9s;
-  }
-
-  .marketing-feature-float--center {
-    @apply left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2;
-  }
-
-  .marketing-feature-log-row {
-    animation: marketing-log-in 0.5s ease-out backwards;
-  }
-
-  .marketing-feature-progress {
-    width: 68%;
-    animation: marketing-progress 2.5s ease-in-out infinite alternate;
-  }
-
-  .marketing-feature-bar {
-    animation: marketing-bar-grow 1.2s ease-out backwards;
-  }
-
-  .marketing-feature-bar:nth-child(odd) {
-    animation-delay: 0.1s;
-  }
-
-  .marketing-feature-bar:nth-child(even) {
-    animation-delay: 0.25s;
-  }
-
-  .marketing-feature-orbit-ring {
-    @apply pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed border-neutral-300 dark:border-neutral-600;
-    animation: marketing-orbit-spin 48s linear infinite;
-  }
-
-  .marketing-feature-orbit-ring--outer {
-    @apply h-[220px] w-[220px];
-  }
-
-  .marketing-feature-orbit-ring--inner {
-    @apply h-[160px] w-[160px];
-    animation-direction: reverse;
-    animation-duration: 32s;
-  }
-
-  .marketing-feature-orbit-icon,
-  .marketing-feature-orbit-item {
-    @apply absolute z-10 flex flex-col items-center rounded-xl border border-neutral-200 bg-white px-2 py-2 dark:border-neutral-700 dark:bg-neutral-800;
-    animation: marketing-float 5s ease-in-out infinite;
-  }
-
-  .marketing-feature-orbit-icon--1 {
-    @apply left-[8%] top-[18%];
-  }
-
-  .marketing-feature-orbit-icon--2 {
-    @apply right-[6%] top-[12%];
-    animation-delay: 0.8s;
-  }
-
-  .marketing-feature-orbit-icon--3 {
-    @apply bottom-[14%] left-1/2 -translate-x-1/2;
-    animation-delay: 1.4s;
-  }
-
-  .marketing-feature-orbit-item--1 {
-    @apply right-[4%] top-[28%];
-  }
-
-  .marketing-feature-orbit-item--2 {
-    @apply bottom-[20%] left-[6%];
-    animation-delay: 1s;
-  }
-
-  .marketing-feature-orbit-item--3 {
-    @apply left-[18%] top-[8%];
-    animation-delay: 1.6s;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .marketing-feature-pulse-ring,
-    .marketing-feature-float,
-    .marketing-feature-log-row,
-    .marketing-feature-progress,
-    .marketing-feature-bar,
-    .marketing-feature-orbit-ring,
-    .marketing-feature-orbit-icon,
-    .marketing-feature-orbit-item {
-      animation: none;
-    }
-  }
-}
-
-@keyframes marketing-pulse-ring {
-  0% {
-    transform: translate(-50%, -50%) scale(0.85);
-    opacity: 0.6;
-  }
-  70% {
-    transform: translate(-50%, -50%) scale(1.15);
-    opacity: 0;
-  }
-  100% {
-    transform: translate(-50%, -50%) scale(1.15);
-    opacity: 0;
-  }
-}
-
-@keyframes marketing-float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-6px);
-  }
-}
-
-@keyframes marketing-log-in {
-  from {
-    opacity: 0;
-    transform: translateX(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes marketing-progress {
-  from {
-    width: 52%;
-  }
-  to {
-    width: 78%;
-  }
-}
-
-@keyframes marketing-bar-grow {
-  from {
-    transform: scaleY(0.2);
-    transform-origin: bottom;
-    opacity: 0.4;
-  }
-  to {
-    transform: scaleY(1);
-    transform-origin: bottom;
-    opacity: 1;
-  }
-}
-
-@keyframes marketing-orbit-spin {
-  from {
-    transform: translate(-50%, -50%) rotate(0deg);
-  }
-  to {
-    transform: translate(-50%, -50%) rotate(360deg);
+  html.app-viewport-lock #root {
+    height: 100%;
+    min-height: 100%;
+    overflow: hidden;
   }
 }
 
 @layer utilities {
-  .animate-fade-in {
-    animation: fadeIn 0.2s ease-in-out;
+  @keyframes marketing-pulse-ring {
+    0% {
+      transform: translate(-50%, -50%) scale(0.85);
+      opacity: 0.6;
+    }
+    70% {
+      transform: translate(-50%, -50%) scale(1.15);
+      opacity: 0;
+    }
+    100% {
+      transform: translate(-50%, -50%) scale(1.15);
+      opacity: 0;
+    }
   }
-  .animate-slide-up {
-    animation: slideUp 0.3s ease-out;
+
+  @keyframes marketing-float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-6px);
+    }
   }
-  .animate-in {
-    animation: fadeIn 0.15s ease-out;
+
+  @keyframes marketing-log-in {
+    from {
+      opacity: 0;
+      transform: translateX(-8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
   }
-  .animate-modal-in {
-    animation: modalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+  @keyframes marketing-progress {
+    from {
+      width: 52%;
+    }
+    to {
+      width: 78%;
+    }
+  }
+
+  @keyframes marketing-bar-grow {
+    from {
+      transform: scaleY(0.2);
+      transform-origin: bottom;
+      opacity: 0.4;
+    }
+    to {
+      transform: scaleY(1);
+      transform-origin: bottom;
+      opacity: 1;
+    }
+  }
+
+  @keyframes marketing-orbit-spin {
+    from {
+      transform: translate(-50%, -50%) rotate(0deg);
+    }
+    to {
+      transform: translate(-50%, -50%) rotate(360deg);
+    }
   }
 }
 
@@ -748,5 +950,55 @@ html[dir="rtl"] .marketing-feature-log-row {
   to {
     opacity: 1;
     transform: translateX(0);
+  }
+}
+
+/* Earnings estimator sliders on the provider page. */
+.provider-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 0.5rem;
+  border-radius: 9999px;
+  outline: none;
+  cursor: pointer;
+}
+.provider-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 1.5rem;
+  width: 1.5rem;
+  border-radius: 9999px;
+  background: #fff;
+  border: 4px solid #4ade80;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+}
+.provider-range::-moz-range-thumb {
+  height: 1.5rem;
+  width: 1.5rem;
+  border-radius: 9999px;
+  background: #fff;
+  border: 4px solid #4ade80;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+}
+.provider-range:focus-visible {
+  outline: 2px solid #4ade80;
+  outline-offset: 4px;
+}
+
+/* Logo marquee: the track holds two identical copies, so shifting by half its width loops seamlessly. */
+@keyframes logo-marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.logo-marquee-track {
+  width: max-content;
+  animation: logo-marquee 45s linear infinite;
+}
+.logo-marquee:hover .logo-marquee-track {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .logo-marquee-track {
+    animation: none;
   }
 }

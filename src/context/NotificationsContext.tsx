@@ -27,7 +27,8 @@ import {
   type TradeExecutionLogRow,
   type TradeNotification,
 } from '../lib/tradeNotifications'
-import { isHumanReviewSignal } from '../lib/humanReview'
+import { isHumanReviewSignal, reviewRemainingMs } from '../lib/humanReview'
+import { SOCIAL_NOTIFICATION_SELECT, socialNotificationFromRow, type SocialNotificationRow } from '../lib/socialNotifications'
 
 const MAX_NOTIFICATIONS = 30
 const FETCH_LIMIT = 120
@@ -126,6 +127,11 @@ export function NotificationsProvider({
     (rows: ReviewRequiredSignal[]): TradeNotification[] =>
       rows
         .filter(isHumanReviewSignal)
+        // The approval window is two minutes; once it passes the row can no
+        // longer be approved, so it must not sit in the bell forever as an
+        // "awaiting approval" item (it would outlive the modal and the trades
+        // queue, which both age out).
+        .filter(signal => reviewRemainingMs(signal.created_at) > 0)
         .map(signal =>
           reviewNotificationFromSignal(signal, t.tradeNotifications, {
             channelDisplayNames: channelNamesRef.current,
@@ -147,7 +153,7 @@ export function NotificationsProvider({
     }
     setLoading(true)
     try {
-      const [channelsRes, brokersRes, logsRes, reviewRes] = await Promise.all([
+      const [channelsRes, brokersRes, logsRes, reviewRes, socialRes] = await Promise.all([
         supabase
           .from('telegram_channels')
           .select('id, display_name, channel_username')
@@ -172,11 +178,18 @@ export function NotificationsProvider({
           .ilike('skip_reason', '%human review required%')
           .order('created_at', { ascending: false })
           .limit(FETCH_LIMIT),
+        supabase
+          .from('in_app_notifications')
+          .select(SOCIAL_NOTIFICATION_SELECT)
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(FETCH_LIMIT),
       ])
       if (channelsRes.error) throw new Error(channelsRes.error.message)
       if (brokersRes.error) throw new Error(brokersRes.error.message)
       if (logsRes.error) throw new Error(logsRes.error.message)
       if (reviewRes.error) throw new Error(reviewRes.error.message)
+      if (socialRes.error) throw new Error(socialRes.error.message)
 
       channelNamesRef.current = buildChannelDisplayNames(channelsRes.data ?? [])
       brokerLabelsRef.current = buildBrokerLabels(brokersRes.data ?? [])
@@ -186,7 +199,8 @@ export function NotificationsProvider({
       const reviewRows = (reviewRes.data ?? []) as ReviewRequiredSignal[]
       knownSignalIdsRef.current = new Set(reviewRows.map(s => s.id))
       const reviewItems = reviewItemsFromRows(reviewRows)
-      const next = mergeItems([...reviewItems, ...logItems])
+      const socialItems = ((socialRes.data ?? []) as SocialNotificationRow[]).map(socialNotificationFromRow)
+      const next = mergeItems([...socialItems, ...reviewItems, ...logItems])
       notificationIdsRef.current = new Set(next.map(n => n.id))
       setItems(next)
     } catch (e) {
@@ -269,6 +283,11 @@ export function NotificationsProvider({
             setItems(prev => mergeItems([item, ...prev]))
           },
         )
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'in_app_notifications', filter },
+          schedule,
+        )
         .subscribe()
     })
 
@@ -284,6 +303,8 @@ export function NotificationsProvider({
     const now = new Date().toISOString()
     writeNotificationsLastReadAt(user.id, now)
     setLastReadAt(now)
+    setItems(current => current.map(item => item.readAt === null ? { ...item, readAt: now } : item))
+    void supabase.from('in_app_notifications').update({ read_at: now }).eq('user_id', user.id).is('read_at', null)
   }, [user?.id])
 
   const unreadCount = useMemo(

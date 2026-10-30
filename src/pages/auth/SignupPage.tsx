@@ -469,7 +469,7 @@ export function SignupPage() {
           type="submit"
           loading={loading}
           disabled={isCreateAccountDisabled(validationInput)}
-          className="w-full !mt-6"
+          className="w-full mt-6!"
           size="lg"
         >
           {signupT.submit}

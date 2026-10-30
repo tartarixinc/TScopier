@@ -4,6 +4,10 @@ load-results/
 .env.local
 .env.*.local
 
+# Local-only pipeline test tool (holds a bot token; never commit or push)
+.env.testbot
+scripts/test-signal.mjs
+
 # Build output (Netlify/Railway build from source)
 dist/
 worker/dist/
@@ -37,6 +41,8 @@ scripts/cline-bridge.mjs
 scripts/cline-review.sh
 scripts/cline-runner.mjs
 scripts/opencode-bridge.mjs
+# Local-only pipeline test tool (AGENTS: never committed/pushed)
+scripts/test-signal.mjs
 
 # Firecrawl research cache (local only)
 .firecrawl/
@@ -51,3 +57,7 @@ docs/mtapi-migration-plan.pdf
 
 # Nginx reverse-proxy setup (VPS ops — local only)
 docs/nginx-setup/
+
+# Python bytecode (never commit)
+__pycache__/
+*.pyc

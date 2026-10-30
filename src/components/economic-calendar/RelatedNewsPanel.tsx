@@ -11,11 +11,11 @@ interface RelatedNewsPanelProps {
 
 export function RelatedNewsPanel({ articles, title, empty, readArticle }: RelatedNewsPanelProps) {
   return (
-    <div className="rounded-xl border border-neutral-200/55 bg-white shadow-sm dark:border-neutral-800/55 dark:bg-neutral-950">
+    <div className="rounded-xl border border-neutral-200/55 bg-white shadow-xs dark:border-neutral-800/55 dark:bg-neutral-950">
       <div className="border-b border-neutral-100 px-4 py-3 dark:border-neutral-800">
         <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{title}</h2>
       </div>
-      <div className="max-h-[32rem] overflow-y-auto divide-y divide-neutral-100 dark:divide-neutral-800">
+      <div className="max-h-128 overflow-y-auto divide-y divide-neutral-100 dark:divide-neutral-800">
         {articles.length === 0 ? (
           <p className="px-4 py-8 text-center text-sm text-neutral-900 dark:text-neutral-50">{empty}</p>
         ) : (

@@ -8,6 +8,7 @@ import { describeChannelConfiguration, type ConfigurationDetailSection } from '.
 import { resolveBrokerTotalBalance } from '../../lib/effectiveBrokerBalance'
 import { resolveChannelTradingConfig } from '../../lib/channelTradingConfig'
 import { normalizeSignalSourceKind } from '../../lib/signalSourceMark'
+import { platformIconSrc } from '../../lib/activityRoute'
 import type { BrokerAccount } from '../../types/database'
 import { SignalSourceLogo } from '../dashboard/SignalSourceLogo'
 
@@ -20,12 +21,11 @@ interface ChannelName {
 
 function PlatformLogo({ platform }: { platform: string }) {
   const [failed, setFailed] = useState(false)
-  const raw = platform.trim()
-  const key = /^mt[45]$/i.test(raw) ? raw.toUpperCase() : raw
-  if (!key || failed) return null
+  const src = platformIconSrc(platform)
+  if (!src || failed) return null
   return (
     <img
-      src={`/${key}.png`}
+      src={src}
       alt=""
       aria-hidden
       className="h-8 w-8 shrink-0 object-contain"
@@ -104,8 +104,8 @@ export function BrokerConfigurationsModal({
         <div className="overflow-y-auto px-5 py-4">
           {loading ? (
             <div className="space-y-3" aria-hidden>
-              <div className="h-8 animate-pulse rounded bg-neutral-100 dark:bg-white/5" />
-              <div className="h-24 animate-pulse rounded bg-neutral-100 dark:bg-white/5" />
+              <div className="h-8 animate-pulse rounded-sm bg-neutral-100 dark:bg-white/5" />
+              <div className="h-24 animate-pulse rounded-sm bg-neutral-100 dark:bg-white/5" />
             </div>
           ) : error ? (
             <p className="text-sm text-error-600 dark:text-error-400">{copy.loadError}</p>

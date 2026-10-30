@@ -7,7 +7,11 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { FxsocketBrokerClient, OrderSendArgs } from './fxsocketClient'
 import type { MergeModifySummary, PerLegStopTarget } from './multiTradeMerge'
 import { expandPerLegTargetsToCount } from './manualPlanning/tpBucketDistribution'
+import { bundleSteadyLegTps } from './manualPlanning/tpBundleIdentity'
+import { isTpBundleEnabled } from './manualPlanning/tpBundleRollout'
 import type { ManualTpLot } from './manualPlanning/types'
+import { resolveChosenTakeProfit } from './manualPlanning/partialTpSchedule'
+import { filterPlausibleInstrumentPrices } from './tradableSymbol'
 import { symbolsCompatibleForBasket } from './basketModFollowUp'
 import { stripInvalidStopsForSide } from './channelActiveTradeParams'
 import { isBenignOrderModifyError, isPositionGoneError } from './orderModifyBenign'
@@ -15,7 +19,9 @@ import { modifyLegSlTpWithFallback } from './orderModifySafe'
 import { isSlMoreProtective } from './basketEffectiveStops'
 import { mgmtLegConcurrency, parallelMap } from './parallelPool'
 import { buildBasketRefreshComment } from './tradeComment'
-
+import { TRADE_CLOSE_REASON } from './tradeCloseReasons'
+import { applyCloseUpdate } from './tradeCloseUpdate'
+import { writeExecutionLog } from './observability/executionLog'
 export type BasketSymbolParams = {
   digits?: number
   point: number
@@ -207,12 +213,15 @@ export async function closeStaleOpenTrades(
   if (!rows.length) return 0
 
   const now = new Date().toISOString()
-  const { data, error } = await supabase
-    .from('trades')
-    .update({ status: 'closed', closed_at: now })
-    .in('id', rows.map(r => r.id))
-    .eq('status', 'open')
-    .select('id')
+  const { data, error } = await applyCloseUpdate(
+    { status: 'closed', closed_at: now, close_reason: TRADE_CLOSE_REASON.POSITION_GONE },
+    patch => supabase
+      .from('trades')
+      .update(patch)
+      .in('id', rows.map(r => r.id))
+      .eq('status', 'open')
+      .select('id'),
+  )
   if (error) {
     console.warn(`[basketSlTpReconcile] closeStaleOpenTrades failed: ${error.message}`)
     return 0
@@ -268,26 +277,24 @@ export async function logBasketLegModify(
     internalRebalance?: boolean
   },
 ): Promise<void> {
-  try {
-    await supabase.from('trade_execution_logs').insert({
-      user_id: args.userId,
-      signal_id: args.signalId,
-      broker_account_id: args.brokerAccountId,
-      action: 'basket_leg_modify',
-      status: args.status,
-      error_message: args.errorMessage ?? args.skipReason ?? null,
-      request_payload: {
-        trade_id: args.tradeId,
-        ticket: args.ticket,
-        leg_index: args.legIndex,
-        broker_symbol: args.brokerSymbol,
-        target_sl: args.targetSl,
-        target_tp: args.targetTp,
-        skip_reason: args.skipReason ?? null,
-        internal_rebalance: args.internalRebalance === true,
-      } as unknown as Record<string, unknown>,
-    })
-  } catch { /* best-effort */ }
+  await writeExecutionLog(supabase, {
+    user_id: args.userId,
+    signal_id: args.signalId,
+    broker_account_id: args.brokerAccountId,
+    action: 'basket_leg_modify',
+    status: args.status,
+    error_message: args.errorMessage ?? args.skipReason ?? null,
+    request_payload: {
+      trade_id: args.tradeId,
+      ticket: args.ticket,
+      leg_index: args.legIndex,
+      broker_symbol: args.brokerSymbol,
+      target_sl: args.targetSl,
+      target_tp: args.targetTp,
+      skip_reason: args.skipReason ?? null,
+      internal_rebalance: args.internalRebalance === true,
+    } as unknown as Record<string, unknown>,
+  })
 }
 
 export async function runBasketLegModifies(args: {
@@ -318,31 +325,78 @@ export async function runBasketLegModifies(args: {
   parallelLegs?: boolean
   /** Range-basket TP rebalance — tag per-leg logs for UI suppression. */
   internalRebalance?: boolean
+  /**
+   * Bundled multi basket (non-range): when TP_BUNDLE_ENABLED and the passed
+   * targets are shorter than the open legs, rebuild positionally from each
+   * leg's own TP instead of a count-weighted expansion (D3).
+   */
+  bundleIdentity?: boolean
   /** When set, internal rebalance must not revert legs to anchor SL below this value. */
   effectiveStoploss?: number
   /** When false, refresh OrderSend comments are left empty. */
   orderCommentsEnabled?: boolean
   /** Channel/user explicit SL/TP — apply targets as given (allow tighten; use live quote for side checks). */
   explicitChannelTargets?: boolean
+  /**
+   * Selected level on a `trade_style === 'single'` account. When the requested
+   * take-profit is rejected by the broker this is tried before the furthest
+   * ladder level, so the leg lands on the level the customer chose.
+   */
+  singleTpTarget?: `tp${number}` | 'farthest' | null
 }): Promise<RunBasketLegModifyResult> {
   const {
     supabase, api, uuid, symbol, direction, baseLot, params,
     signalId, userId, brokerAccountId, familyTrades, perLegTargets: rawTargets,
     signalTps, tpLots, nImmCwe, strictEntryPrefetch, openedTickets, alreadyModified,
     liveMgmtFast, parallelLegs, internalRebalance,
-    orderCommentsEnabled, explicitChannelTargets,
+    orderCommentsEnabled, explicitChannelTargets, singleTpTarget,
   } = args
   void args.skipAlreadySynced // retained for callers; DB-only skip removed (naked-fill bug)
-
-  const parsedTps = (signalTps ?? []).filter(t => typeof t === 'number' && Number.isFinite(t) && t > 0)
-  const perLegTargets = expandPerLegTargetsToCount({
-    targets: rawTargets,
-    openLegCount: familyTrades.length,
-    finalTps: parsedTps.length
+  // Legacy rows still carry ladder junk (a stray 100 written before the parser fix).
+  // A chosen target or a fallback picked from it would be an impossible exit.
+  const parsedTps = filterPlausibleInstrumentPrices(
+    symbol,
+    (signalTps ?? []).filter(t => typeof t === 'number' && Number.isFinite(t) && t > 0),
+  )
+  const chosenTp = singleTpTarget
+    ? resolveChosenTakeProfit({
+      finalTps: parsedTps,
+      singleTpTarget,
+      isBuy: direction === 'buy',
+    })
+    : 0
+  let perLegTargets: PerLegStopTarget[]
+  if (
+    args.bundleIdentity === true
+    && isTpBundleEnabled()
+    && rawTargets.length < familyTrades.length
+  ) {
+    // Bundled basket with short/lost targets: steady state — legs keep their
+    // own TP, naked legs backfill positionally from the ladder (never
+    // count-weighted, which would collapse the ladder onto TP1/TP2) (D3).
+    const sl = rawTargets[0]?.stoploss ?? 0
+    const ladder = parsedTps.length
       ? parsedTps
-      : rawTargets.map(t => t.takeprofit).filter(tp => tp > 0),
-    tpLots,
-  }) as PerLegStopTarget[]
+      : rawTargets.map(t => t.takeprofit).filter(tp => typeof tp === 'number' && tp > 0)
+    const tps = bundleSteadyLegTps({
+      currentTps: familyTrades.map(tr => tr.tp),
+      ladder,
+    })
+    perLegTargets = familyTrades.map((_, i) => ({
+      stoploss: sl,
+      takeprofit: tps[i] ?? 0,
+    }))
+  } else {
+    perLegTargets = expandPerLegTargetsToCount({
+      targets: rawTargets,
+      openLegCount: familyTrades.length,
+      finalTps: parsedTps.length
+        ? parsedTps
+        : rawTargets.map(t => t.takeprofit).filter(tp => tp > 0),
+      tpLots,
+      chosenTp,
+    }) as PerLegStopTarget[]
+  }
 
   const summary: BasketLegModifySummary = {
     openLegs: familyTrades.length,
@@ -499,6 +553,25 @@ export async function runBasketLegModifies(args: {
     if (stripped.stripped.length) {
       stoploss = stripped.stoploss
       takeprofit = stripped.takeprofit
+      // A requested stop that cannot exist for this side must not be silently
+      // turned into a TP-only modify. That was how a buy basket ended up with
+      // SL 0 while the DB still held the rejected channel level.
+      if (stripped.slWrongSide && target.stoploss > 0) {
+        await logLegModify({
+          userId,
+          signalId,
+          brokerAccountId,
+          status: 'skipped',
+          tradeId: tr.id,
+          ticket,
+          legIndex: i + 1,
+          brokerSymbol: tr.symbol,
+          targetSl: target.stoploss,
+          targetTp: target.takeprofit,
+          skipReason: 'wrong_side_sl',
+        })
+        return { ...noopOutcome(), skippedUnfixable: 1 }
+      }
       if (stoploss <= 0 && takeprofit <= 0) {
         await logLegModify({
           userId,
@@ -532,8 +605,14 @@ export async function runBasketLegModifies(args: {
     let modSl = clamped.args.stoploss ?? 0
     let modTp = clamped.args.takeprofit ?? 0
     if (modTp <= 0 && nImmCwe === 0) {
-      const curTp = Number(tr.tp)
-      if (Number.isFinite(curTp) && curTp > 0) modTp = curTp
+      // Prefer the selected single target over whatever the leg happens to carry:
+      // the stored value may itself be a stale "furthest level" write.
+      if (chosenTp > 0) {
+        modTp = chosenTp
+      } else {
+        const curTp = Number(tr.tp)
+        if (Number.isFinite(curTp) && curTp > 0) modTp = curTp
+      }
     }
     if (modSl <= 0) {
       const curSl = Number(tr.sl)
@@ -572,6 +651,22 @@ export async function runBasketLegModifies(args: {
     if (postClampStripped.stripped.length) {
       modSl = postClampStripped.stoploss
       modTp = postClampStripped.takeprofit
+      if (postClampStripped.slWrongSide && target.stoploss > 0) {
+        await logLegModify({
+          userId,
+          signalId,
+          brokerAccountId,
+          status: 'skipped',
+          tradeId: tr.id,
+          ticket,
+          legIndex: i + 1,
+          brokerSymbol: tr.symbol,
+          targetSl: target.stoploss,
+          targetTp: target.takeprofit,
+          skipReason: 'wrong_side_sl',
+        })
+        return { ...noopOutcome(), skippedUnfixable: 1 }
+      }
       if (modSl <= 0 && modTp <= 0) {
         await logLegModify({
           userId,
@@ -590,16 +685,41 @@ export async function runBasketLegModifies(args: {
       }
     }
 
+    // A requested SL that could not be applied (wrong-side or stripped as too
+    // close to market) must never fall through to a TP-only modify: omitting
+    // stopLoss clears the broker stop to 0 (MTAPI). Leave the leg untouched so
+    // the failure reaches the reconcile/monitor path instead.
+    if (target.stoploss > 0 && modSl <= 0) {
+      await logLegModify({
+        userId,
+        signalId,
+        brokerAccountId,
+        status: 'skipped',
+        tradeId: tr.id,
+        ticket,
+        legIndex: i + 1,
+        brokerSymbol: tr.symbol,
+        targetSl: target.stoploss,
+        targetTp: target.takeprofit,
+        skipReason: 'sl_suppressed',
+      })
+      return { ...noopOutcome(), skippedUnfixable: 1 }
+    }
+
     try {
       // SL-first with split fallback: an invalid/late TP must never block the
       // protective SL (avoids legs left fully naked after an "Invalid stops").
-      // If the requested TP was passed by price, fall back to the deepest ladder
-      // TP so the leg keeps a profit target.
+      // If the requested TP was passed by price, fall back to the level the
+      // customer selected before the furthest ladder TP, so the leg keeps a
+      // profit target without jumping to the deepest one.
       const deepestTp = parsedTps.length
         ? (direction === 'buy' ? Math.max(...parsedTps) : Math.min(...parsedTps))
         : 0
-      const safe = await modifyLegSlTpWithFallback(api, uuid, ticket, modSl, modTp, { deepestTp })
-      if (!safe.ok || (modSl > 0 && !safe.slApplied)) {
+      const safe = await modifyLegSlTpWithFallback(api, uuid, ticket, modSl, modTp, {
+        deepestTp,
+        ...(chosenTp > 0 ? { tpFallbacks: [chosenTp] } : {}),
+      })
+      if (!safe.ok || (target.stoploss > 0 && !safe.slApplied)) {
         const failMsg = safe.error ?? 'OrderModify failed'
         if (isBenignOrderModifyError(failMsg)) {
           await logLegModify({
@@ -834,6 +954,8 @@ export async function applyBasketLegSync(args: {
   orderCommentsEnabled?: boolean
   explicitChannelTargets?: boolean
   virtualPendingsSnapshot?: unknown
+  /** Selected level on a `trade_style === 'single'` account. */
+  singleTpTarget?: `tp${number}` | 'farthest' | null
   /** Default true. When false, caller owns reconcile-job lifecycle. */
   enqueueReconcileOnFailure?: boolean
 }): Promise<ApplyBasketLegSyncResult> {
@@ -843,6 +965,7 @@ export async function applyBasketLegSync(args: {
     familyTrades, perLegTargets, signalTps, tpLots, nImmCwe, overrideTp,
     liveMgmtFast, internalRebalance, effectiveStoploss,
     orderCommentsEnabled, explicitChannelTargets, virtualPendingsSnapshot,
+    singleTpTarget,
   } = args
   const enqueueReconcileOnFailure = args.enqueueReconcileOnFailure !== false
 
@@ -909,6 +1032,7 @@ export async function applyBasketLegSync(args: {
       effectiveStoploss,
       orderCommentsEnabled,
       explicitChannelTargets,
+      singleTpTarget,
     })
 
     for (const id of pass.modifiedTradeIds) modifiedTradeIds.add(id)
@@ -984,6 +1108,11 @@ export async function upsertBasketReconcileJob(
     nImmCwe: number
     overrideTp: number | null
     lastError: string | null
+    /**
+     * Bundled multi basket (flag on): seed short per-leg targets from each
+     * leg's own TP (steady state) instead of a count-weighted expansion (D3).
+     */
+    bundleIdentity?: boolean
   },
 ): Promise<string | null> {
   const maxAttempts = Math.min(
@@ -991,12 +1120,31 @@ export async function upsertBasketReconcileJob(
     Math.max(6, Number(process.env.BASKET_RECONCILE_MAX_ATTEMPTS ?? 48)),
   )
   const parsedTps = (args.signalTps ?? []).filter(t => typeof t === 'number' && Number.isFinite(t) && t > 0)
+  let baseTargets = args.perLegTargets
+  if (
+    args.bundleIdentity === true
+    && isTpBundleEnabled()
+    && baseTargets.length < args.familyTrades.length
+  ) {
+    const ladder = parsedTps.length
+      ? parsedTps
+      : baseTargets.map(t => t.takeprofit).filter(tp => typeof tp === 'number' && tp > 0)
+    const sl = baseTargets[0]?.stoploss ?? 0
+    const tps = bundleSteadyLegTps({
+      currentTps: args.familyTrades.map(tr => tr.tp),
+      ladder,
+    })
+    baseTargets = args.familyTrades.map((_, i) => ({
+      stoploss: sl,
+      takeprofit: tps[i] ?? 0,
+    }))
+  }
   const storedTargets = expandPerLegTargetsToCount({
-    targets: args.perLegTargets,
-    openLegCount: Math.max(args.familyTrades.length, args.perLegTargets.length),
+    targets: baseTargets,
+    openLegCount: Math.max(args.familyTrades.length, baseTargets.length),
     finalTps: parsedTps.length
       ? parsedTps
-      : args.perLegTargets.map(t => t.takeprofit).filter(tp => tp > 0),
+      : baseTargets.map(t => t.takeprofit).filter(tp => tp > 0),
     tpLots: args.tpLots,
   })
 

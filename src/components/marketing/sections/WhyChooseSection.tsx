@@ -50,12 +50,10 @@ const BENTO_COLUMN_SLOTS: readonly [LandingBentoCardLayout, LandingBentoCardLayo
 ]
 
 function metricClass(card: LandingBentoCard, featured: boolean): string {
-  if (featured) {
-    if (card.metricVariant === 'amber') return 'text-amber-300'
-    return 'text-white'
-  }
-  if (card.metricVariant === 'teal') return 'text-green-500 dark:text-green-400'
-  return 'text-neutral-900 dark:text-neutral-100'
+  if (featured) return 'text-neutral-950'
+  if (card.metricVariant === 'amber') return 'text-amber-600'
+  if (card.metricVariant === 'teal') return 'text-green-600'
+  return 'text-neutral-950'
 }
 
 function BentoCard({
@@ -77,17 +75,27 @@ function BentoCard({
         featured && 'marketing-bento-card--featured',
       )}
     >
+      <div className="flex items-center gap-2.5">
+        <span
+          className={clsx(
+            'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+            featured ? 'bg-neutral-950 text-green-400' : 'bg-green-400 text-neutral-950',
+          )}
+        >
+          <Icon className="h-4 w-4" aria-hidden />
+        </span>
+        <p
+          className={clsx(
+            ' text-[0.625rem] font-medium uppercase tracking-widest',
+            featured ? 'text-neutral-950/70' : 'text-neutral-500',
+          )}
+        >
+          {card.label}
+        </p>
+      </div>
       <p
         className={clsx(
-          'relative z-10 text-xs font-semibold tracking-tight',
-          featured ? 'text-teal-100' : 'text-neutral-900 dark:text-neutral-50',
-        )}
-      >
-        {card.label}
-      </p>
-      <p
-        className={clsx(
-          'relative z-10 mt-3 text-2xl font-bold leading-tight tracking-tight sm:text-3xl lg:text-[1.65rem] lg:leading-tight',
+          'mt-5 text-2xl font-bold leading-tight tracking-tight sm:text-3xl lg:text-[1.65rem] lg:leading-tight',
           metricClass(card, featured),
         )}
       >
@@ -95,20 +103,12 @@ function BentoCard({
       </p>
       <p
         className={clsx(
-          'relative z-10 mt-auto pt-2 text-xs leading-relaxed sm:text-sm',
-          featured ? 'text-teal-50/90' : 'text-neutral-900 dark:text-neutral-50',
+          'mt-auto pt-3 text-xs leading-relaxed sm:text-sm',
+          featured ? 'text-neutral-950/80' : 'text-neutral-600',
         )}
       >
         {card.description}
       </p>
-      <Icon
-        className={clsx(
-          'marketing-bento-watermark',
-          featured ? 'text-white' : 'text-neutral-900 dark:text-neutral-50 dark:text-white',
-        )}
-        strokeWidth={1.25}
-        aria-hidden
-      />
     </article>
   )
 }
@@ -119,11 +119,12 @@ export function WhyChooseSection() {
 
   return (
     <section className="mx-auto max-w-6xl px-5 py-16 sm:px-8 sm:py-24">
-      <div className="mx-auto max-w-3xl text-center">
-        <p className="text-xs font-semibold uppercase tracking-wider text-green-400 dark:text-green-400">
+      <div>
+        <p className="inline-flex items-center gap-2  text-xs font-medium uppercase tracking-[0.18em] text-neutral-900 dark:text-neutral-50">
+          <span className="h-2 w-2 bg-green-400" aria-hidden />
           {l.eyebrow}
         </p>
-        <h2 className="mt-3 text-3xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-4xl lg:text-[2.5rem] lg:leading-tight">
+        <h2 className="mt-5 max-w-3xl text-3xl font-semibold tracking-tight text-neutral-950 sm:text-4xl lg:text-[2.75rem] lg:leading-[1.1] dark:text-white">
           {l.title}
         </h2>
       </div>

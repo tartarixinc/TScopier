@@ -7,6 +7,9 @@ import { getCtraderProvider, type CtraderProvider } from './ctraderProvider'
 import { getBinanceProvider, type BinanceProvider } from './binanceProvider'
 import { getBybitProvider, type BybitProvider } from './bybitProvider'
 import { getKucoinProvider, type KucoinProvider } from './kucoinProvider'
+import { getDxtradeProvider, type DxtradeProvider } from './dxtradeProvider'
+import { getTradelockerProvider, type TradelockerProvider } from './tradelockerProvider'
+import { getMatchtraderProvider, type MatchtraderProvider } from './matchtraderProvider'
 import {
   type BrokerWriteAuthority,
   brokerWriteAuthorityStoreRegistered,
@@ -21,6 +24,9 @@ let ctraderProvider: CtraderProvider | null | undefined
 let binanceProvider: BinanceProvider | null | undefined
 let bybitProvider: BybitProvider | null | undefined
 let kucoinProvider: KucoinProvider | null | undefined
+let dxtradeProvider: DxtradeProvider | null | undefined
+let tradelockerProvider: TradelockerProvider | null | undefined
+let matchtraderProvider: MatchtraderProvider | null | undefined
 
 function getFxsocketProvider(): FxsocketProvider | null {
   if (fxsocketProvider === undefined) fxsocketProvider = createFxsocketProvider()
@@ -45,6 +51,21 @@ function resolveBinanceProvider(): BinanceProvider | null {
 function resolveKucoinProvider(): KucoinProvider | null {
   if (kucoinProvider === undefined) kucoinProvider = getKucoinProvider()
   return kucoinProvider
+}
+
+function resolveDxtradeProvider(): DxtradeProvider | null {
+  if (dxtradeProvider === undefined) dxtradeProvider = getDxtradeProvider()
+  return dxtradeProvider
+}
+
+function resolveTradelockerProvider(): TradelockerProvider | null {
+  if (tradelockerProvider === undefined) tradelockerProvider = getTradelockerProvider()
+  return tradelockerProvider
+}
+
+function resolveMatchtraderProvider(): MatchtraderProvider | null {
+  if (matchtraderProvider === undefined) matchtraderProvider = getMatchtraderProvider()
+  return matchtraderProvider
 }
 
 function resolveBybitProvider(): BybitProvider | null {
@@ -78,10 +99,19 @@ export function apiForBrokerAccount(
   if (value === 'kucoin') {
     resolved = resolveKucoinProvider() as unknown as ResolvedBrokerProvider | null
   }
+  if (value === 'dxtrade') {
+    resolved = resolveDxtradeProvider() as unknown as ResolvedBrokerProvider | null
+  }
+  if (value === 'tradelocker') {
+    resolved = resolveTradelockerProvider() as unknown as ResolvedBrokerProvider | null
+  }
+  if (value === 'matchtrader') {
+    resolved = resolveMatchtraderProvider() as unknown as ResolvedBrokerProvider | null
+  }
   if (!resolved) return null
   if (!brokerWriteAuthorityStoreRegistered()) return resolved
 
-  const guardedMethods = new Set(['orderSend', 'orderModify', 'orderClose'])
+  const guardedMethods = new Set(['orderSend', 'orderModify', 'orderClose', 'orderCancel'])
   return new Proxy(resolved, {
     get(target, prop, receiver) {
       const member = Reflect.get(target, prop, receiver)
@@ -105,7 +135,7 @@ export function apiForBrokerAccount(
 export function inferProvider(row: { provider?: string | null }): BrokerProviderName | null {
   if (row.provider == null || row.provider === '') return 'fxsocket'
   const explicit = String(row.provider).trim()
-  if (explicit === 'fxsocket' || explicit === 'mtapi' || explicit === 'ctrader' || explicit === 'binance' || explicit === 'bybit' || explicit === 'kucoin') return explicit
+  if (explicit === 'fxsocket' || explicit === 'mtapi' || explicit === 'ctrader' || explicit === 'binance' || explicit === 'bybit' || explicit === 'kucoin' || explicit === 'dxtrade' || explicit === 'tradelocker' || explicit === 'matchtrader') return explicit
   return null
 }
 
@@ -116,6 +146,9 @@ export function resetProviderResolverForTests(): void {
   binanceProvider = undefined
   bybitProvider = undefined
   kucoinProvider = undefined
+  dxtradeProvider = undefined
+  tradelockerProvider = undefined
+  matchtraderProvider = undefined
 }
 
 export function setFxsocketProviderForTests(provider: FxsocketProvider | null): void {
@@ -140,4 +173,16 @@ export function setBybitProviderForResolverTests(provider: BybitProvider | null)
 
 export function setKucoinProviderForResolverTests(provider: KucoinProvider | null): void {
   kucoinProvider = provider
+}
+
+export function setDxtradeProviderForResolverTests(provider: DxtradeProvider | null): void {
+  dxtradeProvider = provider
+}
+
+export function setTradelockerProviderForResolverTests(provider: TradelockerProvider | null): void {
+  tradelockerProvider = provider
+}
+
+export function setMatchtraderProviderForResolverTests(provider: MatchtraderProvider | null): void {
+  matchtraderProvider = provider
 }

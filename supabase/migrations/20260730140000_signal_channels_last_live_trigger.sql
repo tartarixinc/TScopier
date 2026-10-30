@@ -33,6 +33,8 @@ $$;
 COMMENT ON FUNCTION public.bump_signal_channel_last_live() IS
   'Updates signal_channels.last_live_at whenever a new signal is inserted, bridging via telegram_channels.';
 
+DROP TRIGGER IF EXISTS trg_bump_signal_channel_last_live ON public.signals;
+
 CREATE TRIGGER trg_bump_signal_channel_last_live
   AFTER INSERT ON public.signals
   FOR EACH ROW

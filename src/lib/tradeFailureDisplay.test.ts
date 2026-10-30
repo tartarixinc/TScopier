@@ -74,4 +74,14 @@ describe('buildTradeFailureAssistantPrompt', () => {
     assert.match(prompt, /XAUUSD/)
     assert.doesNotMatch(prompt, /secret|rawSignalText|brokerPassword|GOLD BUY/)
   })
+
+  it('tells the user the stop could not be read when the message stated one', () => {
+    const display = resolveTradeFailureDisplay({
+      reasonCode: 'entry_tp_without_sl',
+      safeContext: { stopStatedButUnreadable: true },
+    })
+    assert.equal(display?.title, 'We could not read the stop loss in this signal')
+    assert.match(display?.explanation ?? '', /could not read its price/)
+    assert.equal(display?.safeContext.stopStatedButUnreadable, true)
+  })
 })

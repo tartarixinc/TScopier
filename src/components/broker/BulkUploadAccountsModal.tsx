@@ -167,7 +167,7 @@ export function BulkUploadAccountsModal({ open, onClose, onBatchComplete }: Bulk
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-8"
+      className="fixed inset-0 z-60 flex items-center justify-center p-4 sm:p-8"
       onMouseDown={onOverlayMouseDown}
       onClick={onOverlayClick}
     >
@@ -274,7 +274,7 @@ export function BulkUploadAccountsModal({ open, onClose, onBatchComplete }: Bulk
                           <td className="px-3 py-2">{row.platform}</td>
                           <td className="px-3 py-2">{row.broker_server}</td>
                           <td className="px-3 py-2">{row.account_number}</td>
-                          <td className="px-3 py-2 font-mono text-xs">{'•'.repeat(Math.min(8, row.account_password.length || 4))}</td>
+                          <td className="px-3 py-2  text-xs">{'•'.repeat(Math.min(8, row.account_password.length || 4))}</td>
                         </tr>
                       ))}
                     </tbody>

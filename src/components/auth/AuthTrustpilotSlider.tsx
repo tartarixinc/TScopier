@@ -52,7 +52,7 @@ export function AuthTrustpilotSlider({ reviews, trustpilotLabel }: AuthTrustpilo
       </span>
 
       <div
-        className="relative min-h-[12rem] w-full overflow-hidden sm:min-h-[11rem]"
+        className="relative min-h-48 w-full overflow-hidden sm:min-h-44"
         aria-live="polite"
         aria-atomic="true"
       >
@@ -99,7 +99,7 @@ export function AuthTrustpilotSlider({ reviews, trustpilotLabel }: AuthTrustpilo
         </div>
       </div>
 
-      <div className="mt-10 flex min-h-[4.5rem] flex-col items-center justify-start gap-3">
+      <div className="mt-10 flex min-h-18 flex-col items-center justify-start gap-3">
         <TrustpilotStars />
         <TrustpilotBadge label={trustpilotLabel} />
       </div>

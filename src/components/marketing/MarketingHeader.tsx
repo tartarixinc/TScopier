@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import clsx from 'clsx'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { Menu, X } from 'lucide-react'
 import { TscopierLogo } from '../ui/TscopierLogo'
 import { ThemeToggle } from '../ui/ThemeToggle'
@@ -8,8 +8,10 @@ import { LanguageSwitcher } from '../auth/LanguageSwitcher'
 import { useLocale, useT } from '../../context/LocaleContext'
 import { HELP_LINKS } from '../../lib/helpLinks'
 import { marketingUrl } from '../../lib/site'
+import { MarketingAudienceSwitch } from './MarketingAudienceSwitch'
 import { MarketingAuthCta } from './MarketingAuthCta'
 import { MarketingProductMenu, MarketingProductMenuMobile } from './MarketingProductMenu'
+import { useMarketingHeaderTop } from '../../hooks/useMarketingPromoOffset'
 
 type NavItemKey = 'product' | 'features' | 'pricing' | 'faq' | 'docs'
 
@@ -19,12 +21,16 @@ type NavItem = {
   external?: boolean
 }
 
-function marketingNavItems(): NavItem[] {
+/** Anchors live on the landing page; the provider page has its own FAQ section. */
+function marketingNavItems(pathname: string): NavItem[] {
+  const onLanding = pathname === '/'
+  const onProviders = pathname.startsWith('/providers')
+  const anchor = (hash: string) => (onLanding ? hash : `${marketingUrl('/')}${hash}`)
   return [
-    { key: 'product', href: '#product' },
-    { key: 'features', href: '#features' },
+    { key: 'product', href: anchor('#product') },
+    { key: 'features', href: anchor('#features') },
     { key: 'pricing', href: marketingUrl('/pricing') },
-    { key: 'faq', href: '#faq' },
+    { key: 'faq', href: onProviders ? '#faq' : anchor('#faq') },
     { key: 'docs', href: HELP_LINKS.documentation, external: true },
   ]
 }
@@ -75,11 +81,15 @@ const GLASS_BAR =
 const GLASS_BAR_SCROLLED =
   'border border-white/80 bg-white/80 shadow-[0_10px_40px_rgba(15,23,42,0.12)] backdrop-blur-2xl dark:border-white/10 dark:bg-neutral-950/70 dark:shadow-[0_10px_40px_rgba(0,0,0,0.55)]'
 
-export function MarketingHeader() {
+export function MarketingHeader({ overDarkHero = false }: { overDarkHero?: boolean }) {
   const l = useT().landing.nav
   const { auth } = useLocale()
+  const { pathname } = useLocation()
+  const navItems = marketingNavItems(pathname)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
+  // Starts below the promo banner (if any) and slides to the top edge as the page scrolls.
+  const top = useMarketingHeaderTop()
 
   // Close the drawer when the viewport can show the desktop nav (avoids stuck open state).
   useEffect(() => {
@@ -101,18 +111,21 @@ export function MarketingHeader() {
   }, [])
 
   const closeMobile = () => setMobileOpen(false)
+  // Over a dark hero (before scrolling) the bar renders with dark-theme colours even in light mode.
+  const onDark = overDarkHero && !scrolled && !mobileOpen
 
   const desktopLinkClass =
-    'whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-900/[0.06] hover:text-neutral-950 dark:text-neutral-300 dark:hover:bg-white/10 dark:hover:text-white'
+    'whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-900/6 hover:text-neutral-950 dark:text-neutral-300 dark:hover:bg-white/10 dark:hover:text-white'
   const mobileLinkClass =
-    'rounded-xl px-3 py-2.5 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-900/[0.06] dark:text-neutral-50 dark:hover:bg-white/10'
+    'rounded-xl px-3 py-2.5 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-900/6 dark:text-neutral-50 dark:hover:bg-white/10'
 
   return (
-    <header className="pointer-events-none fixed inset-x-0 top-0 z-50 px-3 pt-3 sm:px-5 sm:pt-4">
+    <header className="pointer-events-none fixed inset-x-0 z-50 px-3 pt-3 sm:px-5 sm:pt-4" style={{ top }}>
       <div
         className={clsx(
-          'pointer-events-auto relative mx-auto flex h-14 max-w-6xl items-center gap-2 rounded-full ps-4 pe-2 transition-[background-color,border-color,box-shadow,backdrop-filter] duration-300 sm:ps-5 lg:gap-4',
+          'pointer-events-auto relative mx-auto flex h-14 max-w-7xl items-center gap-2 rounded-full ps-4 pe-2 transition-[background-color,border-color,box-shadow,backdrop-filter] duration-300 sm:ps-5 lg:gap-4',
           scrolled ? GLASS_BAR_SCROLLED : GLASS_BAR,
+          onDark && 'dark',
         )}
       >
         <Link
@@ -121,14 +134,16 @@ export function MarketingHeader() {
           aria-label="UniCopier home"
           onClick={closeMobile}
         >
-          <TscopierLogo className="h-8 w-auto sm:h-9" />
+          <TscopierLogo className="h-10 w-auto sm:h-10" onDark={onDark} />
         </Link>
+
+        <MarketingAudienceSwitch className="hidden xl:inline-flex" />
 
         <nav
           className="hidden min-w-0 flex-1 items-center justify-center gap-0.5 lg:flex"
           aria-label="Main"
         >
-          {marketingNavItems().map(item =>
+          {navItems.map(item =>
             item.key === 'product' ? (
               <MarketingProductMenu key={item.key} triggerClassName={desktopLinkClass} />
             ) : (
@@ -148,7 +163,7 @@ export function MarketingHeader() {
           <MarketingAuthCta variant="header" />
           <button
             type="button"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-neutral-900 transition-colors hover:bg-neutral-900/[0.06] lg:hidden dark:text-neutral-50 dark:hover:bg-white/10"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-neutral-900 transition-colors hover:bg-neutral-900/6 lg:hidden dark:text-neutral-50 dark:hover:bg-white/10"
             aria-expanded={mobileOpen}
             aria-controls="marketing-mobile-nav"
             aria-label={mobileOpen ? l.menuClose : l.menuOpen}
@@ -163,12 +178,13 @@ export function MarketingHeader() {
         <nav
           id="marketing-mobile-nav"
           className={clsx(
-            'pointer-events-auto mx-auto mt-2 flex max-w-6xl flex-col gap-1 rounded-3xl px-3 py-3 lg:hidden',
+            'pointer-events-auto mx-auto mt-2 flex max-w-7xl flex-col gap-1 rounded-3xl px-3 py-3 lg:hidden',
             GLASS_BAR_SCROLLED,
           )}
           aria-label="Main mobile"
         >
-          {marketingNavItems().map(item =>
+          <MarketingAudienceSwitch className="mb-1 grid grid-cols-2" onNavigate={closeMobile} />
+          {navItems.map(item =>
             item.key === 'product' ? (
               <MarketingProductMenuMobile key={item.key} linkClassName={mobileLinkClass} onNavigate={closeMobile} />
             ) : (

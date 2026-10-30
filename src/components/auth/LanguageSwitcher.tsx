@@ -107,7 +107,7 @@ export function LanguageSwitcher({ className, compact = false }: LanguageSwitche
         aria-label={auth.language.choose}
         title={auth.language.label}
       >
-        <LocaleFlag flagId={current.flagId} className="h-3 w-[1.125rem]" title={current.label} />
+        <LocaleFlag flagId={current.flagId} className="h-3 w-4.5" title={current.label} />
         <span className={clsx('tabular-nums', compact && 'max-lg:hidden')}>{current.short}</span>
         <ChevronDown
           className={clsx('h-3.5 w-3.5 opacity-60 transition-transform', compact && 'max-lg:hidden', open && 'rotate-180')}
@@ -118,13 +118,13 @@ export function LanguageSwitcher({ className, compact = false }: LanguageSwitche
       {open ? (
         <div
           className={clsx(
-            'absolute end-0 top-full z-50 mt-1.5 w-[17rem] overflow-hidden rounded-xl border shadow-lg max-lg:fixed max-lg:inset-x-2 max-lg:top-[calc(env(safe-area-inset-top)+3.5rem)] max-lg:mt-0 max-lg:w-auto',
+            'absolute inset-e-0 top-full z-50 mt-1.5 w-68 overflow-hidden rounded-xl border shadow-lg max-lg:fixed max-lg:inset-x-2 max-lg:top-[calc(env(safe-area-inset-top)+3.5rem)] max-lg:mt-0 max-lg:w-auto',
             'border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-900',
           )}
         >
           <div className="border-b border-neutral-100 p-2 dark:border-neutral-800">
             <div className="relative">
-              <Search className="pointer-events-none absolute start-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-900 dark:text-neutral-50" aria-hidden />
+              <Search className="pointer-events-none absolute inset-s-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-900 dark:text-neutral-50" aria-hidden />
               <input
                 ref={inputRef}
                 type="search"
@@ -142,8 +142,8 @@ export function LanguageSwitcher({ className, compact = false }: LanguageSwitche
                 onKeyDown={onInputKeyDown}
                 className={clsx(
                   'w-full rounded-lg border py-2 ps-8 pe-3 text-sm',
-                  'border-neutral-200 bg-neutral-50 text-neutral-900 dark:text-neutral-50 placeholder:text-neutral-900 dark:placeholder:text-neutral-50',
-                  'focus:border-transparent focus:outline-none focus:ring-2 focus:ring-green-400',
+                  'border-neutral-200 bg-neutral-50 text-neutral-900 dark:text-neutral-50 placeholder:text-neutral-500 dark:placeholder:text-neutral-400',
+                  'focus:border-transparent focus:outline-hidden focus:ring-2 focus:ring-green-400',
                   'dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100',
                 )}
               />
@@ -184,7 +184,7 @@ export function LanguageSwitcher({ className, compact = false }: LanguageSwitche
                           : 'text-neutral-900 hover:bg-neutral-50 dark:text-neutral-50 dark:hover:bg-neutral-800',
                       )}
                     >
-                      <LocaleFlag flagId={opt.flagId} className="h-3.5 w-[1.3125rem]" />
+                      <LocaleFlag flagId={opt.flagId} className="h-3.5 w-5.25" />
                       <span className="min-w-0 flex-1">
                         <span className="font-medium">{opt.label}</span>
                         <span className="ms-1.5 text-xs text-neutral-900 dark:text-neutral-50">{opt.short}</span>

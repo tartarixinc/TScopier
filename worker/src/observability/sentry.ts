@@ -138,6 +138,7 @@ export function resetWorkerSentryForTests(): void {
   fatalSignatures.clear()
   logNoiseEnabled = true
   logNoisePatterns = [...DEFAULT_LOG_NOISE_PATTERNS]
+  resetEventRateLimitsForTests()
   sentry = Sentry
 }
 
@@ -183,8 +184,83 @@ function sanitizeEvent(event: unknown): Record<string, unknown> {
   return out
 }
 
+/**
+ * Transition-style event emission.
+ *
+ * A chronic state condition (a pending the broker refuses to cancel, a stop the
+ * broker keeps re-rejecting) is logged by its monitor on every tick, and every
+ * one of those lines became its own Sentry event — 2026-10-23 review: ~90% of
+ * 213k events came from 3 such conditions, burying real incidents among 243
+ * untriageable issues.
+ *
+ * Each event is reduced to a key (level + fingerprint + a message template with
+ * ids and numbers collapsed) and allowed once per window; repeats inside the
+ * window are dropped. A new message template — a genuine transition — passes
+ * immediately, and 'fatal' is never rate-limited. Window and burst size are
+ * configurable; the map is bounded so a long-lived process cannot grow it
+ * without limit.
+ */
+const EVENT_RATE_DEFAULT_WINDOW_MS = 10 * 60_000
+const EVENT_RATE_DEFAULT_MAX = 1
+const EVENT_RATE_MAX_KEYS = 2000
+let eventRateWindowMs = EVENT_RATE_DEFAULT_WINDOW_MS
+let eventRateMax = EVENT_RATE_DEFAULT_MAX
+const eventRateState = new Map<string, { windowStart: number; sent: number }>()
+
+/** Message template: UUIDs and long numbers (tickets, prices) collapse to one key. */
+function eventRateKey(event: Record<string, unknown>): string {
+  const level = String(event.level ?? 'error')
+  const fingerprint = Array.isArray(event.fingerprint)
+    ? (event.fingerprint as unknown[]).map(v => String(v)).join('|')
+    : ''
+  const message = String(event.message ?? '')
+    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, 'uuid')
+    .replace(/\b\d{4,}\b/g, '#')
+    .slice(0, 200)
+  return `${level}|${fingerprint}|${message}`
+}
+
+/** True when this event may be sent now (false = dropped as a repeat). */
+export function allowEventRate(event: Record<string, unknown>): boolean {
+  const level = String(event.level ?? 'error')
+  if (level === 'fatal') return true
+  const key = eventRateKey(event)
+  const now = Date.now()
+  const entry = eventRateState.get(key)
+  if (!entry || now - entry.windowStart >= eventRateWindowMs) {
+    if (!entry && eventRateState.size >= EVENT_RATE_MAX_KEYS) {
+      const oldest = eventRateState.keys().next().value as string | undefined
+      if (oldest !== undefined) eventRateState.delete(oldest)
+    }
+    eventRateState.set(key, { windowStart: now, sent: 1 })
+    return true
+  }
+  if (entry.sent < eventRateMax) {
+    entry.sent += 1
+    return true
+  }
+  return false
+}
+
+export function resetEventRateLimitsForTests(): void {
+  eventRateState.clear()
+  eventRateWindowMs = EVENT_RATE_DEFAULT_WINDOW_MS
+  eventRateMax = EVENT_RATE_DEFAULT_MAX
+}
+
+function clampIntEnv(raw: unknown, fallback: number, min: number, max: number): number {
+  // An empty or whitespace-only value is "unset", not zero: `Number('')` is 0
+  // and a zero window would silently disable rate limiting entirely.
+  if (typeof raw !== 'string' || raw.trim() === '') return fallback
+  const n = Number(raw)
+  if (!Number.isFinite(n)) return fallback
+  return Math.max(min, Math.min(max, Math.floor(n)))
+}
+
 function beforeSend(event: unknown): unknown {
-  return sanitizeEvent(event)
+  const sanitized = sanitizeEvent(event)
+  if (!allowEventRate(sanitized)) return null
+  return sanitized
 }
 
 function beforeBreadcrumb(breadcrumb: unknown): unknown {
@@ -280,6 +356,8 @@ export function initWorkerSentry(env: NodeJS.ProcessEnv = process.env): void {
     }
     logNoiseEnabled = String(env.SENTRY_LOG_NOISE_FILTER ?? '').trim().toLowerCase() !== 'false'
     logNoisePatterns = compileLogNoisePatterns(env)
+    eventRateWindowMs = clampIntEnv(env.SENTRY_EVENT_RATE_WINDOW_MS, EVENT_RATE_DEFAULT_WINDOW_MS, 0, 60 * 60_000)
+    eventRateMax = clampIntEnv(env.SENTRY_EVENT_RATE_MAX, EVENT_RATE_DEFAULT_MAX, 1, 100)
     sentry.init({
       dsn,
       enabled: true,

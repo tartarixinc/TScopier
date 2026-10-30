@@ -100,6 +100,9 @@ export function subscriptionRowFromStripe(
       ? new Date(subscription.trial_end * 1000).toISOString()
       : null,
     current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+    canceled_at: subscription.canceled_at
+      ? new Date(subscription.canceled_at * 1000).toISOString()
+      : null,
     updated_at: new Date().toISOString(),
   };
 }

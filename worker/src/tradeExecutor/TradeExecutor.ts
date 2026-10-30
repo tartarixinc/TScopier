@@ -45,6 +45,7 @@ import {
   type MonitorLoopHandle,
 } from '../monitorIdleGate'
 import { isPendingEntryRow } from '../signalEntryPendingHelpers'
+import { cancelPendingOrderAtBroker, PendingCancelBackoff } from '../pendingOrderCancel'
 import { isTscopierComment } from '../tscopierComment'
 import type { BasketMergeLinkContext } from '../signalMergeLink'
 import type { UserSessionManager } from '../sessionManager'
@@ -108,7 +109,7 @@ import { getTradeExecutionMonitor, tradeOutcomeIsSuccess } from '../observabilit
 import { testFlagEnabled } from '../testFlags'
 import { apiForBrokerAccount } from '../providerResolver'
 import { authorityFromBrokerRow } from '../brokerWriteAuthority'
-
+import { writeExecutionLog } from '../observability/executionLog'
 export type { SignalRow } from './types'
 
 /** Parsed-signal sweep guard for management signals: at most one re-dispatch per
@@ -128,6 +129,17 @@ export class TradeExecutor {
   private sweepLoop: MonitorLoopHandle | null = null
   /** Cancels UniCopier broker pendings past `pending_expiry_hours` (1–24) when env enabled. */
   private brokerPendingSweepTimer: NodeJS.Timeout | null = null
+  /**
+   * Per-ticket retry governor for pending cancels. A pending the broker refuses
+   * to remove (prod 2026-10-23: `Invalid request` on order 387155920) used to be
+   * retried — and logged as a failed close — every sweep cycle for as long as the
+   * order lived (215 failures/24h). After `WORKER_PENDING_CANCEL_MAX_ATTEMPTS`
+   * failures the ticket sleeps `WORKER_PENDING_CANCEL_BACKOFF_MS`.
+   */
+  private readonly pendingCancelBackoff = new PendingCancelBackoff({
+    maxAttempts: Math.max(1, Number(process.env.WORKER_PENDING_CANCEL_MAX_ATTEMPTS ?? 3) || 3),
+    backoffMs: Math.max(60_000, Number(process.env.WORKER_PENDING_CANCEL_BACKOFF_MS ?? 3_600_000) || 3_600_000),
+  })
   private sessionHeartbeatTimer: NodeJS.Timeout | null = null
   private sessionHeartbeatInFlight = false
   private sessionHeartbeatSkipped = 0
@@ -311,7 +323,7 @@ export class TradeExecutor {
   private async loadBrokers() {
     const brokersQ = await applyShardToQuery(
       this.supabase,
-      this.supabase.from('broker_accounts').select('*').or('mtapi_session_id.neq.,fxsocket_account_id.neq.,metaapi_account_id.neq.,ctrader_account_id.neq.,binance_account_id.neq.,bybit_account_id.neq.,kucoin_account_id.neq.'),
+      this.supabase.from('broker_accounts').select('*').or('mtapi_session_id.neq.,fxsocket_account_id.neq.,metaapi_account_id.neq.,ctrader_account_id.neq.,binance_account_id.neq.,bybit_account_id.neq.,kucoin_account_id.neq.,dxtrade_account_id.neq.,tradelocker_account_id.neq.,matchtrader_account_id.neq.'),
     )
     if (!brokersQ) {
       this.brokersByUser.clear()
@@ -319,7 +331,7 @@ export class TradeExecutor {
       return
     }
     let { data, error } = await brokersQ
-    if (error && /ctrader_account_id|binance_account_id|bybit_account_id|kucoin_account_id/i.test(error.message)) {
+    if (error && /ctrader_account_id|binance_account_id|bybit_account_id|kucoin_account_id|dxtrade_account_id|tradelocker_account_id|matchtrader_account_id/i.test(error.message)) {
       const retry = await applyShardToQuery(
         this.supabase,
         this.supabase.from('broker_accounts').select('*').or('mtapi_session_id.neq.,fxsocket_account_id.neq.,metaapi_account_id.neq.'),
@@ -758,7 +770,6 @@ export class TradeExecutor {
           .eq('id', signalId)
           .maybeSingle()
         userId = typeof signalRow?.user_id === 'string' ? signalRow.user_id : null
-
         const { data: logs } = await this.supabase
           .from('trade_execution_logs')
           .select('request_payload')
@@ -778,24 +789,19 @@ export class TradeExecutor {
         .eq('id', signalId)
         .eq('status', 'parsed')
       if (userId) {
-        try {
-          await this.supabase.from('trade_execution_logs').insert({
-            user_id: userId,
-            signal_id: signalId,
-            broker_account_id: null,
-            action: 'mgmt_sweep_max_redispatch',
-            status: 'skipped',
-            request_payload: exhaustionPayload as unknown as Record<string, unknown>,
-          })
-        } catch {
-          console.warn('[tradeExecutor] management breakeven sweep diagnostic insert skipped')
-        }
+        await writeExecutionLog(this.supabase, {
+          user_id: userId,
+          signal_id: signalId,
+          broker_account_id: null,
+          action: 'mgmt_sweep_max_redispatch',
+          status: 'skipped',
+          request_payload: exhaustionPayload as unknown as Record<string, unknown>,
+        })
       }
     } catch {
       // best-effort
     }
   }
-
   /**
    * HTTP push from listener (split deploy) or in-process callback after parse.
    */
@@ -1306,24 +1312,128 @@ export class TradeExecutor {
         const openMs = brokerOrderOpenMs(o)
         if (openMs == null || openMs > cutoff) continue
         const operation = String(o.operation ?? o.Operation ?? o.type ?? o.Type ?? '')
-        try {
-          await api.orderClose(uuid, { ticket })
-          console.log(
-            `[tradeExecutor] TTL sweep closed ticket=${ticket} broker=${broker.id} op=${operation} ttl_hours=${ttlH}`,
-          )
-          try {
-            await this.supabase.from('trade_execution_logs').insert({
-              user_id: broker.user_id,
-              broker_account_id: broker.id,
-              action: 'pending_ttl_sweep_close',
-              status: 'success',
-              request_payload: { ticket, operation, ttl_hours: ttlH } as unknown as Record<string, unknown>,
-            })
-          } catch { /* best-effort */ }
-        } catch (err) {
-          console.warn(`[tradeExecutor] TTL sweep close failed ticket=${ticket} broker=${broker.id}: ${(err as Error).message}`)
-        }
+        await this.cancelBrokerPendingWithBackoff({
+          broker,
+          api,
+          sessionId: uuid,
+          ticket,
+          operation,
+          reason: 'pending_ttl',
+          successAction: 'pending_ttl_sweep_close',
+          extraPayload: { ttl_hours: ttlH },
+        })
       }
+    }
+  }
+
+  /**
+   * Cancel one resting broker pending (TTL sweep / legacy cleanup) with the
+   * provider's cancel endpoint, a per-ticket retry backoff, and DB
+   * convergence.
+   *
+   * Three things this replaces from the old inline `api.orderClose` call:
+   *  - pendings are cancelled via `orderCancel` (MTAPI `OrderCancelTask`)
+   *    instead of a position close, which the bridge refuses for several
+   *    pendings with `Invalid request`;
+   *  - a ticket the broker keeps refusing is backed off instead of being
+   *    retried (and failed-logged) every sweep cycle forever;
+   *  - the matching `trades` row is moved `pending → cancelled` once the
+   *    broker order is gone, so a cancelled pending cannot linger in the DB.
+   *
+   * `trade_execution_logs.signal_id` is NOT NULL, so log rows are written only
+   * when the ticket's trade row (and thus its signal) is known; the console
+   * line always records the outcome.
+   */
+  private async cancelBrokerPendingWithBackoff(args: {
+    broker: BrokerRow
+    api: FxsocketBrokerClient
+    sessionId: string
+    ticket: number
+    operation: string
+    reason: 'pending_ttl' | 'legacy_cleanup'
+    successAction: string
+    extraPayload?: Record<string, unknown>
+  }): Promise<'cancelled' | 'failed' | 'skipped'> {
+    const { broker, api, sessionId, ticket, operation, reason, successAction } = args
+    const backoffKey = `${broker.id}|${ticket}`
+    // Backoff suppressed: no attempt is made, so this is neither a success nor
+    // a new failure — report it as skipped so callers do not count it as failed.
+    if (!this.pendingCancelBackoff.shouldAttempt(backoffKey)) return 'skipped'
+
+    // signal_id is NOT NULL on trade_execution_logs, so a log row is only
+    // written when the owning trade (and thus its signal) is known. The lookup
+    // is best-effort and NEVER gates the converge below — a failed lookup used
+    // to strand the row `pending` forever after a successful cancel.
+    let signalId: string | null = null
+    try {
+      const { data, error } = await this.supabase
+        .from('trades')
+        .select('signal_id')
+        .eq('broker_account_id', broker.id)
+        .eq('metaapi_order_id', String(ticket))
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (error) {
+        console.warn(`[tradeExecutor] ${reason} trade lookup failed broker=${broker.id} ticket=${ticket}: ${error.message}`)
+      } else {
+        signalId = ((data as { signal_id?: string | null } | null)?.signal_id) ?? null
+      }
+    } catch (err) {
+      console.warn(`[tradeExecutor] ${reason} trade lookup threw broker=${broker.id} ticket=${ticket}: ${(err as Error).message}`)
+    }
+
+    try {
+      await cancelPendingOrderAtBroker(api, sessionId, ticket)
+      this.pendingCancelBackoff.recordSuccess(backoffKey)
+      console.log(`[tradeExecutor] ${reason} cancelled ticket=${ticket} broker=${broker.id} op=${operation}`)
+      // The broker order is gone; converge any matching pending row so it
+      // cannot outlive its own cancellation in the database. Keyed by
+      // broker_account_id + metaapi_order_id (no row-id lookup needed) so a
+      // failed signal_id lookup above cannot strand the row. CAS on
+      // status='pending' so a concurrent fill (pending→open) is never
+      // clobbered — the update simply matches 0 rows.
+      const { error } = await this.supabase
+        .from('trades')
+        .update({ status: 'cancelled', closed_at: new Date().toISOString() })
+        .eq('broker_account_id', broker.id)
+        .eq('metaapi_order_id', String(ticket))
+        .eq('status', 'pending')
+      if (error) {
+        console.warn(`[tradeExecutor] ${reason} DB converge failed broker=${broker.id} ticket=${ticket}: ${error.message}`)
+      }
+      if (signalId) {
+        await writeExecutionLog(this.supabase, {
+          user_id: broker.user_id,
+          signal_id: signalId,
+          broker_account_id: broker.id,
+          action: successAction,
+          status: 'success',
+          request_payload: { ticket, operation, reason, ...(args.extraPayload ?? {}) } as unknown as Record<string, unknown>,
+        })
+      }
+      return 'cancelled'
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.warn(`[tradeExecutor] ${reason} close failed ticket=${ticket} broker=${broker.id}: ${msg}`)
+      if (this.pendingCancelBackoff.recordFailure(backoffKey) && signalId) {
+        await writeExecutionLog(this.supabase, {
+          user_id: broker.user_id,
+          signal_id: signalId,
+          broker_account_id: broker.id,
+          action: 'pending_cancel_backoff',
+          status: 'failed',
+          error_message: msg.slice(0, 400),
+          request_payload: {
+            ticket,
+            operation,
+            reason,
+            attempts: this.pendingCancelBackoff.attemptsFor(backoffKey),
+          } as unknown as Record<string, unknown>,
+        })
+      }
+      return 'failed'
     }
   }
 
@@ -1737,6 +1847,7 @@ export class TradeExecutor {
     console.log(`[tradeExecutor] legacy pending cleanup: scanning ${brokers.length} brokers...`)
     let totalClosed = 0
     let totalFailed = 0
+    let totalSkipped = 0
     for (const broker of brokers) {
       const uuid = brokerSessionUuid(broker)!
       const api = this.apiFor(broker)
@@ -1757,26 +1868,24 @@ export class TradeExecutor {
         if (!isTscopierComment(comment)) continue
         if (!Number.isFinite(ticket) || ticket <= 0) continue
         const operation = String(o.operation ?? o.Operation ?? o.type ?? o.Type ?? '')
-        try {
-          await api.orderClose(uuid, { ticket })
-          totalClosed += 1
-          console.log(`[tradeExecutor] legacy cleanup closed ticket=${ticket} broker=${broker.id} op=${operation}`)
-          try {
-            await this.supabase.from('trade_execution_logs').insert({
-              user_id: broker.user_id,
-              broker_account_id: broker.id,
-              action: 'legacy_pending_cleanup_close',
-              status: 'success',
-              request_payload: { ticket, operation } as unknown as Record<string, unknown>,
-            })
-          } catch { /* best-effort */ }
-        } catch (err) {
-          totalFailed += 1
-          console.warn(`[tradeExecutor] legacy cleanup close failed ticket=${ticket} broker=${broker.id}: ${(err as Error).message}`)
-        }
+        const outcome = await this.cancelBrokerPendingWithBackoff({
+          broker,
+          api,
+          sessionId: uuid,
+          ticket,
+          operation,
+          reason: 'legacy_cleanup',
+          successAction: 'legacy_pending_cleanup_close',
+        })
+        if (outcome === 'cancelled') totalClosed += 1
+        else if (outcome === 'skipped') totalSkipped += 1
+        else totalFailed += 1
       }
     }
-    console.log(`[tradeExecutor] legacy pending cleanup done: closed=${totalClosed} failed=${totalFailed}`)
+    console.log(
+      `[tradeExecutor] legacy pending cleanup done:`
+      + ` closed=${totalClosed} failed=${totalFailed} skipped_in_backoff=${totalSkipped}`,
+    )
   }
 
   async getSymbolParams(uuid: string, symbol: string): Promise<SymbolCacheEntry | null> {
@@ -1968,32 +2077,30 @@ export class TradeExecutor {
     console.log(
       `[tradeExecutor] deferred virtual pendings inserted=${insertRows.length} signal=${signal.id} broker=${broker.id} symbol=${symbol} anchor=${anchor} (${anchorSource})`,
     )
-    try {
-      await this.supabase.from('trade_execution_logs').insert({
-        user_id: signal.user_id,
-        signal_id: signal.id,
-        broker_account_id: broker.id,
-        action: 'virtual_pending_inserted',
-        status: 'success',
-        request_payload: {
-          rows: insertRows.length,
-          anchor,
-          anchorSource,
-          symbol,
-          stepIdxs: insertRows.map(r => r.step_idx),
-          triggers: insertRows.map(r => r.trigger_price),
-          range_layering: plan.rangeLayering ?? null,
-          basket_leg_cap: plan.rangeLayering?.basketLegCap
-            ?? (
-              (plan.rangeLayering?.plannedImmediateLegs ?? 0)
-              + (plan.rangeLayering?.activePendingLegs ?? insertRows.length)
-            ),
-          planned_immediate_legs: plan.rangeLayering?.plannedImmediateLegs ?? null,
-          planned_range_legs: plan.rangeLayering?.activePendingLegs ?? insertRows.length,
-          deferred: true,
-        } as unknown as Record<string, unknown>,
-      })
-    } catch { /* logging is best-effort */ }
+    await writeExecutionLog(this.supabase, {
+      user_id: signal.user_id,
+      signal_id: signal.id,
+      broker_account_id: broker.id,
+      action: 'virtual_pending_inserted',
+      status: 'success',
+      request_payload: {
+        rows: insertRows.length,
+        anchor,
+        anchorSource,
+        symbol,
+        stepIdxs: insertRows.map(r => r.step_idx),
+        triggers: insertRows.map(r => r.trigger_price),
+        range_layering: plan.rangeLayering ?? null,
+        basket_leg_cap: plan.rangeLayering?.basketLegCap
+          ?? (
+            (plan.rangeLayering?.plannedImmediateLegs ?? 0)
+            + (plan.rangeLayering?.activePendingLegs ?? insertRows.length)
+          ),
+        planned_immediate_legs: plan.rangeLayering?.plannedImmediateLegs ?? null,
+        planned_range_legs: plan.rangeLayering?.activePendingLegs ?? insertRows.length,
+        deferred: true,
+      } as unknown as Record<string, unknown>,
+    })
   }
 
   /**

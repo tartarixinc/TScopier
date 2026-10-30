@@ -182,7 +182,7 @@ function BrokerReconnectPasswordModalInner({
 
   if (confirmingDelete) {
     return createPortal(
-      <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-4 sm:p-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+      <div className="fixed inset-0 z-70 flex items-end sm:items-center justify-center p-4 sm:p-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
         <div
           className="absolute inset-0 bg-neutral-950/55"
           aria-hidden
@@ -265,7 +265,7 @@ function BrokerReconnectPasswordModalInner({
   const modal = (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-4 sm:p-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+      className="fixed inset-0 z-70 flex items-end sm:items-center justify-center p-4 sm:p-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
       onMouseDown={onOverlayMouseDown}
       onClick={onOverlayClick}
     >
@@ -322,7 +322,7 @@ function BrokerReconnectPasswordModalInner({
 
         <div className="px-5 py-4">
           <div className="mb-4 flex items-center gap-3 rounded-xl border border-neutral-100 bg-neutral-50 px-3 py-3 dark:border-neutral-800 dark:bg-neutral-800/50">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm dark:bg-neutral-900">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white shadow-xs dark:bg-neutral-900">
               {logo ? (
                 <img src={logo} alt={broker.platform} className="h-8 w-8 object-contain" decoding="async" />
               ) : (
@@ -354,16 +354,16 @@ function BrokerReconnectPasswordModalInner({
           )}
 
           {stage === 'details' && (
-            <div className="flex justify-end gap-2 pt-1">
-              {canDismiss && (
-                <Button type="button" variant="ghost" onClick={onCancel}>
-                  {copy.cancel}
-                </Button>
-              )}
-              <Button type="button" onClick={onContinue}>
+            <div className="space-y-2 pt-1">
+              <Button type="button" className="w-full" onClick={onContinue}>
                 <RefreshCw className="h-4 w-4" />
                 {copy.reconnect}
               </Button>
+              {canDismiss && (
+                <Button type="button" variant="ghost" className="w-full" onClick={onCancel}>
+                  {copy.cancel}
+                </Button>
+              )}
             </div>
           )}
 

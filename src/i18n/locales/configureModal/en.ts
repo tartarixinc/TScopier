@@ -50,6 +50,8 @@ export const configureModalEn: ConfigureModalTranslations = {
   applyPresetAction: 'Apply & save',
   closeUnsavedConfirm:
     'You have unsaved trading settings. The copier will not use your changes until you save. Close anyway?',
+  closeUnsavedTitle: 'Discard unsaved settings?',
+  discardChanges: 'Discard changes',
   noPresetsYet: 'No presets yet — use Save as preset to create one.',
   saveAsPreset: 'Save as preset',
   saveAsPresetTitle: 'Save as preset',
@@ -135,6 +137,7 @@ export const configureModalEn: ConfigureModalTranslations = {
     editExample: 'Edit',
     manualBadge: 'Manual',
     deleteExampleConfirm: 'Delete this signal example?',
+    deleteExampleTitle: 'Delete signal example',
     cancel: 'Cancel',
     entryCues: 'Entry cues',
     buyCues: 'Buy cues',
@@ -429,6 +432,8 @@ export const configureModalEn: ConfigureModalTranslations = {
     moveSlTitle: 'Move SL after movement',
     moveSlSubtitle:
       'Automatically move stop loss to breakeven (plus optional partial close) once price reaches your threshold.',
+    basicPlanAutoManagementLimit:
+      'Moving the stop loss to breakeven automatically is available on the Advanced plan.',
     activeRule: 'Active rule:',
     triggerTitle: 'Trigger — move SL when',
     triggerPips: 'Pip movement',

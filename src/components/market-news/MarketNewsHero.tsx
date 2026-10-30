@@ -18,12 +18,12 @@ export function MarketNewsHero({ article, forexBadge, readArticle }: MarketNewsH
   const pairLabel = article.related?.trim() ? formatForexPairLabel(article.related) : ''
 
   return (
-    <article className="group relative overflow-hidden rounded-2xl border border-neutral-200/55 bg-white shadow-sm transition-shadow hover:shadow-md dark:border-neutral-800/55 dark:bg-neutral-950">
+    <article className="group relative overflow-hidden rounded-2xl border border-neutral-200/55 bg-white shadow-xs transition-shadow hover:shadow-md dark:border-neutral-800/55 dark:bg-neutral-950">
       <div className="grid md:grid-cols-2">
         <NewsArticleImage
           image={article.image}
           alt={headline}
-          className="aspect-[16/10] md:aspect-auto md:min-h-[280px]"
+          className="aspect-16/10 md:aspect-auto md:min-h-[280px]"
           iconClassName="h-14 w-14"
         />
         <div className="flex flex-col justify-center p-6 lg:p-8">

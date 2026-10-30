@@ -76,7 +76,7 @@ test('worker heartbeat is disabled unless a monitor slug is configured', () => {
 test('worker heartbeat sends a bounded ok check-in when configured', () => {
   const mock = setupSentry()
   const env = {
-    SENTRY_WORKER_HEARTBEAT_MONITOR_SLUG: 'TScopier Worker Trade',
+    SENTRY_WORKER_HEARTBEAT_MONITOR_SLUG: 'UniCopier Worker Trade',
     SENTRY_WORKER_HEARTBEAT_INTERVAL_MS: '60000',
     SENTRY_WORKER_HEARTBEAT_CHECKIN_MARGIN_MINUTES: '3',
   } as NodeJS.ProcessEnv
@@ -85,7 +85,7 @@ test('worker heartbeat sends a bounded ok check-in when configured', () => {
 
   assert.equal(checkInId, 'check-in-id')
   assert.deepEqual(mock.checkIns[0], {
-    monitorSlug: 'tscopier-worker-trade',
+    monitorSlug: 'unicopier-worker-trade',
     status: 'ok',
   })
   assert.deepEqual(mock.monitorConfigs[0], {

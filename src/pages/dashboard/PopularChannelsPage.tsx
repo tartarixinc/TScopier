@@ -39,7 +39,7 @@ function highlightText(text: string, query: string): React.ReactNode {
   return (
     <>
       {text.slice(0, idx)}
-      <mark className="bg-yellow-200 dark:bg-yellow-700/60 text-inherit rounded-sm px-0.5">
+      <mark className="bg-yellow-200 dark:bg-yellow-700/60 text-inherit rounded-xs px-0.5">
         {text.slice(idx, idx + q.length)}
       </mark>
       {text.slice(idx + q.length)}
@@ -76,7 +76,7 @@ function CopyButton({ text }: { text: string }) {
     <button
       type="button"
       onClick={handleCopy}
-      className="p-1 rounded text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
+      className="p-1 rounded-sm text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
       title="Copy"
     >
       {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
@@ -187,7 +187,7 @@ export function PopularChannelsPage() {
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             placeholder="Search channels..."
-            className="w-full pl-9 pr-8 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-900 dark:placeholder:text-neutral-50 focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent"
+            className="w-full pl-9 pr-8 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-500 dark:placeholder:text-neutral-400 focus:outline-hidden focus:ring-2 focus:ring-green-400 focus:border-transparent"
           />
           {searchQuery && (
             <button
@@ -204,7 +204,7 @@ export function PopularChannelsPage() {
           <select
             value={sort}
             onChange={e => setSort(e.target.value as SortKey)}
-            className="w-full pl-9 pr-8 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 appearance-none focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent hover:border-neutral-300 dark:hover:border-neutral-600 transition-colors"
+            className="w-full pl-9 pr-8 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 appearance-none focus:outline-hidden focus:ring-2 focus:ring-green-400 focus:border-transparent hover:border-neutral-300 dark:hover:border-neutral-600 transition-colors"
           >
             {sortOptions.map(o => (
               <option key={o.key} value={o.key}>{o.label}</option>
@@ -295,7 +295,7 @@ export function PopularChannelsPage() {
                       <div>
                         <span className="text-xs text-neutral-900 dark:text-neutral-50">Username</span>
                         <div className="flex items-center gap-1">
-                          <p className="text-sm text-neutral-900 dark:text-neutral-50 font-mono truncate">
+                          <p className="text-sm text-neutral-900 dark:text-neutral-50  truncate">
                             @{highlightText(ch.channel_username ?? '', searchQuery)}
                           </p>
                           <CopyButton text={`@${ch.channel_username}`} />
@@ -304,7 +304,7 @@ export function PopularChannelsPage() {
                       <div>
                         <span className="text-xs text-neutral-900 dark:text-neutral-50">Channel ID</span>
                         <div className="flex items-center gap-1">
-                          <p className="text-sm text-neutral-900 dark:text-neutral-50 font-mono truncate">
+                          <p className="text-sm text-neutral-900 dark:text-neutral-50  truncate">
                             {ch.telegram_chat_id}
                           </p>
                           <CopyButton text={ch.telegram_chat_id} />

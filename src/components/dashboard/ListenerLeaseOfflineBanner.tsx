@@ -136,13 +136,13 @@ export function ListenerLeaseOfflineBanner({
       )}
     >
       <div className="flex items-start gap-2">
-        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
         <div>
           <p className="font-medium">{ce.listenerLeaseExpired}</p>
           <p className="text-xs mt-0.5 opacity-90">{ce.listenerLeaseExpiredHint}</p>
         </div>
       </div>
-      <div className="flex flex-wrap gap-2 sm:flex-shrink-0">
+      <div className="flex flex-wrap gap-2 sm:shrink-0">
         <Button size="sm" variant="secondary" onClick={() => void handleRefresh()} loading={refreshing}>
           <RefreshCw className="w-3.5 h-3.5" />
           {t.common.refresh}
@@ -154,7 +154,7 @@ export function ListenerLeaseOfflineBanner({
         ) : (
           <Link
             to="/channels"
-            className="inline-flex items-center justify-center rounded-lg bg-green-400 px-3 py-1.5 text-sm font-medium text-neutral-950 shadow-sm transition-all hover:bg-green-500 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2"
+            className="inline-flex items-center justify-center rounded-lg bg-green-400 px-3 py-1.5 text-sm font-medium text-neutral-950 shadow-xs transition-all hover:bg-green-500 focus:outline-hidden focus:ring-2 focus:ring-green-400 focus:ring-offset-2"
           >
             {ce.reconnectTelegram}
           </Link>

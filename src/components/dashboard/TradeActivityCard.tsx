@@ -86,7 +86,7 @@ export const TradeActivityCard = memo(function TradeActivityCard({
 
   if (variant === 'compact') {
     return (
-      <div className="px-5 py-3.5 transition-colors hover:bg-[#F7F8FA] dark:hover:bg-white/[0.03]">
+      <div className="px-5 py-3.5 transition-colors hover:bg-[#F7F8FA] dark:hover:bg-white/3">
         <p className="text-base font-regular leading-6 text-neutral-900 dark:text-neutral-100">{activity.message}</p>
         <div className="mt-1 flex items-center gap-2">
           <p className="text-xs font-regular text-neutral-900 dark:text-neutral-50">{timeLabel}</p>
@@ -144,7 +144,7 @@ export const TradeActivityCard = memo(function TradeActivityCard({
         {activity.channelName ? (
           <>
             <span aria-hidden className="text-neutral-900 dark:text-neutral-50">·</span>
-            <span className="truncate max-w-[14rem]" title={activity.channelName}>{activity.channelName}</span>
+            <span className="truncate max-w-56" title={activity.channelName}>{activity.channelName}</span>
           </>
         ) : null}
       </div>
@@ -156,11 +156,11 @@ export function TradeActivityCardSkeleton({ className }: { className?: string })
   return (
     <div className={clsx('px-4 sm:px-5 py-4 space-y-3', className)}>
       <div className="flex justify-between gap-3">
-        <div className="h-5 w-32 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
-        <div className="h-8 w-16 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
+        <div className="h-5 w-32 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
+        <div className="h-8 w-16 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
       </div>
-      <div className="h-4 w-full bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
-      <div className="h-3 w-1/3 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
+      <div className="h-4 w-full bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
+      <div className="h-3 w-1/3 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
     </div>
   )
 }

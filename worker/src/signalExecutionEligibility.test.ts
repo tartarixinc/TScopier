@@ -21,6 +21,32 @@ describe('evaluateParsedSignalExecutionEligibility', () => {
     assert.equal(eligibility.skipReason, COMMENTARY_NOT_SIGNAL_REASON)
   })
 
+  it('rejects a results recap whose pip total was parsed as the entry price', () => {
+    const eligibility = evaluateParsedSignalExecutionEligibility({
+      action: 'sell',
+      symbol: 'XAUUSD',
+      entry_price: 130,
+      sl: null,
+      tp: [],
+    }, 'AMAZING SETUP\nTP2 & 3 HIT\nGOLD SELL 130+ PIPS')
+    assert.equal(eligibility.eligible, false)
+    assert.equal(eligibility.skipReason, COMMENTARY_NOT_SIGNAL_REASON)
+  })
+
+  it('rejects an implausible entry price even with no results language (isolates the price guard)', () => {
+    // The commentary guard already catches "TP HIT" recaps; this case has no
+    // result wording, so only the entry-price floor (XAUUSD >= 500) can reject it.
+    const eligibility = evaluateParsedSignalExecutionEligibility({
+      action: 'sell',
+      symbol: 'XAUUSD',
+      entry_price: 130,
+      sl: null,
+      tp: [],
+    }, 'GOLD SELL NOW 130')
+    assert.equal(eligibility.eligible, false)
+    assert.equal(eligibility.skipReason, COMMENTARY_NOT_SIGNAL_REASON)
+  })
+
   it('allows bare Gold buy now market entry', () => {
     const eligibility = evaluateParsedSignalExecutionEligibility({
       action: 'buy',
@@ -314,5 +340,47 @@ Action Plan: Stay Calm, Trust The Setup, And keep Holding Your Trades`
     }, 'Gold looking bearish, might drop soon')
     assert.equal(eligibility.eligible, false)
     assert.equal(eligibility.skipReason, ENTRY_REQUIRES_IMPERATIVE_OR_LABELED_STOPS_REASON)
+  })
+})
+describe('deterministicEntryNeedsAiRepair stop-label fallback', () => {
+  it('requests another parse attempt when the message states a stop the parse missed', () => {
+    assert.equal(
+      deterministicEntryNeedsAiRepair(
+        { action: 'sell', symbol: 'XAUUSD', sl: null, tp: [4090, 4085] },
+        'GOLD SELL NOW 4095\nTP1 4090\nTP2 4085\nSL.TP 4105',
+        null,
+      ),
+      true,
+    )
+  })
+  it('does not request another attempt once the stop is read', () => {
+    assert.equal(
+      deterministicEntryNeedsAiRepair(
+        { action: 'sell', symbol: 'XAUUSD', sl: 4105, tp: [4090, 4085] },
+        'GOLD SELL NOW 4095\nTP1 4090\nTP2 4085\nSL 4105',
+        null,
+      ),
+      false,
+    )
+  })
+  it('leaves take-profit-only signals to the account fallback rules', () => {
+    assert.equal(
+      deterministicEntryNeedsAiRepair(
+        { action: 'buy', symbol: 'XAUUSD', sl: null, tp: [4124] },
+        'GOLD BUY NOW 4120\nTP1 4124',
+        null,
+      ),
+      false,
+    )
+  })
+  it('never requests another attempt for non-entry actions', () => {
+    assert.equal(
+      deterministicEntryNeedsAiRepair(
+        { action: 'ignore', sl: null, tp: [] },
+        'SL.TP 4105',
+        null,
+      ),
+      false,
+    )
   })
 })

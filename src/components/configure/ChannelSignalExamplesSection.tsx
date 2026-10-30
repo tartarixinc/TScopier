@@ -5,6 +5,8 @@ import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { Alert } from '../ui/Alert'
 import { ConfigTitle } from '../ui/InfoTooltip'
+import { useConfirm } from '../../context/ConfirmDialogContext'
+import { useT } from '../../context/LocaleContext'
 import { interpolate } from '../../i18n/interpolate'
 import {
   deleteChannelSignalExample,
@@ -43,6 +45,8 @@ export function ChannelSignalExamplesSection({
   trainingActive,
   onRetrain,
 }: Props) {
+  const t = useT()
+  const confirm = useConfirm()
   const [examples, setExamples] = useState<ChannelSignalExampleRow[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
@@ -101,7 +105,13 @@ export function ChannelSignalExamplesSection({
   }, [labels.autoTrainingDone, labels.trainFailed, onRetrain, trainingActive])
 
   const handleDelete = useCallback(async (row: ChannelSignalExampleRow) => {
-    if (!window.confirm(labels.deleteExampleConfirm)) return
+    const approved = await confirm({
+      title: labels.deleteExampleTitle ?? 'Delete signal example',
+      body: labels.deleteExampleConfirm,
+      confirmLabel: labels.deleteExample,
+      cancelLabel: t.common.cancel,
+    })
+    if (!approved) return
     setDeletingId(row.id)
     setTrainFeedback(null)
     try {
@@ -115,7 +125,7 @@ export function ChannelSignalExamplesSection({
     } finally {
       setDeletingId(null)
     }
-  }, [labels.deleteExampleConfirm, labels.signalExamplesLoadError])
+  }, [confirm, labels.deleteExample, labels.deleteExampleConfirm, labels.deleteExampleTitle, labels.signalExamplesLoadError, t.common.cancel])
 
   return (
     <section className="space-y-4">

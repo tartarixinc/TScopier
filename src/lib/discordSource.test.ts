@@ -3,7 +3,7 @@ import { describe, it } from 'node:test'
 import { DISCORD_BOT_PERMISSIONS, discordInviteUrl, discordShadowChannelId } from './discordInvite'
 
 describe('discord source helpers', () => {
-  it('builds a shadow channel id the listener can match', () => {
+  it('builds a shadow-sm channel id the listener can match', () => {
     assert.equal(discordShadowChannelId('111', '222'), 'dc:111:222')
   })
 

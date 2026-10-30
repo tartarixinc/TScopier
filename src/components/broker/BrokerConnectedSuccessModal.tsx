@@ -74,7 +74,7 @@ export function BrokerConnectedSuccessModal({
   const modal = (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4 sm:p-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+      className="fixed inset-0 z-60 flex items-end sm:items-center justify-center p-4 sm:p-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
       onMouseDown={onOverlayMouseDown}
       onClick={onOverlayClick}
     >
@@ -134,10 +134,10 @@ export function BrokerConnectedSuccessModal({
         </div>
 
         <div className="flex flex-col-reverse gap-2 border-t border-neutral-100 px-5 py-4 dark:border-neutral-800 sm:flex-row sm:justify-end">
-          <Button type="button" variant="secondary" size="sm" onClick={onAddChannel} className="sm:min-w-[8.5rem]">
+          <Button type="button" variant="secondary" size="sm" onClick={onAddChannel} className="sm:min-w-34">
             {copy.addChannel}
           </Button>
-          <Button type="button" size="sm" onClick={onConfigure} className="sm:min-w-[8.5rem]">
+          <Button type="button" size="sm" onClick={onConfigure} className="sm:min-w-34">
             {copy.configure}
           </Button>
         </div>

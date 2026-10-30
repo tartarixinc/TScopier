@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
-import { ArrowUpRight, Check, CircleCheck, Layers, Loader2, Pencil, RotateCcw, TriangleAlert, X } from 'lucide-react'
+import { ArrowUpRight, Check, CircleCheck, Copy, Layers, Loader2, Pencil, RotateCcw, TriangleAlert, UserPlus, X } from 'lucide-react'
 import { useNotifications } from '../../context/NotificationsContext'
 import { useLocale, useT } from '../../context/LocaleContext'
 import { formatRelative } from '../../lib/formatRelative'
@@ -33,6 +33,14 @@ function headlineMeta(headline: TradeNotificationHeadline): {
       return { icon: TriangleAlert, className: REVIEW_ICON_CLASS }
     case 'manual_override_reverted':
       return { icon: RotateCcw, className: REVIEW_ICON_CLASS }
+    case 'social_follow_accepted':
+      return { icon: UserPlus, className: HEADLINE_ICON_CLASS }
+    case 'social_copy_activated':
+      return { icon: Copy, className: HEADLINE_ICON_CLASS }
+    case 'social_copy_stopped':
+      return { icon: Check, className: HEADLINE_ICON_CLASS }
+    case 'social_copy_suspended':
+      return { icon: TriangleAlert, className: REVIEW_ICON_CLASS }
   }
 }
 
@@ -78,7 +86,7 @@ export function NotificationDropdown({ open, onClose }: NotificationDropdownProp
       role="menu"
       aria-label={nn.title}
       className={clsx(
-        'absolute end-0 top-full z-50 mt-1 w-[min(22rem,calc(100vw-1.5rem))] rounded-xl border border-neutral-200 bg-white shadow-lg',
+        'absolute inset-e-0 top-full z-50 mt-1 w-[min(22rem,calc(100vw-1.5rem))] rounded-xl border border-neutral-200 bg-white shadow-lg',
         'before:absolute before:-top-1 before:inset-x-0 before:h-1 before:content-[""]',
         'dark:border-neutral-700 dark:bg-neutral-900',
       )}
@@ -110,7 +118,7 @@ export function NotificationDropdown({ open, onClose }: NotificationDropdownProp
           <div>
             {dayGroups.map(group => (
               <section key={group.dayKey} aria-label={group.label}>
-                <p className="sticky top-0 z-10 border-b border-neutral-100 bg-neutral-50/95 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-900 backdrop-blur-sm dark:border-neutral-800 dark:bg-neutral-900/95 dark:text-neutral-50">
+                <p className="sticky top-0 z-10 border-b border-neutral-100 bg-neutral-50/95 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-900 backdrop-blur-xs dark:border-neutral-800 dark:bg-neutral-900/95 dark:text-neutral-50">
                   {group.label}
                 </p>
                 <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
@@ -139,7 +147,7 @@ export function NotificationDropdown({ open, onClose }: NotificationDropdownProp
                             <p className="text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
                               {item.title}
                               {item.symbol ? (
-                                <span className="ms-1.5 font-mono normal-case tracking-normal text-neutral-900 dark:text-neutral-50">
+                                <span className="ms-1.5  normal-case tracking-normal text-neutral-900 dark:text-neutral-50">
                                   {item.symbol}
                                 </span>
                               ) : null}

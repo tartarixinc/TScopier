@@ -22,6 +22,7 @@ import {
   buildEntryQualityTakeProfitMap,
   type EntryQualityLeg,
 } from './manualPlanning/tpBucketDistribution'
+import { bundleTpOrderMap, isBundleBasket } from './manualPlanning/tpBundleIdentity'
 import type { ManualTpLot } from './manualPlanning/types'
 import { isBenignOrderModifyError, stopsAlreadyMatchDb } from './orderModifyBenign'
 import { mgmtBasketConcurrency, parallelMap } from './parallelPool'
@@ -41,7 +42,7 @@ export async function clearOverrideAutoBeStamps(
 import { reapplyChannelParamsToPendingLegs } from './channelActiveTradeParams'
 import { brokerHasLinkedSession, brokerSessionUuid } from './tradeExecutor/helpers'
 import { loadOpenTradesForSignalAcrossBrokers } from './managementScope'
-
+import { writeExecutionLog } from './observability/executionLog'
 export type BrokerOverrideOutcome = {
   broker_id: string
   applied: number
@@ -231,7 +232,14 @@ export async function applySignalOverride(
     const isBuy = String(legs[0]?.direction ?? '').toLowerCase() === 'buy'
     const tpLots = broker.manual_settings?.tp_lots ?? null
     const tpMap = targetTps.length > 0
-      ? buildEntryQualityTakeProfitMap({
+      ? isBundleBasket(broker.manual_settings)
+        // Bundled multi basket: user override re-maps levels 1:1 by TP order.
+        ? bundleTpOrderMap({
+            legs: legs.map(tr => ({ id: tr.id, tp: tr.tp })),
+            ladder: targetTps,
+            isBuy,
+          })
+        : buildEntryQualityTakeProfitMap({
           legs: legs.map(tr => ({
             id: tr.id,
             entryPrice: Number(tr.entry_price ?? 0),
@@ -359,7 +367,7 @@ export async function applySignalOverride(
           await supabase.from('trades').update(dbPatch).eq('id', tr.id)
         }
         try {
-          await supabase.from('trade_execution_logs').insert({
+          await writeExecutionLog(supabase, {
             user_id: args.userId,
             signal_id: args.signalId,
             broker_account_id: brokerId,
@@ -385,23 +393,19 @@ export async function applySignalOverride(
         }
         failed++
         localErrors.push(`leg ${tr.id}: ${msg}`)
-        try {
-          await supabase.from('trade_execution_logs').insert({
-            user_id: args.userId,
-            signal_id: args.signalId,
-            broker_account_id: brokerId,
-            action: 'user_signal_override',
-            status: 'failed',
-            error_message: msg,
-            request_payload: {
-              ticket,
-              trade_id: tr.id,
-              leg_index: i + 1,
-            } as unknown as Record<string, unknown>,
-          })
-        } catch {
-          // best-effort log
-        }
+        await writeExecutionLog(supabase, {
+          user_id: args.userId,
+          signal_id: args.signalId,
+          broker_account_id: brokerId,
+          action: 'user_signal_override',
+          status: 'failed',
+          error_message: msg,
+          request_payload: {
+            ticket,
+            trade_id: tr.id,
+            leg_index: i + 1,
+          } as unknown as Record<string, unknown>,
+        })
       }
     }
 

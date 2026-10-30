@@ -3,6 +3,8 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { TRADE_CLOSE_REASON } from './tradeCloseReasons'
+import { applyCloseUpdate } from './tradeCloseUpdate'
 import { clearChannelActiveTradeParamsWhenFlat } from './channelActiveTradeParams'
 import { normalizeSignalChannelIds } from './brokerChannelFilter'
 import { apiForBrokerAccount } from './providerResolver'
@@ -22,7 +24,7 @@ import {
 } from './tradeComment'
 import { brokerHasLinkedSession, brokerSessionUuid } from './tradeExecutor/helpers'
 import type { BrokerRow as ExecutorBrokerRow } from './tradeExecutor/types'
-
+import { writeExecutionLog } from './observability/executionLog'
 export type ForceCloseSignalTradesResult = {
   ok: boolean
   closed: number
@@ -178,7 +180,7 @@ async function insertForceCloseLog(
 ): Promise<void> {
   if (!args.signalId) return
   const status = args.failed > 0 && args.closed === 0 ? 'failed' : 'success'
-  await supabase.from('trade_execution_logs').insert({
+  await writeExecutionLog(supabase, {
     user_id: args.userId,
     signal_id: args.signalId,
     broker_account_id: args.brokerAccountId,
@@ -264,11 +266,18 @@ async function forceCloseChannelOnBroker(
 
     const settle = async () => {
       const terminalStatus = trade.status === 'pending' ? 'cancelled' : 'closed'
-      await supabase
-        .from('trades')
-        .update({ status: terminalStatus, closed_at: now })
-        .eq('id', trade.id)
-        .in('status', ['open', 'pending'])
+      await applyCloseUpdate(
+        {
+          status: terminalStatus,
+          closed_at: now,
+          close_reason: TRADE_CLOSE_REASON.USER_FORCE_CLOSE,
+        },
+        patch => supabase
+          .from('trades')
+          .update(patch)
+          .eq('id', trade.id)
+          .in('status', ['open', 'pending']),
+      )
       await clearChannelActiveTradeParamsWhenFlat(supabase, {
         userId: args.userId,
         channelId: args.channelId,
@@ -659,11 +668,18 @@ export async function forceCloseSignalById(
       const ticket = Number(trade.metaapi_order_id)
       const markDone = async () => {
         const terminalStatus = trade.status === 'pending' ? 'cancelled' : 'closed'
-        await supabase
-          .from('trades')
-          .update({ status: terminalStatus, closed_at: now })
-          .eq('id', trade.id)
-          .in('status', ['open', 'pending'])
+        await applyCloseUpdate(
+          {
+            status: terminalStatus,
+            closed_at: now,
+            close_reason: TRADE_CLOSE_REASON.USER_FORCE_CLOSE,
+          },
+          patch => supabase
+            .from('trades')
+            .update(patch)
+            .eq('id', trade.id)
+            .in('status', ['open', 'pending']),
+        )
         if (channelId) {
           await clearChannelActiveTradeParamsWhenFlat(supabase, {
             userId,

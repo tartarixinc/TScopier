@@ -3,7 +3,7 @@ import { describe, it } from 'node:test'
 import { isWhatsAppGroupJid, whatsappShadowChannelId } from './whatsappGroup'
 
 describe('whatsapp group helpers', () => {
-  it('builds a shadow channel id the copier can store', () => {
+  it('builds a shadow-sm channel id the copier can store', () => {
     assert.equal(whatsappShadowChannelId('120363123@g.us'), 'wa:120363123@g.us')
   })
 

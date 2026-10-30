@@ -91,7 +91,7 @@ export function AssistantTelegramLinkCard({
   return (
     <div
       className={clsx(
-        'animate-assistant-msg-in ms-[2.375rem] rounded-2xl border border-teal-200/80 bg-white p-3.5 shadow-sm',
+        'animate-assistant-msg-in ms-9.5 rounded-2xl border border-teal-200/80 bg-white p-3.5 shadow-xs',
         'dark:border-teal-900/50 dark:bg-neutral-900',
       )}
     >
@@ -107,7 +107,7 @@ export function AssistantTelegramLinkCard({
           onChange={e => setPhoneDraft(e.target.value)}
           placeholder={copy.phonePlaceholder}
           disabled={busy}
-          className="mt-3 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm outline-none focus:border-green-400 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+          className="mt-3 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm outline-hidden focus:border-green-400 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
           onKeyDown={e => {
             if (e.key === 'Enter') {
               e.preventDefault()
@@ -126,7 +126,7 @@ export function AssistantTelegramLinkCard({
           onChange={e => setCodeDraft(normalizeTelegramCodeInput(e.target.value))}
           placeholder={copy.codePlaceholder}
           disabled={busy}
-          className="mt-3 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm tracking-widest outline-none focus:border-green-400 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+          className="mt-3 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm tracking-widest outline-hidden focus:border-green-400 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
           onKeyDown={e => {
             if (e.key === 'Enter') {
               e.preventDefault()
@@ -144,7 +144,7 @@ export function AssistantTelegramLinkCard({
           onChange={e => setPasswordDraft(e.target.value)}
           placeholder={copy.twoFaPlaceholder}
           disabled={busy}
-          className="mt-3 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm outline-none focus:border-green-400 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+          className="mt-3 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm outline-hidden focus:border-green-400 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
           onKeyDown={e => {
             if (e.key === 'Enter') {
               e.preventDefault()

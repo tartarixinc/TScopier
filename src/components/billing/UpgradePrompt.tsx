@@ -47,7 +47,7 @@ export function UpgradePrompt({
               <Link
                 to="/billing"
                 className={clsx(
-                  'inline-flex items-center justify-center gap-2 rounded-lg border bg-white px-3 py-1.5 text-sm font-medium shadow-sm transition-all hover:bg-error-50 dark:bg-error-950 dark:hover:bg-error-900',
+                  'inline-flex items-center justify-center gap-2 rounded-lg border bg-white px-3 py-1.5 text-sm font-medium shadow-xs transition-all hover:bg-error-50 dark:bg-error-950 dark:hover:bg-error-900',
                   lossBadgeOutlineClass,
                 )}
               >
@@ -92,7 +92,7 @@ export function UpgradePrompt({
           {manageBilling ? (
             <Link
               to="/billing"
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm font-medium text-neutral-900 shadow-sm transition-all hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-50 dark:hover:bg-neutral-700"
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm font-medium text-neutral-900 shadow-xs transition-all hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-50 dark:hover:bg-neutral-700"
             >
               {pw.manageBilling}
             </Link>

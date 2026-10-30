@@ -20,7 +20,7 @@ import type { SendOrderOutcome } from './types'
 import type { PreparedEntry } from './entryPrepare'
 import { finishEntrySend } from './entryExecution'
 import { activateLayeringBrokerPendingOrders } from './layeringModeBrokerPending'
-
+import { writeExecutionLog } from '../observability/executionLog'
 export interface LayeringModeFillContext {
   readonly entryPrice: number | null
   readonly lot: number | null
@@ -89,16 +89,14 @@ async function logLayeringExecutionBlocked(
   mode: Exclude<LayeringMode, 'legacy'>,
 ): Promise<void> {
   sanitizedLog('layering_execution_blocked', { mode, reason, plan_id: null })
-  try {
-    await supabase.from('trade_execution_logs').insert({
-      user_id: prep.signal.user_id,
-      signal_id: prep.signal.id,
-      broker_account_id: prep.broker.id,
-      action: 'layering_execution_blocked',
-      status: 'info',
-      request_payload: { mode, reason } as unknown as Record<string, unknown>,
-    })
-  } catch { /* best-effort */ }
+  await writeExecutionLog(supabase, {
+    user_id: prep.signal.user_id,
+    signal_id: prep.signal.id,
+    broker_account_id: prep.broker.id,
+    action: 'layering_execution_blocked',
+    status: 'info',
+    request_payload: { mode, reason } as unknown as Record<string, unknown>,
+  })
 }
 
 function buildSnapshot(args: {

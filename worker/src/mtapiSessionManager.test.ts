@@ -3,12 +3,14 @@ import { afterEach, test } from 'node:test'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { decryptMtPassword, encryptMtPassword } from './brokerCredentialsCrypto'
 import { MtapiApiError, type MtapiProvider } from './mtapiProvider'
-import { MtapiSessionManager, mtapiFailureDetail, mtapiFailureSummary, resolveIntervalMs } from './mtapiSessionManager'
+import { MtapiSessionManager, isTransientProvisionError, mtapiFailureDetail, mtapiFailureSummary, resolveIntervalMs } from './mtapiSessionManager'
 
 const oldBase = process.env.MTAPI_BASE_URL
 const oldKey = process.env.BROKER_CREDENTIALS_ENCRYPTION_KEY
 const oldMt4Url = process.env.MTAPI_MT4_BASE_URL
 const oldMt5Url = process.env.MTAPI_MT5_BASE_URL
+const oldSweepConcurrency = process.env.MTAPI_SESSION_HEALTH_CONCURRENCY
+const oldSweepGap = process.env.MTAPI_SESSION_HEALTH_GAP_MS
 
 afterEach(() => {
   if (oldBase == null) delete process.env.MTAPI_BASE_URL
@@ -19,7 +21,44 @@ afterEach(() => {
   else process.env.MTAPI_MT4_BASE_URL = oldMt4Url
   if (oldMt5Url == null) delete process.env.MTAPI_MT5_BASE_URL
   else process.env.MTAPI_MT5_BASE_URL = oldMt5Url
+  if (oldSweepConcurrency == null) delete process.env.MTAPI_SESSION_HEALTH_CONCURRENCY
+  else process.env.MTAPI_SESSION_HEALTH_CONCURRENCY = oldSweepConcurrency
+  if (oldSweepGap == null) delete process.env.MTAPI_SESSION_HEALTH_GAP_MS
+  else process.env.MTAPI_SESSION_HEALTH_GAP_MS = oldSweepGap
 })
+
+function sweepRows(count: number) {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `broker-${i}`,
+    mtapi_session_id: `token-${i}`,
+    account_login: '123',
+    broker_server: 'Server',
+    platform: 'MT5',
+    broker_password_encrypted: null,
+    auto_reconnect_enabled: false,
+  }))
+}
+
+async function waitFor(check: () => boolean, timeoutMs = 3000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (!check()) {
+    if (Date.now() > deadline) throw new Error('waitFor timed out')
+    await new Promise<void>(resolve => setTimeout(resolve, 5))
+  }
+}
+
+function sweepSupabase(rows: unknown[]) {
+  const query = {
+    select() { return this },
+    eq() { return this },
+    is() { return this },
+    not() { return this },
+    then(resolve: (value: unknown) => unknown) {
+      return Promise.resolve({ data: rows, error: null }).then(resolve)
+    },
+  }
+  return { from: () => query } as unknown as SupabaseClient
+}
 
 test('credential encryption round-trips without embedding plaintext', () => {
   process.env.BROKER_CREDENTIALS_ENCRYPTION_KEY = 'phase-2-test-key'
@@ -39,6 +78,27 @@ test('bridge rejection codes carry plain-English detail, unknown codes stay bare
   // A code that collides with Object.prototype must not resolve to a function.
   assert.equal(mtapiFailureDetail('toString'), '')
   assert.equal(mtapiFailureDetail('constructor'), '')
+})
+
+test('bridge outage codes reach the customer in plain English', () => {
+  // The 2026-10-08 outage left customers reading a bare engineer code.
+  assert.equal(mtapiFailureSummary('HTTP_502'), 'broker bridge temporarily unavailable')
+  assert.equal(mtapiFailureSummary('HTTP_503'), 'broker bridge temporarily unavailable')
+  assert.equal(mtapiFailureSummary('HTTP_504'), 'broker bridge temporarily unavailable')
+  assert.equal(mtapiFailureSummary('TRANSPORT_ERROR'), 'broker bridge unreachable')
+  // Rate limiting keeps its original wording — it was deliberately not remapped.
+  assert.equal(mtapiFailureSummary('HTTP_429'), 'HTTP_429')
+  assert.equal(mtapiFailureSummary('RATE_LIMITED'), 'RATE_LIMITED')
+})
+
+test('only bridge-side failures are treated as transient provision failures', () => {
+  for (const code of ['HTTP_502', 'HTTP_503', 'HTTP_504', 'HTTP_500', 'HTTP_429',
+    'TRANSPORT_ERROR', 'INVALID_RESPONSE', 'TIMEOUT', 'RATE_LIMITED']) {
+    assert.equal(isTransientProvisionError(code), true, `${code} should be transient`)
+  }
+  for (const code of ['INVALID_ACCOUNT', 'HTTP_403', 'NOT_CONFIGURED', 'UNKNOWN', '']) {
+    assert.equal(isTransientProvisionError(code), false, `${code} should not be transient`)
+  }
 })
 
 test('startup reconciles known sessions and starts token health checks', async () => {
@@ -323,4 +383,390 @@ test('a rejected provision stores plain-English connection_error and logs the de
     warnings.some((w) => w.includes('code=INVALID_ACCOUNT detail=invalid login or password')),
     'expected the provision failure log to carry the plain-English detail'
   )
+})
+
+test('health sweep bounds concurrent bridge checks instead of firing all sessions at once', async () => {
+  process.env.MTAPI_BASE_URL = 'https://mtapi.test'
+  process.env.MTAPI_SESSION_HEALTH_CONCURRENCY = '2'
+  process.env.MTAPI_SESSION_HEALTH_GAP_MS = '0'
+  const rows = sweepRows(6)
+  const supabase = sweepSupabase(rows)
+  let active = 0
+  let maxActive = 0
+  const checked: string[] = []
+  const provider = {
+    setRecoveryHandler() {},
+    seedPlatformCache() {},
+    async ensureConnected(id: string) {
+      active += 1
+      maxActive = Math.max(maxActive, active)
+      await new Promise<void>(resolve => setTimeout(resolve, 5))
+      active -= 1
+      checked.push(id)
+    },
+    async disconnectOrphans() {},
+  } as unknown as MtapiProvider
+
+  const manager = new MtapiSessionManager(supabase, provider)
+  await manager.start()
+  // The initial sweep is intentionally fire-and-forget (it must not delay the
+  // trade executor), so wait for it to drain before asserting.
+  await waitFor(() => checked.length === 6).catch(() => undefined)
+  manager.stop()
+
+  assert.equal(checked.length, 6)
+  assert.ok(maxActive <= 2, `expected at most 2 concurrent checks, saw ${maxActive}`)
+})
+
+test('health sweep paces request starts by the configured gap', async () => {
+  process.env.MTAPI_BASE_URL = 'https://mtapi.test'
+  process.env.MTAPI_SESSION_HEALTH_CONCURRENCY = '1'
+  process.env.MTAPI_SESSION_HEALTH_GAP_MS = '50'
+  const rows = sweepRows(3)
+  const supabase = sweepSupabase(rows)
+  const starts: number[] = []
+  const provider = {
+    setRecoveryHandler() {},
+    seedPlatformCache() {},
+    async ensureConnected() { starts.push(Date.now()) },
+    async disconnectOrphans() {},
+  } as unknown as MtapiProvider
+
+  const manager = new MtapiSessionManager(supabase, provider)
+  await manager.start()
+  await waitFor(() => starts.length === 3).catch(() => undefined)
+  manager.stop()
+
+  assert.equal(starts.length, 3)
+  // Each gap is jittered to 0.5x-1.5x the base, so two gaps take at least
+  // 50ms; assert a conservative lower bound to avoid timer flakiness.
+  assert.ok(
+    starts[2] - starts[0] >= 40,
+    `expected paced starts (>=40ms apart), saw span ${starts[2] - starts[0]}ms`,
+  )
+})
+
+test('a transient bridge failure is retried with backoff instead of parking the account', async () => {
+  const savedBase = process.env.MTAPI_BASE_URL
+  const savedKey = process.env.BROKER_CREDENTIALS_ENCRYPTION_KEY
+  const savedRetry = process.env.MTAPI_PROVISION_RETRY_BASE_MS
+  process.env.MTAPI_BASE_URL = 'https://mtapi.test'
+  process.env.BROKER_CREDENTIALS_ENCRYPTION_KEY = 'phase-2-test-key'
+  // Long enough that a second scan in this test must be skipped by the backoff.
+  process.env.MTAPI_PROVISION_RETRY_BASE_MS = '60000'
+
+  try {
+    const rows = [{
+      id: 'broker-1',
+      mtapi_session_id: null,
+      account_login: '123',
+      broker_server: 'Server',
+      platform: 'MT5',
+      broker_password_encrypted: encryptMtPassword('broker-secret'),
+      auto_reconnect_enabled: true,
+      connection_status: 'pending',
+      performance_baseline_balance: null,
+    }]
+    const updates: Array<Record<string, unknown>> = []
+    const query = {
+      select() { return this },
+      update(payload: Record<string, unknown>) { updates.push(payload); return this },
+      eq() { return this },
+      is() { return this },
+      not() { return this },
+      then(resolve: (value: unknown) => unknown) {
+        return Promise.resolve({ data: rows, error: null }).then(resolve)
+      },
+    }
+    const supabase = { from: () => query } as unknown as SupabaseClient
+    let connectCalls = 0
+    const provider = {
+      setRecoveryHandler() {},
+      seedPlatformCache() {},
+      async ensureConnected() {},
+      async disconnectOrphans() {},
+      async connectEx() {
+        connectCalls += 1
+        // No `code` on purpose: safeCode() turns this into HTTP_502, exactly what
+        // nginx returned during the outage.
+        throw new MtapiApiError('bad gateway', 502)
+      },
+    } as unknown as MtapiProvider
+
+    const warnings: string[] = []
+    const originalWarn = console.warn
+    console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')) }
+    try {
+      const manager = new MtapiSessionManager(supabase, provider)
+      await manager.start()
+      manager.stop()
+      // A second scan inside the backoff window must not touch the bridge again.
+      await manager.start()
+      manager.stop()
+    } finally {
+      console.warn = originalWarn
+    }
+
+    assert.equal(connectCalls, 1, 'expected the backoff to skip the second attempt')
+    const parked = updates.filter((u) => u.connection_status === 'error')
+    assert.equal(parked.length, 0, 'a transient failure must never park the row in error')
+    assert.ok(
+      updates.some((u) => u.connection_error === 'MTAPI connect failed: broker bridge temporarily unavailable'),
+      'the customer should see plain English while the retry is pending',
+    )
+    assert.ok(
+      updates.every((u) => u.connection_status === undefined),
+      'connection_status must not be written, so the row stays pending and keeps retrying',
+    )
+    assert.ok(
+      warnings.some((w) => w.includes('provision retry scheduled broker=broker-1 code=HTTP_502')),
+      'expected a retry log line carrying the HTTP_502 code',
+    )
+  } finally {
+    if (savedBase == null) delete process.env.MTAPI_BASE_URL
+    else process.env.MTAPI_BASE_URL = savedBase
+    if (savedKey == null) delete process.env.BROKER_CREDENTIALS_ENCRYPTION_KEY
+    else process.env.BROKER_CREDENTIALS_ENCRYPTION_KEY = savedKey
+    if (savedRetry == null) delete process.env.MTAPI_PROVISION_RETRY_BASE_MS
+    else process.env.MTAPI_PROVISION_RETRY_BASE_MS = savedRetry
+  }
+})
+
+/** Supabase mock for the provision path: the select resolves to `rows`, every
+ * update is recorded, and the success CAS's `maybeSingle()` resolves a hit
+ * (or nothing, to simulate losing the persist race). */
+function provisionSupabase(
+  rows: unknown[],
+  updates: Array<Record<string, unknown>>,
+  persistHit = true,
+) {
+  const query = {
+    select() { return this },
+    eq() { return this },
+    is() { return this },
+    not() { return this },
+    update(payload: Record<string, unknown>) { updates.push(payload); return this },
+    maybeSingle() { return Promise.resolve({ data: persistHit ? { id: 'hit' } : null, error: null }) },
+    then(resolve: (value: unknown) => unknown) {
+      return Promise.resolve({ data: rows, error: null }).then(resolve)
+    },
+  }
+  return { from: () => query } as unknown as SupabaseClient
+}
+
+function strandedRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'broker-stuck',
+    provider: 'mtapi',
+    mtapi_session_id: null,
+    mtapi_status: 'connecting',
+    connection_status: 'connected',
+    provider_transition_state: 'stable',
+    writer_epoch: 1,
+    account_login: '123',
+    broker_server: 'Server',
+    platform: 'MT5',
+    broker_password_encrypted: encryptMtPassword('secret'),
+    auto_reconnect_enabled: true,
+    performance_baseline_balance: null,
+    ...overrides,
+  }
+}
+
+test('a stranded account (connect intent but no session) is recovered whatever connection_status says', async () => {
+  process.env.BROKER_CREDENTIALS_ENCRYPTION_KEY = 'stranded-recover-key'
+  // The exact state that stranded accounts on 2026-10-12: a live connect intent
+  // (mtapi_status='connecting') with the legacy field reading 'connected'.
+  const updates: Array<Record<string, unknown>> = []
+  const supabase = provisionSupabase([strandedRow()], updates)
+  let connects = 0
+  const provider = {
+    async connectEx() { connects += 1; return 'new-session' },
+    seedPlatformCache() {},
+    async accountSummary() { return {} },
+  } as unknown as MtapiProvider
+
+  const manager = new MtapiSessionManager(supabase, provider) as unknown as {
+    provisionNewAccounts(): Promise<void>
+  }
+  await manager.provisionNewAccounts()
+
+  assert.equal(connects, 1, 'the stranded account must be offered a session')
+  assert.ok(
+    updates.some(u => u.mtapi_session_id === 'new-session'),
+    'the recovered session must be persisted',
+  )
+})
+
+test('an account awaiting the migration prompt (mtapi_status null) is not auto-connected', async () => {
+  process.env.BROKER_CREDENTIALS_ENCRYPTION_KEY = 'migration-prompt-key'
+  // provider='mtapi', no session, mtapi_status null = the migration state where
+  // the customer is prompted to reconnect. The worker must leave it alone.
+  const row = strandedRow({ mtapi_status: null, broker_password_encrypted: null })
+  const updates: Array<Record<string, unknown>> = []
+  const supabase = provisionSupabase([row], updates)
+  let connects = 0
+  const provider = {
+    async connectEx() { connects += 1; return 'nope' },
+    seedPlatformCache() {},
+    async accountSummary() { return {} },
+  } as unknown as MtapiProvider
+
+  const manager = new MtapiSessionManager(supabase, provider) as unknown as {
+    provisionNewAccounts(): Promise<void>
+  }
+  await manager.provisionNewAccounts()
+
+  assert.equal(connects, 0, 'an account awaiting the migration prompt must not be connected')
+  assert.equal(updates.length, 0, 'nothing should be written for it')
+})
+
+test('recovering a stranded account is reported so the next occurrence is visible', async () => {
+  process.env.BROKER_CREDENTIALS_ENCRYPTION_KEY = 'stranded-alert-key'
+  const updates: Array<Record<string, unknown>> = []
+  const supabase = provisionSupabase([strandedRow()], updates)
+  const provider = {
+    async connectEx() { return 'new-session' },
+    seedPlatformCache() {},
+    async accountSummary() { return {} },
+  } as unknown as MtapiProvider
+
+  const warnings: string[] = []
+  const originalWarn = console.warn
+  console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')) }
+  try {
+    const manager = new MtapiSessionManager(supabase, provider) as unknown as {
+      provisionNewAccounts(): Promise<void>
+    }
+    await manager.provisionNewAccounts()
+  } finally {
+    console.warn = originalWarn
+  }
+
+  assert.ok(
+    warnings.some(w => w.includes('recovering inconsistent session state accounts=1')),
+    'expected a warning that the inconsistent state was found and is being repaired',
+  )
+})
+
+test('the inconsistent-state warning is throttled across scans', async () => {
+  process.env.BROKER_CREDENTIALS_ENCRYPTION_KEY = 'stranded-throttle-key'
+  const updates: Array<Record<string, unknown>> = []
+  // The mock keeps returning the same stranded row, so a second scan would warn
+  // again but for the throttle.
+  const supabase = provisionSupabase([strandedRow({ id: 'broker-throttled' })], updates)
+  const provider = {
+    async connectEx() { return 's' },
+    seedPlatformCache() {},
+    async accountSummary() { return {} },
+  } as unknown as MtapiProvider
+
+  const warnings: string[] = []
+  const originalWarn = console.warn
+  console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')) }
+  try {
+    const manager = new MtapiSessionManager(supabase, provider) as unknown as {
+      provisionNewAccounts(): Promise<void>
+    }
+    await manager.provisionNewAccounts()
+    await manager.provisionNewAccounts()
+  } finally {
+    console.warn = originalWarn
+  }
+
+  const count = warnings.filter(w => w.includes('recovering inconsistent session state')).length
+  assert.equal(count, 1, 'the warning must be throttled to once per window')
+})
+
+test('the legacy pending mark still provisions an account with no MTAPI status', async () => {
+  // Preserves the pre-existing behaviour: a row marked `pending` is provisioned
+  // even when `mtapi_status` is empty, so any flow that still uses that mark
+  // keeps working. Only the `connecting` intent newly bypasses the mark.
+  process.env.BROKER_CREDENTIALS_ENCRYPTION_KEY = 'legacy-pending-key'
+  const row = strandedRow({ mtapi_status: null, connection_status: 'pending' })
+  const updates: Array<Record<string, unknown>> = []
+  const supabase = provisionSupabase([row], updates)
+  let connects = 0
+  const provider = {
+    async connectEx() { connects += 1; return 'legacy-session' },
+    seedPlatformCache() {},
+    async accountSummary() { return {} },
+  } as unknown as MtapiProvider
+
+  const manager = new MtapiSessionManager(supabase, provider) as unknown as {
+    provisionNewAccounts(): Promise<void>
+  }
+  await manager.provisionNewAccounts()
+
+  assert.equal(connects, 1, 'the legacy pending mark must still be honoured')
+  assert.ok(updates.some(u => u.mtapi_session_id === 'legacy-session'))
+})
+
+test('losing the persist race on a stranded account does not leak the new session', async () => {
+  process.env.BROKER_CREDENTIALS_ENCRYPTION_KEY = 'stranded-race-key'
+  const updates: Array<Record<string, unknown>> = []
+  // maybeSingle() resolves no row: another replica persisted first.
+  const supabase = provisionSupabase([strandedRow()], updates, false)
+  const disconnected: string[] = []
+  const provider = {
+    async connectEx() { return 'loser-session' },
+    async disconnect(id: string) { disconnected.push(id) },
+    seedPlatformCache() {},
+    async accountSummary() { return {} },
+  } as unknown as MtapiProvider
+
+  const manager = new MtapiSessionManager(supabase, provider) as unknown as {
+    provisionNewAccounts(): Promise<void>
+  }
+  await manager.provisionNewAccounts()
+
+  // The persist CAS matched no row, so the loser's token must be cleaned up.
+  // (The mock records the attempted update payload regardless; the real guard
+  // is the `mtapi_session_id IS NULL` clause, which the DB enforces.)
+  assert.deepEqual(disconnected, ['loser-session'], 'the losing session must be disconnected')
+})
+
+test('a permanent rejection still moves the account to error straight away', async () => {
+  process.env.MTAPI_BASE_URL = 'https://mtapi.test'
+  process.env.MTAPI_MT4_BASE_URL = 'https://mt4.test'
+  process.env.MTAPI_MT5_BASE_URL = 'https://mt5.test'
+  process.env.BROKER_CREDENTIALS_ENCRYPTION_KEY = 'phase-2-test-key'
+  const rows = [{
+    id: 'broker-1',
+    mtapi_session_id: null,
+    account_login: '123',
+    broker_server: 'Server',
+    platform: 'MT5',
+    broker_password_encrypted: encryptMtPassword('broker-secret'),
+    auto_reconnect_enabled: true,
+    connection_status: 'pending',
+    performance_baseline_balance: null,
+  }]
+  const updates: Array<Record<string, unknown>> = []
+  const query = {
+    select() { return this },
+    update(payload: Record<string, unknown>) { updates.push(payload); return this },
+    eq() { return this },
+    is() { return this },
+    not() { return this },
+    then(resolve: (value: unknown) => unknown) {
+      return Promise.resolve({ data: rows, error: null }).then(resolve)
+    },
+  }
+  const supabase = { from: () => query } as unknown as SupabaseClient
+  const provider = {
+    setRecoveryHandler() {},
+    seedPlatformCache() {},
+    async ensureConnected() {},
+    async disconnectOrphans() {},
+    async connectEx() { throw new MtapiApiError('rejected', 201, 'INVALID_ACCOUNT') },
+  } as unknown as MtapiProvider
+
+  const manager = new MtapiSessionManager(supabase, provider)
+  await manager.start()
+  manager.stop()
+
+  const stored = updates.find((u) => typeof u.connection_error === 'string')
+  assert.equal(stored?.connection_error, 'MTAPI connect failed: invalid login or password')
+  assert.equal(stored?.connection_status, 'error')
 })

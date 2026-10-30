@@ -289,28 +289,19 @@ test('native pending sends only after durable per-leg claim', async () => {
   restoreEnv()
 })
 
-test('broker invalid-stops rejection falls back to naked send', async () => {
+test('broker invalid-stops rejection fails the pending order without a naked resend', async () => {
   restoreEnv()
   enableLayeringEnv()
   const snap = snapshot()
-  const { prep, sends, supabase } = prepFor(snap, {
+  const { prep, sends } = prepFor(snap, {
     sendThrowsOnce: new Error('Invalid stops'),
   })
   const result = await activateLayeringBrokerPendingOrders({ prep, snapshot: snap, skipFirstLayer: true })
-  assert.deepEqual(result, { ok: true, outcome: 'activated', placed: 4, adopted: 0 })
-  assert.equal(sends.length, 5)
+  assert.deepEqual(result, { ok: false, reason: 'broker_pending_rejected_stops' })
+  assert.equal(sends.length, 1, 'no naked resend after the broker rejects stops')
   const first = sends[0] as { stoploss?: number; takeprofit?: number }
-  assert.equal(first.stoploss, 3300, 'first attempt carries planned SL')
-  assert.equal(first.takeprofit, 3400, 'first attempt carries planned TP')
-  const naked = sends[1] as { stoploss?: number; takeprofit?: number }
-  assert.equal(naked.stoploss, 0, 'invalid-stops retry is naked')
-  assert.equal(naked.takeprofit, 0, 'invalid-stops retry is naked')
-  for (const args of sends.slice(2)) {
-    const a = args as { stoploss?: number; takeprofit?: number }
-    assert.equal(a.stoploss, 3300, 'later legs keep planned SL')
-    assert.equal(a.takeprofit, 3400, 'later legs keep planned TP')
-  }
-  assert.equal(supabase.legs.every(r => r.native_submission_status === 'confirmed'), true)
+  assert.equal(first.stoploss, 3300, 'the attempt carries the planned SL')
+  assert.equal(first.takeprofit, 3400, 'the attempt carries the planned TP')
   restoreEnv()
 })
 

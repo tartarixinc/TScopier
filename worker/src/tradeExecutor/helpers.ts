@@ -22,7 +22,7 @@ export function isMtUuid(s: string | null | undefined): boolean {
 /**
  * Session id the copier uses for this broker.
  * FxSocket and MTAPI ids are UUIDs. cTrader uses the numeric ctidTraderAccountId.
- * Binance, Bybit and KuCoin use the stored API-key fingerprint.
+ * Binance, Bybit and KuCoin use the stored API-key fingerprint. DXtrade, TradeLocker and MatchTrader use their login fingerprint.
  */
 export function brokerSessionUuid(broker: {
   provider?: string | null
@@ -33,10 +33,13 @@ export function brokerSessionUuid(broker: {
   binance_account_id?: string | null
   bybit_account_id?: string | null
   kucoin_account_id?: string | null
+  dxtrade_account_id?: string | null
+  tradelocker_account_id?: string | null
+  matchtrader_account_id?: string | null
 }): string | null {
   const id = brokerSessionId(broker)
   if (!id) return null
-  if (broker.provider === 'ctrader' || broker.provider === 'binance' || broker.provider === 'bybit' || broker.provider === 'kucoin') return id
+  if (broker.provider === 'ctrader' || broker.provider === 'binance' || broker.provider === 'bybit' || broker.provider === 'kucoin' || broker.provider === 'dxtrade' || broker.provider === 'tradelocker' || broker.provider === 'matchtrader') return id
   return isMtUuid(id) ? id : null
 }
 
@@ -49,6 +52,9 @@ export function brokerHasLinkedSession(broker: {
   binance_account_id?: string | null
   bybit_account_id?: string | null
   kucoin_account_id?: string | null
+  dxtrade_account_id?: string | null
+  tradelocker_account_id?: string | null
+  matchtrader_account_id?: string | null
 }): boolean {
   return brokerSessionUuid(broker) != null
 }
@@ -318,6 +324,18 @@ export function virtualPendingTriggerAllowed(args: {
   return true
 }
 
+/**
+ * Broker-reported open time in epoch milliseconds, or null when unreadable.
+ *
+ * Shared by the pending TTL sweep and the orphan-position sweep — one reader,
+ * not two mirrors. Values arrive as epoch milliseconds (> 1e12), epoch seconds
+ * (current epoch ~1.8e9), or a date string (MT4 writes '2026.10.25 10:33:00',
+ * which Date.parse rejects until the dots are treated as dashes).
+ *
+ * A numeric value at or below 1e9 is junk, not seconds: a garbage timestamp
+ * must never look like 1970, because callers use "old" to decide an order is
+ * expired and cancels it. Returning null makes them skip instead.
+ */
 export function brokerOrderOpenMs(o: Record<string, unknown>): number | null {
   const candidates = [
     o.timeSetup,
@@ -330,14 +348,19 @@ export function brokerOrderOpenMs(o: Record<string, unknown>): number | null {
     o.OpenTime,
     o.created,
     o.Created,
+    o.createTime,
+    o.CreateTime,
+    o.timeOpen,
   ]
   for (const c of candidates) {
-    if (typeof c === 'number' && Number.isFinite(c) && c > 0) {
+    if (typeof c === 'number' && Number.isFinite(c) && c > 1e9) {
       return c > 1e12 ? c : c * 1000
     }
     if (typeof c === 'string' && c.trim()) {
       const p = Date.parse(c)
       if (Number.isFinite(p)) return p
+      const dotted = Date.parse(c.replace(/\./g, '-'))
+      if (Number.isFinite(dotted)) return dotted
     }
   }
   return null

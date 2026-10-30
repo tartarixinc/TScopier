@@ -70,6 +70,36 @@ describe('basketLegsOutOfSync', () => {
     ]
     assert.equal(basketLegsOutOfSync(family, alignedSl, 0, { tpFrozen: true }), false)
   })
+
+  it('ignores a stop on the wrong side of the leg entry (structurally un-applicable)', () => {
+    // SELL filled at 82650 with a signal stop of 65000 — below the entry, which
+    // no broker can set. Only the take-profit should be compared.
+    const sell: BasketOpenLeg = {
+      ...leg(62500, 0),
+      entry_price: 82650,
+      direction: 'sell',
+      sl: 0,
+    }
+    const targets = [{ stoploss: 65000, takeprofit: 62500 }]
+    assert.equal(basketLegsOutOfSync([sell], targets, 0), false)
+    // ...but TP drift is still detected.
+    assert.equal(basketLegsOutOfSync([sell], [{ stoploss: 65000, takeprofit: 60500 }], 0), true)
+  })
+
+  it('ignores a target on the wrong side of the leg entry too', () => {
+    // Buy-side values applied to a sell: stop below entry, target above entry —
+    // both are structurally un-applicable, so neither is reported as drift.
+    const sell: BasketOpenLeg = { ...leg(79000, 0), entry_price: 82650, direction: 'sell', sl: 0 }
+    assert.equal(basketLegsOutOfSync([sell], [{ stoploss: 65000, takeprofit: 83300 }], 0), false)
+  })
+
+  it('does not demand a target dropped as un-applicable (requireTakeProfit)', () => {
+    const sell: BasketOpenLeg = { ...leg(79000, 0), entry_price: 82650, direction: 'sell', sl: 0 }
+    assert.equal(
+      basketLegsOutOfSync([sell], [{ stoploss: 65000, takeprofit: 83300 }], 0, { requireTakeProfit: true }),
+      false,
+    )
+  })
 })
 
 describe('basketLegsOutOfSyncOnBroker', () => {
@@ -86,6 +116,14 @@ describe('basketLegsOutOfSyncOnBroker', () => {
     const targets = [{ stoploss: 4104, takeprofit: 4332 }]
     const orders = new Map<number, unknown>([[100, { stopLoss: 4104 }]])
     assert.equal(basketLegsOutOfSyncOnBroker(family, targets, orders, 0), false)
+  })
+
+  it('still detects SL drift when the target take-profit is on the wrong side', () => {
+    // Valid SL target (above a sell entry) but a wrong-side TP must not skip the check.
+    const sell: BasketOpenLeg = { ...leg(79000, 83000), entry_price: 82650, direction: 'sell' }
+    const targets = [{ stoploss: 83000, takeprofit: 83300 }]
+    const orders = new Map<number, unknown>([[100, { stopLoss: 81000 }]])
+    assert.equal(basketLegsOutOfSyncOnBroker([sell], targets, orders, 0), true)
   })
 })
 

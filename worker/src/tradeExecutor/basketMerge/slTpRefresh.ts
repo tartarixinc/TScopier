@@ -62,7 +62,7 @@ import {
   type SymbolCacheEntry
 } from '../types'
 import { persistRangePendingLegRows } from './helpers'
-
+import { writeExecutionLog } from '../../observability/executionLog'
 /**
  * On v2, a split signal (bare entry, then TP/SL follow-up) leaves legs naked and
  * the reconciler only backfills the deepest TP. When enabled (default), the merge
@@ -455,6 +455,9 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
           totalPlannedLegCount: basketTotalPlannedLegs,
           immediateLegCount: refreshImmediateLegCount,
           tpLots: manual.tp_lots,
+          currentLegTps: familyTrades.map(tr => tr.tp),
+          bundleReladder: sameSignalRefresh === true,
+          isBuy: direction !== 'sell',
         })
     if (manual.trade_style !== 'multi' && singleBrokerTp != null) {
       perLegTargets = perLegTargets.map(target => ({ ...target, takeprofit: singleBrokerTp }))
@@ -549,6 +552,7 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
             parallelLegs: true,
             orderCommentsEnabled: manual.order_comments_enabled !== false,
             explicitChannelTargets: true,
+            bundleIdentity: manual.range_trading !== true,
           })
           for (const id of modifyPass.modifiedTradeIds) modifiedTradeIds.add(id)
           summary = modifyPass.summary
@@ -642,6 +646,7 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
             parallelLegs: true,
             orderCommentsEnabled: manual.order_comments_enabled !== false,
             explicitChannelTargets: effectiveSlIsExplicitMgmt,
+            bundleIdentity: manual.range_trading !== true,
           }).catch(err =>
             console.warn(
               `[tradeExecutor] v2 merge TP distribute failed signal=${signal.id} broker=${broker.id}:`,
@@ -669,6 +674,9 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
           totalPlannedLegCount: basketTotalPlannedLegs,
           immediateLegCount: refreshImmediateLegCount,
           tpLots: manual.tp_lots,
+          currentLegTps: familyTrades.map(tr => tr.tp),
+          bundleReladder: false,
+          isBuy: direction !== 'sell',
         })
         if (manual.trade_style !== 'multi' && singleBrokerTp != null) {
           for (let i = 0; i < refreshedTargets.length; i++) {
@@ -720,6 +728,7 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
         liveMgmtFast,
         orderCommentsEnabled: manual.order_comments_enabled !== false,
         explicitChannelTargets: effectiveSlIsExplicitMgmt,
+        bundleIdentity: manual.range_trading !== true,
       })
       for (const id of pass.modifiedTradeIds) modifiedTradeIds.add(id)
       summary = pass.summary
@@ -989,6 +998,7 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
         nImmCwe,
         overrideTp,
         lastError: partialMsg,
+        bundleIdentity: manual.range_trading !== true && manual.trade_style === 'multi',
       })
     } else {
       const { data: existingJob } = await ctx.supabase
@@ -1016,26 +1026,24 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
     )
 
     if (!alreadySyncedNoBrokerWork) {
-      try {
-        await ctx.supabase.from('trade_execution_logs').insert({
-          user_id: signal.user_id,
-          signal_id: signal.id,
-          broker_account_id: broker.id,
-          action: 'merge_modify_summary',
-          status: mergeFailed ? 'failed' : 'success',
-          error_message: partialMsg,
-          request_payload: {
-            parent_signal_id: anchorSignalId,
-            symbol,
-            modify_only: logAction === 'merge_routed_modify_only',
-            user_message: partialMsg,
-            ...summary,
-            virtual_pendings: virtualPendings.length,
-            leg_errors: legErrors.slice(0, 10),
-            ...(mergeLinkMeta ?? {}),
-          } as unknown as Record<string, unknown>,
-        })
-      } catch { /* best-effort */ }
+      await writeExecutionLog(ctx.supabase, {
+        user_id: signal.user_id,
+        signal_id: signal.id,
+        broker_account_id: broker.id,
+        action: 'merge_modify_summary',
+        status: mergeFailed ? 'failed' : 'success',
+        error_message: partialMsg,
+        request_payload: {
+          parent_signal_id: anchorSignalId,
+          symbol,
+          modify_only: logAction === 'merge_routed_modify_only',
+          user_message: partialMsg,
+          ...summary,
+          virtual_pendings: virtualPendings.length,
+          leg_errors: legErrors.slice(0, 10),
+          ...(mergeLinkMeta ?? {}),
+        } as unknown as Record<string, unknown>,
+      })
     }
 
     if (!mergeFailed) {

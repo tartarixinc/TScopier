@@ -10,8 +10,10 @@ import {
   type SignalEntryPendingRow,
 } from './signalEntryPendingHelpers'
 import { closeWithVerification } from './managementClose'
+import { TRADE_CLOSE_REASON } from './tradeCloseReasons'
+import { applyCloseUpdate } from './tradeCloseUpdate'
 import { resolveCurrentLivePosition } from './livePositionIdentity'
-
+import { writeExecutionLog } from './observability/executionLog'
 type CopyLimitFlattenResult = {
   closed: number
   failed: number
@@ -83,7 +85,7 @@ export async function flattenChannelTradesForCopyLimit(args: {
       brokerAccountId: trade.broker_account_id,
     })
 
-    const ticket = Number(trade.metaapi_order_id)
+    const ticket = Number(trade.broker_position_ticket ?? trade.metaapi_order_id)
     if (!Number.isFinite(ticket) || ticket <= 0) continue
 
     let ok = false
@@ -112,11 +114,18 @@ export async function flattenChannelTradesForCopyLimit(args: {
 
     result.closed += 1
     const terminalStatus = trade.status === 'pending' ? 'cancelled' : 'closed'
-    await args.supabase
-      .from('trades')
-      .update({ status: terminalStatus, closed_at: now })
-      .eq('id', trade.id)
-      .in('status', ['open', 'pending'])
+    await applyCloseUpdate(
+      {
+        status: terminalStatus,
+        closed_at: now,
+        close_reason: TRADE_CLOSE_REASON.COPY_LIMIT_FLATTEN,
+      },
+      patch => args.supabase
+        .from('trades')
+        .update(patch)
+        .eq('id', trade.id)
+        .in('status', ['open', 'pending']),
+    )
     await clearChannelActiveTradeParamsWhenFlat(args.supabase, {
       userId: args.userId,
       channelId: args.channelId,
@@ -182,22 +191,20 @@ export async function flattenChannelTradesForCopyLimit(args: {
   )
 
   if (result.closed > 0 || result.failed > 0) {
-    try {
-      await args.supabase.from('trade_execution_logs').insert({
-        user_id: args.userId,
-        broker_account_id: args.brokerAccountId,
-        action: 'copy_limit_flatten',
-        status: result.failed > 0 && result.closed === 0 ? 'failed' : 'success',
-        request_payload: {
-          channel_id: args.channelId,
-          reason: args.reason,
-          closed: result.closed,
-          failed: result.failed,
-          pending_cancelled: result.pendingCancelled,
-          virtual_deleted: result.virtualLegsDeleted,
-        } as unknown as Record<string, unknown>,
-      })
-    } catch { /* best-effort */ }
+    await writeExecutionLog(args.supabase, {
+      user_id: args.userId,
+      broker_account_id: args.brokerAccountId,
+      action: 'copy_limit_flatten',
+      status: result.failed > 0 && result.closed === 0 ? 'failed' : 'success',
+      request_payload: {
+        channel_id: args.channelId,
+        reason: args.reason,
+        closed: result.closed,
+        failed: result.failed,
+        pending_cancelled: result.pendingCancelled,
+        virtual_deleted: result.virtualLegsDeleted,
+      } as unknown as Record<string, unknown>,
+    })
   }
 
   return result

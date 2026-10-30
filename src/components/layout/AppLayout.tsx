@@ -247,13 +247,13 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
             )}
           />
           {showOpenIndicator && opts.collapsed ? (
-            <span className="absolute -end-2.5 -top-1.5 min-w-[1rem] rounded-full bg-green-400 px-1 text-center text-[9px] font-semibold leading-4 text-neutral-950 tabular-nums">
+            <span className="absolute -inset-e-2.5 -top-1.5 min-w-4 rounded-full bg-green-400 px-1 text-center text-[9px] font-semibold leading-4 text-neutral-950 tabular-nums">
               {openTradeCount}
             </span>
           ) : null}
           {showFireIndicator && opts.collapsed && !showOpenIndicator ? (
             <Flame
-              className="absolute -end-1 -top-1 h-2.5 w-2.5 text-orange-500"
+              className="absolute -inset-e-1 -top-1 h-2.5 w-2.5 text-orange-500"
               aria-hidden
             />
           ) : null}
@@ -435,7 +435,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
           ref={setHeaderEl}
           className={clsx(
             'z-30 flex shrink-0 touch-none items-center gap-1 border-b border-neutral-100 bg-white px-1.5 dark:border-neutral-800 dark:bg-neutral-950 sm:gap-4 sm:px-6',
-            'fixed inset-x-0 top-[var(--app-banner-h,0px)] h-[calc(3.5rem+env(safe-area-inset-top,0px))] pt-[env(safe-area-inset-top,0px)] sm:h-[calc(4rem+env(safe-area-inset-top,0px))]',
+            'fixed inset-x-0 top-(--app-banner-h,0px) h-[calc(3.5rem+env(safe-area-inset-top,0px))] pt-[env(safe-area-inset-top,0px)] sm:h-[calc(4rem+env(safe-area-inset-top,0px))]',
             'lg:static lg:z-20 lg:h-16 lg:min-h-0 lg:pt-0 lg:touch-auto',
           )}
         >
@@ -479,7 +479,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
               title={t.nav.assistant.title}
               className={clsx(
                 'inline-flex h-9 w-9 items-center justify-center rounded-lg text-green-500 transition-colors sm:h-10 sm:w-10',
-                'hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2 focus:ring-offset-white',
+                'hover:bg-teal-50 focus:outline-hidden focus:ring-2 focus:ring-green-400 focus:ring-offset-2 focus:ring-offset-white',
                 'dark:text-teal-300 dark:hover:bg-teal-950/50 dark:focus:ring-offset-neutral-900',
               )}
             >
@@ -523,7 +523,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
               >
               <UserAvatar user={user} profile={profile} email={user?.email} size="sm" />
               <div className="hidden md:block text-start">
-                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 leading-tight truncate max-w-[8rem]">
+                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 leading-tight truncate max-w-32">
                   {displayName}
                 </p>
                 <p className="text-xs text-neutral-900 dark:text-neutral-50 leading-tight">{planName || t.nav.planFree}</p>

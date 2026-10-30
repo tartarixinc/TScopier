@@ -70,6 +70,23 @@ export const BROKER_ACCOUNT_CLIENT_SELECT = [
   'kucoin_margin_usdt',
   'kucoin_leverage',
   'kucoin_margin_mode',
+  'dxtrade_account_id',
+  'dxtrade_server_url',
+  'dxtrade_username',
+  'dxtrade_domain',
+  'dxtrade_account_code',
+  'dxtrade_status',
+  'dxtrade_is_position_based',
+  'tradelocker_account_id',
+  'tradelocker_environment',
+  'tradelocker_server',
+  'tradelocker_account_ref',
+  'tradelocker_status',
+  'matchtrader_account_id',
+  'matchtrader_server_url',
+  'matchtrader_broker_id',
+  'matchtrader_trading_account_uuid',
+  'matchtrader_status',
   'linked_account_type',
 ].join(',')
 
@@ -100,6 +117,21 @@ export function missingBybitColumns(message: string): boolean {
 
 export function missingKucoinColumns(message: string): boolean {
   return /kucoin_(account_id|status|margin_usdt|leverage|margin_mode)/i.test(message)
+    && /schema cache|does not exist|column/i.test(message)
+}
+
+export function missingDxtradeColumns(message: string): boolean {
+  return /dxtrade_(account_id|server_url|username|domain|account_code|status|is_position_based)/i.test(message)
+    && /schema cache|does not exist|column/i.test(message)
+}
+
+export function missingTradelockerColumns(message: string): boolean {
+  return /tradelocker_(account_id|environment|server|account_ref|status)/i.test(message)
+    && /schema cache|does not exist|column/i.test(message)
+}
+
+export function missingMatchtraderColumns(message: string): boolean {
+  return /matchtrader_(account_id|server_url|broker_id|trading_account_uuid|status)/i.test(message)
     && /schema cache|does not exist|column/i.test(message)
 }
 
@@ -137,6 +169,35 @@ function columnsAfterSchemaError(columns: string, message: string): string | nul
       'kucoin_margin_usdt',
       'kucoin_leverage',
       'kucoin_margin_mode',
+    ]) drop.add(column)
+  }
+  if (missingDxtradeColumns(message)) {
+    for (const column of [
+      'dxtrade_account_id',
+      'dxtrade_server_url',
+      'dxtrade_username',
+      'dxtrade_domain',
+      'dxtrade_account_code',
+      'dxtrade_status',
+      'dxtrade_is_position_based',
+    ]) drop.add(column)
+  }
+  if (missingTradelockerColumns(message)) {
+    for (const column of [
+      'tradelocker_account_id',
+      'tradelocker_environment',
+      'tradelocker_server',
+      'tradelocker_account_ref',
+      'tradelocker_status',
+    ]) drop.add(column)
+  }
+  if (missingMatchtraderColumns(message)) {
+    for (const column of [
+      'matchtrader_account_id',
+      'matchtrader_server_url',
+      'matchtrader_broker_id',
+      'matchtrader_trading_account_uuid',
+      'matchtrader_status',
     ]) drop.add(column)
   }
   if (drop.size === 0) return null

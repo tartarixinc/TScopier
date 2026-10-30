@@ -2015,21 +2015,21 @@ export function DashboardPage() {
   useEffect(() => {
     const accounts = linkedAccounts.filter(account => {
       const provider = resolveProvider(account)
-      if (provider === 'mtapi' || provider === 'ctrader' || provider === 'binance' || provider === 'bybit' || provider === 'kucoin') return hasLinkedBrokerForUi(account)
+      if (provider === 'mtapi' || provider === 'ctrader' || provider === 'binance' || provider === 'bybit' || provider === 'kucoin' || provider === 'dxtrade' || provider === 'tradelocker' || provider === 'matchtrader') return hasLinkedBrokerForUi(account)
       return isFxsocketLinkedBroker(account)
     })
     if (accounts.length === 0) return
 
     let cancelled = false
     const throttleUntilById: Record<string, number> = {}
-    const cursors = { mtapi: 0, ctrader: 0, binance: 0, bybit: 0, kucoin: 0, fxsocket: 0 }
-    const inflight = { mtapi: false, ctrader: false, binance: false, bybit: false, kucoin: false, fxsocket: false }
+    const cursors = { mtapi: 0, ctrader: 0, binance: 0, bybit: 0, kucoin: 0, dxtrade: 0, tradelocker: 0, matchtrader: 0, fxsocket: 0 }
+    const inflight = { mtapi: false, ctrader: false, binance: false, bybit: false, kucoin: false, dxtrade: false, tradelocker: false, matchtrader: false, fxsocket: false }
 
-    const pollGroup = async (group: 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin' | 'fxsocket') => {
+    const pollGroup = async (group: 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin' | 'dxtrade' | 'tradelocker' | 'matchtrader' | 'fxsocket') => {
       if (cancelled || inflight[group]) return
       const groupAccounts = accounts.filter(account => {
         const provider = resolveProvider(account)
-        if (group === 'fxsocket') return provider !== 'mtapi' && provider !== 'ctrader' && provider !== 'binance' && provider !== 'bybit' && provider !== 'kucoin'
+        if (group === 'fxsocket') return provider !== 'mtapi' && provider !== 'ctrader' && provider !== 'binance' && provider !== 'bybit' && provider !== 'kucoin' && provider !== 'dxtrade' && provider !== 'tradelocker' && provider !== 'matchtrader'
         return provider === group
       })
       if (groupAccounts.length === 0) return
@@ -2044,7 +2044,7 @@ export function DashboardPage() {
           const provider = resolveProvider(account)
           const rawProvider: BrokerProvider = provider
           const lastWs = lastWsTickRef.current[account.id] ?? 0
-          if (provider !== 'mtapi' && provider !== 'ctrader' && provider !== 'binance' && provider !== 'bybit' && provider !== 'kucoin' && now - lastWs < 2500) continue
+          if (provider !== 'mtapi' && provider !== 'ctrader' && provider !== 'binance' && provider !== 'bybit' && provider !== 'kucoin' && provider !== 'dxtrade' && provider !== 'tradelocker' && provider !== 'matchtrader' && now - lastWs < 2500) continue
           try {
             if (provider === 'ctrader' || provider === 'binance' || provider === 'bybit' || provider === 'kucoin') {
               const { trades } = await fxsocketBroker.trades({
@@ -2080,7 +2080,7 @@ export function DashboardPage() {
                   if (refreshed.account) replaceBroker(refreshed.account)
                   return refreshed.pending ? undefined : refreshed.summary
                 })()
-              : (await fxsocketBroker.liveSnapshot(account.id, rawProvider === 'ctrader' ? 'ctrader' : undefined)).summary
+              : (await fxsocketBroker.liveSnapshot(account.id, rawProvider === 'ctrader' || rawProvider === 'dxtrade' || rawProvider === 'tradelocker' || rawProvider === 'matchtrader' ? rawProvider : undefined)).summary
             if (cancelled || !summary) return
             const snap = parseFxsocketAccountStreamData(summary as Record<string, unknown>)
             const summaryOpenTrades = typeof summary.open_trades === 'number' && Number.isFinite(summary.open_trades)
@@ -2131,10 +2131,10 @@ export function DashboardPage() {
     }
 
     const timers: number[] = []
-    const schedule = (group: 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin' | 'fxsocket', intervalMs: number, startDelayMs: number) => {
+    const schedule = (group: 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin' | 'dxtrade' | 'tradelocker' | 'matchtrader' | 'fxsocket', intervalMs: number, startDelayMs: number) => {
       if (!accounts.some(account => {
         const provider = resolveProvider(account)
-        if (group === 'fxsocket') return provider !== 'mtapi' && provider !== 'ctrader' && provider !== 'binance' && provider !== 'bybit' && provider !== 'kucoin'
+        if (group === 'fxsocket') return provider !== 'mtapi' && provider !== 'ctrader' && provider !== 'binance' && provider !== 'bybit' && provider !== 'kucoin' && provider !== 'dxtrade' && provider !== 'tradelocker' && provider !== 'matchtrader'
         return provider === group
       })) return
       timers.push(window.setInterval(() => {
@@ -2157,9 +2157,17 @@ export function DashboardPage() {
     schedule('bybit', 5_000, 1_600)
     // KuCoin marks open positions from the exchange on each trades call, like Binance and Bybit.
     schedule('kucoin', 5_000, 2_000)
+    // DXtrade reads balance, equity and open P&L from account metrics. Brokers cap each session at about
+    // ten requests a second, so poll gently.
+    schedule('dxtrade', 8_000, 2_400)
+    // TradeLocker allows about one read a second on its state routes. A snapshot is two reads, so every
+    // six seconds stays well under that while keeping Open PnL close to live.
+    schedule('tradelocker', 6_000, 2_400)
+    // Match-Trader allows 500 requests a minute per login; each snapshot is a few reads.
+    schedule('matchtrader', 10_000, 3_600)
     const fxCount = accounts.filter(account => {
       const provider = resolveProvider(account)
-      return provider !== 'mtapi' && provider !== 'ctrader' && provider !== 'binance' && provider !== 'bybit' && provider !== 'kucoin'
+      return provider !== 'mtapi' && provider !== 'ctrader' && provider !== 'binance' && provider !== 'bybit' && provider !== 'kucoin' && provider !== 'dxtrade' && provider !== 'tradelocker' && provider !== 'matchtrader'
     }).length
     if (fxCount > 0) {
       schedule('fxsocket', Math.min(15_000, Math.max(4_000, 2_000 * Math.ceil(fxCount / 2))), 0)
@@ -2601,8 +2609,8 @@ export function DashboardPage() {
             <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
               {[...Array(5)].map((_, i) => (
                 <div key={i} className="px-5 py-3">
-                  <div className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse w-3/4 mb-1.5" />
-                  <div className="h-3 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse w-1/3" />
+                  <div className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse w-3/4 mb-1.5" />
+                  <div className="h-3 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse w-1/3" />
                 </div>
               ))}
             </div>
@@ -2637,7 +2645,7 @@ export function DashboardPage() {
           <div className="overflow-x-auto">
           {/* Table header */}
           <div
-            className={`${DASHBOARD_COPIER_LOG_GRID} min-w-[28rem] border-b border-neutral-100 px-5 py-2.5 text-xs font-regular uppercase tracking-[0.06em] text-neutral-900 dark:text-neutral-50 dark:border-neutral-800/80`}
+            className={`${DASHBOARD_COPIER_LOG_GRID} min-w-md border-b border-neutral-100 px-5 py-2.5 text-xs font-regular uppercase tracking-[0.06em] text-neutral-900 dark:text-neutral-50 dark:border-neutral-800/80`}
           >
             <span>{t.copierLogs.colStatus}</span>
             <span className="min-w-0">{t.copierLogs.colChannel}</span>
@@ -2651,7 +2659,7 @@ export function DashboardPage() {
               {[...Array(4)].map((_, i) => (
                 <div key={i} className={`${DASHBOARD_COPIER_LOG_GRID} px-5 py-3`}>
                   {[...Array(5)].map((_, j) => (
-                    <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse min-w-0" />
+                    <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse min-w-0" />
                   ))}
                 </div>
               ))}
@@ -2661,7 +2669,7 @@ export function DashboardPage() {
               <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{t.dashboard.noData}</p>
             </div>
           ) : (
-            <div className="divide-y divide-neutral-100 dark:divide-neutral-800 max-h-80 overflow-y-auto min-w-[28rem]">
+            <div className="divide-y divide-neutral-100 dark:divide-neutral-800 max-h-80 overflow-y-auto min-w-md">
               {copierLogs.map(log => (
                 <LogRow
                   key={log.id}
@@ -2709,7 +2717,7 @@ export function DashboardPage() {
         ) : null}
 
         <div className="overflow-x-auto">
-        <div className="min-w-[52rem] lg:min-w-0">
+        <div className="min-w-208 lg:min-w-0">
         <div className="hidden lg:grid grid-cols-9 gap-2 border-b border-neutral-100 px-5 py-2.5 text-[11px] font-medium uppercase tracking-[0.06em] text-neutral-900 dark:text-neutral-50 dark:border-neutral-800/80">
           <LinkedAccountSortHeader
             label={la.colAccount}
@@ -2784,7 +2792,7 @@ export function DashboardPage() {
             {[...Array(3)].map((_, i) => (
               <div key={i} className="hidden lg:flex px-4 sm:px-5 py-3 gap-4">
                 {[...Array(9)].map((_, j) => (
-                  <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse flex-1" />
+                  <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse flex-1" />
                 ))}
               </div>
             ))}
@@ -2844,7 +2852,7 @@ function StatBlock({ label, labelHint, value, sub, subColor, valueColor = 'text-
   valueColor?: string
 }) {
   return (
-    <div className="rounded-2xl bg-[#F7F8FA] px-4 py-4 sm:px-5 dark:bg-white/[0.03] dark:ring-1 dark:ring-inset dark:ring-white/[0.06]">
+    <div className="rounded-2xl bg-[#F7F8FA] px-4 py-4 sm:px-5 dark:bg-white/3 dark:ring-1 dark:ring-inset dark:ring-white/6">
       <p className="inline-flex items-center gap-1 text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-900 dark:text-neutral-50">
         {label}
         {labelHint ? <InfoTooltip text={labelHint} /> : null}
@@ -2906,7 +2914,7 @@ function LogRow({ signal, channelName, symbol, sourceKind }: { signal: Signal; c
 
   const statusConfig: Record<string, { color: string; label: string }> = {
     executed: { color: 'bg-green-100 text-neutral-950 dark:bg-green-100 dark:text-neutral-950', label: t.copierLogs.statusExecuted },
-    skipped:  { color: 'text-warning-800 bg-warning-50 dark:!text-amber-100 dark:!bg-amber-900', label: t.copierLogs.statusSkipped },
+    skipped:  { color: 'text-warning-800 bg-warning-50 dark:text-amber-100! dark:bg-amber-900!', label: t.copierLogs.statusSkipped },
     failed:   { color: 'text-error-800 bg-error-50 dark:text-error-300 dark:bg-error-950/70', label: t.copierLogs.statusFailed },
     pending:  { color: 'text-neutral-900 bg-neutral-100 dark:text-neutral-50 dark:bg-neutral-800', label: t.copierLogs.statusPending },
     parsed:   { color: 'text-green-500 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60', label: t.copierLogs.statusParsed },
@@ -2919,7 +2927,7 @@ function LogRow({ signal, channelName, symbol, sourceKind }: { signal: Signal; c
   const channelTitle = sourceKind ? `${SIGNAL_SOURCE_MARKS[sourceKind].label} · ${channelName}` : channelName
 
   return (
-    <div className={`${DASHBOARD_COPIER_LOG_GRID} px-5 py-3 transition-colors hover:bg-[#F7F8FA] dark:hover:bg-white/[0.03]`}>
+    <div className={`${DASHBOARD_COPIER_LOG_GRID} px-5 py-3 transition-colors hover:bg-[#F7F8FA] dark:hover:bg-white/3`}>
       <span className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-sm font-regular ${s.color}`}>
         {s.label}
       </span>
@@ -3094,7 +3102,7 @@ function LinkedAccountRow({
           onOpenStats()
         }
       }}
-      className="grid cursor-pointer grid-cols-9 items-center gap-2 px-5 py-3.5 transition-colors hover:bg-[#F7F8FA] dark:hover:bg-white/[0.03]"
+      className="grid cursor-pointer grid-cols-9 items-center gap-2 px-5 py-3.5 transition-colors hover:bg-[#F7F8FA] dark:hover:bg-white/3"
     >
       <div className="flex flex-col min-w-0">
         <span

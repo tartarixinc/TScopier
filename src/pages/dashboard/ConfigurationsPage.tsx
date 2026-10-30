@@ -9,11 +9,15 @@ import { Card } from '../../components/ui/Card'
 import { AddConfigurationChannelModal } from '../../components/configure/AddConfigurationChannelModal'
 import { AddConfigurationDestinationModal } from '../../components/configure/AddConfigurationDestinationModal'
 import { ConfigurationSettingsEditor } from '../../components/configure/ConfigurationSettingsEditor'
+import { SlaveChannelConflictModal } from '../../components/dashboard/SlaveChannelConflictModal'
 import { useAddTradingAccount } from '../../context/AddTradingAccountContext'
 import { useAuth } from '../../context/AuthContext'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
+import { useConfirm } from '../../context/ConfirmDialogContext'
+import { useMirrorSlaveChannelGuard } from '../../hooks/useMirrorSlaveChannelGuard'
 import { useSubscription } from '../../context/SubscriptionContext'
 import { useT } from '../../context/LocaleContext'
+import { removeMirrorSlaveId } from '../../lib/mirrorSlaveSelection'
 import { interpolate } from '../../i18n/interpolate'
 import type { ConfigureModalTranslations } from '../../i18n/locales/configureModal/types'
 import type { ConfigurationsPageTranslations } from '../../i18n/locales/types'
@@ -21,12 +25,15 @@ import { connectChannelToBroker, disconnectChannelFromBroker, getBrokerDisplayLa
 import {
   connectBrokerCopyLink,
   disconnectBrokerCopyLink,
+  disconnectBrokerCopyLinkSafely,
   fetchBrokerCopyLinks,
+  humanizeMirrorDeleteError,
   setBrokerCopySource,
   updateBrokerCopyLinkSettings,
   type BrokerCopyLinkRow,
 } from '../../lib/brokerCopyLink'
 import { DEFAULT_MANUAL_SETTINGS } from '../../lib/defaultManualSettings'
+import { platformIconSrc } from '../../lib/activityRoute'
 import {
   fetchBrokerChannelTradingConfigRows,
   fetchBrokerChannelTradingConfigRowsForBrokers,
@@ -82,12 +89,11 @@ interface CardDrag {
 
 function PlatformLogo({ platform }: { platform: string }) {
   const [failed, setFailed] = useState(false)
-  const raw = platform.trim()
-  const key = /^mt[45]$/i.test(raw) ? raw.toUpperCase() : raw
-  if (!key || failed) return null
+  const src = platformIconSrc(platform)
+  if (!src || failed) return null
   return (
     <img
-      src={`/${key}.png`}
+      src={src}
       alt=""
       aria-hidden
       className="h-8 w-8 shrink-0 object-contain"
@@ -120,6 +126,8 @@ const PLACED_CHANNEL_KEY = 'tscopier:configurations:placed-channels:'
 const BROKER_ORDER_KEY = 'tscopier:configurations:broker-order:'
 const DESTINATION_KEY = 'tscopier:configurations:placed-destinations:'
 const DISMISSED_DESTINATION_KEY = 'tscopier:configurations:dismissed-destinations:'
+const REMOVE_LINK_CONFIRM_FALLBACK =
+  'Remove this slave account? Any copied trades still open on it will be closed first.'
 
 function readStoredOrder(key: string): string[] {
   try {
@@ -233,6 +241,7 @@ function placeConnectionGears(routes: { start: Point; end: Point }[]): Point[] {
 
 export function ConfigurationsPage() {
   const t = useT()
+  const confirm = useConfirm()
   const copy = t.configurationsPage
   const modalCopy = t.accountConfig.configureModal
   const {
@@ -244,6 +253,15 @@ export function ConfigurationsPage() {
   } = useAddTradingAccount()
   const { user } = useAuth()
   const { brokers, loading: brokersLoading, replaceBroker } = useBrokerAccounts()
+  const { guardBroker, modal: mirrorGuardModal } = useMirrorSlaveChannelGuard({
+    onMirrorLinksRemoved: () => {
+      if (!user?.id) return
+      void fetchBrokerCopyLinks(supabase, user.id).then(({ links, error }) => {
+        if (error) setLinkError(error)
+        else setCopyLinks(links)
+      })
+    },
+  })
   const { canUseFeature } = useSubscription()
   const [channels, setChannels] = useState<ChannelName[]>([])
   const [channelsLoading, setChannelsLoading] = useState(true)
@@ -265,6 +283,13 @@ export function ConfigurationsPage() {
   )
   const [removedDestinationIds, setRemovedDestinationIds] = useState<string[]>([])
   const [linkError, setLinkError] = useState<string | null>(null)
+  const [slaveConflict, setSlaveConflict] = useState<{
+    sourceId: string
+    destinationId: string
+    channels: { id: string; name: string }[]
+  } | null>(null)
+  const [slaveConflictBusy, setSlaveConflictBusy] = useState(false)
+  const [slaveConflictError, setSlaveConflictError] = useState<string | null>(null)
   const [configSaveError, setConfigSaveError] = useState<string | null>(null)
   const [channelOrder, setChannelOrder] = useState<string[]>(() =>
     user?.id ? readStoredOrder(`${CHANNEL_ORDER_KEY}${user.id}`) : [],
@@ -501,7 +526,7 @@ export function ConfigurationsPage() {
       const { broker, error } = await setBrokerCopySource(supabase, user.id, brokerId, true)
       linkingRef.current = false
       if (error || !broker) {
-        setLinkError(error ?? copy.loadError)
+        setLinkError(humanizeMirrorDeleteError(error ?? copy.loadError))
         return
       }
       latestBrokersRef.current = latestBrokersRef.current.map(item =>
@@ -510,6 +535,7 @@ export function ConfigurationsPage() {
       replaceBroker(broker)
       setCopyLinks(prev => prev.filter(link => link.destination_broker_account_id !== brokerId))
       setPlacedDestinationIds(prev => prev.filter(id => id !== brokerId))
+      removeMirrorSlaveId(user.id, brokerId)
       appendLeft(brokerId)
     })
     linkChainRef.current = task.then(() => undefined, () => undefined)
@@ -527,6 +553,8 @@ export function ConfigurationsPage() {
       const broker = latestBrokersRef.current.find(item => item.id === brokerId)
       if (!broker) return
       if (normalizeSignalChannelIds(broker.signal_channel_ids).includes(channelId.toLowerCase())) return
+      const approved = await guardBroker(broker)
+      if (!approved) return
       linkingRef.current = true
       setLinkError(null)
       const { broker: updated, error } = await connectChannelToBroker(
@@ -678,39 +706,121 @@ export function ConfigurationsPage() {
   )
   const sourceBrokerIds = useMemo(() => sourceBrokers.map(broker => broker.id), [sourceBrokers])
 
+  const runConnectDraggedSource = async (sourceId: string, destinationId: string) => {
+    if (!user?.id) return
+    linkingRef.current = true
+    setLinkError(null)
+    const { link, error } = await connectBrokerCopyLink(supabase, user.id, sourceId, destinationId)
+    linkingRef.current = false
+    if (error || !link) {
+      setLinkError(error ?? copy.loadError)
+      return
+    }
+    setCopyLinks(prev => prev.some(item => item.id === link.id) ? prev : [...prev, link])
+  }
+
   const connectDraggedSource = (sourceId: string, destinationId: string) => {
     const task = linkChainRef.current.then(async () => {
       if (!user?.id || sourceId === destinationId) return
       if (copyLinksRef.current.some(link =>
         link.source_broker_account_id === sourceId && link.destination_broker_account_id === destinationId,
       )) return
-      linkingRef.current = true
-      setLinkError(null)
-      const { link, error } = await connectBrokerCopyLink(supabase, user.id, sourceId, destinationId)
-      linkingRef.current = false
-      if (error || !link) {
-        setLinkError(error ?? copy.loadError)
+      // A destination still linked to owned channels must drop them first, so
+      // the same signal cannot trade twice on one broker.
+      const destination = latestBrokersRef.current.find(item => item.id === destinationId)
+      const channelIds = normalizeSignalChannelIds(destination?.signal_channel_ids)
+      if (destination && channelIds.length > 0) {
+        setSlaveConflictError(null)
+        setSlaveConflict({
+          sourceId,
+          destinationId,
+          channels: channelIds.map(id => {
+            const channel = channelById.get(id)
+            return {
+              id,
+              name: channel?.display_name?.trim() || channel?.channel_username?.trim() || id,
+            }
+          }),
+        })
         return
       }
-      setCopyLinks(prev => prev.some(item => item.id === link.id) ? prev : [...prev, link])
+      await runConnectDraggedSource(sourceId, destinationId)
     })
     linkChainRef.current = task.then(() => undefined, () => undefined)
     return task
+  }
+
+  const disconnectChannelsAndConnectSource = async () => {
+    if (!user?.id || !slaveConflict || slaveConflictBusy) return
+    setSlaveConflictBusy(true)
+    setSlaveConflictError(null)
+    try {
+      const destination = latestBrokersRef.current.find(item => item.id === slaveConflict.destinationId)
+      if (!destination) {
+        setSlaveConflict(null)
+        return
+      }
+      let updated: BrokerAccount | null = destination
+      for (const channel of slaveConflict.channels) {
+        const result = await disconnectChannelFromBroker(supabase, user.id, updated, channel.id)
+        if (result.error || !result.broker) {
+          // Keep the channels already removed in this loop visible as removed.
+          if (updated !== destination) replaceBroker(updated)
+          setSlaveConflictError(result.error ?? copy.loadError)
+          return
+        }
+        updated = result.broker
+      }
+      replaceBroker(updated)
+      latestBrokersRef.current = latestBrokersRef.current.map(item =>
+        item.id === updated!.id ? { ...item, ...updated } : item,
+      )
+      const { sourceId, destinationId } = slaveConflict
+      setSlaveConflict(null)
+      const task = linkChainRef.current.then(() => runConnectDraggedSource(sourceId, destinationId))
+      linkChainRef.current = task.then(() => undefined, () => undefined)
+      await task
+    } finally {
+      setSlaveConflictBusy(false)
+    }
   }
 
   const disconnectDraggedSource = (sourceId: string, destinationId: string) => {
     const task = linkChainRef.current.then(async () => {
       if (!user?.id) return false
       const previous = copyLinksRef.current
+      const existing = previous.find(item =>
+        item.source_broker_account_id === sourceId && item.destination_broker_account_id === destinationId,
+      )
+      // Removing a link with open copied trades flattens them first (the safe
+      // helper below); ask before closing live trades, same as the mirror page.
+      if (existing) {
+        const approved = await confirm({
+          title: t.mirrorTradingPage.removeSlaveTitle ?? 'Remove slave account',
+          body: t.mirrorTradingPage.removeSlaveConfirm ?? REMOVE_LINK_CONFIRM_FALLBACK,
+          confirmLabel: t.mirrorTradingPage.delete,
+          cancelLabel: t.common.cancel,
+          tone: 'danger',
+          busyLabel: t.mirrorTradingPage.closingCopies ?? 'Closing copied trades…',
+        })
+        if (!approved) return false
+      }
       setCopyLinks(prev => prev.filter(link =>
         link.source_broker_account_id !== sourceId || link.destination_broker_account_id !== destinationId,
       ))
       linkingRef.current = true
-      const { error } = await disconnectBrokerCopyLink(supabase, user.id, sourceId, destinationId)
+      // The safe helper flattens first when copied trades are still open (the
+      // guard refuses the delete, the worker closes the copies, then it retries).
+      const { error } = existing
+        ? await disconnectBrokerCopyLinkSafely(supabase, user.id, existing)
+        : await disconnectBrokerCopyLink(supabase, user.id, sourceId, destinationId)
       linkingRef.current = false
-      if (!error) return true
+      if (!error) {
+        removeMirrorSlaveId(user.id, destinationId)
+        return true
+      }
       setCopyLinks(previous)
-      setLinkError(error)
+      setLinkError(humanizeMirrorDeleteError(error))
       return false
     })
     linkChainRef.current = task.then(() => undefined, () => undefined)
@@ -738,7 +848,7 @@ export function ConfigurationsPage() {
         setChannelOrder(previousOrder)
         setPlacedDestinationIds(previousDestinations)
         setDismissedDestinationIds(previousDismissed)
-        setLinkError(error ?? copy.loadError)
+        setLinkError(humanizeMirrorDeleteError(error ?? copy.loadError))
         return
       }
       latestBrokersRef.current = latestBrokersRef.current.map(item =>
@@ -780,6 +890,7 @@ export function ConfigurationsPage() {
         return
       }
     }
+    removeMirrorSlaveId(user.id, brokerId)
     setRemovedDestinationIds(prev => prev.filter(id => id !== brokerId))
   }
 
@@ -889,9 +1000,9 @@ export function ConfigurationsPage() {
 
       {loading ? (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_160px_minmax(0,1fr)]" aria-hidden>
-          <Card padding="sm"><div className="h-12 animate-pulse rounded bg-neutral-100 dark:bg-white/5" /></Card>
+          <Card padding="sm"><div className="h-12 animate-pulse rounded-sm bg-neutral-100 dark:bg-white/5" /></Card>
           <div className="hidden lg:block" />
-          <Card padding="sm"><div className="h-12 animate-pulse rounded bg-neutral-100 dark:bg-white/5" /></Card>
+          <Card padding="sm"><div className="h-12 animate-pulse rounded-sm bg-neutral-100 dark:bg-white/5" /></Card>
         </div>
       ) : (
         <>
@@ -1021,6 +1132,29 @@ export function ConfigurationsPage() {
           }}
         />
       ) : null}
+      {mirrorGuardModal}
+      {slaveConflict ? (
+        <SlaveChannelConflictModal
+          brokerLabel={(() => {
+            const broker = brokers.find(item => item.id === slaveConflict.destinationId)
+            return broker ? getBrokerDisplayLabel(broker) : 'Account'
+          })()}
+          channels={slaveConflict.channels}
+          labels={{
+            title: t.mirrorTradingPage.slaveChannelConflictTitle,
+            body: t.mirrorTradingPage.slaveChannelConflictBody,
+            channelsLabel: t.mirrorTradingPage.slaveChannelConflictChannelsLabel,
+            useDifferent: t.mirrorTradingPage.slaveChannelConflictUseDifferent,
+            disconnect: t.mirrorTradingPage.slaveChannelConflictDisconnect,
+            disconnecting: t.mirrorTradingPage.slaveChannelConflictDisconnecting,
+          }}
+          closeLabel={modalCopy.close}
+          busy={slaveConflictBusy}
+          error={slaveConflictError}
+          onDisconnectChannels={() => void disconnectChannelsAndConnectSource()}
+          onClose={() => setSlaveConflict(null)}
+        />
+      ) : null}
     </PageShell>
   )
 }
@@ -1052,7 +1186,7 @@ function draggedCard(
 function CardDragGhost({ drag, children }: { drag: CardDrag; children: ReactNode }) {
   return createPortal(
     <div
-      className="pointer-events-none fixed z-[80]"
+      className="pointer-events-none fixed z-80"
       style={{
         left: drag.x - drag.offsetX,
         top: drag.y - drag.offsetY,
@@ -1535,7 +1669,7 @@ function ConfigurationMap({
                 )}
                 <button
                   type="button"
-                  className="absolute end-0 top-1/2 z-30 h-3.5 w-3.5 -translate-y-1/2 translate-x-1/2 cursor-grab touch-none rounded-full bg-green-400 ring-2 ring-white hover:scale-110 active:cursor-grabbing dark:ring-neutral-950"
+                  className="absolute inset-e-0 top-1/2 z-30 h-3.5 w-3.5 -translate-y-1/2 translate-x-1/2 cursor-grab touch-none rounded-full bg-green-400 ring-2 ring-white hover:scale-110 active:cursor-grabbing dark:ring-neutral-950"
                   aria-label={interpolate(copy.dragToConnect, { channel: name })}
                   onPointerDown={event => onPortPointerDown(channelId, event)}
                   onPointerMove={onPortPointerMove}
@@ -1585,7 +1719,7 @@ function ConfigurationMap({
               <div className={`relative min-h-0 rounded-2xl ${connectTarget ? 'ring-2 ring-green-400' : ''}`}>
                 {normalizeSignalChannelIds(broker.signal_channel_ids).length === 0
                   && !brokerLinks.some(link => link.destinationId === broker.id) ? (
-                  <span className="absolute start-0 top-1/2 z-30 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-green-400 ring-2 ring-white dark:ring-neutral-950" />
+                  <span className="absolute inset-s-0 top-1/2 z-30 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-green-400 ring-2 ring-white dark:ring-neutral-950" />
                 ) : null}
                 <BrokerNode broker={broker} copy={copy} />
               </div>
@@ -1659,7 +1793,7 @@ function ConfigurationMap({
           <button
             key={`${curve.channelId}:${curve.brokerId}`}
             type="button"
-            className="pointer-events-auto absolute z-40 flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-teal-200 bg-white text-green-500 shadow-sm hover:bg-teal-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400 dark:border-teal-800 dark:bg-neutral-950 dark:text-teal-300 dark:hover:bg-teal-950"
+            className="pointer-events-auto absolute z-40 flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-teal-200 bg-white text-green-500 shadow-xs hover:bg-teal-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400 dark:border-teal-800 dark:bg-neutral-950 dark:text-teal-300 dark:hover:bg-teal-950"
             style={{ left: curve.gear.x, top: curve.gear.y }}
             aria-label={interpolate(copy.viewConfiguration, {
               channel: channelName,
@@ -1885,7 +2019,7 @@ function ConfigurationStack({
                   <div className="h-4 w-0.5 bg-green-400" />
                   <button
                     type="button"
-                    className="flex h-8 w-8 items-center justify-center rounded-full border border-teal-200 bg-white text-green-500 shadow-sm dark:border-teal-800 dark:bg-neutral-950 dark:text-teal-300"
+                    className="flex h-8 w-8 items-center justify-center rounded-full border border-teal-200 bg-white text-green-500 shadow-xs dark:border-teal-800 dark:bg-neutral-950 dark:text-teal-300"
                     aria-label={interpolate(copy.viewConfiguration, { channel: name, broker: broker.label })}
                     onClick={() => onOpen({ brokerId: broker.id, channelId })}
                   >

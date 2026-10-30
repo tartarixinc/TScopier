@@ -1,4 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { TRADE_CLOSE_REASON } from './tradeCloseReasons'
+import { applyCloseUpdate } from './tradeCloseUpdate'
 import { captureBusinessIssue } from './observability/businessEvents'
 import { purgeRangePendingLegsForBaskets } from './rangePendingLegDelete'
 
@@ -50,6 +52,7 @@ export type DriftRow = {
   user_id?: string | null
   broker_account_id?: string | null
   metaapi_order_id?: string | null
+  broker_position_ticket?: string | null
   status: string
   signal_id?: string | null
 }
@@ -74,7 +77,7 @@ export type DriftPlan = {
 }
 
 function ticketOf(row: DriftRow): number | null {
-  const ticket = Number(row.metaapi_order_id)
+  const ticket = Number(row.broker_position_ticket ?? row.metaapi_order_id)
   return Number.isFinite(ticket) && ticket > 0 ? ticket : null
 }
 
@@ -348,12 +351,19 @@ export async function applyBrokerDriftRepairs(
 
   const ghostIds = ghostRows.map(row => row.id)
   if (ghostIds.length) {
-    const { data, error } = await supabase
-      .from('trades')
-      .update({ status: 'closed', closed_at: new Date().toISOString() })
-      .in('id', ghostIds)
-      .in('status', ['open', 'pending'])
-      .select('id')
+    const { data, error } = await applyCloseUpdate(
+      {
+        status: 'closed',
+        closed_at: new Date().toISOString(),
+        close_reason: TRADE_CLOSE_REASON.POSITION_GONE,
+      },
+      patch => supabase
+        .from('trades')
+        .update(patch)
+        .in('id', ghostIds)
+        .in('status', ['open', 'pending'])
+        .select('id'),
+    )
     if (error) {
       console.warn(`[tradeBrokerDrift] ghost close failed: ${error.message}`)
       return { reopened, attached, closed }

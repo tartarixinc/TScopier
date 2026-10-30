@@ -157,7 +157,7 @@ export function ReportTradeModal({ trade, userId, onClose }: ReportTradeModalPro
                   onChange={e => setReason(e.target.value)}
                   placeholder={tr.reportReasonPlaceholder}
                   rows={4}
-                  className="w-full text-sm bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2.5 text-neutral-900 dark:text-neutral-50 placeholder:text-neutral-900 dark:placeholder:text-neutral-50 focus:outline-none focus:ring-2 focus:ring-green-400/60 resize-none"
+                  className="w-full text-sm bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2.5 text-neutral-900 dark:text-neutral-50 placeholder:text-neutral-500 dark:placeholder:text-neutral-400 focus:outline-hidden focus:ring-2 focus:ring-green-400/60 resize-none"
                 />
               </div>
 

@@ -62,7 +62,7 @@ export function WelcomeModal() {
 
   const modal = (
     <div
-      className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-4 sm:p-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+      className="fixed inset-0 z-100 flex items-end sm:items-center justify-center p-4 sm:p-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
       aria-hidden={false}
     >
       <div className="absolute inset-0 bg-neutral-950/40" aria-hidden />

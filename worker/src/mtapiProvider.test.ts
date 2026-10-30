@@ -2,6 +2,8 @@ import { strict as assert } from 'node:assert'
 import { afterEach, beforeEach, test } from 'node:test'
 import { MtapiApiError, MtapiProvider } from './mtapiProvider'
 import { fetchLiveAccountEquity } from './copyLimitMetrics'
+import { symbolLimits } from './copyShared/copyHelpers'
+import { normalizeSymbolParams } from './fxsocketClient'
 import {
   resetProviderResolverForTests,
   setMtapiProviderForResolverTests,
@@ -9,6 +11,8 @@ import {
 
 const oldBase = process.env.MTAPI_BASE_URL
 const oldInternalToken = process.env.MTAPI_INTERNAL_TOKEN
+const oldRateBackoff = process.env.MT_RATE_LIMIT_BACKOFF_MS
+const oldOrderThrottleRetry = process.env.MTAPI_ORDER_THROTTLE_RETRY
 
 beforeEach(() => {
   process.env.MTAPI_BASE_URL = 'https://mtapi.test'
@@ -20,6 +24,10 @@ afterEach(() => {
   else process.env.MTAPI_BASE_URL = oldBase
   if (oldInternalToken == null) delete process.env.MTAPI_INTERNAL_TOKEN
   else process.env.MTAPI_INTERNAL_TOKEN = oldInternalToken
+  if (oldRateBackoff == null) delete process.env.MT_RATE_LIMIT_BACKOFF_MS
+  else process.env.MT_RATE_LIMIT_BACKOFF_MS = oldRateBackoff
+  if (oldOrderThrottleRetry == null) delete process.env.MTAPI_ORDER_THROTTLE_RETRY
+  else process.env.MTAPI_ORDER_THROTTLE_RETRY = oldOrderThrottleRetry
 })
 
 test('synced=false account equity is not authoritative to copy-limit consumers', async () => {
@@ -48,6 +56,19 @@ function provider(handler: (url: URL, init?: RequestInit) => Response | Promise<
     timeoutMs: 2_000,
   })
 }
+
+test('checkConnect accepts the bridge JSON-encoded "OK"', async () => {
+  const api = provider(() => new Response(JSON.stringify('OK'), {
+    status: 200,
+    headers: { 'content-type': 'application/json; charset=utf-8' },
+  }))
+  await assert.doesNotReject(() => api.checkConnect('session'))
+})
+
+test('checkConnect accepts a plain-text OK', async () => {
+  const api = provider(() => new Response('OK', { status: 200 }))
+  await assert.doesNotReject(() => api.checkConnect('session'))
+})
 
 test('OpenedOrders accepts a successful authoritative empty list', async () => {
   const api = provider(() => new Response('[]', { status: 200 }))
@@ -139,6 +160,7 @@ test('AccountSummary preserves synced=false and normalizes values', async () => 
     leverage: undefined,
     currency: 'USD',
     type: undefined,
+    method: undefined,
     synced: false,
   })
   assert.equal(await api.verifyTradingReady('session'), false)
@@ -195,6 +217,60 @@ test('quote, symbols, SymbolParams, status, and history reads normalize MTAPI sh
   assert.deepEqual(await api.orderHistory('session', 'from', 'to'), [{ ticket: 9 }])
   assert.deepEqual(await api.closedOrders('session'), [{ ticket: 8 }])
   assert.deepEqual(await api.historyPositions('session', 'from', 'to'), [{ ticket: 7 }])
+})
+
+test('SymbolParams reads the MT4 shape (symbol object + groupParams) so lot limits survive', async () => {
+  const api = provider(url => {
+    if (url.pathname !== '/SymbolParams') return new Response('{}', { status: 404 })
+    return new Response(JSON.stringify({
+      symbolName: 'XAUUSDm',
+      symbol: {
+        symbolAsString: 'XAUUSDm',
+        digits: 3,
+        point: 0.001,
+        contract_size: 100,
+        stops_level: 0,
+        freeze_level: 0,
+      },
+      group: { name: 'Forex_group', description: 'Foreign Exchange' },
+      groupParams: { minLot: 0.01, maxLot: 200, lotStep: 0.01 },
+    }))
+  })
+  const spec = await api.symbolParams('session', 'XAUUSDm')
+  assert.equal(spec.symbolName, 'XAUUSDm')
+  assert.equal(spec.symbol?.digits, 3)
+  assert.equal(spec.symbol?.point, 0.001)
+  assert.equal(spec.symbol?.contractSize, 100)
+  assert.equal(spec.symbol?.stopsLevel, 0)
+  assert.equal(spec.symbol?.freezeLevel, 0)
+  assert.equal(spec.groupParams?.minLot, 0.01)
+  assert.equal(spec.groupParams?.maxLot, 200)
+  assert.equal(spec.groupParams?.lotStep, 0.01)
+  assert.deepEqual(symbolLimits(spec), { min: 0.01, max: 200, step: 0.01 })
+  assert.deepEqual(normalizeSymbolParams(spec), {
+    digits: 3,
+    point: 0.001,
+    contractSize: 100,
+    stopsLevel: 0,
+    freezeLevel: 0,
+    minLot: 0.01,
+    maxLot: 200,
+    lotStep: 0.01,
+  })
+})
+
+test('SymbolParams falls back to symbolAsString when the MT4 name field is empty', async () => {
+  const api = provider(url => {
+    if (url.pathname !== '/SymbolParams') return new Response('{}', { status: 404 })
+    return new Response(JSON.stringify({
+      symbolName: '',
+      symbol: { symbolAsString: 'XAUUSDm', digits: 3, point: 0.001 },
+      groupParams: { min_lot: 0.01, max_lot: 200, lot_step: 0.01 },
+    }))
+  })
+  const spec = await api.symbolParams('session', 'requested')
+  assert.equal(spec.symbolName, 'XAUUSDm')
+  assert.deepEqual(symbolLimits(spec), { min: 0.01, max: 200, step: 0.01 })
 })
 
 test('ConnectEx and ConnectByToken use GET query parameters without leaking credentials in errors', async () => {
@@ -441,4 +517,176 @@ test('orderSend waits out a broker rate limit and retries the rejected order', a
     if (previousCap == null) delete process.env.MTAPI_THROTTLE_RETRY_CAP_MS
     else process.env.MTAPI_THROTTLE_RETRY_CAP_MS = previousCap
   }
+})
+
+test('orderSend retries a bridge 429 rate_limited only when explicitly enabled', async () => {
+  process.env.MT_RATE_LIMIT_BACKOFF_MS = '0'
+  process.env.MTAPI_ORDER_THROTTLE_RETRY = 'true'
+  let sendCalls = 0
+  const api = provider(url => {
+    if (url.pathname === '/OrderSendSafe') {
+      sendCalls += 1
+      if (sendCalls === 1) {
+        // What the MTAPI nginx bridge returns when its rate limit trips.
+        return new Response(
+          JSON.stringify({ error: 'rate_limited', message: 'Too many requests' }),
+          { status: 429 },
+        )
+      }
+      return new Response(JSON.stringify({ ticket: 555, state: 'Filled' }))
+    }
+    return new Response('{}')
+  })
+  const result = await api.orderSend('session', {
+    symbol: 'EURUSDm', operation: 'Buy', volume: 0.01,
+  })
+  assert.equal(result.ticket, 555)
+  assert.equal(sendCalls, 2)
+})
+
+test('orderSend surfaces a persistent rate_limited after exhausting retries', async () => {
+  process.env.MT_RATE_LIMIT_BACKOFF_MS = '0'
+  process.env.MTAPI_ORDER_THROTTLE_RETRY = 'true'
+  let sendCalls = 0
+  const api = provider(url => {
+    if (url.pathname === '/OrderSendSafe') {
+      sendCalls += 1
+      return new Response(
+        JSON.stringify({ error: 'rate_limited', message: 'Too many requests' }),
+        { status: 429 },
+      )
+    }
+    return new Response('{}')
+  })
+  await assert.rejects(
+    () => api.orderSend('session', { symbol: 'EURUSDm', operation: 'Buy', volume: 0.01 }),
+    (error: unknown) => {
+      assert.ok(error instanceof MtapiApiError)
+      assert.equal((error as MtapiApiError).status, 429)
+      return true
+    },
+  )
+  // Default MT_ORDERSEND_MAX_ATTEMPTS is 3.
+  assert.equal(sendCalls, 3)
+})
+
+test('orderSend does not retry rate_limited by default (idempotency unproven)', async () => {
+  process.env.MT_RATE_LIMIT_BACKOFF_MS = '0'
+  delete process.env.MTAPI_ORDER_THROTTLE_RETRY
+  let sendCalls = 0
+  const api = provider(url => {
+    if (url.pathname === '/OrderSendSafe') {
+      sendCalls += 1
+      return new Response(
+        JSON.stringify({ error: 'rate_limited', message: 'Too many requests' }),
+        { status: 429 },
+      )
+    }
+    return new Response('{}')
+  })
+  await assert.rejects(
+    () => api.orderSend('session', { symbol: 'EURUSDm', operation: 'Buy', volume: 0.01 }),
+    (error: unknown) => error instanceof MtapiApiError,
+  )
+  assert.equal(sendCalls, 1)
+})
+
+test('orderSend does not retry a bare 429 without the pre-accept rate_limited code', async () => {
+  process.env.MT_RATE_LIMIT_BACKOFF_MS = '0'
+  let sendCalls = 0
+  const api = provider(url => {
+    if (url.pathname === '/OrderSendSafe') {
+      sendCalls += 1
+      // A 429 without the bridge's pre-accept `rate_limited` code could have
+      // been produced after the terminal accepted the order, so a
+      // non-idempotent send must not resend it.
+      return new Response('Too many requests', { status: 429 })
+    }
+    return new Response('{}')
+  })
+  await assert.rejects(
+    () => api.orderSend('session', { symbol: 'EURUSDm', operation: 'Buy', volume: 0.01 }),
+    (error: unknown) => {
+      assert.ok(error instanceof MtapiApiError)
+      assert.equal((error as MtapiApiError).status, 429)
+      return true
+    },
+  )
+  assert.equal(sendCalls, 1)
+})
+
+test('orderHistory retries once after a transport failure', async () => {
+  let calls = 0
+  const api = new MtapiProvider({
+    fetchImpl: (async () => {
+      calls++
+      if (calls === 1) throw new TypeError('fetch failed')
+      return new Response(JSON.stringify({ orders: [{ ticket: 9 }] }))
+    }) as typeof fetch,
+    timeoutMs: 2_000,
+  })
+  assert.deepEqual(await api.orderHistory('session', 'from', 'to'), [{ ticket: 9 }])
+  assert.equal(calls, 2)
+})
+
+test('orderHistory does not retry a deterministic 4xx', async () => {
+  let calls = 0
+  const api = new MtapiProvider({
+    fetchImpl: (async () => {
+      calls++
+      return new Response('bad request', { status: 400 })
+    }) as typeof fetch,
+    timeoutMs: 2_000,
+  })
+  await assert.rejects(() => api.orderHistory('session', 'from', 'to'))
+  assert.equal(calls, 1)
+})
+
+test('openedOrders does not retry a transport failure (history retry is scoped to history endpoints)', async () => {
+  let calls = 0
+  const api = new MtapiProvider({
+    fetchImpl: (async () => {
+      calls++
+      throw new TypeError('fetch failed')
+    }) as typeof fetch,
+    timeoutMs: 2_000,
+  })
+  await assert.rejects(() => api.openedOrders('session'))
+  assert.equal(calls, 1)
+})
+
+test('orderHistory on persistent transport failure makes exactly two attempts', async () => {
+  let calls = 0
+  const api = new MtapiProvider({
+    fetchImpl: (async () => {
+      calls++
+      throw new TypeError('fetch failed')
+    }) as typeof fetch,
+    timeoutMs: 2_000,
+  })
+  await assert.rejects(() => api.orderHistory('session', 'from', 'to'))
+  assert.equal(calls, 2)
+})
+
+test('orderHistory recovers a session-gone reply without a second transport retry', async () => {
+  const pathSequence: string[] = []
+  const api = new MtapiProvider({
+    fetchImpl: (async (input: string | URL | Request) => {
+      const raw = input instanceof Request ? input.url : String(input)
+      const url = new URL(raw)
+      pathSequence.push(url.pathname)
+      if (url.pathname === '/OrderHistory' && pathSequence.filter(p => p === '/OrderHistory').length === 1) {
+        return new Response(JSON.stringify({ error: { code: 'INVALID_TOKEN', message: 'INVALID_TOKEN' } }), { status: 401 })
+      }
+      if (url.pathname === '/CheckConnect') return new Response(JSON.stringify('OK'), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+      if (url.pathname === '/OrderHistory') return new Response(JSON.stringify({ orders: [{ ticket: 9 }] }))
+      return new Response('{}', { status: 404 })
+    }) as typeof fetch,
+    timeoutMs: 2_000,
+  })
+  assert.deepEqual(await api.orderHistory('session', 'from', 'to'), [{ ticket: 9 }])
+  assert.deepEqual(pathSequence, ['/OrderHistory', '/CheckConnect', '/OrderHistory'])
 })

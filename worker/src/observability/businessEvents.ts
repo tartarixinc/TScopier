@@ -1,4 +1,5 @@
 import { captureWorkerMessage, addWorkerBreadcrumb, isWorkerSentryEnabled } from './sentry'
+import { BROKER_REJECTED_STOPS, isInvalidStopsMessage } from '../brokerTradeError'
 import { safeForSentry } from './sentryRedaction'
 import type { WorkerSentryContextInput } from './sentryContext'
 
@@ -213,6 +214,7 @@ export function classifyBrokerFailureReason(message: string): string {
   if (/margin|not enough money|insufficient funds/.test(lower)) return 'INSUFFICIENT_MARGIN'
   if (/market.*closed|off quotes|trade disabled/.test(lower)) return 'MARKET_CLOSED'
   if (/invalid volume|lot|minimum volume|min lot/.test(lower)) return 'INVALID_LOT'
+  if (isInvalidStopsMessage(lower)) return BROKER_REJECTED_STOPS
   if (
     /symbolselect/.test(lower)
     || (/symbol|instrument/.test(lower) && /not found|unknown|disabled|unsupported|invalid|select\s*failed/.test(lower))

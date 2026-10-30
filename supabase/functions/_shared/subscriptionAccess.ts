@@ -235,6 +235,43 @@ export async function assertTelegramChannelLimit(
 
 export { isSubscriptionActive, effectivePlan };
 
+/**
+ * Derive why the copier should be paused, from the local subscriptions row.
+ * Used by revokeCopierAccessOnSubscriptionEnd so every billing-driven pause
+ * stores a reason the admin dashboard can break down.
+ * Returns null only when the query itself fails, so the caller can leave
+ * copier_pause_reason unset for a later backfill instead of persisting a wrong
+ * terminal label. A missing subscriptions row (user never subscribed) is a
+ * legitimate "unknown".
+ */
+export async function deriveCopierPauseReason(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("subscriptions")
+    .select("status, trial_ends_at")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) {
+    console.warn(
+      `[subscriptionAccess] pause-reason derivation failed for ${userId}: ${error.message}`,
+    );
+    return null;
+  }
+  const status = String(data?.status ?? "");
+  if (status === "past_due") return "payment_failed";
+  if (
+    status === "trialing" &&
+    data?.trial_ends_at &&
+    new Date(data.trial_ends_at).getTime() < Date.now()
+  ) {
+    return "trial_expired";
+  }
+  if (status === "canceled") return "subscription_ended";
+  return "unknown";
+}
+
 /** Pause copier and drop listener lease when subscription is no longer active. */
 export async function revokeCopierAccessOnSubscriptionEnd(
   supabase: SupabaseClient,
@@ -242,10 +279,16 @@ export async function revokeCopierAccessOnSubscriptionEnd(
 ): Promise<void> {
   if (await loadUserIsAdmin(supabase, userId)) return
 
+  // Only on the pause transition: a copier the user already paused keeps its
+  // own reason instead of being relabelled by a later billing event.
+  const reason = await deriveCopierPauseReason(supabase, userId)
+  const pausePatch: Record<string, unknown> = { copier_paused: true }
+  if (reason) pausePatch.copier_pause_reason = reason
   const { error: pauseErr } = await supabase
     .from("user_profiles")
-    .update({ copier_paused: true })
+    .update(pausePatch)
     .eq("user_id", userId)
+    .eq("copier_paused", false)
   if (pauseErr) {
     console.warn(
       `[subscriptionAccess] copier_paused update failed for ${userId}: ${pauseErr.message}`,
@@ -272,7 +315,7 @@ export async function restoreCopierAccessOnSubscriptionActive(
 
   const { error } = await supabase
     .from("user_profiles")
-    .update({ copier_paused: false })
+    .update({ copier_paused: false, copier_pause_reason: null })
     .eq("user_id", userId)
   if (error) {
     console.warn(

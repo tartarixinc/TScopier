@@ -31,6 +31,7 @@ import {
 } from '../../lib/telegramChannelReconcile'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
 import { useSubscription } from '../../context/SubscriptionContext'
+import { useMirrorSlaveChannelGuard } from '../../hooks/useMirrorSlaveChannelGuard'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import { Toggle } from '../../components/ui/Toggle'
@@ -120,7 +121,7 @@ function TgChannelAvatar({ title, username }: { title: string; username?: string
   const avatarUrl = getTelegramAvatarUrl(username)
 
   return (
-    <div className="w-8 h-8 rounded-lg bg-primary-50 text-green-400 flex items-center justify-center flex-shrink-0 overflow-hidden">
+    <div className="w-8 h-8 rounded-lg bg-primary-50 text-green-400 flex items-center justify-center shrink-0 overflow-hidden">
       {avatarUrl && !imageFailed ? (
         <img
           src={avatarUrl}
@@ -149,6 +150,7 @@ export function CopierEnginePage() {
   const initialTgCache = user?.id ? getCachedTgChannels(user.id) : null
   const initialTgSession = user?.id ? getCachedTgSession(user.id) : null
   const { brokers, replaceBroker, setBrokers, refreshBrokers } = useBrokerAccounts()
+  const { guardBroker, modal: mirrorGuardModal } = useMirrorSlaveChannelGuard()
   const {
     hasActiveSubscription,
     canAddChannel,
@@ -565,6 +567,8 @@ export function CopierEnginePage() {
     if (!user) return
     const broker = brokers.find(b => b.id === brokerId)
     if (!broker) return
+    const approved = await guardBroker(broker)
+    if (!approved) return
     setConnectingBrokerId(brokerId)
     setError('')
     const { broker: updated, error: linkErr } = await connectChannelToBroker(
@@ -597,6 +601,8 @@ export function CopierEnginePage() {
     setError('')
     let nextBrokers = [...brokers]
     for (const broker of toLink) {
+      const approved = await guardBroker(broker)
+      if (!approved) continue
       const { broker: updated, error: linkErr } = await connectChannelToBroker(
         supabase,
         user.id,
@@ -1104,13 +1110,13 @@ export function CopierEnginePage() {
       {showListenerLeaseWarning && (
         <div className="mb-3 px-4 py-3 bg-warning-50 dark:bg-amber-950/40 border border-warning-200 dark:border-amber-800 rounded-xl text-sm text-warning-800 dark:text-amber-100 flex flex-col sm:flex-row sm:items-center gap-2 sm:justify-between">
           <div className="flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
             <div>
               <p className="font-medium">{ce.listenerLeaseExpired}</p>
               <p className="text-xs mt-0.5 opacity-90">{ce.listenerLeaseExpiredHint}</p>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2 sm:flex-shrink-0">
+          <div className="flex flex-wrap gap-2 sm:shrink-0">
             <Button size="sm" variant="secondary" onClick={() => void fetchTgChannels({ force: true })} loading={loadingTg}>
               <RefreshCw className="w-3.5 h-3.5" />
               {t.common.refresh}
@@ -1161,8 +1167,8 @@ export function CopierEnginePage() {
       {loading && !hasTgSession && (
         <Card className="mb-3" padding="none">
           <div className="px-4 py-6">
-            <div className="h-4 w-48 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse mb-2" />
-            <div className="h-3 w-64 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
+            <div className="h-4 w-48 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse mb-2" />
+            <div className="h-3 w-64 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
           </div>
         </Card>
       )}
@@ -1170,16 +1176,16 @@ export function CopierEnginePage() {
       {/* Telegram channels panel */}
       {hasTgSession && !isTgReconnectFlow && (
         <Card className="mb-3" padding="none">
-          <div className="px-4 py-2.5 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between gap-2 bg-gradient-to-r from-[#229ED9]/8 to-transparent dark:from-[#229ED9]/15">
+          <div className="px-4 py-2.5 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between gap-2 bg-linear-to-r from-[#229ED9]/8 to-transparent dark:from-[#229ED9]/15">
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-lg bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 flex items-center justify-center flex-shrink-0 shadow-sm">
+              <div className="w-8 h-8 rounded-lg bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 flex items-center justify-center shrink-0 shadow-xs">
                 <img src="/Telegram.svg" alt="" className="w-[18px] h-[18px] object-contain" loading="lazy" aria-hidden />
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 truncate">{ce.yourTelegramChannels}</p>
                 <p className="text-xs text-neutral-900 dark:text-neutral-50">{ce.telegramConnectedHint}</p>
               </div>
-              <span className="flex-shrink-0 hidden sm:inline-flex gap-1.5">
+              <span className="shrink-0 hidden sm:inline-flex gap-1.5">
                 <Badge variant="primary" size="sm">{ce.connected}</Badge>
                 {hasActiveSubscription && listenerLease.status === 'live' && (
                   <Badge variant="primary" size="sm">{ce.listenerLeaseLive}</Badge>
@@ -1231,10 +1237,10 @@ export function CopierEnginePage() {
             <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
               {[...Array(4)].map((_, i) => (
                 <div key={i} className="px-4 py-2.5 flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-neutral-100 dark:bg-neutral-800 animate-pulse flex-shrink-0" />
+                  <div className="w-8 h-8 rounded-lg bg-neutral-100 dark:bg-neutral-800 animate-pulse shrink-0" />
                   <div className="flex-1 space-y-1.5">
-                    <div className="h-3 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse w-48" />
-                    <div className="h-2.5 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse w-24" />
+                    <div className="h-3 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse w-48" />
+                    <div className="h-2.5 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse w-24" />
                   </div>
                 </div>
               ))}
@@ -1275,13 +1281,13 @@ export function CopierEnginePage() {
                       {ch.username && <p className="text-xs text-neutral-900 dark:text-neutral-50">@{ch.username}</p>}
                     </div>
                     {ch.members_count > 0 && (
-                      <span className="text-xs text-neutral-900 dark:text-neutral-50 flex-shrink-0">
+                      <span className="text-xs text-neutral-900 dark:text-neutral-50 shrink-0">
                         {interpolate(ce.members, { count: ch.members_count.toLocaleString() })}
                       </span>
                     )}
                     <button
                       onClick={() => addFromTg(ch)}
-                      className={`px-3 py-1 text-xs font-medium rounded-lg border transition-colors flex-shrink-0 ${
+                      className={`px-3 py-1 text-xs font-medium rounded-lg border transition-colors shrink-0 ${
                         alreadyAdded
                           ? 'border-neutral-200/65 dark:border-neutral-800/55 text-neutral-900 dark:text-neutral-50 cursor-default'
                           : 'border-green-400 text-green-400 hover:bg-primary-50'
@@ -1359,6 +1365,7 @@ export function CopierEnginePage() {
         onSelect={addSignalSource}
         labelFor={sourceTabLabel}
       />
+      {mirrorGuardModal}
     </PageShell>
   )
 }
@@ -1601,7 +1608,7 @@ function ChannelRow({
                     <Plus className="w-3.5 h-3.5" />
                   </button>
                   {connectMenuOpen && (
-                    <div className="absolute left-0 top-full z-30 mt-1 min-w-[12rem] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg py-1">
+                    <div className="absolute left-0 top-full z-30 mt-1 min-w-48 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg py-1">
                       {!hasAnyBrokers ? (
                         <p className="px-3 py-2 text-xs text-neutral-900 dark:text-neutral-50">{ce.noBrokersYet}</p>
                       ) : availableBrokers.length === 0 ? (
@@ -1660,7 +1667,7 @@ function ChannelRow({
                 {ce.connectToBroker}
               </Button>
               {connectMenuOpen && availableBrokers.length > 0 && (
-                <div className="absolute left-0 top-full z-30 mt-1 min-w-[12rem] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg py-1">
+                <div className="absolute left-0 top-full z-30 mt-1 min-w-48 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg py-1">
                   {availableBrokers.map(broker => (
                     <button
                       key={broker.id}

@@ -6,6 +6,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { buildClient } from './telegramClient'
 import { UserListener, telegramConnectTimeoutMs, withTelegramTimeout } from './userListener'
+import { openTelegramSession } from './telegramSessionCrypto'
 
 async function loadSessionString(
   supabase: SupabaseClient,
@@ -20,7 +21,7 @@ async function loadSessionString(
 
   if (error) throw new Error(error.message)
   if (!sess?.session_string) throw new Error('No active Telegram session')
-  return sess.session_string
+  return openTelegramSession(sess.session_string)
 }
 
 /** Short-lived MTProto client; never uses the live UserListener connection. */

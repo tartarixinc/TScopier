@@ -2,8 +2,12 @@ import { useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { MarketingLayout } from '../../components/marketing/MarketingLayout'
 import { HeroSection } from '../../components/marketing/sections/HeroSection'
-import { StatsSection } from '../../components/marketing/sections/StatsSection'
-import { IntegrationsSection } from '../../components/marketing/sections/IntegrationsSection'
+// import { StatsSection } from '../../components/marketing/sections/StatsSection'
+import { SupportedPlatformsSection } from '../../components/marketing/sections/SupportedPlatformsSection'
+// import { CompletePictureSection } from '../../components/marketing/sections/CompletePictureSection'
+// import { IntegrationsSection } from '../../components/marketing/sections/IntegrationsSection'
+import { ProductShowcaseSection } from '../../components/marketing/sections/ProductShowcaseSection'
+import { SellSignalsSection } from '../../components/marketing/sections/SellSignalsSection'
 import { WhyChooseSection } from '../../components/marketing/sections/WhyChooseSection'
 import { ComparisonSection } from '../../components/marketing/sections/ComparisonSection'
 import { FeaturesSection } from '../../components/marketing/sections/FeaturesSection'
@@ -23,12 +27,24 @@ export function LandingPage() {
     })
   }, [location.search])
 
+  // Arriving from another marketing page via "For Providers" (/#providers).
+  useEffect(() => {
+    if (!location.hash) return
+    const id = decodeURIComponent(location.hash.slice(1))
+    const t = window.setTimeout(() => document.getElementById(id)?.scrollIntoView({ block: 'start' }), 150)
+    return () => window.clearTimeout(t)
+  }, [location.hash])
+
   return (
-    <MarketingLayout>
+    <MarketingLayout darkHero>
       <HeroSection />
-      <StatsSection />
-      <IntegrationsSection />
+      <SupportedPlatformsSection />
+      {/* <CompletePictureSection /> */}
+      {/* <IntegrationsSection /> */}
+      {/* <StatsSection /> */}
+      <ProductShowcaseSection />
       <WhyChooseSection />
+      <SellSignalsSection />
       <FeaturesSection />
       <ComparisonSection />
       <StepsSection />

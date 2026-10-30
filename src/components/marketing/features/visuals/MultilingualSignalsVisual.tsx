@@ -23,12 +23,12 @@ function SignalCard({
   return (
     <div
       className={clsx(
-        'rounded-xl border border-neutral-200/60 bg-white/95 px-3.5 py-3 shadow-sm backdrop-blur-sm dark:border-neutral-800/55 dark:bg-neutral-900/95',
+        'rounded-xl border border-neutral-200/60 bg-white/95 px-3.5 py-3 shadow-xs backdrop-blur-xs dark:border-neutral-800/55 dark:bg-neutral-900/95',
         elevated && 'shadow-md ring-1 ring-green-400/10 dark:ring-green-400/10',
       )}
     >
       <div className="flex items-center gap-2">
-        <LocaleFlag flagId={flagId} className="h-3.5 w-[1.3125rem]" title={language} />
+        <LocaleFlag flagId={flagId} className="h-3.5 w-5.25" title={language} />
         <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50">{language}</span>
         <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-teal-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-green-500 dark:bg-teal-950/50 dark:text-teal-300">
           <Check className="h-2.5 w-2.5" aria-hidden />
@@ -80,7 +80,7 @@ export function MultilingualSignalsVisual() {
               <LocaleFlag
                 key={flagId}
                 flagId={flagId}
-                className="h-3 w-[1.125rem] shadow-sm"
+                className="h-3 w-4.5 shadow-xs"
               />
             ))}
           </div>

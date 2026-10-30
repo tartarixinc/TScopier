@@ -11,7 +11,7 @@ export function isDashboardBootPath(pathname: string) {
 }
 
 function SkeletonBar({ className }: { className?: string }) {
-  return <div className={clsx('rounded-md bg-neutral-200/90 dark:bg-white/[0.08]', className)} />
+  return <div className={clsx('rounded-md bg-neutral-200/90 dark:bg-white/8', className)} />
 }
 
 export function DashboardMetricsSkeleton({ message }: { message?: string }) {
@@ -23,7 +23,7 @@ export function DashboardMetricsSkeleton({ message }: { message?: string }) {
         {Array.from({ length: 4 }, (_, i) => (
           <div
             key={i}
-            className="rounded-2xl bg-[#F7F8FA] px-4 py-4 sm:px-5 dark:bg-white/[0.03] dark:ring-1 dark:ring-inset dark:ring-white/[0.06]"
+            className="rounded-2xl bg-[#F7F8FA] px-4 py-4 sm:px-5 dark:bg-white/3 dark:ring-1 dark:ring-inset dark:ring-white/6"
           >
             <SkeletonBar className="h-3 w-24" />
             <SkeletonBar className="mt-3 h-7 w-28" />
@@ -44,10 +44,10 @@ export function DashboardMetricsSkeleton({ message }: { message?: string }) {
 
       <div className={`${CARD} overflow-hidden`}>
         <div className="flex items-center gap-2 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
-          <SkeletonBar className="h-4 w-4 shrink-0 rounded" />
+          <SkeletonBar className="h-4 w-4 shrink-0 rounded-sm" />
           <SkeletonBar className="h-4 w-28" />
           <span className="flex-1" />
-          <SkeletonBar className="h-4 w-4 shrink-0 rounded" />
+          <SkeletonBar className="h-4 w-4 shrink-0 rounded-sm" />
         </div>
         <div className="px-5 py-4">
           <SkeletonBar className="h-4 w-3/5 max-w-sm" />
@@ -92,12 +92,12 @@ export function DashboardMetricsSkeleton({ message }: { message?: string }) {
             <SkeletonBar className="h-3 w-16" />
           </div>
           <div className="overflow-x-auto">
-            <div className={`${COPIER_LOG_GRID} min-w-[28rem] border-b border-neutral-100 px-5 py-2.5 dark:border-neutral-800/80`}>
+            <div className={`${COPIER_LOG_GRID} min-w-md border-b border-neutral-100 px-5 py-2.5 dark:border-neutral-800/80`}>
               {Array.from({ length: 5 }, (_, i) => (
                 <SkeletonBar key={i} className="h-3 w-12" />
               ))}
             </div>
-            <div className="min-w-[28rem] divide-y divide-neutral-100 dark:divide-neutral-800">
+            <div className="min-w-md divide-y divide-neutral-100 dark:divide-neutral-800">
               {Array.from({ length: 4 }, (_, i) => (
                 <div key={i} className={`${COPIER_LOG_GRID} px-5 py-3`}>
                   <SkeletonBar className="h-5 w-16 rounded-full" />
@@ -118,7 +118,7 @@ export function DashboardMetricsSkeleton({ message }: { message?: string }) {
           <SkeletonBar className="h-3 w-12" />
         </div>
         <div className="overflow-x-auto">
-          <div className="min-w-[52rem] lg:min-w-0">
+          <div className="min-w-208 lg:min-w-0">
             <div className="grid grid-cols-9 gap-2 border-b border-neutral-100 px-5 py-2.5 dark:border-neutral-800/80">
               {Array.from({ length: 9 }, (_, i) => (
                 <SkeletonBar key={i} className={clsx('h-3', i === 8 ? 'ml-auto w-12' : 'w-14')} />
@@ -148,7 +148,7 @@ export function DashboardMetricsSkeleton({ message }: { message?: string }) {
 export function DashboardRouteSkeleton() {
   return (
     <div className="mx-auto w-full max-w-[1600px] space-y-8 px-4 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
-      <div className="h-9 w-72 max-w-full animate-pulse rounded-md bg-neutral-200/90 dark:bg-white/[0.08]" />
+      <div className="h-9 w-72 max-w-full animate-pulse rounded-md bg-neutral-200/90 dark:bg-white/8" />
       <DashboardMetricsSkeleton />
     </div>
   )
@@ -164,14 +164,14 @@ export function DashboardBootSkeleton() {
     >
       <aside className="hidden h-full w-64 shrink-0 flex-col border-e border-neutral-100 bg-[#F7F8FA] dark:border-neutral-800 dark:bg-neutral-950 lg:flex">
         <div className="flex h-16 items-center border-b border-neutral-100 px-4 dark:border-neutral-800">
-          <div className="h-6 w-28 animate-pulse rounded-md bg-neutral-200/90 dark:bg-white/[0.08]" />
+          <div className="h-6 w-28 animate-pulse rounded-md bg-neutral-200/90 dark:bg-white/8" />
         </div>
         <div className="space-y-2 px-3 py-4">
           {Array.from({ length: 8 }, (_, i) => (
             <div
               key={i}
               className={clsx(
-                'h-9 animate-pulse rounded-lg bg-neutral-200/80 dark:bg-white/[0.06]',
+                'h-9 animate-pulse rounded-lg bg-neutral-200/80 dark:bg-white/6',
                 i === 0 ? 'w-full' : 'w-[88%]',
               )}
             />
@@ -180,7 +180,7 @@ export function DashboardBootSkeleton() {
       </aside>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="flex h-14 shrink-0 items-center border-b border-neutral-100 px-4 dark:border-neutral-800 sm:h-16 sm:px-6">
-          <div className="h-9 w-full max-w-md animate-pulse rounded-lg bg-neutral-200/90 dark:bg-white/[0.08]" />
+          <div className="h-9 w-full max-w-md animate-pulse rounded-lg bg-neutral-200/90 dark:bg-white/8" />
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto">
           <DashboardRouteSkeleton />

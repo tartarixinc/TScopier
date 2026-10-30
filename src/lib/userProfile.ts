@@ -24,6 +24,7 @@ export interface UserProfile {
   copier_paused?: boolean
   avatar_url?: string | null
   social_links?: Record<string, string>
+  copier_pause_reason?: string | null
   created_at?: string
   updated_at?: string
 }

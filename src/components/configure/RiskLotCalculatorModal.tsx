@@ -380,7 +380,7 @@ function RiskLotCalculatorModalInner({
   const modal = (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-3 sm:p-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+      className="fixed inset-0 z-110 flex items-end sm:items-center justify-center p-3 sm:p-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
       onClick={e => { if (e.target === overlayRef.current) onClose() }}
     >
       <div className="absolute inset-0 bg-neutral-950/55" aria-hidden />
@@ -416,7 +416,7 @@ function RiskLotCalculatorModalInner({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto md:flex md:overflow-hidden">
-          <div className="space-y-4 border-b border-neutral-100 p-5 md:min-h-0 md:flex-[3] md:overflow-y-auto md:border-b-0 md:border-r dark:border-neutral-800">
+          <div className="space-y-4 border-b border-neutral-100 p-5 md:min-h-0 md:flex-3 md:overflow-y-auto md:border-b-0 md:border-r dark:border-neutral-800">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <ConfigureInput
                   label={copy.accountBalance}
@@ -536,7 +536,7 @@ function RiskLotCalculatorModalInner({
                   <label className="flex shrink-0 items-center gap-2 text-sm text-neutral-900 dark:text-neutral-50">
                     <input
                       type="checkbox"
-                      className="h-4 w-4 rounded border-neutral-300 text-green-400 focus:ring-green-400"
+                      className="h-4 w-4 rounded-sm border-neutral-300 text-green-400 focus:ring-green-400"
                       checked={form.usePredefinedSl}
                       onChange={e => patchForm({ usePredefinedSl: e.target.checked })}
                     />
@@ -558,11 +558,11 @@ function RiskLotCalculatorModalInner({
                     <label className="flex items-center gap-2 text-sm text-neutral-900 dark:text-neutral-50">
                       <input
                         type="checkbox"
-                        className="h-4 w-4 rounded border-neutral-300 text-green-400 focus:ring-green-400"
+                        className="h-4 w-4 rounded-sm border-neutral-300 text-green-400 focus:ring-green-400"
                         checked={form.usePredefinedTp}
                         onChange={e => patchForm({ usePredefinedTp: e.target.checked })}
                       />
-                      <span className="max-w-[9rem] leading-snug sm:max-w-none">{copy.usePredefinedTp}</span>
+                      <span className="max-w-36 leading-snug sm:max-w-none">{copy.usePredefinedTp}</span>
                     </label>
                     <Button variant="ghost" size="sm" onClick={addTpRow}>{copy.addTp}</Button>
                   </div>
@@ -686,7 +686,7 @@ function RiskLotCalculatorModalInner({
               </div>
             </div>
 
-            <aside className="flex flex-col bg-neutral-50 dark:bg-neutral-800/30 md:min-h-0 md:flex-[2] md:overflow-hidden">
+            <aside className="flex flex-col bg-neutral-50 dark:bg-neutral-800/30 md:min-h-0 md:flex-2 md:overflow-hidden">
               <h3 className="shrink-0 border-b border-neutral-200 px-5 py-3 text-sm font-semibold text-neutral-900 dark:border-neutral-700 dark:text-neutral-50">
                 {copy.resultsTitle}
               </h3>

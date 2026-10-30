@@ -390,7 +390,7 @@ export function CopierStatusCard({
         aria-expanded={expanded}
         className={clsx(
           'flex w-full items-center gap-2 px-5 py-4 text-left',
-          'transition-colors hover:bg-[#F7F8FA] dark:hover:bg-white/[0.03]',
+          'transition-colors hover:bg-[#F7F8FA] dark:hover:bg-white/3',
           expanded && 'border-b border-neutral-100 dark:border-neutral-800',
         )}
       >

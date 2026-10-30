@@ -113,7 +113,27 @@ export function messageHasExplicitSlTpLabels(message: string): boolean {
   if (/take\s+profit\s*\d+\s*\(\s*tp\d+\s*\)\s*:\s*\d/i.test(text)) return true
   return false
 }
-
+/**
+ * True when the message explicitly labels a **stop** (SL / STOP LOSS / and-onwards
+ * forms such as "SL.TP 4105"), regardless of whether the parser managed to read the
+ * price. Used to decide that one more parse attempt is worthwhile when the stop is
+ * missing from the result. Take-profit labels are deliberately excluded: a signal with
+ * take profits but no stop label is an account-level decision (predefined / risk-reward
+ * stops can supply it), not a parser gap.
+ */
+export function messageHasExplicitStopLabel(message: string): boolean {
+  const text = String(message ?? '')
+  if (!text) return false
+  if (new RegExp(String.raw`\b(?:sl|stop\s*loss|stoploss)\b${LABEL_TO_PRICE_GAP}[:=@]?\s*\d`, 'iu').test(text)) return true
+  if (/\b(?:sl|stop\s*loss|stoploss)\b\s*\.\s*\d/i.test(text)) return true
+  if (/(?:^|\s)(?:sl|stop\s*loss|stoploss)[_\s]*\/\s*@\s*\d/i.test(text)) return true
+  if (/\b(?:sl|stop\s*loss|stoploss)\s+to\s+\d/i.test(text)) return true
+  if (/\b(?:sl|stop\s*loss|stoploss)\s*\(\s*\d/i.test(text)) return true
+  if (/(?:وقف\s*الخسارة|وقف)\s*[:：=@]?\s*\d/u.test(text)) return true
+  if (/(?:وقف\s*الخسارة|وقف)\s+(?:to|إلى)\s*\d/iu.test(text)) return true
+  if (/stop\s+loss\s*\(\s*sl\s*\)\s*:\s*\d/i.test(text)) return true
+  return false
+}
 /**
  * True when the message explicitly labels an entry price/zone/level, as opposed to a bare
  * market entry such as "Gold buy now". Used to detect a parser gap: if the message labels an

@@ -17,7 +17,8 @@ import { loadExistingRangeStepIndices } from '../rangePendingFireGuard'
 import { isPostgresDuplicateKeyError } from '../rangePendingLegPersist'
 import { brokerLimitPriceKeysFromOpenedOrders } from './brokerPendingOpenedDedupe'
 import { captureDeferredBusinessFailure } from '../observability/deferredBusinessEvents'
-
+import { writeExecutionLog } from '../observability/executionLog'
+import { humanizeOrderSendError, isInvalidStopsMessage } from '../brokerTradeError'
 /** In-process single-flight for broker ladder OrderSends (signal+broker+symbol). */
 const brokerRangeMaterializeInflight = new Set<string>()
 
@@ -431,7 +432,7 @@ async function materializeBrokerRangePendingLegsUnlocked(
       }
 
       // Prefer planned SL/TP on the resting limit so the chart shows protection.
-      // Invalid-stops fallback still places naked; monitor/rebalance heals later.
+      // A stop rejection fails the leg; a price rejection is remapped to a deeper rung.
       const plannedSl = v.stoploss != null && Number(v.stoploss) > 0 ? Number(v.stoploss) : 0
       const plannedTp = v.cweClosePrice != null
         ? 0
@@ -460,12 +461,7 @@ async function materializeBrokerRangePendingLegsUnlocked(
           result = await api.orderSend(uuid, clamped.args)
         } catch (sendErr) {
           const msg = sendErr instanceof Error ? sendErr.message : String(sendErr)
-          const isInvalidStops = /invalid\s+stops/i.test(msg)
-          const hasStops = (Number(clamped.args.stoploss) || 0) > 0
-            || (Number(clamped.args.takeprofit) || 0) > 0
-          if (isInvalidStops && hasStops) {
-            result = await api.orderSend(uuid, { ...clamped.args, stoploss: 0, takeprofit: 0 })
-          } else if (isBrokerPendingLimitPriceRejectMessage(msg)) {
+          if (isBrokerPendingLimitPriceRejectMessage(msg)) {
             exhaustedInvalidSteps.set(pick.stepIdx, { price: limitPx, reason: msg })
             if (reserve.kind === 'owned') {
               await ctx.supabase
@@ -483,6 +479,22 @@ async function materializeBrokerRangePendingLegsUnlocked(
               + ` step=${pick.stepIdx} price=${limitPx}; trying next deeper rung: ${msg}`,
             )
             continue
+          } else if (isInvalidStopsMessage(msg)) {
+            // Broker refused the stop. Never place the pending order without it.
+            console.warn(
+              `[tradeExecutor] broker range pending rejected stops signal=${signal.id}`
+              + ` step=${pick.stepIdx} op=${pendingOp} price=${limitPx}: ${msg}`,
+            )
+            if (reserve.kind === 'owned') {
+              await ctx.supabase
+                .from('range_pending_legs')
+                .update({
+                  status: 'cancelled',
+                  error_message: `skipped_invalid_stops:${humanizeOrderSendError(msg, symbol)}`,
+                })
+                .eq('id', reserve.id)
+            }
+            break
           } else {
             console.warn(
               `[tradeExecutor] broker range pending rejected signal=${signal.id} step=${pick.stepIdx} op=${pendingOp} price=${limitPx}: ${msg}`,
@@ -585,8 +597,7 @@ async function materializeBrokerRangePendingLegsUnlocked(
         }
         placedTickets.push({ ticket: Number(ticket), row })
         placed = true
-
-        void ctx.supabase.from('trade_execution_logs').insert({
+        void writeExecutionLog(ctx.supabase, {
           user_id: signal.user_id,
           signal_id: signal.id,
           broker_account_id: broker.id,
@@ -598,7 +609,7 @@ async function materializeBrokerRangePendingLegsUnlocked(
             layering_type: 'pending_order',
             step_idx: pick.stepIdx,
           } as unknown as Record<string, unknown>,
-        }).then(() => undefined, () => undefined)
+        })
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         if (isBrokerPendingLimitPriceRejectMessage(msg)) {
@@ -717,17 +728,15 @@ async function materializeBrokerRangePendingLegsUnlocked(
         } catch { /* best-effort rollback */ }
       }
       if (!liveEntryFast) {
-        try {
-          await ctx.supabase.from('trade_execution_logs').insert({
-            user_id: signal.user_id,
-            signal_id: signal.id,
-            broker_account_id: broker.id,
-            action: 'range_broker_pending_failed',
-            status: 'failed',
-            request_payload: { rows: insertRows.length, reservedAndConfirmed, anchor, anchorSource } as unknown as Record<string, unknown>,
-            error_message: persist.lastError ?? 'unknown',
-          })
-        } catch { /* best-effort */ }
+        await writeExecutionLog(ctx.supabase, {
+          user_id: signal.user_id,
+          signal_id: signal.id,
+          broker_account_id: broker.id,
+          action: 'range_broker_pending_failed',
+          status: 'failed',
+          request_payload: { rows: insertRows.length, reservedAndConfirmed, anchor, anchorSource } as unknown as Record<string, unknown>,
+          error_message: persist.lastError ?? 'unknown',
+        })
       }
       captureDeferredBusinessFailure({
         category: 'layering',
@@ -777,38 +786,36 @@ async function materializeBrokerRangePendingLegsUnlocked(
     + ` step_pips=${ladder.stepPips} dist_pips=${ladder.distPips} max_step_idx=${ladder.maxStepIdx}`
     + ` step_offset=${ladder.stepPriceOffset}`,
   )
-  try {
-    await ctx.supabase.from('trade_execution_logs').insert({
-      user_id: signal.user_id,
-      signal_id: signal.id,
-      broker_account_id: broker.id,
-      action: 'range_broker_pending_inserted',
-      status: 'success',
-      request_payload: {
-        rows: placedTotal,
-        reserved_confirmed: reservedAndConfirmed,
-        cancelled_invalid: cancelledRows.length,
-        remaps,
-        anchor,
-        anchorSource,
-        symbol,
-        stepIdxs: [
-          ...insertRows.map(r => r.step_idx),
-          ...placedTickets.filter(p => !insertRows.includes(p.row)).map(p => p.row.step_idx),
-        ],
-        triggers: [
-          ...insertRows.map(r => r.trigger_price),
-          ...placedTickets.filter(p => !insertRows.includes(p.row)).map(p => p.row.trigger_price),
-        ],
-        tickets: placedTickets.map(p => p.ticket),
-        range_layering: plan.rangeLayering ?? null,
-        ladder_pricing: ladder,
-        basket_leg_cap: plan.rangeLayering?.basketLegCap ?? null,
-        strict_deferred: strictDeferred,
-        strict_broker_pending: strictBrokerPlaced,
-        layering_type: 'pending_order',
-      } as unknown as Record<string, unknown>,
-    })
-  } catch { /* best-effort */ }
+  await writeExecutionLog(ctx.supabase, {
+    user_id: signal.user_id,
+    signal_id: signal.id,
+    broker_account_id: broker.id,
+    action: 'range_broker_pending_inserted',
+    status: 'success',
+    request_payload: {
+      rows: placedTotal,
+      reserved_confirmed: reservedAndConfirmed,
+      cancelled_invalid: cancelledRows.length,
+      remaps,
+      anchor,
+      anchorSource,
+      symbol,
+      stepIdxs: [
+        ...insertRows.map(r => r.step_idx),
+        ...placedTickets.filter(p => !insertRows.includes(p.row)).map(p => p.row.step_idx),
+      ],
+      triggers: [
+        ...insertRows.map(r => r.trigger_price),
+        ...placedTickets.filter(p => !insertRows.includes(p.row)).map(p => p.row.trigger_price),
+      ],
+      tickets: placedTickets.map(p => p.ticket),
+      range_layering: plan.rangeLayering ?? null,
+      ladder_pricing: ladder,
+      basket_leg_cap: plan.rangeLayering?.basketLegCap ?? null,
+      strict_deferred: strictDeferred,
+      strict_broker_pending: strictBrokerPlaced,
+      layering_type: 'pending_order',
+    } as unknown as Record<string, unknown>,
+  })
   return true
 }

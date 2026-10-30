@@ -8,9 +8,16 @@ import { UserSessionManager } from './sessionManager'
 import type { ChannelInfo } from './userListener'
 import {
   assertTelegramAccountAvailable,
+  isTelegramAlreadyLinkedError,
+  listConflictingTelegramClaims,
   normalizeTelegramPhoneNumber,
+  releaseConflictingTelegramClaims,
+  restoreTelegramAccountClaims,
+  type TelegramAccountClaimRow,
   upsertTelegramAccountClaim,
 } from './telegramAccountClaims'
+import { loadCachedUserIsAdmin } from './subscriptionAccess'
+import { openTelegramSession, sealTelegramSession } from './telegramSessionCrypto'
 import { logTelegramAuthFailure, logTelegramAuthSuccess, persistListenerEvent } from './listenerEvents'
 import { buildQrStatusFromPending, formatQrLoginUrl, qrStatusFromActiveSession, type QrStatusResponse } from './telegramQrAuth'
 import {
@@ -84,6 +91,8 @@ export const NO_RESEND_AVAILABLE_ERROR = 'NO_RESEND_AVAILABLE'
 const AUTH_IN_FLIGHT_TTL_MS = 2 * 60 * 1000
 /** Hard timeout for the entire sendCode / startQrLogin operation (prepareForAuth + client.connect + API call). */
 const AUTH_OPERATION_TIMEOUT_MS = 90 * 1000
+/** Cap on the admin-status read that unlocks a claim override. A slow read resolves to "not an admin" (today's behaviour) instead of stalling the request. */
+const ADMIN_STATUS_LOOKUP_TIMEOUT_MS = 5 * 1000
 
 function withAuthOperationTimeout<T>(operation: Promise<T>): Promise<T> {
   let timeout: ReturnType<typeof setTimeout> | undefined
@@ -443,10 +452,17 @@ export class AuthService {
     }
 
     const awaitingPassword = Boolean(row.awaiting_password)
-    const savedAuthSession =
-      typeof row.auth_session_string === 'string' && row.auth_session_string.trim()
-        ? row.auth_session_string.trim()
-        : ''
+    let savedAuthSession = ''
+    if (typeof row.auth_session_string === 'string' && row.auth_session_string.trim()) {
+      try {
+        savedAuthSession = openTelegramSession(row.auth_session_string).trim()
+      } catch {
+        // The stored login state can no longer be opened (rotation or damage).
+        // Resuming would be unsafe, so ask for a fresh code instead.
+        console.warn(`[authService] auth_session_string unreadable for ${userId}; requesting a new code`)
+        return null
+      }
+    }
     const { sessionString: savedSession, meta } = parsePhoneAuthSessionEnvelope(savedAuthSession)
 
     // 2FA resume requires the persisted MTProto session from SignIn; without it the
@@ -497,10 +513,15 @@ export class AuthService {
       return null
     }
 
-    const sessionString =
-      typeof row.auth_session_string === 'string' && row.auth_session_string.trim()
-        ? row.auth_session_string.trim()
-        : ''
+    let sessionString = ''
+    if (typeof row.auth_session_string === 'string' && row.auth_session_string.trim()) {
+      try {
+        sessionString = openTelegramSession(row.auth_session_string).trim()
+      } catch {
+        console.warn(`[authService] QR auth_session_string unreadable for ${userId}; starting a new QR login`)
+        return null
+      }
+    }
     if (!sessionString) return null
 
     const client = this.createTelegramClient(sessionString)
@@ -536,7 +557,9 @@ export class AuthService {
         phone_code_hash: pending?.phoneCodeHash ?? null,
         expires_at: expiresAt,
         awaiting_password: true,
-        auth_session_string: pending ? serializePhoneAuthSession(authSessionString, pending) : authSessionString,
+        auth_session_string: sealTelegramSession(
+          pending ? serializePhoneAuthSession(authSessionString, pending) : authSessionString,
+        ),
       },
       { onConflict: 'user_id' },
     )
@@ -561,7 +584,7 @@ export class AuthService {
         phone_code_hash: pending.phoneCodeHash,
         expires_at: expiresAt,
         awaiting_password: Boolean(pending.awaitingPassword),
-        auth_session_string: serializePhoneAuthSession(authSessionString, pending),
+        auth_session_string: sealTelegramSession(serializePhoneAuthSession(authSessionString, pending)),
         qr_expires_at: null,
       },
       { onConflict: 'user_id' },
@@ -582,7 +605,7 @@ export class AuthService {
         phone: pending.phone ?? null,
         phone_code_hash: null,
         expires_at: expiresAt,
-        auth_session_string: authSessionString,
+        auth_session_string: sealTelegramSession(authSessionString),
         awaiting_password: pending.status === 'requires_password',
         qr_expires_at: pending.expiresAt > 0 ? new Date(pending.expiresAt).toISOString() : null,
       },
@@ -613,16 +636,30 @@ export class AuthService {
     const me = await client.getMe()
     const telegramUserId = me.id?.toString?.() ?? String(me.id)
     logAuthEvent('finalize_auth_got_user', { userId, telegramUserId, correlationId })
-    await assertTelegramAccountAvailable(this.supabase, userId, {
-      phone,
-      telegramUserId,
-    })
+    // The claim check runs first, exactly as it did before overrides existed,
+    // so an unblocked link does no extra work. The override is consulted only
+    // when this Telegram has already been refused — and only the refusal itself
+    // can open that door, never a database problem. The release itself happens
+    // further down, once this link has a persisted session, so a login that
+    // never finishes leaves the other account untouched.
+    let adminOverride = false
+    try {
+      await assertTelegramAccountAvailable(this.supabase, userId, {
+        phone,
+        telegramUserId,
+      })
+    } catch (err) {
+      if (!isTelegramAlreadyLinkedError(err)) throw err
+      adminOverride = await this.mayOverrideTelegramClaim(userId, correlationId)
+      if (!adminOverride) throw err
+      logAuthEvent('finalize_auth_admin_override_granted', { userId, telegramUserId, correlationId })
+    }
 
     const { data: row, error: dbErr } = await this.supabase
       .from('telegram_sessions')
       .upsert({
         user_id: userId,
-        session_string: sessionString,
+        session_string: sealTelegramSession(sessionString),
         phone_number: phone,
         is_active: true,
         listener_engine: 'gramjs',
@@ -639,13 +676,85 @@ export class AuthService {
       throw new Error(dbErr?.message ?? 'Failed to persist Telegram session')
     }
 
+    let releasedClaims: TelegramAccountClaimRow[] = []
+    let overrideDetail: Record<string, unknown> | undefined
     try {
+      if (adminOverride) {
+        releasedClaims = await releaseConflictingTelegramClaims(this.supabase, userId, {
+          phone,
+          telegramUserId,
+        })
+        if (releasedClaims.length) {
+          const previousOwnerUserIds = releasedClaims.map(claim => claim.user_id)
+          overrideDetail = {
+            previous_owner_user_ids: previousOwnerUserIds,
+            telegram_user_id: telegramUserId,
+            phone_masked: phone ? `${phone.slice(0, 4)}****` : null,
+          }
+          logAuthEvent('finalize_auth_admin_claim_override', {
+            userId,
+            phone,
+            telegramUserId,
+            previousOwnerUserIds,
+            correlationId,
+          })
+          // Recorded BEFORE the claim below is written: if this process dies in
+          // between, the takeover is still on record. An audit failure is logged
+          // and swallowed — it must never fail the link itself.
+          try {
+            await persistListenerEvent(this.supabase, {
+              userId,
+              eventType: 'telegram_link_attempt',
+              detail: {
+                action: 'admin_claim_override_released',
+                ...overrideDetail,
+                correlation_id: correlationId ?? null,
+              },
+            })
+          } catch (auditErr) {
+            logAuthEvent('admin_override_audit_failed', {
+              userId,
+              correlationId,
+              error: auditErr instanceof Error ? auditErr.message : String(auditErr),
+            })
+          }
+        }
+      }
       await upsertTelegramAccountClaim(this.supabase, userId, {
         phone,
         telegramUserId,
       })
       logAuthEvent('finalize_auth_claim_ok', { userId, telegramUserId, correlationId })
     } catch (claimErr) {
+      // A takeover that fails must not leave the other account unbound.
+      if (releasedClaims.length) {
+        try {
+          await restoreTelegramAccountClaims(this.supabase, releasedClaims)
+          logAuthEvent('finalize_auth_override_restored', {
+            userId,
+            previousOwnerUserIds: releasedClaims.map(claim => claim.user_id),
+            correlationId,
+          })
+        } catch (restoreErr) {
+          const restoreMessage = restoreErr instanceof Error ? restoreErr.message : String(restoreErr)
+          console.error(`[authService] finalizeAuth claim_restore_failed user=${userId}:`, restoreMessage)
+          // A failed restore means an account was left unbound: record it where
+          // the 90-day retention policy applies, not only in the process log.
+          try {
+            await persistListenerEvent(this.supabase, {
+              userId,
+              eventType: 'telegram_link_failed',
+              detail: { step: 'finalize_override_restore', error: restoreMessage },
+            })
+          } catch (auditErr) {
+            logAuthEvent('admin_override_restore_audit_failed', {
+              userId,
+              correlationId,
+              error: auditErr instanceof Error ? auditErr.message : String(auditErr),
+            })
+          }
+        }
+      }
       logAuthEvent('finalize_auth_claim_failed', { userId, correlationId, error: claimErr instanceof Error ? claimErr.message : String(claimErr) })
       console.error(`[authService] finalizeAuth claim_failed user=${userId}:`, claimErr instanceof Error ? claimErr.message : claimErr)
       logTelegramAuthFailure(this.supabase, userId, 'finalize', claimErr instanceof Error ? claimErr.message : String(claimErr))
@@ -679,7 +788,13 @@ export class AuthService {
     }
 
     logAuthEvent('finalize_auth_complete', { userId, sessionId: row.id, totalTimeMs: Date.now() - tStart, correlationId })
-    logTelegramAuthSuccess(this.supabase, userId, row.id as string, method)
+    logTelegramAuthSuccess(
+      this.supabase,
+      userId,
+      row.id as string,
+      method,
+      overrideDetail ? { admin_claim_override: overrideDetail } : undefined,
+    )
     return { ok: true, session_id: row.id as string, channels }
   }
 
@@ -752,6 +867,35 @@ export class AuthService {
     return null
   }
 
+  /**
+   * Whether this user may override the one-Telegram-per-account rule.
+   *
+   * Fails closed twice over: any problem reading admin status counts as "not
+   * an admin", which is exactly today's behaviour, and the read is capped so a
+   * stalled auth service can never hang a link attempt. Only ever reached after
+   * a link has already been refused, so a link that is not blocked never runs
+   * it at all.
+   */
+  private async mayOverrideTelegramClaim(userId: string, correlationId?: string): Promise<boolean> {
+    const lookup = loadCachedUserIsAdmin(this.supabase, userId).catch(err => {
+      logAuthEvent('admin_status_lookup_failed', {
+        userId,
+        correlationId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      return false
+    })
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const timeout = new Promise<false>(resolve => {
+      timer = setTimeout(() => resolve(false), ADMIN_STATUS_LOOKUP_TIMEOUT_MS)
+    })
+    try {
+      return await Promise.race([lookup, timeout])
+    } finally {
+      if (timer !== undefined) clearTimeout(timer)
+    }
+  }
+
   async sendCode(
     userId: string,
     phone: string,
@@ -770,7 +914,35 @@ export class AuthService {
       logTelegramAuthFailure(this.supabase, userId, 'send_code', 'Duplicate in flight')
       throw new Error('Telegram login is already starting. Wait a few seconds before requesting another code.')
     }
-    await assertTelegramAccountAvailable(this.supabase, userId, { phone: normalizedPhone })
+    // The claim check runs first, exactly as it did before overrides existed,
+    // so a link attempt that is not blocked does no extra work at all. Admin
+    // status is only read once this number has already been refused — and only
+    // the refusal itself (never a database problem) can ever open that door.
+    try {
+      await assertTelegramAccountAvailable(this.supabase, userId, { phone: normalizedPhone })
+    } catch (err) {
+      if (!isTelegramAlreadyLinkedError(err)) throw err
+      if (!(await this.mayOverrideTelegramClaim(userId, correlationId))) throw err
+      // Admin: the request proceeds. Nothing is unbound here — the other
+      // account's claim is released only if this login actually completes
+      // (finalizeAuth), so asking for a code can never release anyone.
+      try {
+        const conflicts = await listConflictingTelegramClaims(this.supabase, userId, { phone: normalizedPhone })
+        if (conflicts.length) {
+          logAuthEvent('send_code_admin_claim_override', {
+            userId,
+            correlationId,
+            previousOwnerUserIds: conflicts.map(claim => claim.user_id),
+          })
+        }
+      } catch (lookupErr) {
+        logAuthEvent('send_code_admin_claim_lookup_failed', {
+          userId,
+          correlationId,
+          error: lookupErr instanceof Error ? lookupErr.message : String(lookupErr),
+        })
+      }
+    }
     const existingPending = await this.getPhonePending(userId, normalizedPhone)
     if (existingPending) {
       if (existingPending.awaitingPassword) {

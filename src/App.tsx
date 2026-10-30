@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { LocaleProvider } from './context/LocaleContext'
+import { ConfirmDialogProvider } from './context/ConfirmDialogContext'
 import { UserProfileProvider } from './context/UserProfileContext'
 import { SubscriptionProvider } from './context/SubscriptionContext'
 import { AuthLayout } from './components/layout/AuthLayout'
@@ -119,11 +120,12 @@ export default function App() {
   return (
     <AuthProvider>
       <LocaleProvider>
+      <ConfirmDialogProvider>
       <UserProfileProvider>
       <BrowserRouter>
       <AppTopBannersProvider>
       <SubscriptionProvider>
-      <div className="flex h-[100dvh] min-h-0 flex-col overflow-hidden overscroll-none">
+      <div className="flex h-dvh min-h-0 flex-col overflow-hidden overscroll-none">
         <AppTopBanners />
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden overscroll-none">
       <GoogleAnalyticsRouteTracker />
@@ -219,6 +221,7 @@ export default function App() {
       </AppTopBannersProvider>
       </BrowserRouter>
       </UserProfileProvider>
+      </ConfirmDialogProvider>
       </LocaleProvider>
     </AuthProvider>
   )

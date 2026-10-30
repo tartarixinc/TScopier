@@ -204,7 +204,7 @@ export function OpenPnlAccountsModal({
       {toastMessage ? (
         <div
           role="status"
-          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] max-w-md px-4 py-3 rounded-xl bg-neutral-900 text-white text-sm shadow-lg dark:bg-neutral-100 dark:text-neutral-900"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-60 max-w-md px-4 py-3 rounded-xl bg-neutral-900 text-white text-sm shadow-lg dark:bg-neutral-100 dark:text-neutral-900"
         >
           {toastMessage}
         </div>

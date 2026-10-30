@@ -14,7 +14,7 @@ const inputClass =
 
 export function MarketNewsFilters({ symbol, labels, onSymbolChange }: MarketNewsFiltersProps) {
   return (
-    <div className="rounded-xl border border-neutral-200/55 bg-white p-4 shadow-sm dark:border-neutral-800/55 dark:bg-neutral-950">
+    <div className="rounded-xl border border-neutral-200/55 bg-white p-4 shadow-xs dark:border-neutral-800/55 dark:bg-neutral-950">
       <label className="flex max-w-xs flex-col gap-1">
         <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50">{labels.symbol}</span>
         <select className={inputClass} value={symbol} onChange={(e) => onSymbolChange(e.target.value)}>

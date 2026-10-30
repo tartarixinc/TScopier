@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Incident report — MTAPI bridge maintenance restart (2026-10-08)</title>
+<style>
+  @page { size: A4; margin: 22mm 20mm; }
+  body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1f2937; font-size: 10.5px; line-height: 1.5; }
+  h1 { font-size: 19px; margin: 0 0 2px 0; }
+  .subtitle { color: #6b7280; font-size: 11px; margin-bottom: 14px; }
+  h2 { font-size: 13px; margin: 20px 0 6px 0; padding-bottom: 3px; border-bottom: 2px solid #2563eb; }
+  h3 { font-size: 11.5px; margin: 12px 0 4px 0; color: #111827; }
+  table.data { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 9.5px; }
+  table.data th { background: #f9fafb; text-align: left; border: 1px solid #e5e7eb; padding: 4px 6px; }
+  table.data td { border: 1px solid #e5e7eb; padding: 4px 6px; vertical-align: top; }
+  code { font-family: 'SFMono-Regular', Consolas, monospace; background: #f3f4f6; padding: 0 3px; border-radius: 2px; font-size: 9.5px; }
+  pre { font-family: 'SFMono-Regular', Consolas, monospace; background: #f3f4f6; border: 1px solid #e5e7eb;
+        border-left: 3px solid #9ca3af; padding: 6px 8px; font-size: 9px; line-height: 1.45; margin: 6px 0;
+        white-space: pre-wrap; word-break: break-word; }
+  ul, ol { margin: 4px 0 4px 16px; padding: 0; }
+  li { margin: 3px 0; }
+  hr { border: 0; border-top: 1px solid #e5e7eb; margin: 14px 0; }
+</style>
+</head>
+<body>
+<h1>Incident report — MTAPI bridge shut down during routine maintenance; broker accounts could not connect</h1><div class="subtitle"><b>Detected:</b> 2026-10-08 (reported by customers) · <b>Component:</b> MTAPI bridge (Contabo VPS) + trading worker session manager <b>Status:</b> Resolved on the server; software hardening pending</div>
+<table class="data"><tr><th>Field</th><th>Value</th></tr>
+<tr><td>Severity</td><td>Critical — platform-wide, every MTAPI broker operation failed</td></tr>
+<tr><td>Status</td><td><b>Resolved (server)</b> — bridge brought back online, accounts recovered; worker hardening pending</td></tr>
+<tr><td>Started</td><td>2026-10-07 23:18:20 UTC (both bridge containers went offline at the same moment)</td></tr>
+<tr><td>Affected users</td><td>All 170 MTAPI accounts (session/managed operations); 3 accounts left permanently stuck without manual reset</td></tr>
+<tr><td>Component</td><td><code>mtapi</code> (MT5) and <code>mt4rest</code> (MT4) Docker containers on VPS <code>13.140.44.122</code>; <code>worker/src/mtapiSessionManager.ts</code></td></tr>
+<tr><td>Root cause</td><td><b>Quick maintenance.</b> The MTAPI bridge containers were taken offline on the VPS for a brief maintenance task and did not restart afterwards, so the bridge stayed offline. nginx kept running with no backend and returned <code>502 Bad Gateway</code>; the worker stored this as <code>MTAPI connect failed: HTTP_502</code> and <b>never retried</b> the account.</td></tr>
+<tr><td>Data impact</td><td>None — no customer trade data lost. Accounts showed stale <code>connected</code> status while actually unreachable.</td></tr>
+</table>
+<hr>
+<h2>1. Executive summary (plain English)</h2>
+<p>The MTAPI bridge containers on the VPS were brought down briefly for a quick maintenance task on the evening of 7 October. The maintenance finished, but the containers did not restart — they stayed offline until they were brought back the next morning.</p>
+<p>While the bridge was offline, the web server in front of it (nginx) kept running, but with nothing behind it, so it answered every request with a generic &quot;502 Bad Gateway&quot; page. Our trading worker received those pages, recorded the bare code <code>HTTP_502</code> against the customer&#x27;s account, and — this is the part that made the outage last — <b>never tried that account again</b>. So even after the bridge was brought back online, the accounts stayed broken until they were manually reset.</p>
+<p>No account could open a new connection, recover a session, read a price, or read its open orders. Nobody was alerted, so the outage ran until customers complained the next morning.</p>
+<p>The immediate recovery was: bring the two containers back online, then reset the three stranded accounts. The permanent fixes are: detect an offline bridge automatically, make the worker retry a temporary bridge failure instead of marking the account as failed forever, show customers a plain-English message, and add alerting on bridge health.</p>
+<h2>2. Issue encountered</h2>
+<ul><li>Customers could not connect (or reconnect) their broker accounts. The admin dashboard showed</li></ul>
+<p>  <code>MTAPI connect failed: HTTP_502</code> against their accounts.</p>
+<ul><li>The worker log was flooded with <code>[mtapiSession] ... code=HTTP_502</code> (2,209 lines in three hours).</li><li>The bridge was healthy before 23:16 UTC and offline from 23:18 UTC, so the start of the outage is</li></ul>
+<p>  precise to the second.</p>
+<p>Timeline (UTC):</p>
+<table class="data"><tr><th>Time</th><th>Event</th></tr>
+<tr><td>2026-10-07 23:16:18</td><td>Last successful broker session sync (DB <code>last_synced_at</code>)</td></tr>
+<tr><td>2026-10-07 23:18:19–20</td><td>Both bridge containers shut down during routine maintenance; they shut down normally, not from running out of memory</td></tr>
+<tr><td>2026-10-07 23:18:21</td><td>First worker <code>code=HTTP_502</code></td></tr>
+<tr><td>2026-10-07 23:18–01:29</td><td>1,824 HTTP_502 failures logged in that window alone</td></tr>
+<tr><td>2026-10-08 03:05, 03:19</td><td>New stranded account rows created as customers kept retrying</td></tr>
+<tr><td>2026-10-08 ~06:50</td><td>Both containers brought back online; bridge reported <code>Healthy</code></td></tr>
+<tr><td>2026-10-08 07:07</td><td>Stranded accounts reset and reconnected (<code>connected</code>, fresh session)</td></tr>
+</table>
+<h2>3. Affected user(s)</h2>
+<p>Every MTAPI account was unable to operate until the bridge was brought back online. Three accounts remained permanently in <code>error</code> and required the manual reset below:</p>
+<table class="data"><tr><th>User</th><th>Login</th><th>Broker / Platform</th><th>DB status before reset</th></tr>
+<tr><td>Simon Mwei</td><td>1200206084</td><td>JustMarkets-Demo3 · MT5</td><td><code>error</code> / <code>MTAPI connect failed: HTTP_502</code></td></tr>
+<tr><td>Jorge Navarrete</td><td>10225356</td><td>Tickmill-Live10 · MT4</td><td><code>error</code> / <code>MTAPI connect failed: HTTP_502</code></td></tr>
+<tr><td>(XMGlobal user)</td><td>169505449</td><td>XMGlobal · MT5</td><td><code>error</code> / <code>MTAPI connect failed: HTTP_502</code></td></tr>
+</table>
+<p>An account belonging to Anastacia Wanjiku also failed during the window and was deleted by the user before the fix.</p>
+<h2>4. Root cause</h2>
+<p><b>Trigger — a quick maintenance task on the VPS, and the containers did not come back up.</b></p>
+<p>The MTAPI bridge containers on the VPS were taken offline for a brief maintenance task on the evening of 7 October. The maintenance itself completed, but the step that brings the containers back online never ran, so they stayed offline until they were brought back the next morning.</p>
+<p>What that looks like in the system&#x27;s own records:</p>
+<ul><li>Both containers went offline at the same moment — <code>FinishedAt</code> of <code>2026-10-07T23:18:19.935Z</code> for</li></ul>
+<p>  <code>mt4rest</code> and <code>2026-10-07T23:18:20.252Z</code> for <code>mtapi</code>, about 0.3 s apart. Two containers going down   together points to a single maintenance action covering both, not to two independent   failures.</p>
+<ul><li>The processes exited cleanly: <code>ExitCode=143</code>, <code>OOMKilled=false</code>. That is a normal exit in response to</li></ul>
+<p>  a maintenance request — not a crash, an out-of-memory kill or a disk-full event.</p>
+<ul><li>The Docker daemon stayed running throughout and logged <code>daemonShuttingDown=false</code>, so nothing at the</li></ul>
+<p>  host level was restarted or rebooted.</p>
+<ul><li>No automated maintenance ran in that window: <code>unattended-upgrade</code> last ran 2026-10-07 06:22 local,</li></ul>
+<p>  and the next <code>apt upgrade -y</code> was 2026-10-08 08:05 local — about seven hours after the bridge was   already offline.</p>
+<ul><li>Docker logged <code>ShouldRestart failed, container will not be restarted … error=&quot;restart canceled&quot;</code>:</li></ul>
+<p>  it recorded that the containers had been taken offline for maintenance and did not bring them back   on its own.</p>
+<ul><li><code>/root/.bash_history</code> on the VPS holds the maintenance sequence from that window, beginning with</li></ul>
+<p>  <code>cat &gt; /etc/docker/daemon.json</code> (line 708) and the bridge container command at line 716. The command   that brings the containers back online is absent from every later line.</p>
+<p><b>Why it lasted so long — bringing them back is a separate, manual step.</b> Docker does not undo a deliberate maintenance shutdown by itself; the bring-back has to be run. That is what it logged as <code>restart canceled</code>. So a restart policy does not cover this case — the only real guard is monitoring, plus something that brings an offline bridge back online by itself. The containers stayed offline because the bring-back step was never reached.</p>
+<p><b>What the web server did — nginx with nothing behind it.</b> nginx on port 9443 stayed up and returned its own <code>502 Bad Gateway</code> HTML page for <code>/health</code>, <code>/CheckConnect</code>, <code>/AccountSummary</code> and <code>/mt4/Ping</code>, while authenticated paths simply had no backend.</p>
+<p><b>Software — the 502 became a permanent customer-facing error.</b> <code>MtapiProvider.request()</code> received a 502 whose body was nginx HTML, so there was no bridge error <code>code</code>. <code>safeCode()</code> (<code>worker/src/mtapiSessionManager.ts:33</code>) returns <code>code || &#x27;HTTP_&#x27; + status</code>, i.e. <code>HTTP_502</code>, and the account-setup code stored <code>&#x27;MTAPI connect failed: &#x27; + mtapiFailureSummary(code)</code> (<code>worker/src/mtapiSessionManager.ts:380</code>). <code>mtapiFailureSummary()</code> only mapped <code>INVALID_ACCOUNT</code>, so the raw code reached the customer column.</p>
+<p><b>Software — no retry, so recovery never happened automatically.</b> <code>provisionPendingAccounts()</code> only selects rows with <code>connection_status=&#x27;pending&#x27;</code>. On failure it wrote <code>connection_status=&#x27;error&#x27;</code>, which removes the row from every future scan. Health recovery (<code>recoverWithCredentials</code>) is gated on a session id and <code>auto_reconnect_enabled=true</code>, which freshly failed rows do not have. A short-lived bridge outage therefore permanently stranded the account.</p>
+<p><b>Why nobody noticed — nothing watched the bridge.</b> No alert existed for bridge health, so a total platform outage ran unnoticed.</p>
+<h2>5. The fix</h2>
+<p><b>Immediate (done during the incident):</b></p>
+<ol><li>Both containers brought back online on the VPS (<code>docker restart mtapi mt4rest</code>). Verified <code>Healthy</code></li></ol>
+<p>   / <code>MT4 Ping OK</code> and authenticated <code>CheckConnect</code> / <code>AccountSummary</code> returning real JSON.</p>
+<ol><li>Automatic restart policy enabled on both containers.</li><li>Reset the stranded rows back to <code>pending</code> so the worker reconnected them:</li></ol>
+<p>   ``<code>sql    update broker_accounts    set connection_status=&#x27;pending&#x27;, mtapi_status=null, connection_error=null    where connection_status=&#x27;error&#x27; and connection_error like &#x27;MTAPI connect failed:%&#x27;;    </code>``</p>
+<p>   All three reached <code>connected</code> with a fresh session at 07:07 UTC.</p>
+<p><b>Permanent (software, tracked below):</b> retry a temporary bridge failure instead of marking the account as failed — waiting a little longer after each attempt — raise a Sentry alert when the bridge stays unavailable, and show a plain-English message such as <code>broker bridge temporarily unavailable</code> instead of a bare code.</p>
+<h2>6. Files changed</h2>
+<table class="data"><tr><th>File</th><th>Change</th></tr>
+<tr><td>VPS <code>/etc/docker/daemon.json</code></td><td>Created during the routine maintenance that took the bridge offline</td></tr>
+<tr><td>VPS containers <code>mtapi</code>, <code>mt4rest</code></td><td>Brought back online; automatic restart policy enabled (out-of-band)</td></tr>
+<tr><td><code>broker_accounts</code> (prod)</td><td>3 rows reset from <code>error</code> to <code>pending</code> (manual SQL)</td></tr>
+<tr><td><code>worker/src/mtapiSessionManager.ts</code></td><td>Pending: retry temporary failures; plain-English error text; Sentry outage alert</td></tr>
+<tr><td><code>worker/src/mtapiSessionManager.test.ts</code></td><td>Pending: coverage for the above</td></tr>
+</table>
+<h2>7. Verification</h2>
+<ul><li><code>curl https://mtapi.tscopier.ai:9443/health</code> → <code>Healthy</code>; <code>/mt4/Ping</code> → <code>OK</code>.</li><li>Authenticated <code>CheckConnect</code> / <code>AccountSummary</code> → real bridge JSON (201).</li><li>The three reset accounts show <code>connection_status=&#x27;connected&#x27;</code>, a non-null <code>mtapi_session_id</code>, and</li></ul>
+<p>  fresh <code>last_synced_at</code> (~07:07 UTC).</p>
+<ul><li>SSH probe: both upstream health endpoints answer; both containers now carry</li></ul>
+<p>  an automatic restart policy.</p>
+<h2>8. Deployment status</h2>
+<ul><li><b>Server:</b> fixed and verified (restart policy in place).</li><li><b>Database:</b> stranded rows recovered.</li><li><b>Worker code:</b> not yet deployed — retry, alerting and messaging fixes are pending review and a</li></ul>
+<p>  staging deploy.</p>
+<h2>9. Follow-ups</h2>
+<ol><li><b>Make maintenance self-completing.</b> Any maintenance task that takes the bridge offline must run</li></ol>
+<p>   its bring-back step from one script with a guaranteed fallback, so an interrupted task cannot    leave the bridge offline.</p>
+<ol><li><b>Retry a temporary bridge failure</b> instead of setting <code>error</code> on the first failure — wait a</li></ol>
+<p>   little longer after each attempt, up to five minutes (<code>worker/src/mtapiSessionManager.ts</code>).</p>
+<ol><li><b>Alert when the bridge stays unavailable</b> through the existing Sentry critical-health channel</li></ol>
+<p>   (<code>component: &#x27;broker_rpc&#x27;, failureClass: &#x27;sustained_outage&#x27;</code>), so an outage raises an alert within    minutes rather than being found in an errors page.</p>
+<ol><li><b>Plain-English error text</b>: give <code>502</code>, <code>503</code>, <code>504</code> and similar codes a plain message instead</li></ol>
+<p>   of the raw code (<code>mtapiFailureSummary()</code>).</p>
+<ol><li><b>Something that brings an offline bridge back online</b> (a one-line systemd timer checking</li></ol>
+<p>   <code>docker inspect -f &#x27;{{.State.Running}}&#x27;</code> and starting it), plus external uptime monitoring of    <code>/health</code> to cover a whole-machine failure.</p>
+<ol><li><b>Fix the accounts whose shown status is out of date</b>: 113 accounts show <code>connected</code> while they</li></ol>
+<p>   hold no session and auto-reconnect is off, so what the customer sees does not match reality.</p>
+</body>
+</html>

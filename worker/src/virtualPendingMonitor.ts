@@ -38,6 +38,7 @@ import {
 } from './rangePendingFireGuard'
 import { isMtBridgeGlitchMessage } from './brokerConnectError'
 import { modifyLegSlTpWithFallback } from './orderModifySafe'
+import { captureBrokerPositionIdentity } from './captureBrokerPositionIdentity'
 import {
   deleteRangePendingLegsForBasket,
   reconcileBasketFlatFromBroker,
@@ -56,7 +57,8 @@ import { captureBusinessIssue } from './observability/businessEvents'
 import { parsePersistedLayeringPlan } from './manualPlanning/layeringPlanPersistence'
 import { resolveLayeringModeRolloutDecision } from './manualPlanning/layeringModeRollout'
 import { convergeLayeringPlanAfterLegTerminal } from './layeringPlanLifecycle'
-
+import { writeExecutionLog } from './observability/executionLog'
+import { humanizeOrderSendError } from './brokerTradeError'
 /**
  * Worker-side monitor that turns persisted "virtual range pendings" into
  * real market orders the moment the live /Quote crosses their trigger price.
@@ -381,16 +383,14 @@ export class VirtualPendingMonitor {
           await convergeLayeringPlanAfterLegTerminal(this.supabase, r.layer_plan_id)
         }
         if (isUserCopierPausedCached(r.user_id)) continue
-        try {
-          await this.supabase.from('trade_execution_logs').insert({
-            user_id: r.user_id,
-            signal_id: r.signal_id,
-            broker_account_id: r.broker_account_id,
-            action: 'virtual_pending_expired',
-            status: 'info',
-            request_payload: { id: r.id, symbol: r.symbol, step_idx: r.step_idx } as unknown as Record<string, unknown>,
-          })
-        } catch { /* logging is best-effort */ }
+        await writeExecutionLog(this.supabase, {
+          user_id: r.user_id,
+          signal_id: r.signal_id,
+          broker_account_id: r.broker_account_id,
+          action: 'virtual_pending_expired',
+          status: 'info',
+          request_payload: { id: r.id, symbol: r.symbol, step_idx: r.step_idx } as unknown as Record<string, unknown>,
+        })
       }
     }
 
@@ -660,31 +660,26 @@ export class VirtualPendingMonitor {
       )
       if (!stopped) continue
       touched.add(basketKey)
-
-      try {
-        await this.supabase.from('trade_execution_logs').insert({
-          user_id: userId,
-          signal_id: signalId,
-          broker_account_id: brokerAccountId,
-          action: 'virtual_pending_tp_lock',
-          status: 'info',
-          request_payload: {
-            symbol,
-            direction,
-            trigger_price: decision.triggerPrice,
-            trigger_side: decision.triggerSide,
-            lock_trigger: decision.reason,
-            closed_trades: closedCount,
-            open_trades: openRows.length,
-            bid,
-            ask,
-            deleted_rows: deleted,
-            lock_reason: 'layering_stopped',
-          } as unknown as Record<string, unknown>,
-        })
-      } catch {
-        /* best-effort */
-      }
+      await writeExecutionLog(this.supabase, {
+        user_id: userId,
+        signal_id: signalId,
+        broker_account_id: brokerAccountId,
+        action: 'virtual_pending_tp_lock',
+        status: 'info',
+        request_payload: {
+          symbol,
+          direction,
+          trigger_price: decision.triggerPrice,
+          trigger_side: decision.triggerSide,
+          lock_trigger: decision.reason,
+          closed_trades: closedCount,
+          open_trades: openRows.length,
+          bid,
+          ask,
+          deleted_rows: deleted,
+          lock_reason: 'layering_stopped',
+        } as unknown as Record<string, unknown>,
+      })
     }
 
     return touched
@@ -1064,6 +1059,7 @@ export class VirtualPendingMonitor {
         isBuy: leg.is_buy,
         perLegBreakevenSl,
         effectiveSource: effective.source,
+        symbol: leg.symbol,
       })
       if (firing.stoploss > 0) leg.stoploss = firing.stoploss
       if (leg.cwe_close_price == null && firing.takeprofit > 0) leg.takeprofit = firing.takeprofit
@@ -1218,7 +1214,7 @@ export class VirtualPendingMonitor {
     const t0 = Date.now()
     try {
       timestamps.broker_request_started_at = t0
-      const result = await this.sendWithStopsFallback(leg, args)
+      const result = await this.sendLegOrder(leg, args)
       timestamps.broker_response_received_at = Date.now()
       // Mark fired immediately after OrderSend so a slow trades insert / log write
       // cannot leave the row `claimed` and get reset to `pending` (30s stale reclaim).
@@ -1275,11 +1271,11 @@ export class VirtualPendingMonitor {
         ?? (Number(args.takeprofit) > 0 ? Number(args.takeprofit) : null)
       const brokerSl = Number(result.stopLoss) > 0 ? Number(result.stopLoss) : null
       const brokerTp = Number(result.takeProfit) > 0 ? Number(result.takeProfit) : null
-      // Persist only what the broker actually has. Intended stops on a naked
-      // open must not be written yet — that made skipAlreadySynced / follow-up
-      // think the leg was done while MT still had SL=0/TP=0.
-      const persistSl = result.openedNaked ? null : (brokerSl ?? desiredSl)
-      const persistTp = result.openedNaked ? null : (brokerTp ?? desiredTp)
+      // Persist only what the broker actually has. A planned stop the broker
+      // dropped (either side) must not be written — that made skipAlreadySynced
+      // and the follow-up think the leg was protected while the terminal had none.
+      const persistSl = brokerSl
+      const persistTp = brokerTp
       const pipSize = signalPipPrice(leg.symbol)
       const autoBeCols = autoManagementTradeSnapshot(manual, entryPx, desiredSl ?? persistSl, {
         tpHitTriggerPrice: entryPx != null
@@ -1353,7 +1349,7 @@ export class VirtualPendingMonitor {
           },
         })
         try {
-          await this.supabase.from('trade_execution_logs').insert({
+          await writeExecutionLog(this.supabase, {
             user_id: leg.user_id,
             signal_id: leg.signal_id,
             broker_account_id: leg.broker_account_id,
@@ -1376,6 +1372,33 @@ export class VirtualPendingMonitor {
         && Number.isFinite(ticketNum)
         && ticketNum > 0
       ) {
+        // Record the broker's own position ticket while the fill is fresh, as the
+        // immediate-leg path does (orderLegExecution). Without it the range/
+        // virtual legs keep no identity and every later management action falls
+        // back to attribute matching, which cannot tell apart a basket of
+        // identical legs (2026-10-16: runner leg 2013294086 was filled with
+        // broker_position_ticket null, so auto-BE could not identify it).
+        try {
+          const identitySnapshot = (await api.openedOrders(leg.metaapi_account_id)) ?? null
+          await captureBrokerPositionIdentity({
+            supabase: this.supabase,
+            tradeRowId,
+            trade: {
+              id: tradeRowId,
+              metaapi_order_id: String(ticketNum),
+              symbol: leg.symbol,
+              direction: leg.is_buy ? 'buy' : 'sell',
+              lot_size: result.lots ?? args.volume,
+              entry_price: entryPx,
+            },
+            openedOrders: identitySnapshot,
+          })
+        } catch (err) {
+          console.warn(
+            `[virtualPendingMonitor] position identity capture failed leg=${leg.id} ticket=${ticketNum}:`
+            + ` ${err instanceof Error ? err.message : String(err)}`,
+          )
+        }
         // Naked open (invalid-stops fallback or broker ignored stops): assign now.
         if (result.openedNaked && (desiredSl || desiredTp)) {
           try {
@@ -1465,8 +1488,8 @@ export class VirtualPendingMonitor {
             tradeRowId,
             entryPrice: entryPx,
             // Force follow-up OrderModify when the broker open was naked.
-            existingSl: result.openedNaked ? null : (brokerSl ?? desiredSl),
-            existingTp: result.openedNaked ? null : (brokerTp ?? desiredTp),
+            existingSl: brokerSl,
+            existingTp: brokerTp,
             isBuy: leg.is_buy,
           })
         } catch (hookErr) {
@@ -1540,7 +1563,7 @@ export class VirtualPendingMonitor {
         )
       }
       try {
-        await this.supabase.from('trade_execution_logs').insert({
+        await writeExecutionLog(this.supabase, {
           user_id: leg.user_id,
           signal_id: leg.signal_id,
           broker_account_id: leg.broker_account_id,
@@ -1584,7 +1607,7 @@ export class VirtualPendingMonitor {
               + ` step=${leg.step_idx} fill=${entryPx} updated=${reanchor.updated}`,
             )
             try {
-              await this.supabase.from('trade_execution_logs').insert({
+              await writeExecutionLog(this.supabase, {
                 user_id: leg.user_id,
                 signal_id: leg.signal_id,
                 broker_account_id: leg.broker_account_id,
@@ -1644,6 +1667,8 @@ export class VirtualPendingMonitor {
     } catch (err) {
       timestamps.broker_response_received_at = timestamps.broker_response_received_at ?? Date.now()
       const msg = err instanceof Error ? err.message : String(err)
+      // Plain wording for the copier log; raw text stays for the transient check.
+      const displayMsg = humanizeOrderSendError(msg, leg.symbol)
       console.error(
         `[virtualPendingMonitor] fire failed leg=${leg.id} signal=${leg.signal_id} stepIdx=${leg.step_idx}: ${msg}`,
       )
@@ -1665,20 +1690,20 @@ export class VirtualPendingMonitor {
       }
       await this.supabase
         .from('range_pending_legs')
-        .update({ status: 'failed', error_message: msg, fired_at: new Date().toISOString() })
+        .update({ status: 'failed', error_message: displayMsg, fired_at: new Date().toISOString() })
         .eq('id', leg.id)
       if (leg.layer_plan_id) {
         await convergeLayeringPlanAfterLegTerminal(this.supabase, leg.layer_plan_id)
       }
       timestamps.pending_leg_updated_at = Date.now()
-      await this.supabase.from('trade_execution_logs').insert({
+      await writeExecutionLog(this.supabase, {
         user_id: leg.user_id,
         signal_id: leg.signal_id,
         broker_account_id: leg.broker_account_id,
         action: 'virtual_pending_failed',
         status: 'failed',
         request_payload: { leg_id: leg.id, step_idx: leg.step_idx, claimed_by: this.hostId } as unknown as Record<string, unknown>,
-        error_message: msg,
+        error_message: displayMsg,
       })
       captureBusinessIssue({
         category: 'layering',
@@ -1796,24 +1821,20 @@ export class VirtualPendingMonitor {
       { signalId: leg.signal_id, brokerAccountId: leg.broker_account_id },
       reason,
     )
-    try {
-      await this.supabase.from('trade_execution_logs').insert({
-        user_id: leg.user_id,
-        signal_id: leg.signal_id,
-        broker_account_id: leg.broker_account_id,
-        action: 'virtual_pending_cancelled',
-        status: 'info',
-        request_payload: {
-          leg_id: leg.id,
-          step_idx: leg.step_idx,
-          symbol: leg.symbol,
-          reason,
-          claimed_by: this.hostId,
-        } as unknown as Record<string, unknown>,
-      })
-    } catch {
-      // Logging failure is non-fatal.
-    }
+    await writeExecutionLog(this.supabase, {
+      user_id: leg.user_id,
+      signal_id: leg.signal_id,
+      broker_account_id: leg.broker_account_id,
+      action: 'virtual_pending_cancelled',
+      status: 'info',
+      request_payload: {
+        leg_id: leg.id,
+        step_idx: leg.step_idx,
+        symbol: leg.symbol,
+        reason,
+        claimed_by: this.hostId,
+      } as unknown as Record<string, unknown>,
+    })
   }
 
   private async rebalanceRangeBasketTakeProfits(
@@ -2006,12 +2027,12 @@ export class VirtualPendingMonitor {
   }
 
   /**
-   * Send a market order; if the broker rejects with "Invalid stops" despite our
-   * clamp/sanitize passes, retry once with SL=0 and TP=0 so the leg actually
-   * opens. Caller must then OrderModify the intended stops — do not trust DB
-   * alone, which previously recorded intended SL/TP while the broker stayed naked.
+   * Send a range-layer order. Stops are never stripped: if the broker rejects
+   * them the leg fails and the reason lands in the copier logs, rather than
+   * opening a position we cannot protect. `openedNaked` still flags a broker
+   * that accepted the order but silently dropped the stops.
    */
-  private async sendWithStopsFallback(
+  private async sendLegOrder(
     leg: PendingRow,
     args: OrderSendArgs,
   ): Promise<{
@@ -2027,26 +2048,14 @@ export class VirtualPendingMonitor {
     const requestedSl = Number(args.stoploss) || 0
     const requestedTp = Number(args.takeprofit) || 0
     const requestedStops = requestedSl > 0 || requestedTp > 0
-    try {
-      const result = await api.orderSend(leg.metaapi_account_id, args)
-      const brokerSl = Number(result.stopLoss) || 0
-      const brokerTp = Number(result.takeProfit) || 0
-      const openedNaked = requestedStops && !(brokerSl > 0) && !(brokerTp > 0)
-      return { ...result, openedNaked }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      const isInvalidStops = /invalid\s+stops/i.test(msg)
-      const hasStops = requestedStops
-      if (isInvalidStops && hasStops) {
-        console.warn(
-          `[virtualPendingMonitor] retry without stops leg=${leg.id} signal=${leg.signal_id} stepIdx=${leg.step_idx} reason="${msg}" (sl=${args.stoploss} tp=${args.takeprofit})`,
-        )
-        const fallback: OrderSendArgs = { ...args, stoploss: 0, takeprofit: 0 }
-        const result = await api.orderSend(leg.metaapi_account_id, fallback)
-        return { ...result, openedNaked: true }
-      }
-      throw err
-    }
+    const result = await api.orderSend(leg.metaapi_account_id, args)
+    const brokerSl = Number(result.stopLoss) || 0
+    const brokerTp = Number(result.takeProfit) || 0
+    // Naked if ANY requested side came back missing — a broker that keeps the TP
+    // but drops the SL still leaves the position unprotected.
+    const openedNaked = (requestedSl > 0 && !(brokerSl > 0))
+      || (requestedTp > 0 && !(brokerTp > 0))
+    return { ...result, openedNaked }
   }
 }
 

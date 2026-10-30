@@ -44,7 +44,7 @@ export function EconomicCalendarFilters({
   onNewsFilterChange,
 }: EconomicCalendarFiltersProps) {
   return (
-    <div className="flex flex-col gap-4 rounded-xl border border-neutral-200/55 bg-white p-4 shadow-sm dark:border-neutral-800/55 dark:bg-neutral-950">
+    <div className="flex flex-col gap-4 rounded-xl border border-neutral-200/55 bg-white p-4 shadow-xs dark:border-neutral-800/55 dark:bg-neutral-950">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <label className="flex flex-col gap-1">
           <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50">{labels.from}</span>
@@ -83,7 +83,7 @@ export function EconomicCalendarFilters({
           type="checkbox"
           checked={showNewsFilter}
           onChange={(e) => onNewsFilterChange(e.target.checked)}
-          className="h-4 w-4 rounded border-neutral-300 text-green-400 focus:ring-green-400"
+          className="h-4 w-4 rounded-sm border-neutral-300 text-green-400 focus:ring-green-400"
         />
         {labels.newsFilter}
       </label>

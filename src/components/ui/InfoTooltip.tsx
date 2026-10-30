@@ -135,7 +135,7 @@ export function InfoTooltip({ text, className }: { text: string; className?: str
           onMouseLeave={hide}
           onFocus={show}
           onBlur={hide}
-          className="inline-flex items-center justify-center rounded-full text-neutral-900 hover:text-neutral-900 dark:text-neutral-50 dark:hover:text-neutral-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400"
+          className="inline-flex items-center justify-center rounded-full text-neutral-900 hover:text-neutral-900 dark:text-neutral-50 dark:hover:text-neutral-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400"
           aria-label={trimmed}
         >
           <Info className="w-3.5 h-3.5" aria-hidden />

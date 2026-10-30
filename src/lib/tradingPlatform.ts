@@ -1,4 +1,4 @@
-export type TradingPlatform = 'MT4' | 'MT5' | 'cTrader' | 'Binance' | 'Bybit' | 'KuCoin'
+export type TradingPlatform = 'MT4' | 'MT5' | 'cTrader' | 'Binance' | 'Bybit' | 'KuCoin' | 'DXtrade' | 'TradeLocker' | 'MatchTrader'
 
 export function normalizeTradingPlatform(value: string | undefined | null): TradingPlatform {
   const normalized = String(value ?? '').trim().toLowerCase()
@@ -7,6 +7,9 @@ export function normalizeTradingPlatform(value: string | undefined | null): Trad
   if (normalized === 'binance') return 'Binance'
   if (normalized === 'bybit') return 'Bybit'
   if (normalized === 'kucoin') return 'KuCoin'
+  if (normalized === 'dxtrade') return 'DXtrade'
+  if (normalized === 'tradelocker') return 'TradeLocker'
+  if (normalized === 'matchtrader' || normalized === 'match-trader') return 'MatchTrader'
   return 'MT5'
 }
 

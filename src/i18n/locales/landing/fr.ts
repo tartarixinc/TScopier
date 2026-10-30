@@ -2,12 +2,26 @@ import { testimonialsFr } from '../../testimonials/fr'
 import type { LandingTranslations } from './types'
 
 export const landingFr: LandingTranslations = {
+  promo: {
+    regionLabel: 'Promotion',
+    days: 'Jours',
+    hours: 'Heures',
+    minutes: 'Min',
+    seconds: 'Sec',
+    endsIn: 'L\'offre se termine dans',
+    couponLabel: 'Code promo',
+    copyCoupon: 'Copier le code promo',
+    copied: 'Copié',
+    dismiss: 'Fermer la promotion',
+  },
   nav: {
     product: 'Produit',
     features: 'Fonctionnalités',
     pricing: 'Tarifs',
     faq: 'FAQ',
     docs: 'Docs',
+    forTraders: 'Pour les traders',
+    forProviders: 'Pour les fournisseurs',
     signIn: 'Se connecter',
     getStarted: "S'inscrire",
     dashboard: 'Tableau de bord',
@@ -28,13 +42,13 @@ export const landingFr: LandingTranslations = {
     },
   },
   hero: {
-    headline: 'Une plateforme de copie unifiée pour',
-    headlinePhrases: ['Signaux de trading', 'Trading social', 'Miroir de comptes'],
+    headline: 'La plateforme de copie n°1 pour tout trader Forex et crypto',
+    headlinePhrases: [],
     subheadline:
       'Automatisez vos trades depuis Telegram, WhatsApp, Discord, TradingView ou un compte maître vers plus de 8 plateformes de courtage en moins de 50 ms. Aucun VPS requis.',
     socialProof: 'TScopier.ai devient UniCopier',
-    primaryCta: 'Commencez votre essai gratuit de 5 jours',
-    secondaryCta: 'Se connecter',
+    primaryCta: 'Choisissez votre offre',
+    secondaryCta: 'Voir comment ça marche',
     imageAlt:
       'Tableau de bord UniCopier avec solde, profit du jour, résultats des trades et graphiques de croissance',
     previewUrl: 'app.tscopier.ai/dashboard',
@@ -120,6 +134,30 @@ export const landingFr: LandingTranslations = {
     eyebrow: 'Intégrations',
     title: 'Compatible avec les plateformes leaders',
   },
+  supportedPlatforms: {
+    title: 'Plateformes de signaux et de trading prises en charge',
+  },
+  completePicture: {
+    eyebrow: 'Vue d’ensemble',
+    title: 'Conçu pour les copy traders sérieux.',
+    description: 'Tout ce qu’il faut pour copier des signaux de façon fiable, du premier message à la clôture finale.',
+    cards: [
+      { title: 'Plusieurs sources de signaux', description: 'Copiez les trades depuis la source de signaux que votre fournisseur utilise déjà.' },
+      { title: 'Plus de 8 plateformes prises en charge', description: 'UniCopier prend en charge toutes les plateformes populaires, du Forex aux cryptomonnaies.' },
+      { title: 'Intégration TradingView fluide', description: 'Créez vos stratégies dans TradingView et connectez-les à UniCopier via webhook.' },
+      { title: 'IA incluse', description: 'Notre IA ne se contente pas de suggérer : elle exécute de vraies actions, vous aide à configurer, analyse vos trades et améliore votre expérience de copy trading.' },
+    ],
+  },
+  showcase: {
+    eyebrow: 'UniCopier',
+    title: 'Conçu pour réduire la complexité du trading moderne et favoriser de meilleures décisions',
+    cta: 'En savoir plus',
+    cards: [
+      { headline: 'Connectez tous vos comptes et définissez vos règles une seule fois.', description: 'Liez vos comptes MT4, MT5, cTrader, Binance, Bybit et KuCoin, puis choisissez la taille de lot, le risque, les objectifs et les sources de signaux pour chacun.' },
+      { headline: 'Reproduisez instantanément les trades du compte maître sur les comptes esclaves.', description: 'Choisissez un compte maître et laissez vos autres comptes le suivre avec des lots fixes, des multiplicateurs ou une taille basée sur le solde, avec des options de protection.' },
+      { headline: 'Suivez les meilleurs traders et copiez-les en quelques clics.', description: 'Comparez ROI, taux de réussite et notes, puis copiez les fournisseurs gratuitement ou pour un abonnement mensuel, ou partagez vos propres performances.' },
+    ],
+  },
   whyChoose: {
     statsCaption: 'Utilisé par des traders des fournisseurs de signaux Telegram les plus populaires',
     stats: [
@@ -130,13 +168,13 @@ export const landingFr: LandingTranslations = {
     ],
     eyebrow: 'Une copie plus intelligente commence par de meilleurs outils',
     title:
-      'Chaque fonction de UniCopier est conçue pour vous donner contrôle, clarté et des résultats mesurables.',
+      'Enfin, un copieur de signaux qui fonctionne avec tous les types de signaux',
     cards: [
       {
         label: 'Vitesse d’exécution',
-        metric: '<150ms',
+        metric: '<50ms',
         metricVariant: 'teal',
-        description: 'Latence inférieure à 150 ms du parsing du signal à l’envoi courtier.',
+        description: 'Latence inférieure à 50 ms du parsing du signal à l’envoi courtier.',
         layout: 'tall',
         icon: 'zap',
       },
@@ -214,6 +252,16 @@ export const landingFr: LandingTranslations = {
         layout: 'short',
         icon: 'history',
       },
+    ],
+  },
+  providers: {
+    eyebrow: 'Pour les fournisseurs de signaux',
+    title: 'Vendez votre service de signaux avec UniCopier.',
+    description: 'Fixez votre prix, bâtissez votre communauté et laissez d’autres traders copier vos trades moyennant un abonnement mensuel. Vous gardez 100 % des profits.',
+    points: [
+      { title: 'Fixez votre prix', description: 'Facturez un abonnement mensuel ou proposez la copie gratuite.' },
+      { title: 'Bâtissez votre communauté', description: 'Réunissez des traders qui vous copient automatiquement.' },
+      { title: 'Gardez 100 %', description: 'Tout ce que vos copieurs vous paient vous revient.' },
     ],
   },
   features: {

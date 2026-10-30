@@ -21,6 +21,7 @@ async function upsertEntitlementFromCustomer(
       .from("subscriptions")
       .update({
         status: "canceled",
+        canceled_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
       .eq("user_id", userId);
@@ -47,6 +48,11 @@ import {
   handleInvoiceDue,
   handleInvoicePaymentIssue,
 } from "../_shared/billingPaymentNotification.ts";
+import {
+  resolveInvoiceServicePeriod,
+  upsertInvoicePaymentFromStripe,
+  markInvoicePaymentRefunded,
+} from "../_shared/invoicePayments.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -83,34 +89,6 @@ async function resolveUserIdFromSubscription(
     .eq("stripe_subscription_id", subscription.id)
     .maybeSingle();
   return data?.user_id ?? null;
-}
-
-function resolveInvoiceServicePeriod(
-  invoice: Stripe.Invoice,
-): { periodStart: string | null; periodEnd: string | null } {
-  const lines = invoice.lines?.data ?? [];
-  const subscriptionLines = lines.filter((line) =>
-    line.type === "subscription" || (line.subscription != null && line.proration !== true)
-  );
-  const candidates = subscriptionLines.length > 0 ? subscriptionLines : lines;
-
-  let start: number | null = null;
-  let end: number | null = null;
-  for (const line of candidates) {
-    const ps = line.period?.start;
-    const pe = line.period?.end;
-    if (ps == null || pe == null) continue;
-    if (start == null || ps < start) start = ps;
-    if (end == null || pe > end) end = pe;
-  }
-  if (start == null || end == null) {
-    start = invoice.period_start ?? null;
-    end = invoice.period_end ?? null;
-  }
-  return {
-    periodStart: start != null ? new Date(start * 1000).toISOString() : null,
-    periodEnd: end != null ? new Date(end * 1000).toISOString() : null,
-  };
 }
 
 async function accrueInvoiceCommission(
@@ -342,6 +320,9 @@ Deno.serve(async (req: Request) => {
               .from("subscriptions")
               .update({
                 status: mappedStatus,
+                canceled_at: subscription.canceled_at
+                  ? new Date(subscription.canceled_at * 1000).toISOString()
+                  : null,
                 current_period_end: new Date(
                   subscription.current_period_end * 1000,
                 ).toISOString(),
@@ -388,6 +369,9 @@ Deno.serve(async (req: Request) => {
               .from("subscriptions")
               .update({
                 status: "canceled",
+                canceled_at: subscription.canceled_at
+                  ? new Date(subscription.canceled_at * 1000).toISOString()
+                  : new Date().toISOString(),
                 updated_at: new Date().toISOString(),
               })
               .eq("user_id", userId);
@@ -433,6 +417,9 @@ Deno.serve(async (req: Request) => {
             typeof subscription.customer === "string"
               ? subscription.customer
               : subscription.customer?.id ?? null;
+          if (userId) {
+            await upsertInvoicePaymentFromStripe(supabase, invoice, userId);
+          }
           if (userId && customerId) {
             await upsertEntitlementFromCustomer(
               stripe,
@@ -446,6 +433,7 @@ Deno.serve(async (req: Request) => {
               .from("subscriptions")
               .update({
                 status: "active",
+                canceled_at: null,
                 updated_at: new Date().toISOString(),
               })
               .eq("stripe_subscription_id", subscriptionId);
@@ -467,6 +455,7 @@ Deno.serve(async (req: Request) => {
           ? charge.invoice
           : charge.invoice?.id ?? null;
         await reverseInvoiceCommission(supabase, invoiceId);
+        await markInvoicePaymentRefunded(supabase, invoiceId, charge);
         break;
       }
     }

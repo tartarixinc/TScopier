@@ -8,6 +8,8 @@ export type BrokerApiMetadata = {
   sessionId: string
   platform: MtPlatform
   provider?: string | null
+  /** Broker account login (number), used to corroborate that a snapshot belongs to this account. */
+  accountLogin?: string | null
   manualSettings?: Record<string, unknown> | null
   authority?: BrokerWriteAuthority | null
 }
@@ -24,6 +26,9 @@ export function brokerSessionId(row: {
   binance_account_id?: string | null
   bybit_account_id?: string | null
   kucoin_account_id?: string | null
+  dxtrade_account_id?: string | null
+  tradelocker_account_id?: string | null
+  matchtrader_account_id?: string | null
 }): string {
   const provider = row.provider == null || row.provider === '' ? 'fxsocket' : row.provider
   if (provider === 'mtapi') {
@@ -46,6 +51,18 @@ export function brokerSessionId(row: {
     const kucoin = String(row.kucoin_account_id ?? '').trim()
     return kucoin && !kucoin.includes('|') ? kucoin : ''
   }
+  if (provider === 'dxtrade') {
+    const dxtrade = String(row.dxtrade_account_id ?? '').trim()
+    return dxtrade && !dxtrade.includes('|') ? dxtrade : ''
+  }
+  if (provider === 'tradelocker') {
+    const tradelocker = String(row.tradelocker_account_id ?? '').trim()
+    return tradelocker && !tradelocker.includes('|') ? tradelocker : ''
+  }
+  if (provider === 'matchtrader') {
+    const matchtrader = String(row.matchtrader_account_id ?? '').trim()
+    return matchtrader && !matchtrader.includes('|') ? matchtrader : ''
+  }
   if (provider !== 'fxsocket') return ''
   const fx = String(row.fxsocket_account_id ?? '').trim()
   if (fx && !fx.includes('|')) return fx
@@ -54,8 +71,15 @@ export function brokerSessionId(row: {
   return ''
 }
 
-function missingCtraderColumn(message: string): boolean {
-  return /ctrader_account_id|binance_account_id|bybit_account_id|kucoin_account_id/i.test(message)
+/**
+ * True when a select failed only because the database predates one of the
+ * per-provider session columns (or the DXtrade mode flag), so a narrower
+ * column list should be retried. Shared with the copy engines through
+ * `copyShared/copyHelpers`, which re-exports it (it cannot live there: that
+ * module already imports this one, so importing back would be a cycle).
+ */
+export function missingProviderIdColumn(message: string | null | undefined): boolean {
+  return /ctrader_account_id|binance_account_id|bybit_account_id|kucoin_account_id|dxtrade_account_id|tradelocker_account_id|matchtrader_account_id|dxtrade_is_position_based/i.test(String(message ?? ''))
 }
 
 export async function loadPlatformByFxsocketId(
@@ -69,9 +93,9 @@ export async function loadPlatformByFxsocketId(
   const idList = ids.join(',')
   const withCtrader = await supabase
     .from('broker_accounts')
-    .select(`${base},ctrader_account_id,binance_account_id,bybit_account_id,kucoin_account_id`)
-    .or(`mtapi_session_id.in.(${idList}),fxsocket_account_id.in.(${idList}),metaapi_account_id.in.(${idList}),ctrader_account_id.in.(${idList}),binance_account_id.in.(${idList}),bybit_account_id.in.(${idList}),kucoin_account_id.in.(${idList})`)
-  const { data, error } = withCtrader.error && missingCtraderColumn(withCtrader.error.message)
+    .select(`${base},ctrader_account_id,binance_account_id,bybit_account_id,kucoin_account_id,dxtrade_account_id,tradelocker_account_id,matchtrader_account_id`)
+    .or(`mtapi_session_id.in.(${idList}),fxsocket_account_id.in.(${idList}),metaapi_account_id.in.(${idList}),ctrader_account_id.in.(${idList}),binance_account_id.in.(${idList}),bybit_account_id.in.(${idList}),kucoin_account_id.in.(${idList}),dxtrade_account_id.in.(${idList}),tradelocker_account_id.in.(${idList}),matchtrader_account_id.in.(${idList})`)
+  const { data, error } = withCtrader.error && missingProviderIdColumn(withCtrader.error.message)
     ? await supabase
       .from('broker_accounts')
       .select(base)
@@ -91,6 +115,9 @@ export async function loadPlatformByFxsocketId(
       binance_account_id?: string
       bybit_account_id?: string
       kucoin_account_id?: string
+      dxtrade_account_id?: string
+      tradelocker_account_id?: string
+      matchtrader_account_id?: string
     })
     if (!id) continue
     out.set(id, {
@@ -118,12 +145,12 @@ export async function loadBrokerApiByAccountId(
   const out: BrokerApiByAccountId = new Map()
   const ids = [...new Set(brokerAccountIds.map(id => String(id ?? '').trim()).filter(Boolean))]
   if (!ids.length) return out
-  const base = 'id,mtapi_session_id,fxsocket_account_id,metaapi_account_id,platform,provider,writer_epoch,provider_transition_state,manual_settings'
+  const base = 'id,mtapi_session_id,fxsocket_account_id,metaapi_account_id,platform,provider,writer_epoch,provider_transition_state,manual_settings,account_login'
   const withCtrader = await supabase
     .from('broker_accounts')
-    .select(`${base},ctrader_account_id,binance_account_id,bybit_account_id,kucoin_account_id`)
+    .select(`${base},ctrader_account_id,binance_account_id,bybit_account_id,kucoin_account_id,dxtrade_account_id,tradelocker_account_id,matchtrader_account_id`)
     .in('id', ids)
-  const { data, error } = withCtrader.error && missingCtraderColumn(withCtrader.error.message)
+  const { data, error } = withCtrader.error && missingProviderIdColumn(withCtrader.error.message)
     ? await supabase.from('broker_accounts').select(base).in('id', ids)
     : withCtrader
   if (error) {
@@ -134,11 +161,13 @@ export async function loadBrokerApiByAccountId(
     const brokerAccountId = String((row as { id?: unknown }).id ?? '').trim()
     const sessionId = brokerSessionId(row)
     if (!brokerAccountId || !sessionId) continue
+    const accountLogin = String((row as { account_login?: unknown }).account_login ?? '').trim()
     out.set(brokerAccountId, {
       brokerAccountId,
       sessionId,
       platform: mtPlatformFrom((row as { platform?: string | null }).platform),
       provider: (row as { provider?: string | null }).provider,
+      accountLogin: accountLogin || null,
       authority: authorityFromBrokerRow(row),
       manualSettings: (row as { manual_settings?: Record<string, unknown> | null }).manual_settings ?? null,
     })

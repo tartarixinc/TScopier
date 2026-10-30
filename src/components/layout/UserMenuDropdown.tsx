@@ -104,7 +104,7 @@ export function UserMenuDropdown({ open, onClose, onSignOut }: UserMenuDropdownP
       role="menu"
       aria-label={um.menuLabel}
       className={clsx(
-        'absolute end-0 top-full z-50 mt-1 flex w-[min(16rem,calc(100vw-1rem))] max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-4.5rem)] flex-col overflow-hidden overscroll-contain rounded-xl border border-neutral-200 bg-white py-1 shadow-lg sm:max-h-[min(32rem,calc(100dvh-5rem))]',
+        'absolute inset-e-0 top-full z-50 mt-1 flex w-[min(16rem,calc(100vw-1rem))] max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-4.5rem)] flex-col overflow-hidden overscroll-contain rounded-xl border border-neutral-200 bg-white py-1 shadow-lg sm:max-h-[min(32rem,calc(100dvh-5rem))]',
         'before:absolute before:-top-1 before:inset-x-0 before:h-1 before:content-[""]',
         'dark:border-neutral-700 dark:bg-neutral-900',
       )}

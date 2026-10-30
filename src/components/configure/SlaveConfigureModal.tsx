@@ -5,6 +5,7 @@ import clsx from 'clsx'
 import { Button } from '../ui/Button'
 import { Toggle } from '../ui/Toggle'
 import { CopyRiskEditor } from './CopyRiskEditor'
+import { SymbolMappingEditor, type SymbolMappingLabels } from './SymbolMappingEditor'
 import { useFormatMoney } from '../../hooks/useFormatMoney'
 import { interpolate } from '../../i18n/interpolate'
 import type { CopyRiskTranslations } from '../../i18n/locales/copyRiskLabels'
@@ -289,7 +290,7 @@ function AccountLogo({ platform }: { platform: string }) {
     )
   }
   return (
-    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-neutral-100 dark:bg-neutral-900 dark:ring-neutral-800">
+    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white shadow-xs ring-1 ring-neutral-100 dark:bg-neutral-900 dark:ring-neutral-800">
       <img
         src={`/${normalized}.png`}
         alt=""
@@ -378,6 +379,8 @@ export function SlaveConfigureModal({
   balanceLabel,
   saveError,
   closeLabel,
+  symbolMap,
+  onSymbolMapChange,
   onChange,
   onClose,
 }: {
@@ -390,6 +393,8 @@ export function SlaveConfigureModal({
   balanceLabel: string
   saveError: string | null
   closeLabel: string
+  symbolMap: Record<string, string>
+  onSymbolMapChange: (next: Record<string, string>) => void
   onChange: (next: CopyRiskSettings) => void
   onClose: () => void
 }) {
@@ -453,6 +458,16 @@ export function SlaveConfigureModal({
   }
   const login = resolveAccountLogin(slave)
   const sourceName = source ? getBrokerDisplayLabel(source) : null
+  const symbolLabels: SymbolMappingLabels = {
+    title: setup.symbolMapping?.title ?? 'Symbol mapping',
+    hint: setup.symbolMapping?.hint
+      ?? "Rename the master's symbols to the names this account uses (for example XAUUSD to GOLD). Symbols not listed copy unchanged.",
+    master: setup.symbolMapping?.master ?? 'Master symbol',
+    slave: setup.symbolMapping?.slave ?? 'Slave symbol',
+    add: setup.symbolMapping?.add ?? 'Add mapping',
+    remove: setup.symbolMapping?.remove ?? 'Remove mapping',
+    empty: setup.symbolMapping?.empty ?? 'No mappings yet — symbols copy with their original names.',
+  }
 
   return createPortal(
     <div
@@ -702,6 +717,16 @@ export function SlaveConfigureModal({
 
               {advanced ? (
                 <div className="rounded-xl border border-neutral-200 px-3 py-3 dark:border-neutral-800">
+                  <SymbolMappingEditor
+                    value={symbolMap}
+                    labels={symbolLabels}
+                    onChange={onSymbolMapChange}
+                  />
+                </div>
+              ) : null}
+
+              {advanced ? (
+                <div className="rounded-xl border border-neutral-200 px-3 py-3 dark:border-neutral-800">
                   <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{setup.moreSettings}</p>
                   <div className="mt-3">
                     <CopyRiskEditor
@@ -720,11 +745,11 @@ export function SlaveConfigureModal({
             <section aria-labelledby="slave-preview-heading" className="self-start rounded-2xl border border-neutral-200/80 bg-neutral-50/70 p-4 dark:border-neutral-800 dark:bg-neutral-900/60 sm:p-5 lg:sticky lg:top-0 lg:max-h-[calc(94vh-9rem)] lg:overflow-y-auto">
               <div className="flex items-center justify-between gap-3">
                 <h3 id="slave-preview-heading" className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{setup.preview}</h3>
-                <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-green-500 dark:text-teal-300">{setup.preview}</span>
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-green-500 dark:text-teal-300">{setup.preview}</span>
               </div>
               <div className="mt-4">
                 <div className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-950">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-neutral-900 dark:text-neutral-50">{setup.exampleTrade}</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-neutral-900 dark:text-neutral-50">{setup.exampleTrade}</p>
                   <div className="mt-1 flex items-center justify-between gap-3">
                     <p className="text-base font-semibold text-neutral-900 dark:text-neutral-50">{sourceName ?? setup.exampleTrade}</p>
                     <p className="text-xs font-semibold text-green-500 dark:text-teal-300">{setup.masterSize}: {EXAMPLE_LOT.toFixed(2)}</p>
@@ -732,7 +757,7 @@ export function SlaveConfigureModal({
                 </div>
                 <div className="flex justify-center py-2 text-green-400 dark:text-green-400"><ArrowDown className="h-5 w-5" aria-hidden /></div>
                 <div className="rounded-xl border border-teal-200 bg-white p-4 dark:border-teal-900 dark:bg-neutral-950">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-green-500 dark:text-teal-300">{setup.slaveAccount}</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-green-500 dark:text-teal-300">{setup.slaveAccount}</p>
                   <div className="mt-2 flex items-center gap-3">
                     <AccountLogo platform={slave.platform} />
                     <div className="min-w-0">
@@ -744,7 +769,7 @@ export function SlaveConfigureModal({
                     <div className="mt-4 space-y-4 border-t border-neutral-100 pt-3 dark:border-neutral-800">
                       {groups.map(group => (
                         <div key={group.title}>
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-neutral-900 dark:text-neutral-50">{group.title}</p>
+                          <p className="text-[10px] font-semibold uppercase tracking-widest text-neutral-900 dark:text-neutral-50">{group.title}</p>
                           <dl className="mt-2 space-y-2">
                             {group.rows.map(row => (
                               <PreviewValue key={`${group.title}-${row.label}`} label={row.label} value={row.value} />

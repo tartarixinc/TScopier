@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Incident — MTAPI bridge Docker logs have no size limit (2026-10-07)</title>
+<style>
+@page { size: A4; margin: 22mm 20mm; }
+* { box-sizing: border-box; }
+body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 10.5px; line-height: 1.5; color: #1f2937; margin: 0; }
+h1 { font-size: 21px; margin: 0 0 4px; color: #111827; letter-spacing: -0.2px; }
+.sub { font-size: 11.5px; color: #6b7280; margin: 0 0 14px; }
+h2 { font-size: 13.5px; color: #111827; margin: 20px 0 8px; padding-bottom: 4px; border-bottom: 2px solid #2563eb; }
+h3 { font-size: 11.5px; color: #374151; margin: 14px 0 6px; }
+p { margin: 0 0 8px; }
+ul, ol { margin: 0 0 8px; padding-left: 18px; }
+li { margin-bottom: 3px; }
+code { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 9.5px; background: #f3f4f6; padding: 1px 4px; border-radius: 3px; }
+pre { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 9.5px; background: #f8fafc; border: 1px solid #e5e7eb; border-left: 3px solid #cbd5e1; border-radius: 4px; padding: 8px 10px; overflow-x: auto; white-space: pre-wrap; margin: 0 0 10px; line-height: 1.45; }
+.meta { width: 100%; border-collapse: collapse; margin: 0 0 4px; }
+.meta td { border: 1px solid #e5e7eb; padding: 5px 8px; vertical-align: top; font-size: 9.5px; }
+.meta td.k { background: #f9fafb; font-weight: 600; width: 24%; color: #374151; }
+.pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
+.pill.open { background: #fee2e2; color: #b91c1c; }
+.pill.fixed { background: #dcfce7; color: #15803d; }
+.box { border-left: 4px solid #2563eb; background: #eff6ff; padding: 8px 10px; border-radius: 0 4px 4px 0; margin: 8px 0; }
+.box.green { border-color: #16a34a; background: #f0fdf4; }
+.box.amber { border-color: #d97706; background: #fffbeb; }
+.box b { color: #111827; }
+table.data { width: 100%; border-collapse: collapse; margin: 6px 0 10px; }
+table.data th, table.data td { border: 1px solid #e5e7eb; padding: 4px 7px; text-align: left; font-size: 9.5px; }
+table.data th { background: #f3f4f6; font-weight: 600; }
+.small { font-size: 9.5px; color: #6b7280; }
+</style>
+</head>
+<body>
+
+<h1>Incident report — MTAPI bridge Docker logs have no size limit</h1>
+<p class="sub">Unbounded container log growth on the production VPS · 7 October 2026</p>
+
+<table class="meta">
+<tr>
+  <td class="k">Severity</td><td>Low — disk is 7% full, but one log already holds 2.9 GB and nothing stops it growing</td>
+  <td class="k">Status</td><td><span class="pill open">Open</span> diagnosed, not yet fixed</td>
+</tr>
+<tr>
+  <td class="k">Detected</td><td>7 October 2026</td>
+  <td class="k">Component</td><td>VPS Docker logging (<code>mtapi</code>, <code>mt4rest</code>)</td>
+</tr>
+<tr>
+  <td class="k">Affected users</td><td>All — the bridge serves every trade on the platform</td>
+  <td class="k">Root cause</td><td>Containers created with no log driver and no log options → Docker's unbounded <code>json-file</code> default</td>
+</tr>
+<tr>
+  <td class="k">Reported by</td><td>Found during the "Single target TP" investigation</td>
+  <td class="k">Data impact</td><td>None — no customer data at risk</td>
+</tr>
+</table>
+
+<h2>1. Executive summary (plain English)</h2>
+<p>The MTAPI bridge — the small service on our VPS that actually places and modifies trades on the
+MetaTrader terminal — writes a log line for <b>every request it receives</b>, and each line contains
+the full request URL, which is long. Docker's default behaviour is to keep every line forever in a
+single file, with <b>no maximum size and no rotation</b>.</p>
+<p>Nothing in our setup caps that file. Our container installation script does not pass a log size
+limit, we have no Docker daemon configuration file that sets a default, and the only time we ever
+touch a log file is to wipe it during a security reinstall.</p>
+<div class="box amber"><b>Measured state today:</b> the disk is healthy — only <b>7% used
+(6.5 GB of 96 GB)</b>. But one container's log file has already grown to <b>2.9 GB</b>, roughly a
+third of everything stored on the machine, and it is still growing. Nothing is broken yet. The risk
+is silent growth until the disk fills, at which point Docker and the trading terminal start failing
+in ways that are painful to diagnose.</div>
+<div class="box green"><b>Why this matters more than usual:</b> this log is <b>the only place</b> we
+can see exactly what the broker was asked to do. It was essential evidence in today's trading
+investigation, so losing it — or having it roll over — directly costs us debugging capability.</div>
+<p>The fix is small: give the container a log size limit when we create it.</p>
+
+<h2>2. Issue encountered</h2>
+<p>Investigating an unrelated trade problem, we needed the bridge's own request log to see what the
+broker had actually been asked to do. That log held the only copy of the answer. It then raised a
+second question: how far back does this log go, and how big is it?</p>
+
+<h3>a) Measurements taken on the production VPS (2026-10-07)</h3>
+<p><b>Overall disk</b></p>
+<pre>$ df -h /
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/sda1        96G  6.5G   90G   7% /</pre>
+<p><b>Container log files (the unbounded ones)</b></p>
+<pre>$ du -sh /var/lib/docker/containers/*/*-json.log | sort -h | tail -10
+110M    .../ac4da626a5fd.../ac4da626a5fd...-json.log
+2.9G    .../f92a9d631a24.../f92a9d631a24...-json.log</pre>
+<p>The 2.9 GB file is the bridge's log — the container handling every trade request. Map container
+IDs to names with <code>docker ps -a --format '{{.ID}} {{.Names}}'</code>.</p>
+<p><b>Confirming no size limit is configured</b></p>
+<pre>$ docker ps -a --format '{{.Names}}' | xargs -I{} docker inspect -f \
+    '{{.Name}} driver={{.HostConfig.LogConfig.Type}} opts={{.HostConfig.LogConfig.Config}}' {}
+/mt4rest driver=json-file opts=map[]
+/mtapi driver=json-file opts=map[]</pre>
+<p><code>opts=map[]</code> is an empty options map — proof that neither container has a size limit.</p>
+<p><b>Confirming there is no daemon-wide default</b></p>
+<pre>$ cat /etc/docker/daemon.json 2>/dev/null || echo "no daemon.json"
+no daemon.json</pre>
+<p><b>nginx access and error logs (separate files)</b></p>
+<pre>$ ls -lh /var/log/nginx/
+total 237M
+-rw-r----- 1 www-data adm    65M Oct  8 00:00 mtapi-access.log
+-rw-r----- 1 www-data adm   101M Oct  7 00:00 mtapi-access.log.1
+-rw-r----- 1 www-data adm   2.1M Oct  6 00:00 mtapi-access.log.2.gz
+... daily .gz files back to Sep 21 ...</pre>
+<div class="box green"><b>Good news here:</b> nginx <i>is</i> rotating daily, roughly two weeks of
+compressed history is kept, and this is not an active problem. It is noted because incident
+investigations depend on it.</div>
+
+<h3>b) Two findings</h3>
+<ol>
+<li><b>The Docker container log has no retention policy at all.</b> Docker's default
+<code>json-file</code> driver is in use because nothing overrides it. That driver writes to a single
+file per container and never rotates or truncates it on its own.</li>
+<li><b>The only log-size handling in the entire repository is a security wipe.</b> The installation
+script truncates log files to zero <b>only</b> as part of removing evidence of a previously exposed
+password (the 2026-09-23 incident). That is a one-off cleanup, not a size policy.</li>
+</ol>
+<p>The 2026-09-23 incident report already listed <i>"Optionally cap Docker log size for future
+restarts"</i> as a suggested follow-up. It was never actioned.</p>
+
+<h2>3. Affected user(s)</h2>
+<p>Not user-specific. Every trade placed through the bridge contributes lines to this log, so growth
+scales with platform activity rather than with any one customer.</p>
+<table class="data">
+<tr><th>Item</th><th>Value</th></tr>
+<tr><td>Containers affected</td><td><code>mtapi</code> (the bridge), <code>mt4rest</code></td></tr>
+<tr><td>Log driver in use</td><td>Docker default <code>json-file</code></td></tr>
+<tr><td>Options configured</td><td><b>None</b> (<code>opts=map[]</code>)</td></tr>
+<tr><td>Largest log file</td><td><b>2.9 GB</b></td></tr>
+<tr><td>Other container log</td><td>110 MB</td></tr>
+<tr><td>Disk usage</td><td>6.5 GB of 96 GB (<b>7%</b>)</td></tr>
+<tr><td>Rotation</td><td><b>None</b></td></tr>
+<tr><td>nginx access log</td><td>65 MB current + 101 MB previous, rotating daily — <b>working, unaffected</b></td></tr>
+</table>
+
+<h2>4. Root cause</h2>
+<p><code>deploy/mtapi-log-redactor/install.sh</code> creates the container with
+<code>docker run -d</code> at <b>line 139</b> and passes <code>--name</code>,
+<code>--restart always</code>, network/port/environment/volume arguments and a custom entrypoint —
+but <b>no <code>--log-driver</code> and no <code>--log-opt</code></b>:</p>
+<pre>docker run -d \
+  --name "$CONTAINER" \
+  --restart always \
+  ...
+  --entrypoint /mtapi-redactor/entrypoint.sh \
+  "$IMAGE"</pre>
+<ul>
+<li>Docker falls back to its compiled-in default, the <code>json-file</code> driver.</li>
+<li>The default <code>json-file</code> driver has no <code>max-size</code> and no
+<code>max-file</code>, so the file grows forever.</li>
+<li>There is <b>no <code>/etc/docker/daemon.json</code></b> on the VPS (verified above), so no
+daemon-wide default applies either.</li>
+<li><code>install.sh</code> lines 188 and 192 call <code>truncate -s 0</code> on the container log
+— but only to scrub credentials during a reinstall, and only for the specific container IDs
+involved.</li>
+</ul>
+<div class="box">The log redactor (<code>deploy/mtapi-log-redactor/redact.awk</code>) strips account
+passwords from lines as they are written, so <b>this is not a secret-exposure issue</b> (that was
+the separate 2026-09-23 incident). It is purely an unbounded-growth issue.</div>
+
+<h2>5. The fix</h2>
+<h3>Step A — reclaim the space (the prune)</h3>
+<p>Two options. <b>Option 1 is preferred</b> because it does not interrupt trading.</p>
+<p><b>Option 1 — reclaim by redeploying (no trading interruption).</b> Creating a container gives it
+a brand-new log file, and removing the old container removes its log directory with it, so applying
+the fix and rerunning the installer reclaims the space as a side effect:</p>
+<pre>cd /root/TSCopier   # or wherever the repo lives on the VPS
+docker rm -f mtapi
+bash deploy/mtapi-log-redactor/install.sh
+du -sh /var/lib/docker/containers/*/*-json.log | sort -h | tail -10
+df -h /</pre>
+<p><b>Option 2 — reclaim immediately without redeploying (brief trading interruption).</b>
+Stopping the containers pauses trade execution for a few seconds, so <b>only do this in a quiet
+window — outside market hours or at the weekend.</b></p>
+<pre>docker stop mtapi mt4rest
+find /var/lib/docker/containers -name '*-json.log' -exec truncate -s 0 {} +
+docker start mtapi mt4rest
+df -h /</pre>
+<div class="box amber">Truncating the log of a <i>running</i> container is not reliable, which is
+why Option 2 stops the containers first. Option 1 avoids the question entirely.</div>
+
+<h3>Step B — cap the log so it cannot happen again</h3>
+<ol>
+<li><b>Add log options to the container creation</b> in
+<code>deploy/mtapi-log-redactor/install.sh</code>, inside the <code>docker run -d</code> block at
+line 139:
+<pre>--log-driver json-file \
+--log-opt max-size=50m \
+--log-opt max-file=3 \</pre>
+This caps each container at 150 MB worst case (50 MB × 3 files).</li>
+<li><b>Add a daemon-wide default</b> at <code>/etc/docker/daemon.json</code> on the VPS, so
+containers we create later — including <code>mt4rest</code>, which is not created by this script —
+are capped too:
+<pre>{
+  "log-driver": "json-file",
+  "log-opts": { "max-size": "50m", "max-file": "3" }
+}</pre>
+Apply with <code>systemctl restart docker</code>. <b>Important:</b> these defaults only affect
+containers created <i>after</i> the restart; existing containers keep the settings they were
+created with, so they must still be recreated (Option 1 above).</li>
+<li><b>nginx needs no change.</b> Rotation was verified as working (daily <code>.gz</code> history
+back to 21 September). Keep it as-is and re-check after any nginx reconfiguration.</li>
+</ol>
+
+<h2>6. Files changed</h2>
+<p><i>Nothing has been changed yet.</i> The planned changes are:</p>
+<table class="data">
+<tr><th>File</th><th>Change</th></tr>
+<tr><td><code>deploy/mtapi-log-redactor/install.sh</code></td><td>Add <code>--log-driver json-file --log-opt max-size=50m --log-opt max-file=3</code> to the <code>docker run -d</code> block (line 139)</td></tr>
+<tr><td>VPS <code>/etc/docker/daemon.json</code></td><td>Create with daemon-wide log defaults (VPS only, not in the repo)</td></tr>
+<tr><td><code>docs/incidents/incident-2026-10-07-mtapi-bridge-log-retention.md</code></td><td>This report</td></tr>
+<tr><td><code>docs/PROJECT_MEMORY.md</code></td><td>Changelog entry</td></tr>
+</table>
+
+<h2>7. Verification</h2>
+<p>After the fix is deployed:</p>
+<ol>
+<li><code>docker inspect -f '{{.HostConfig.LogConfig}}' mtapi</code> must show
+<code>json-file map[max-file:3 max-size:50m]</code>.</li>
+<li><code>df -h /</code> must show the reclaimed space (baseline: 6.5 GB used, 7%).</li>
+<li><code>du -sh /var/lib/docker/containers/*/*-json.log | sort -h | tail -10</code> must show every
+log file under 150 MB (baseline: 2.9 GB and 110 MB).</li>
+<li><code>cat /etc/docker/daemon.json</code> must exist and contain the log options.</li>
+<li>Trade normally for a few days and confirm log files stop growing past the cap.</li>
+</ol>
+
+<h2>8. Deployment status</h2>
+<div class="box amber"><b>Not deployed.</b> This is a VPS-side change and is not covered by the
+Railway or Netlify deployments. It must be applied manually on the production VPS. Because the disk
+is only 7% full, this is <b>not urgent</b> — it can be done in a normal maintenance window.
+Recreating the container briefly interrupts trade execution, so schedule it outside market
+hours.</div>
+
+<h2>9. Follow-ups</h2>
+<ol>
+<li>Apply Step A and Step B on the VPS in a quiet market window.</li>
+<li>Add the log cap to the MTAPI cutover runbook so a future rebuild does not reintroduce it.</li>
+<li>Decide whether the bridge request log should also be kept for a fixed number of days rather than
+only capped by size — incident investigations depend on being able to look back at it.</li>
+<li><b>Confirmed working, no action:</b> nginx access-log rotation (daily, ~2 weeks of history).</li>
+<li>Re-measure the disk after the fix and record the "after" numbers in this report.</li>
+</ol>
+
+<p class="small" style="margin-top:16px; border-top:1px solid #e5e7eb; padding-top:6px;">
+TScopier incident archive · <code>docs/incidents/incident-2026-10-07-mtapi-bridge-log-retention</code>
+· Source: <code>incident-2026-10-07-mtapi-bridge-log-retention.md</code>
+</p>
+
+</body>
+</html>

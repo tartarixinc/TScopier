@@ -135,6 +135,8 @@ export interface AccountSummary {
   currency?: string
   /** MTAPI only: account trade mode (0=demo, 1=contest, 2=real). */
   type?: number
+  /** MTAPI only: execution mode label (Hedging / Netting / Exchange). */
+  method?: string
   /** MTAPI only: false means balance/equity are not authoritative yet. */
   synced?: boolean
 }

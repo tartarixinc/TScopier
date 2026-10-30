@@ -393,6 +393,7 @@ export const configureModalJa: ConfigureModalTranslations = {
     monitorIntroMulti: 'ワーカーはオープン取引を数秒ごとに監視します。ルールはオープンレッグごとに適用されます (各マルチトレードレッグは個別に追跡されます)。',
     moveSlTitle: '移動後にSLを移動する',
     moveSlSubtitle: '価格がしきい値に達すると、自動的にストップロスを損益分岐点（さらにオプションで部分終値）に移動します。',
+    basicPlanAutoManagementLimit: 'ストップロスを自動的に損益分岐点へ移動する機能は、アドバンストプランでご利用いただけます。',
     activeRule: 'アクティブなルール:',
     triggerTitle: 'トリガー — SL を移動するとき',
     triggerPips: 'ピップの動き',

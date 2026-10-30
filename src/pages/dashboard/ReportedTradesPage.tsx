@@ -97,7 +97,7 @@ export function ReportedTradesPage() {
                 <div className="flex min-w-0 items-center gap-2">
                   <p className="truncate font-semibold text-neutral-900 dark:text-neutral-50">
                     {r.symbol ?? tr.reportTitle}
-                    {r.ticket ? <span className="font-mono text-green-500 dark:text-teal-300"> #{r.ticket}</span> : null}
+                    {r.ticket ? <span className=" text-green-500 dark:text-teal-300"> #{r.ticket}</span> : null}
                   </p>
                   {r.direction ? (
                     <Badge variant={r.direction === 'buy' ? 'success' : 'error'} size="sm">
@@ -118,7 +118,7 @@ export function ReportedTradesPage() {
               </div>
 
               {r.reason ? (
-                <p className="mt-2 whitespace-pre-wrap break-words text-sm text-neutral-900 dark:text-neutral-50">
+                <p className="mt-2 whitespace-pre-wrap wrap-break-word text-sm text-neutral-900 dark:text-neutral-50">
                   {r.reason}
                 </p>
               ) : null}

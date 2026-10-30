@@ -6,19 +6,42 @@ import {
   Loader2,
   Minus,
   Radio,
+  Repeat,
   TriangleAlert,
   X,
 } from 'lucide-react'
 import clsx from 'clsx'
+import { useConfirm } from '../../context/ConfirmDialogContext'
 import { useT } from '../../context/LocaleContext'
+import { interpolate } from '../../i18n/interpolate'
 import { useAssistant } from '../../context/useAssistant'
 import { supabase } from '../../lib/supabase'
+import {
+  fetchMirrorCopyAttribution,
+  type MirrorCopyAttribution,
+} from '../../lib/mirrorCopyAttribution'
+import {
+  canRequestMirrorClose,
+  requestMirrorCopyClose,
+  waitForMirrorCopyClosed,
+} from '../../lib/mirrorCopyClose'
+import {
+  fetchPlanFallbackReason,
+  isTpSplitSkippedReason,
+  staleEntryNotice,
+} from '../../lib/tradeExecutionNotes'
 import type { MtTrade } from '../../lib/fxsocketBroker'
 import {
   formatSignalInstructions,
   resolveTradeSignalContext,
   type TradeSignalContext,
 } from '../../lib/tradeSignalLink'
+import {
+  fetchTradeCloseReason,
+  resolveTradeCloseReason,
+  tradeCloseReasonLabel,
+  type TradeCloseReasonCode,
+} from '../../lib/tradeCloseReason'
 import {
   fetchBrokerFailuresForTrade,
   formatBrokerFailureRow,
@@ -51,6 +74,7 @@ interface TradeDetailModalProps {
 
 export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onClose }: TradeDetailModalProps) {
   const t = useT()
+  const confirm = useConfirm()
   const assistant = useAssistant()
   const tr = t.trades
   const navigate = useNavigate()
@@ -58,20 +82,35 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState('')
   const [context, setContext] = useState<TradeSignalContext | null | undefined>(undefined)
+  const [closeReasonCode, setCloseReasonCode] = useState<TradeCloseReasonCode | null>(null)
   const [brokerFailures, setBrokerFailures] = useState<CopierBrokerFailureRow[]>([])
+  const [mirrorAttribution, setMirrorAttribution] = useState<MirrorCopyAttribution | null>(null)
+  const [mirrorCloseStatus, setMirrorCloseStatus] = useState<'idle' | 'working' | 'done' | 'timeout' | 'error'>('idle')
+  const [mirrorCloseError, setMirrorCloseError] = useState<string | null>(null)
+  const [planFallbackReason, setPlanFallbackReason] = useState<string | null>(null)
   const [showReport, setShowReport] = useState(false)
 
   useEffect(() => {
     if (!trade) {
       setContext(undefined)
+      setCloseReasonCode(null)
       setLoadError('')
       setLoading(false)
       setBrokerFailures([])
+      setMirrorAttribution(null)
+      setMirrorCloseStatus('idle')
+      setMirrorCloseError(null)
+      setPlanFallbackReason(null)
       return
     }
     if (!userId) {
       setContext(null)
+      setCloseReasonCode(null)
       setBrokerFailures([])
+      setMirrorAttribution(null)
+      setMirrorCloseStatus('idle')
+      setMirrorCloseError(null)
+      setPlanFallbackReason(null)
       return
     }
 
@@ -79,20 +118,49 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
     setLoading(true)
     setLoadError('')
     setContext(undefined)
+    setCloseReasonCode(null)
     setBrokerFailures([])
+    setMirrorAttribution(null)
+    setMirrorCloseStatus('idle')
+    setMirrorCloseError(null)
+    setPlanFallbackReason(null)
 
     void (async () => {
       try {
-        const result = await resolveTradeSignalContext(userId, trade)
+        const [result, storedCloseReason, mirror] = await Promise.all([
+          resolveTradeSignalContext(userId, trade),
+          trade.status === 'closed'
+            ? fetchTradeCloseReason(supabase, {
+                userId,
+                brokerAccountId: trade.broker_id,
+                ticket: trade.ticket,
+              }).catch(() => null)
+            : Promise.resolve(null),
+          fetchMirrorCopyAttribution(supabase, userId, trade.comment).catch(() => null),
+        ])
         if (cancelled) return
+        const resolvedReason = resolveTradeCloseReason(mirror?.mappingCloseReason ?? storedCloseReason, trade)
+        setCloseReasonCode(
+          resolvedReason === 'unknown' && mirror?.mappingState === 'closed' ? 'mirror_copy_closed' : resolvedReason,
+        )
         setContext(result)
+        setMirrorAttribution(mirror)
         if (result?.signal) {
-          const failures = await fetchBrokerFailuresForTrade(supabase, {
-            userId,
-            signalId: result.signal.id,
-            brokerAccountId: trade.broker_id,
-          })
-          if (!cancelled) setBrokerFailures(failures)
+          const [failures, fallbackReason] = await Promise.all([
+            fetchBrokerFailuresForTrade(supabase, {
+              userId,
+              signalId: result.signal.id,
+              brokerAccountId: trade.broker_id,
+            }),
+            fetchPlanFallbackReason(supabase, {
+              userId,
+              signalId: result.signal.id,
+              brokerAccountId: trade.broker_id,
+            }),
+          ])
+          if (cancelled) return
+          setBrokerFailures(failures)
+          setPlanFallbackReason(fallbackReason)
         }
       } catch (e) {
         if (!cancelled) {
@@ -131,6 +199,17 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
   const liveQuote = useTradeLiveQuote(trade, userId)
   const bidAskLine = formatBidAskLine(liveQuote.quote)
 
+  const closeReasonSentence = useMemo(() => {
+    if (!trade || trade.status !== 'closed' || !closeReasonCode) return null
+    const price =
+      closeReasonCode === 'stop_loss'
+        ? formatTradePrice(trade.sl)
+        : closeReasonCode === 'take_profit'
+          ? formatTradePrice(trade.tp)
+          : undefined
+    return tradeCloseReasonLabel(closeReasonCode, tr, { price })
+  }, [trade, closeReasonCode, tr])
+
   const linkedSignalId = context?.signal?.id
 
   const manualOverrideWarning = useMemo(() => {
@@ -152,6 +231,63 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
   const handleViewCopierLogs = () => {
     onClose()
     navigate('/copier-logs')
+  }
+
+  const reloadMirrorAttribution = async () => {
+    if (!userId || !trade) return
+    const next = await fetchMirrorCopyAttribution(supabase, userId, trade.comment).catch(() => null)
+    if (!next) return
+    setMirrorAttribution(next)
+    if (next.mappingCloseReason) {
+      setCloseReasonCode(resolveTradeCloseReason(next.mappingCloseReason, trade))
+    }
+  }
+
+  const handleCloseCopy = async () => {
+    const mappingId = mirrorAttribution?.mappingId
+    if (!mappingId || mirrorCloseStatus === 'working') return
+    const confirmText = tr.closeCopyConfirm
+      ?? 'Close this copied trade on the slave account? The master trade stays open — this copy will not be reopened.'
+    const approved = await confirm({
+      title: tr.closeCopy ?? 'Close copy',
+      body: confirmText,
+      confirmLabel: tr.closeCopy ?? 'Close copy',
+      cancelLabel: t.common.cancel,
+    })
+    if (!approved) return
+    setMirrorCloseStatus('working')
+    setMirrorCloseError(null)
+    try {
+      const request = await requestMirrorCopyClose(supabase, mappingId)
+      if (request.error) {
+        setMirrorCloseStatus('error')
+        setMirrorCloseError(request.error)
+        return
+      }
+      if (!request.applied) {
+        // Nothing changed: the copy is already closed (or closing was refused).
+        setMirrorCloseStatus('done')
+        setMirrorAttribution(prev => (prev ? { ...prev, mappingState: 'closed' } : prev))
+        void reloadMirrorAttribution()
+        return
+      }
+      setMirrorAttribution(prev => (prev ? { ...prev, mappingState: 'closing' } : prev))
+      const wait = await waitForMirrorCopyClosed(supabase, mappingId)
+      if (wait.outcome === 'closed') {
+        setMirrorCloseStatus('done')
+        setMirrorAttribution(prev => (prev ? { ...prev, mappingState: 'closed' } : prev))
+        setCloseReasonCode('user_force_close')
+        void reloadMirrorAttribution()
+      } else if (wait.outcome === 'read-error') {
+        setMirrorCloseStatus('error')
+        setMirrorCloseError(wait.error)
+      } else {
+        setMirrorCloseStatus('timeout')
+      }
+    } catch (e) {
+      setMirrorCloseStatus('error')
+      setMirrorCloseError(e instanceof Error ? e.message : String(e))
+    }
   }
 
   const askAssistantAboutFailure = () => {
@@ -196,6 +332,12 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
   }, [context?.signal, tr])
 
   if (!trade || !display) return null
+
+  const staleEntry = staleEntryNotice(
+    (context?.signal?.parsed_data as Record<string, unknown> | null)?.entry_price,
+    trade.entry_price,
+  )
+  const showTpSplitNote = isTpSplitSkippedReason(planFallbackReason)
 
   const channelLabel = (() => {
     const ch = context?.channel
@@ -366,8 +508,116 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                   </dd>
                 </div>
               )}
+              {closeReasonSentence ? (
+                <div className="col-span-2 border-t border-neutral-100 dark:border-neutral-800 pt-2.5">
+                  <dt className="text-neutral-400 uppercase tracking-wide">{tr.closeReason}</dt>
+                  <dd className="text-sm text-neutral-700 dark:text-neutral-300 mt-1 leading-relaxed">
+                    {closeReasonSentence}
+                  </dd>
+                </div>
+              ) : null}
             </dl>
           </section>
+
+          {mirrorAttribution ? (
+            <section className="rounded-xl border border-teal-200/80 dark:border-teal-900/60 bg-teal-50/40 dark:bg-teal-950/20 p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <Repeat className="w-4 h-4 text-green-400 shrink-0" aria-hidden />
+                <p className="text-xs font-semibold uppercase tracking-wide text-teal-800 dark:text-teal-300">
+                  {tr.copiedFromMasterTitle ?? 'Mirror copy'}
+                </p>
+              </div>
+              <p className="text-sm text-neutral-900 dark:text-neutral-50">
+                {interpolate(tr.copiedFromMaster ?? 'Copied from master account {login}', {
+                  login: mirrorAttribution.masterLogin,
+                })}
+              </p>
+              {trade.status === 'open' && mirrorAttribution.mappingId ? (
+                <div className="pt-1 space-y-1.5">
+                  {mirrorCloseStatus === 'done' ? (
+                    <p className="text-sm font-medium text-teal-800 dark:text-teal-300">
+                      {tr.closeCopyDone ?? 'Copy closed'}
+                    </p>
+                  ) : mirrorCloseStatus === 'timeout' ? (
+                    <>
+                      <p className="text-sm text-neutral-900 dark:text-neutral-50">
+                        {tr.closeCopyTimeout
+                          ?? 'Close requested — the worker closes it within about a minute. Refresh the page if it still shows open.'}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => void handleCloseCopy()}
+                        disabled={!canRequestMirrorClose(mirrorAttribution.mappingState)}
+                        className="rounded-lg border border-teal-300 dark:border-teal-800 px-3 py-1.5 text-sm font-medium text-teal-900 dark:text-teal-200 hover:bg-teal-100/70 dark:hover:bg-teal-900/40 disabled:opacity-50"
+                      >
+                        {tr.closeCopyRetry ?? 'Retry close'}
+                      </button>
+                    </>
+                  ) : mirrorCloseStatus === 'error' ? (
+                    <>
+                      <p className="text-sm text-error-700 dark:text-error-300">
+                        {mirrorCloseError
+                          ? interpolate(tr.closeCopyError ?? 'Could not close the copy: {error}', { error: mirrorCloseError })
+                          : (tr.closeCopyErrorFallback ?? 'Could not close the copy. Try again.')}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => void handleCloseCopy()}
+                        className="rounded-lg border border-teal-300 dark:border-teal-800 px-3 py-1.5 text-sm font-medium text-teal-900 dark:text-teal-200 hover:bg-teal-100/70 dark:hover:bg-teal-900/40"
+                      >
+                        {tr.closeCopyRetry ?? 'Retry close'}
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void handleCloseCopy()}
+                      disabled={mirrorCloseStatus === 'working' || !canRequestMirrorClose(mirrorAttribution.mappingState)}
+                      className="inline-flex items-center gap-2 rounded-lg border border-teal-300 dark:border-teal-800 px-3 py-1.5 text-sm font-medium text-teal-900 dark:text-teal-200 hover:bg-teal-100/70 dark:hover:bg-teal-900/40 disabled:opacity-50"
+                    >
+                      {mirrorCloseStatus === 'working' ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
+                      ) : null}
+                      {mirrorCloseStatus === 'working'
+                        ? (tr.closeCopyWorking ?? 'Closing copy…')
+                        : (tr.closeCopy ?? 'Close copy')}
+                    </button>
+                  )}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
+          {staleEntry != null || showTpSplitNote ? (
+            <section className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 space-y-2 dark:border-amber-900/60 dark:bg-amber-950/25">
+              <div className="flex items-center gap-2">
+                <TriangleAlert className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" aria-hidden />
+                <p className="text-xs font-semibold uppercase tracking-wide text-amber-900 dark:text-amber-200">
+                  {tr.execNotesTitle ?? 'Execution notes'}
+                </p>
+              </div>
+              <ul className="space-y-1.5">
+                {showTpSplitNote ? (
+                  <li className="text-sm text-neutral-900 dark:text-neutral-50">
+                    {tr.execNoteTpSplit
+                      ?? 'Some partial take-profits were skipped — this lot is too small to split (those slices would be below the broker minimum). The remaining take-profits still apply.'}
+                  </li>
+                ) : null}
+                {staleEntry != null ? (
+                  <li className="text-sm text-neutral-900 dark:text-neutral-50">
+                    {interpolate(
+                      tr.execNoteStaleEntry
+                        ?? 'The signal entry was {entry} but the trade opened at {fill} — price had already moved when the order was sent.',
+                      {
+                        entry: formatTradePrice(staleEntry.signalEntry),
+                        fill: formatTradePrice(staleEntry.fillPrice),
+                      },
+                    )}
+                  </li>
+                ) : null}
+              </ul>
+            </section>
+          ) : null}
 
           {manualOverrideWarning ? (
             <ManualBrokerOverrideWarningNotice
@@ -420,7 +670,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                       })}
                     </span>
                     <span
-                      className="text-error-700 dark:text-error-300 min-w-0 break-words"
+                      className="text-error-700 dark:text-error-300 min-w-0 wrap-break-word"
                       title={failure.error_message ?? undefined}
                     >
                       {formatBrokerFailureRow(failure, t.copierLogs)}

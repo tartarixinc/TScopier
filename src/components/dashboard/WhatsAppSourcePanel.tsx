@@ -209,7 +209,7 @@ export function WhatsAppSourcePanel({
     const steps = [copy.whatsappHow1, copy.whatsappHow2, copy.whatsappHow3]
     return (
       <Card className="overflow-hidden" padding="none">
-        <div className="relative border-b border-neutral-100 bg-gradient-to-br from-neutral-200/80 via-neutral-50 to-white px-5 pb-5 pt-6 dark:border-neutral-800 dark:from-[#2a2e39] dark:via-[#1e222d] dark:to-neutral-950 sm:px-6 sm:pt-7">
+        <div className="relative border-b border-neutral-100 bg-linear-to-br from-neutral-200/80 via-neutral-50 to-white px-5 pb-5 pt-6 dark:border-neutral-800 dark:from-[#2a2e39] dark:via-[#1e222d] dark:to-neutral-950 sm:px-6 sm:pt-7">
           <div className="mx-auto flex max-w-md flex-col items-center text-center">
             <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl border border-neutral-100 bg-white shadow-md dark:border-neutral-700 dark:bg-neutral-800">
               <img src="/whatsapp-icon.png" alt="" className="h-10 w-10 rounded-full object-cover" loading="lazy" aria-hidden />
@@ -232,7 +232,7 @@ export function WhatsAppSourcePanel({
             <ul className="mb-5 space-y-2.5">
               {steps.map((line, index) => (
                 <li key={line} className="flex items-start gap-2.5 text-sm text-neutral-900 dark:text-neutral-50">
-                  <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-semibold text-green-500 dark:bg-primary-900/50 dark:text-primary-300">
+                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-semibold text-green-500 dark:bg-primary-900/50 dark:text-primary-300">
                     {index + 1}
                   </span>
                   {line}
@@ -253,16 +253,16 @@ export function WhatsAppSourcePanel({
   return (
     <div className="space-y-3">
       <Card className="mb-3" padding="none">
-        <div className="flex items-center justify-between gap-2 border-b border-neutral-100 bg-gradient-to-r from-[#25D366]/10 to-transparent px-4 py-2.5 dark:border-neutral-800 dark:from-[#25D366]/15">
+        <div className="flex items-center justify-between gap-2 border-b border-neutral-100 bg-linear-to-r from-[#25D366]/10 to-transparent px-4 py-2.5 dark:border-neutral-800 dark:from-[#25D366]/15">
           <div className="flex min-w-0 items-center gap-2.5">
-            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-neutral-100 bg-white shadow-sm dark:border-neutral-700 dark:bg-neutral-800">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-neutral-100 bg-white shadow-xs dark:border-neutral-700 dark:bg-neutral-800">
               <img src="/whatsapp-icon.png" alt="" className="h-[18px] w-[18px] rounded-full object-cover" loading="lazy" aria-hidden />
             </div>
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">{copy.whatsappListTitle}</p>
               <p className="text-xs text-neutral-900 dark:text-neutral-50">{copy.whatsappConnectedHint}</p>
             </div>
-            <span className="hidden flex-shrink-0 sm:inline-flex">
+            <span className="hidden shrink-0 sm:inline-flex">
               <Badge variant="primary" size="sm">{ce.connected}</Badge>
             </span>
           </div>
@@ -315,10 +315,10 @@ export function WhatsAppSourcePanel({
           <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
             {[...Array(4)].map((_, index) => (
               <div key={index} className="flex items-center gap-3 px-4 py-2.5">
-                <div className="h-8 w-8 flex-shrink-0 animate-pulse rounded-lg bg-neutral-100 dark:bg-neutral-800" />
+                <div className="h-8 w-8 shrink-0 animate-pulse rounded-lg bg-neutral-100 dark:bg-neutral-800" />
                 <div className="flex-1 space-y-1.5">
-                  <div className="h-3 w-48 animate-pulse rounded bg-neutral-100 dark:bg-neutral-800" />
-                  <div className="h-2.5 w-24 animate-pulse rounded bg-neutral-100 dark:bg-neutral-800" />
+                  <div className="h-3 w-48 animate-pulse rounded-sm bg-neutral-100 dark:bg-neutral-800" />
+                  <div className="h-2.5 w-24 animate-pulse rounded-sm bg-neutral-100 dark:bg-neutral-800" />
                 </div>
               </div>
             ))}
@@ -339,14 +339,14 @@ export function WhatsAppSourcePanel({
               const members = group.participants ?? 0
               return (
                 <div key={group.group_jid} className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
-                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-primary-50 text-green-400">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-primary-50 text-green-400">
                     <img src="/whatsapp-icon.png" alt="" className="h-5 w-5 rounded-full object-cover" loading="lazy" aria-hidden />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-50">{group.name}</p>
                   </div>
                   {members > 0 ? (
-                    <span className="flex-shrink-0 text-xs text-neutral-900 dark:text-neutral-50">
+                    <span className="shrink-0 text-xs text-neutral-900 dark:text-neutral-50">
                       {interpolate(ce.members, { count: members.toLocaleString() })}
                     </span>
                   ) : null}
@@ -355,7 +355,7 @@ export function WhatsAppSourcePanel({
                     onClick={() => void addGroup(group)}
                     disabled={alreadyAdded || busyId === group.group_jid}
                     className={clsx(
-                      'flex-shrink-0 rounded-lg border px-3 py-1 text-xs font-medium transition-colors',
+                      'shrink-0 rounded-lg border px-3 py-1 text-xs font-medium transition-colors',
                       alreadyAdded
                         ? 'cursor-default border-neutral-200/65 text-neutral-900 dark:border-neutral-800/55 dark:text-neutral-50'
                         : 'border-green-400 text-green-400 hover:bg-primary-50',
@@ -499,7 +499,7 @@ function WhatsAppGroupRow({
   return (
     <li className={clsx(menuOpen && 'relative z-20')}>
       <div className="flex items-center gap-3 px-4 py-3">
-        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-primary-50 text-green-400">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-primary-50 text-green-400">
           <img src="/whatsapp-icon.png" alt="" aria-hidden className="h-5 w-5 rounded-full object-cover" loading="lazy" />
         </div>
         <div className="min-w-0 flex-1">
@@ -597,7 +597,7 @@ function BrokerMenu({
 }) {
   const ce = useT().copierEnginePage
   return (
-    <div className="absolute left-0 top-full z-30 mt-1 min-w-[12rem] rounded-lg border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+    <div className="absolute left-0 top-full z-30 mt-1 min-w-48 rounded-lg border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
       {brokers.length === 0 ? (
         <p className="px-3 py-2 text-xs text-neutral-900 dark:text-neutral-50">{ce.connectedBrokers}</p>
       ) : brokers.map(broker => (

@@ -128,9 +128,9 @@ function StatTile({
 function HeaderSkeleton() {
   return (
     <div className="min-w-0 space-y-2 animate-pulse">
-      <div className="h-5 w-40 rounded bg-neutral-200 dark:bg-neutral-700" />
-      <div className="h-3 w-28 rounded bg-neutral-100 dark:bg-neutral-800" />
-      <div className="h-3 w-56 rounded bg-neutral-100 dark:bg-neutral-800" />
+      <div className="h-5 w-40 rounded-sm bg-neutral-200 dark:bg-neutral-700" />
+      <div className="h-3 w-28 rounded-sm bg-neutral-100 dark:bg-neutral-800" />
+      <div className="h-3 w-56 rounded-sm bg-neutral-100 dark:bg-neutral-800" />
     </div>
   )
 }
@@ -584,7 +584,7 @@ export function BrokerStatsOverlay() {
       {toastMessage ? (
         <div
           role="status"
-          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] max-w-md px-4 py-3 rounded-xl bg-neutral-900 text-white text-sm shadow-lg dark:bg-neutral-100 dark:text-neutral-900"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-60 max-w-md px-4 py-3 rounded-xl bg-neutral-900 text-white text-sm shadow-lg dark:bg-neutral-100 dark:text-neutral-900"
         >
           {toastMessage}
         </div>

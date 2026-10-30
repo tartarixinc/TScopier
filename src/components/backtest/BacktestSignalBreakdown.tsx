@@ -266,7 +266,7 @@ function SignalRow({
       </button>
 
       {expanded ? (
-        <div className="border-t border-neutral-100 bg-neutral-50/50 px-4 py-4 text-xs dark:border-neutral-800 dark:bg-neutral-800/30 sm:px-5 sm:pl-[4.25rem]">
+        <div className="border-t border-neutral-100 bg-neutral-50/50 px-4 py-4 text-xs dark:border-neutral-800 dark:bg-neutral-800/30 sm:px-5 sm:pl-17">
           <div className="mb-3 rounded-lg border border-teal-200 bg-teal-50/80 px-3 py-2 font-medium text-teal-800 dark:border-teal-900 dark:bg-teal-950/40 dark:text-teal-200">
             {outcomeLabel === 'All TPs' ? 'All TPs Hit' : outcomeLabel}
           </div>
@@ -296,7 +296,7 @@ function SignalRow({
               <ul className="space-y-2 border-l-2 border-neutral-200 dark:border-neutral-700 pl-3">
                 {tpEvents.map((ev) => (
                   <li key={ev.index} className="relative">
-                    <span className="absolute -left-[1.15rem] top-1 h-2 w-2 rounded-full bg-green-400" />
+                    <span className="absolute left-[-1.15rem] top-1 h-2 w-2 rounded-full bg-green-400" />
                     <p className="font-medium text-green-500 dark:text-teal-300">
                       TP{ev.index} Hit → {formatEntryPrice(ev.price)}
                     </p>

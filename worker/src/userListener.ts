@@ -19,6 +19,7 @@ import {
   TelegramSessionInvalidError,
 } from './telegramClient'
 import { envNumber } from './envNumber'
+import { sealTelegramSession } from './telegramSessionCrypto'
 import {
   authKeyDupDeferredRetryMs,
   authKeyDupMaxRecoveryAttempts,
@@ -49,6 +50,7 @@ import {
 } from './pipelineTimestamps'
 import { addWorkerBreadcrumb, captureWorkerError } from './observability/sentry'
 import { captureBusinessIssue } from './observability/businessEvents'
+import { writeExecutionLog } from './observability/executionLog'
 import { incMetric } from './workerMetrics'
 import { workerConfig } from './workerConfig'
 import { isManagementAction, parsedAction } from './tradeSignalActions'
@@ -2990,6 +2992,7 @@ export class UserListener {
           userId: this.userId,
           channelId: channelRow.id,
           providerSignalNumber: providerNum,
+          symbol: (parseResult.parsed as { symbol?: string | null }).symbol ?? null,
         })
         if (linked) parentSignalId = linked
       }
@@ -3281,7 +3284,7 @@ export class UserListener {
           httpPushOk = true
         }
       }
-      void this.supabase.from('trade_execution_logs').insert({
+      void writeExecutionLog(this.supabase, {
         user_id: this.userId,
         signal_id: dispatchRow.id,
         action: 'dispatch_route_decision',
@@ -5195,9 +5198,21 @@ export class UserListener {
     }
     if (!current || current === this.lastSavedSession) return
 
+    let sealed: string
+    try {
+      sealed = sealTelegramSession(current)
+    } catch (err) {
+      // Never fall back to storing the plaintext session.
+      console.error(
+        `[userListener] session_string encryption failed for ${this.userId}:`,
+        err instanceof Error ? err.message : err,
+      )
+      return
+    }
+
     const { error } = await this.supabase
       .from('telegram_sessions')
-      .update({ session_string: current })
+      .update({ session_string: sealed })
       .eq('user_id', this.userId)
 
     if (error) {

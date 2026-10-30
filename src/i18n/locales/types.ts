@@ -224,6 +224,9 @@ export interface CommonTranslations {
   refresh: string
   save: string
   cancel: string
+  confirm?: string
+  confirmTitle?: string
+  working?: string
   delete: string
   edit: string
   add: string
@@ -600,6 +603,18 @@ export interface CopierLogsTranslations {
   retryFailedDetail: string
   retryReasonNotRetryable: string
   retryReasonDispatchRejected: string
+  mirrorSource?: string
+  mirrorOpenMessage?: string
+  mirrorCloseMessage?: string
+  mirrorModifyMessage?: string
+  mirrorOtherMessage?: string
+  mirrorDetailTitle?: string
+  mirrorOccurred?: string
+  mirrorMasterAccount?: string
+  mirrorSlaveAccount?: string
+  mirrorMasterTicket?: string
+  mirrorCopyTicket?: string
+  mirrorLot?: string
   skipReasons: Record<string, string>
   skipReasonDetails?: Record<string, string>
   detailModal?: {
@@ -696,6 +711,49 @@ export interface AccountConfigConnectFormTranslations {
   kucoinApiPassphraseLabel: string
   kucoinApiPassphraseHint: string
   kucoinKeysRequired: string
+  dxtradeConnectHint: string
+  dxtradeConnectButton: string
+  dxtradeServerUrlLabel: string
+  dxtradeServerUrlHint: string
+  dxtradeUsernameLabel: string
+  dxtradeDomainLabel: string
+  dxtradeDomainHint: string
+  dxtradePasswordLabel: string
+  dxtradePasswordHint: string
+  dxtradeAccountCodeLabel: string
+  dxtradeAccountCodeHint: string
+  dxtradeInvalidServer: string
+  dxtradeInvalidUsername: string
+  dxtradeLoginRequired: string
+  tradelockerConnectHint: string
+  tradelockerConnectButton: string
+  tradelockerServerLabel: string
+  tradelockerServerHint: string
+  tradelockerEmailLabel: string
+  tradelockerPasswordLabel: string
+  tradelockerPasswordHint: string
+  tradelockerAccountIdLabel: string
+  tradelockerAccountIdHint: string
+  tradelockerInvalidServer: string
+  tradelockerInvalidEmail: string
+  tradelockerInvalidAccountId: string
+  tradelockerLoginRequired: string
+  matchtraderConnectHint: string
+  matchtraderConnectButton: string
+  matchtraderUrlLabel: string
+  matchtraderUrlHint: string
+  matchtraderEmailLabel: string
+  matchtraderPasswordLabel: string
+  matchtraderPasswordHint: string
+  matchtraderAccountIdLabel: string
+  matchtraderAccountIdHint: string
+  matchtraderBrokerIdLabel: string
+  matchtraderBrokerIdHint: string
+  matchtraderInvalidUrl: string
+  matchtraderInvalidEmail: string
+  matchtraderInvalidAccountId: string
+  matchtraderInvalidBrokerId: string
+  matchtraderLoginRequired: string
   brokerServerLabel: string
   brokerServerHint: string
   brokerServerPlaceholder: string
@@ -792,6 +850,7 @@ export interface AccountConfigBrokerListTranslations {
   detailEquity: string
   channelsNoneSelected: string
   channelsEmptySaveWarning: string
+  channelsEmptySaveTitle?: string
   channelsSaveChannelListNotReady: string
   channelsSaveLinkedChannelsInvalid: string
   channelsSignalChannel: string
@@ -960,6 +1019,24 @@ export interface MirrorTradingPageTranslations {
   back: string
   next: string
   loadError: string
+  startCopying?: string
+  pauseCopying?: string
+  stopCopying?: string
+  stopCopyingConfirm?: string
+  closingCopies?: string
+  removeSlaveConfirm?: string
+  removeSlaveTitle?: string
+  statusActive?: string
+  statusPaused?: string
+  statusStopped?: string
+  statusStopping?: string
+  statusError?: string
+  slaveChannelConflictTitle?: string
+  slaveChannelConflictBody?: string
+  slaveChannelConflictChannelsLabel?: string
+  slaveChannelConflictUseDifferent?: string
+  slaveChannelConflictDisconnect?: string
+  slaveChannelConflictDisconnecting?: string
   setup: {
     title: string
     preview: string
@@ -967,6 +1044,15 @@ export interface MirrorTradingPageTranslations {
     copyMethod: string
     protections: string
     moreSettings: string
+    symbolMapping?: {
+      title?: string
+      hint?: string
+      master?: string
+      slave?: string
+      add?: string
+      remove?: string
+      empty?: string
+    }
     exampleTrade: string
     masterSize: string
     slaveAccount: string
@@ -994,6 +1080,16 @@ export interface MirrorTradingPageTranslations {
       stop_distance: string
     }
   }
+}
+
+/** Shared warning shown when linking a mirror-slave broker to a channel. */
+export interface MirrorSlaveGuardTranslations {
+  channelConnectTitle?: string
+  channelConnectBody?: string
+  masterAccountLabel?: string
+  proceed?: string
+  disconnectMirror?: string
+  disconnectingMirror?: string
 }
 
 export interface SocialTradingPageTranslations {
@@ -1269,6 +1365,19 @@ export interface TradesTranslations {
   signalTime: string
   noLinkedSignal: string
   imageSignal: string
+  copiedFromMasterTitle?: string
+  copiedFromMaster?: string
+  closeCopy?: string
+  closeCopyConfirm?: string
+  closeCopyWorking?: string
+  closeCopyDone?: string
+  closeCopyTimeout?: string
+  closeCopyRetry?: string
+  closeCopyError?: string
+  closeCopyErrorFallback?: string
+  execNotesTitle?: string
+  execNoteTpSplit?: string
+  execNoteStaleEntry?: string
   loadingSignal: string
   loadSignalError: string
   viewDetails: string
@@ -1315,6 +1424,22 @@ export interface TradesTranslations {
   brokerErrorTitle: string
   brokerErrorIntro: string
   viewCopierLogs: string
+  closeReason: string
+  reasonNewsPreClose: string
+  reasonSignalClose: string
+  reasonSignalRevision: string
+  reasonOppositeSignal: string
+  reasonPartialTp: string
+  reasonAutoManagement: string
+  reasonCloseWorseEntries: string
+  reasonCopyLimitFlatten: string
+  reasonUserForceClose: string
+  reasonPositionGone: string
+  reasonMirrorSourceClosed: string
+  reasonMirrorCopyClosed: string
+  reasonStopLoss: string
+  reasonTakeProfit: string
+  reasonUnknown: string
   cancel: string
 }
 
@@ -1757,8 +1882,10 @@ export interface ChannelsPageTranslations {
   tradingViewCopy: string
   tradingViewCopied: string
   tradingViewRotate: string
+  tradingViewRotateConfirm?: string
   tradingViewActive: string
   tradingViewDelete: string
+  tradingViewDeleteConfirm?: string
   tradingViewShowDetails: string
   tradingViewEmpty: string
   tradingViewHeroTitle: string
@@ -2158,6 +2285,7 @@ export interface Translations {
   pricing: PricingTranslations
   landing: LandingTranslations
   mirrorTradingPage: MirrorTradingPageTranslations
+  mirrorSlaveGuard?: MirrorSlaveGuardTranslations
   copyRisk: CopyRiskTranslations
   socialTradingPage: SocialTradingPageTranslations
   configurationsPage: ConfigurationsPageTranslations

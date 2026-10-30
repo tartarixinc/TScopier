@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import { createHmac } from 'node:crypto'
 import { BybitProvider } from './bybitProvider'
+import { historyContainsClosedPosition } from './mirrorCopy/mirrorCopyReconcile'
 import { ticketToken } from './bybit/symbols'
 import {
   BybitApiError,
@@ -687,4 +688,44 @@ test('an unknown symbol is rejected before any order call', async () => {
   const { fake, provider } = setup()
   await assert.rejects(provider.orderSend('acct-1', { symbol: 'NOPEUSD', operation: 'Buy', volume: 1 }), /not available on Bybit/)
   assert.equal(fake.find('POST', '/v5/order/create').length, 0)
+})
+
+test('a stop-loss close outside the copier is confirmable from history', async () => {
+  const { fake, provider } = setup()
+  const placed = await provider.orderSend('acct-1', { ...BUY, stoploss: 64_000, takeprofit: 67_000 })
+  // The stop fires on Bybit: no copier close order, so history names the
+  // closing order — never the ticket the mirror ledger tracks.
+  fake.stopOrders = fake.stopOrders.filter(o => !String(o.orderLinkId).startsWith('TSL_'))
+  fake.positions = []
+  assert.deepEqual(await provider.openedOrders('acct-1'), [])
+
+  const from = new Date(NOW - 86_400_000).toISOString()
+  const to = new Date(NOW + 1000).toISOString()
+  const rows = await provider.orderHistory('acct-1', from, to) as Array<Record<string, unknown>>
+  const observed = rows.find(row => row.ticket === placed.ticket)
+  assert.ok(observed, 'the observed close must be reported under the tracked ticket')
+  assert.equal(observed!.observed, 'position_gone')
+  assert.equal(observed!.closeTime, NOW)
+  assert.equal(historyContainsClosedPosition(rows, String(placed.ticket), 'bybit'), true,
+    'a close seen live must confirm the source position is gone')
+  assert.equal(historyContainsClosedPosition(rows, '424242', 'bybit'), false,
+    'a ticket that never closed must stay unconfirmed')
+})
+
+test('stillHoldsPosition answers from the exchange position list, not the leg book', async () => {
+  const { fake, provider } = setup()
+  await provider.orderSend('acct-1', BUY)
+  assert.equal(await provider.stillHoldsPosition('acct-1', 'BTCUSDT', 'buy'), true)
+  assert.equal(await provider.stillHoldsPosition('acct-1', 'BTCUSDT', 'sell'), false)
+  fake.positions = []
+  assert.equal(await provider.stillHoldsPosition('acct-1', 'BTCUSDT', 'buy'), false)
+  fake.replies.set('GET /v5/position/list', () => fail(10006, 'request timeout'))
+  assert.equal(await provider.stillHoldsPosition('acct-1', 'BTCUSDT', 'buy'), null,
+    'a failed read must be reported as "could not answer", never as "flat"')
+})
+
+test('stillHoldsPosition reports null when the account itself cannot be loaded', async () => {
+  const { fake } = setup()
+  const provider = new BybitProvider({ loadCredentials: async () => null, fetchImpl: fake.fetchImpl, now: () => NOW, sleep: async () => {} })
+  assert.equal(await provider.stillHoldsPosition('acct-1', 'BTCUSDT', 'buy'), null)
 })

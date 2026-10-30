@@ -37,7 +37,7 @@ export function EconomicEventRow({ event, timeLabel, impactLabel, labels }: Econ
         </div>
         <p className="text-sm font-medium leading-snug text-neutral-900 dark:text-neutral-50">{event.event}</p>
       </div>
-      <div className="grid grid-cols-3 gap-2 text-right text-xs sm:min-w-[12rem]">
+      <div className="grid grid-cols-3 gap-2 text-right text-xs sm:min-w-48">
         <div>
           <p className="text-neutral-900 dark:text-neutral-50">{labels.actual}</p>
           <p className={clsx('font-semibold tabular-nums', valueTone(event.actual, event.forecast))}>

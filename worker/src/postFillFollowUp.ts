@@ -23,7 +23,7 @@ import type { SignalRow } from './tradeExecutor'
 import { isBenignOrderModifyError } from './orderModifyBenign'
 import { captureDeferredBusinessFailure } from './observability/deferredBusinessEvents'
 import { resolvePostFillIsBuy } from './postFillSide'
-
+import { writeExecutionLog } from './observability/executionLog'
 /** Minimal broker fields for post-fill (avoids circular import from tradeExecutor). */
 export type PostFillBrokerRow = {
   id: string
@@ -98,7 +98,25 @@ function newsBlackoutPreFillEnabled(): boolean {
   const v = String(process.env.EXECUTOR_NEWS_BLACKOUT_PRE_FILL ?? 'false').toLowerCase()
   return v === '1' || v === 'true' || v === 'yes'
 }
-
+/**
+ * Record a post-fill stop/take-profit change. This path previously wrote no row
+ * at all, which is why a wrong take-profit could persist unexplained (incident
+ * 2026-10-07). Audit only — never fails the trade.
+ */
+async function recordPostFillStopsChange(
+  args: ApplyPostFillFollowUpArgs,
+  payload: Record<string, unknown>,
+  status: 'success' | 'failed' | 'skipped',
+): Promise<void> {
+  await writeExecutionLog(args.supabase, {
+    user_id: args.signal.user_id,
+    signal_id: args.signal.id,
+    broker_account_id: args.broker.id,
+    action: 'post_fill_stops_modify',
+    status,
+    request_payload: payload as unknown as Record<string, unknown>,
+  })
+}
 async function applyPipAndChannelStops(args: ApplyPostFillFollowUpArgs): Promise<void> {
   const {
     api, uuid, signal, parsed, broker, channelKeywords, symbol, params, filledLegs,
@@ -157,7 +175,16 @@ async function applyPipAndChannelStops(args: ApplyPostFillFollowUpArgs): Promise
 
     let targetSl = leg.openSl
     let targetTp = leg.openTp
+    // `leg.openTp` is what the order was actually placed with: the customer's
+    // chosen single target, or the planner's rung. Recomputing it from the
+    // signal ladder replaced that choice with the deepest level (incident
+    // 2026-10-07). Only an explicit TP pip override may replace an existing
+    // take-profit; otherwise recompute only when the order went out with none.
+    const openTp = Number(leg.openTp)
+    const allowTpReplace = resolvePredefinedTpPips(manual) != null || !(openTp > 0)
+    let stopSource = 'unchanged'
     if (isMulti) {
+      stopSource = multiPredefinedSl || multiPredefinedTp ? 'multi_predefined_from_fill' : 'multi_unchanged'
       const derived = deriveManualStopsWithClamp({
         parsed: plannerParsed,
         manual,
@@ -178,8 +205,10 @@ async function applyPipAndChannelStops(args: ApplyPostFillFollowUpArgs): Promise
         targetTp = derived.roundPrice(picked)
       }
     } else if (hasPartialTpSchedule && plannedBrokerTp != null && plannedBrokerTp > 0) {
+      stopSource = 'planned_partial_tp'
       targetTp = plannedBrokerTp
     } else if (usesPredefinedStops(manual)) {
+      stopSource = 'predefined_stops_from_fill'
       const derived = deriveManualStopsWithClamp({
         parsed: plannerParsed,
         manual,
@@ -190,14 +219,17 @@ async function applyPipAndChannelStops(args: ApplyPostFillFollowUpArgs): Promise
         isBuy,
       })
       if (derived.finalSl != null) targetSl = derived.roundPrice(derived.finalSl)
-      if (derived.finalTps.length) {
+      if (allowTpReplace && derived.finalTps.length) {
         const lastTp = derived.finalTps[derived.finalTps.length - 1] ?? derived.finalTps[0]
         targetTp = derived.roundPrice(lastTp)
       }
     } else if (shouldMergeChannelParamsForEntry(plannerParsed)) {
+      stopSource = 'channel_merge'
       if (plannerParsed.sl != null) targetSl = plannerParsed.sl
-      const lastTp = lastPositiveParsedTpPrice(plannerParsed)
-      if (lastTp != null) targetTp = lastTp
+      if (allowTpReplace) {
+        const lastTp = lastPositiveParsedTpPrice(plannerParsed)
+        if (lastTp != null) targetTp = lastTp
+      }
     }
 
     const stripped = stripInvalidStopsForSide({
@@ -213,7 +245,20 @@ async function applyPipAndChannelStops(args: ApplyPostFillFollowUpArgs): Promise
     const slChanged = newSl != null && newSl !== leg.openSl
     const tpChanged = newTp != null && newTp !== leg.openTp && (!isMulti || multiPredefinedTp)
     if (!slChanged && !tpChanged) continue
-
+    const changePayload = {
+      symbol,
+      side: isBuy ? 'buy' : 'sell',
+      ticket: leg.ticket,
+      trade_id: leg.tradeRowId,
+      stop_source: stopSource,
+      entry_price: entry,
+      from_sl: leg.openSl,
+      to_sl: slChanged ? newSl : leg.openSl,
+      from_tp: leg.openTp,
+      to_tp: tpChanged ? newTp : leg.openTp,
+      sl_changed: slChanged,
+      tp_changed: tpChanged,
+    }
     try {
       const modifyArgs: { ticket: number; stoploss?: number | null; takeprofit?: number | null } = {
         ticket: leg.ticket,
@@ -232,9 +277,14 @@ async function applyPipAndChannelStops(args: ApplyPostFillFollowUpArgs): Promise
             .eq('id', leg.tradeRowId)
         }
       }
+      await recordPostFillStopsChange(args, changePayload, 'success')
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      if (isBenignOrderModifyError(msg)) continue
+      if (isBenignOrderModifyError(msg)) {
+        await recordPostFillStopsChange(args, { ...changePayload, error: msg }, 'skipped')
+        continue
+      }
+      await recordPostFillStopsChange(args, { ...changePayload, error: msg }, 'failed')
       console.warn(
         `[postFillFollowUp] OrderModify stops failed signal=${signal.id} ticket=${leg.ticket}: ${msg}`,
       )
@@ -285,7 +335,7 @@ export async function applyPostFillFollowUp(args: ApplyPostFillFollowUpArgs): Pr
       const events = await getCalendarEventsCached()
       const blackout = findActiveNewsBlackout(events, manual, symbol)
       if (blackout) {
-        await args.supabase.from('trade_execution_logs').insert({
+        await writeExecutionLog(args.supabase, {
           user_id: signal.user_id,
           signal_id: signal.id,
           broker_account_id: broker.id,

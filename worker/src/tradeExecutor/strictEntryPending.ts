@@ -4,7 +4,8 @@ import { autoManagementTradeSnapshot } from '../autoManagement'
 import type { TradeExecutorContext } from './context'
 import { clampOrderStops, roundLot } from './helpers'
 import type { PreparedEntry } from './entryPrepare'
-
+import { writeExecutionLog } from '../observability/executionLog'
+import { humanizeOrderSendError } from '../brokerTradeError'
 /**
  * Place a broker BuyLimit/SellLimit when strict signal entry defers immediates.
  * Multi/range uses aggregated volume and plan TP; single may override TP from parsed.
@@ -61,23 +62,9 @@ export async function placeStrictSignalEntryPending(
   }
 
     try {
-      let result
-      try {
-        result = await api.orderSend(uuid, clamped.args)
-      } catch (sendErr) {
-        const msg = sendErr instanceof Error ? sendErr.message : String(sendErr)
-        const isInvalidStops = /invalid\s+stops/i.test(msg)
-        const hasStops = (Number(clamped.args.stoploss) || 0) > 0
-          || (Number(clamped.args.takeprofit) || 0) > 0
-        if (isInvalidStops && hasStops) {
-          console.warn(
-            `[tradeExecutor] strict entry retry without stops signal=${signal.id} broker=${broker.id}: ${msg}`,
-          )
-          result = await api.orderSend(uuid, { ...clamped.args, stoploss: 0, takeprofit: 0 })
-        } else {
-          throw sendErr
-        }
-      }
+      // Never retry without the stops: a pending entry the broker refuses to
+      // protect is not an entry we want. Fail it and let the user see why.
+      const result = await api.orderSend(uuid, clamped.args)
     const ticket = result.ticket
     const isBuyLeg = se.isBuy
     const pendingSl = clamped.args.stoploss && clamped.args.stoploss > 0 ? clamped.args.stoploss : null
@@ -164,7 +151,7 @@ export async function placeStrictSignalEntryPending(
     }
 
     try {
-      await ctx.supabase.from('trade_execution_logs').insert({
+      await writeExecutionLog(ctx.supabase, {
         user_id: signal.user_id,
         signal_id: signal.id,
         broker_account_id: broker.id,
@@ -182,21 +169,22 @@ export async function placeStrictSignalEntryPending(
     } catch { /* best-effort */ }
     return true
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
+    const msg = humanizeOrderSendError(
+      err instanceof Error ? err.message : String(err),
+      symbol,
+    )
     console.error(
       `[tradeExecutor] strict entry broker OrderSend failed signal=${signal.id} broker=${broker.id} op=${pendingOp} price=${entryPx}: ${msg}`,
     )
-    try {
-      await ctx.supabase.from('trade_execution_logs').insert({
-        user_id: signal.user_id,
-        signal_id: signal.id,
-        broker_account_id: broker.id,
-        action: 'signal_entry_pending_failed',
-        status: 'failed',
-        request_payload: { operation: pendingOp, entry_price: entryPx, symbol } as unknown as Record<string, unknown>,
-        error_message: msg,
-      })
-    } catch { /* best-effort */ }
+    await writeExecutionLog(ctx.supabase, {
+      user_id: signal.user_id,
+      signal_id: signal.id,
+      broker_account_id: broker.id,
+      action: 'signal_entry_pending_failed',
+      status: 'failed',
+      request_payload: { operation: pendingOp, entry_price: entryPx, symbol } as unknown as Record<string, unknown>,
+      error_message: msg,
+    })
     return false
   }
 }

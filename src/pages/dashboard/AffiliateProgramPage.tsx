@@ -176,7 +176,7 @@ export function AffiliateProgramPage() {
                     setCustomCode(data?.profile.referral_code ?? '')
                     setIsEditingCode(prev => !prev)
                   }}
-                  className="inline-flex items-center justify-center rounded p-1 text-neutral-900 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-50"
+                  className="inline-flex items-center justify-center rounded-sm p-1 text-neutral-900 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-50"
                   aria-label={at.editReferralCode}
                   title={at.editReferralCode}
                 >
@@ -261,7 +261,7 @@ export function AffiliateProgramPage() {
                     setWalletAddress(savedWalletAddress)
                     setIsEditingWallet(prev => !prev)
                   }}
-                  className="inline-flex items-center justify-center rounded p-1 text-neutral-900 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-50"
+                  className="inline-flex items-center justify-center rounded-sm p-1 text-neutral-900 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-50"
                   aria-label={at.editWalletAddress}
                   title={at.editWalletAddress}
                 >
@@ -359,7 +359,7 @@ export function AffiliateProgramPage() {
               <tbody>
                 {(data?.commissions ?? []).slice(0, 30).map((row) => (
                   <tr key={row.id} className="border-t border-neutral-200/65 dark:border-neutral-800/55">
-                    <td className="px-5 py-3 font-mono text-xs">{row.stripe_invoice_id}</td>
+                    <td className="px-5 py-3  text-xs">{row.stripe_invoice_id}</td>
                     <td className="px-5 py-3">{centsToMoney(row.invoice_amount_cents, row.currency.toUpperCase(), locale)}</td>
                     <td className="px-5 py-3">
                       <span className="inline-flex items-center gap-1">
