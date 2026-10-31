@@ -83,6 +83,15 @@ function failure(error: unknown): Error {
   return new Error(typeof candidate?.message === 'string' ? candidate.message : 'Social copy request failed', { cause: error })
 }
 
+export async function fetchSocialTraderLiveCopierCount(client: SupabaseClient, traderUserId: string): Promise<number> {
+  const { data, error } = await client.rpc('get_social_trader_live_copier_count', { p_trader_user_id: traderUserId })
+  if (error) throw failure(error)
+  if (data == null || (typeof data === 'string' && data.trim() === '')) throw new Error('Invalid live copier count returned by server')
+  const count = Number(data)
+  if (!Number.isSafeInteger(count) || count < 0) throw new Error('Invalid live copier count returned by server')
+  return count
+}
+
 export async function fetchSocialCopySources(client: SupabaseClient, traderUserId: string): Promise<SocialCopySource[]> {
   const { data, error } = await client.rpc('get_social_copy_sources', { p_trader_user_id: traderUserId })
   if (error) throw failure(error)

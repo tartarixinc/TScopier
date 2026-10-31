@@ -38,6 +38,7 @@ import {
 } from './rangePendingFireGuard'
 import { isMtBridgeGlitchMessage } from './brokerConnectError'
 import { modifyLegSlTpWithFallback } from './orderModifySafe'
+import { normalizeBrokerTradeTicket } from './brokerTradeTicket'
 import { captureBrokerPositionIdentity } from './captureBrokerPositionIdentity'
 import {
   deleteRangePendingLegsForBasket,
@@ -1300,12 +1301,16 @@ export class VirtualPendingMonitor {
       ) {
         autoBeCols.auto_be_applied_at = new Date().toISOString()
       }
+      const tradeTicket = normalizeBrokerTradeTicket(
+        this.platformByUuid.get(leg.metaapi_account_id)?.provider,
+        result.ticket,
+      )
       const { data: insTrade, error: insErr } = await this.supabase.from('trades').insert({
         user_id: leg.user_id,
         signal_id: leg.signal_id,
         telegram_channel_id: channelIdForTrade,
         broker_account_id: leg.broker_account_id,
-        metaapi_order_id: result.ticket != null ? String(result.ticket) : null,
+        metaapi_order_id: tradeTicket,
         symbol: leg.symbol,
         direction: leg.is_buy ? 'buy' : 'sell',
         entry_price: entryPx,
@@ -1365,7 +1370,7 @@ export class VirtualPendingMonitor {
         } catch { /* best-effort */ }
       }
 
-      const ticketNum = result.ticket != null ? Number(result.ticket) : NaN
+      const ticketNum = tradeTicket != null ? Number(tradeTicket) : NaN
       const tradeRowId = (insTrade as { id?: string } | null)?.id ?? null
       if (
         tradeRowId
@@ -1385,7 +1390,7 @@ export class VirtualPendingMonitor {
             tradeRowId,
             trade: {
               id: tradeRowId,
-              metaapi_order_id: String(ticketNum),
+              metaapi_order_id: tradeTicket,
               symbol: leg.symbol,
               direction: leg.is_buy ? 'buy' : 'sell',
               lot_size: result.lots ?? args.volume,

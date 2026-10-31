@@ -5,8 +5,10 @@ import type { SocialTradingPageTranslations } from '../../i18n/locales/types'
 import { fetchSocialCopySources, type SocialCopySource } from '../../lib/socialCopy'
 import type { SocialDirectoryProfile, SocialFollowErrorKind } from '../../lib/socialFollow'
 import {
+  socialDirectoryPerformancePresentation,
   fetchSocialProviderPerformance,
   fetchSocialTradeHistoryAccess,
+  type SocialTradeHistoryAccess,
   type SocialProviderPerformance,
 } from '../../lib/socialTradeHistory'
 import { supabase } from '../../lib/supabase'
@@ -74,6 +76,7 @@ function AccountModeBadge({ mode, synthetic = false }: { mode: SocialProviderPer
 function PerformanceCells({ profile }: { profile: SocialDirectoryProfile }) {
   const [performance, setPerformance] = useState<SocialProviderPerformance | null>(null)
   const [source, setSource] = useState<SocialCopySource | null>(null)
+  const [access, setAccess] = useState<SocialTradeHistoryAccess | null>(null)
   const [loading, setLoading] = useState(true)
   useEffect(() => {
     let active = true
@@ -83,6 +86,7 @@ function PerformanceCells({ profile }: { profile: SocialDirectoryProfile }) {
           fetchSocialTradeHistoryAccess(supabase, profile.profileUserId),
           fetchSocialCopySources(supabase, profile.profileUserId),
         ])
+        if (active) setAccess(access)
         if (active) setSource(sources[0] ?? null)
         if (!access.canView) return
         const rows = await fetchSocialProviderPerformance(supabase, profile.profileUserId)
@@ -99,14 +103,15 @@ function PerformanceCells({ profile }: { profile: SocialDirectoryProfile }) {
   const missing = loading ? '…' : '—'
   const pnl = performance?.realizedProfit
   const status = performance?.performanceStatus
-  const statusLabel = loading ? 'Loading' : status === 'available' ? 'Current' : status === 'stale' ? 'Stale' : status === 'incomplete' ? 'Incomplete' : status === 'pending' ? 'Pending' : status === 'no_history' ? 'No history' : status === 'failed' ? 'Failed' : 'Unavailable'
+  const presentation = socialDirectoryPerformancePresentation(access, performance, loading)
+  const statusLabel = presentation.statusLabel
   const tone = status === 'available'
     ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
     : status === 'stale' || status === 'pending' || status === 'incomplete' || status === 'no_history'
       ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
       : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300'
   return <>
-    <td className="px-3 py-3"><span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${tone}`}>{statusLabel}</span></td>
+    <td className="px-3 py-3"><span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${tone}`}>{statusLabel}</span>{presentation.message ? <p className="mt-1 max-w-48 text-xs leading-4 text-neutral-500" role="note">{presentation.message}</p> : null}</td>
     <td className={pnl == null ? 'px-3 py-3 text-neutral-500' : pnl >= 0 ? 'px-3 py-3 font-medium text-green-600 dark:text-green-400' : 'px-3 py-3 font-medium text-red-600 dark:text-red-400'}>{pnl == null ? missing : `${pnl.toLocaleString()}${performance?.currency ? ` ${performance.currency}` : ''}`}</td>
     <td className="px-3 py-3">{performance?.winRate == null ? missing : `${performance.winRate.toFixed(2)}%`}</td>
     <td className="px-3 py-3">{performance ? performance.closedTradeCount : missing}</td>

@@ -9,6 +9,7 @@ import { auditOrderClose } from './orderCloseAudit'
 import { createConcurrencyGate } from './perAccountConcurrency'
 import { createBrokerGateway, type BrokerGateway, type BrokerPriority } from './brokerGateway'
 import { redactBridgeSecrets } from './mtapiRedaction'
+import { normalizeMtBrokerTicket } from './brokerTradeTicket'
 
 type FetchLike = typeof fetch
 type RecoveryHandler = (sessionId: string) => Promise<string | null>
@@ -441,7 +442,11 @@ export class MtapiProvider implements BrokerProvider {
       // retry is opt-in (`MTAPI_ORDER_THROTTLE_RETRY=true`) until it is.
       const orderThrottleRetry = env('MTAPI_ORDER_THROTTLE_RETRY') === 'true' ? 'pre_accept' : 'off'
       const raw = await this.requestWithRetry('OrderSendSafe', params, id, false, orderThrottleRetry)
-      return normalizeOrderResponse(raw, { platform: this.platform(id), operation: args.operation })
+      const result = normalizeOrderResponse(raw, { platform: this.platform(id), operation: args.operation })
+      if (normalizeMtBrokerTicket(result.ticket) == null) {
+        throw new MtapiApiError('OrderSendSafe returned no valid broker ticket', 502, 'INVALID_TICKET')
+      }
+      return result
     } finally {
       release()
     }

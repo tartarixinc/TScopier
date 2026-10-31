@@ -39,8 +39,8 @@ insert into public.broker_accounts (
 
 insert into public.trades (id, user_id, broker_account_id, metaapi_order_id, symbol, direction, status, opened_at, closed_at, profit)
 values
-  ('31000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', '30500000-0000-0000-0000-000000000001', 'rated-open', 'EURUSD', 'buy', 'open', now() - interval '1 hour', null, null),
-  ('31000000-0000-0000-0000-000000000002', '30000000-0000-0000-0000-000000000001', '30500000-0000-0000-0000-000000000001', 'rated-closed', 'XAUUSD', 'sell', 'closed', now() - interval '2 days', now() - interval '1 day', 42.50);
+  ('31000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', '30500000-0000-0000-0000-000000000001', '730001', 'EURUSD', 'buy', 'open', now() - interval '1 hour', null, null),
+  ('31000000-0000-0000-0000-000000000002', '30000000-0000-0000-0000-000000000001', '30500000-0000-0000-0000-000000000001', '730002', 'XAUUSD', 'sell', 'closed', now() - interval '2 days', now() - interval '1 day', 42.50);
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '30000000-0000-0000-0000-000000000001', true);

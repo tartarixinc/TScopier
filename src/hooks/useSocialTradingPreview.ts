@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSocialFollow } from './useSocialFollow'
-import { fetchSocialCopySources } from '../lib/socialCopy'
+import { fetchSocialCopySources, fetchSocialTraderLiveCopierCount } from '../lib/socialCopy'
 import {
   fetchSocialProviderPerformance,
   fetchSocialTradeHistory,
@@ -44,6 +44,7 @@ function previewTrader(profile: SocialDirectoryProfile, rank: number): SocialTra
     performanceStatusReason: 'not_loaded',
     performanceError: null,
     historyAvailable: false,
+    historyComplete: false,
     performancePeriodStartedAt: null,
     performancePeriodEndedAt: null,
     liveCopiers: null,
@@ -74,6 +75,7 @@ export function hydrateTrader(
   source: Awaited<ReturnType<typeof fetchSocialCopySources>>[number] | null,
   performanceError: string | null = null,
   sources: Awaited<ReturnType<typeof fetchSocialCopySources>> = source ? [source] : [],
+  liveCopiers: number | null = null,
 ): SocialTrader {
   const rows = history ?? []
   const ordered = rows.slice().sort((a, b) => new Date(a.openedAt).getTime() - new Date(b.openedAt).getTime())
@@ -101,14 +103,21 @@ export function hydrateTrader(
     profit: value.profit,
     loss: value.loss,
   }))
+  const historyClosedRows = ordered.filter(trade => trade.status === 'closed')
+  const historyComplete = history != null
+    && performance != null
+    && (performance.performanceStatus === 'available' || performance.performanceStatus === 'no_history')
+    && open.length === performance.openTradeCount
+    && historyClosedRows.length === performance.closedTradeCount
+    && closed.length === historyClosedRows.length
   const syntheticDemo = base.syntheticDemo === true || source?.isSynthetic === true || performance?.isSynthetic === true
   return {
     ...base,
     roi: performance?.returnPercentage ?? null,
-    winRate: performance?.winRate ?? null,
+    winRate: historyComplete ? performance.winRate : null,
     maxDrawdown: performance?.maximumDrawdown ?? null,
-    closedTrades: performance?.closedTradeCount ?? (history ? closed.length : null),
-    openTradeCount: performance?.openTradeCount ?? (history ? open.length : null),
+    closedTrades: historyComplete ? performance.closedTradeCount : null,
+    openTradeCount: historyComplete ? performance.openTradeCount : null,
     sourceId: source?.sourceId ?? null,
     sourceLabel: source?.label ?? null,
     sourceProvider: source?.provider ?? null,
@@ -121,9 +130,10 @@ export function hydrateTrader(
     performanceStatusReason: performance?.statusReason ?? null,
     performanceError,
     historyAvailable: history != null,
+    historyComplete,
     performancePeriodStartedAt: performance?.periodStartedAt ?? null,
     performancePeriodEndedAt: performance?.periodEndedAt ?? null,
-    liveCopiers: null,
+    liveCopiers,
     syntheticDemo,
     openTrades: open.map(trade => ({
       id: trade.tradeId,
@@ -170,23 +180,25 @@ export function useSocialTradingPreview() {
     void Promise.resolve().then(() => { if (active) setPerformanceLoading(true) })
     void Promise.all(social.profiles.map(async (profile, index) => {
       const base = bases[index]
-      const [accessResult, sourcesResult] = await Promise.allSettled([
+      const [accessResult, sourcesResult, liveCopiersResult] = await Promise.allSettled([
         fetchSocialTradeHistoryAccess(supabase, profile.profileUserId),
         fetchSocialCopySources(supabase, profile.profileUserId),
+        fetchSocialTraderLiveCopierCount(supabase, profile.profileUserId),
       ])
+      const liveCopiers = liveCopiersResult.status === 'fulfilled' ? liveCopiersResult.value : null
       const sources = sourcesResult.status === 'fulfilled' ? sourcesResult.value : []
       const source = sources.find(item => item.isCopyEligible) ?? sources[0] ?? null
       if (accessResult.status === 'rejected') {
-        return hydrateTrader(base, null, null, source, `Trade-history access check failed: ${errorMessage(accessResult.reason)}`, sources)
+        return hydrateTrader(base, null, null, source, `Trade-history access check failed: ${errorMessage(accessResult.reason)}`, sources, liveCopiers)
       }
       if (!accessResult.value.canView) {
-        return hydrateTrader(base, null, null, source, 'This trader has not shared source-account history with you.', sources)
+        return hydrateTrader(base, null, null, source, 'This trader has not shared source-account history with you.', sources, liveCopiers)
       }
       if (!source) {
         const detail = sourcesResult.status === 'rejected'
           ? `Copy-source request failed: ${errorMessage(sourcesResult.reason)}`
           : eligibilityDiagnosticForReason('source_not_published').explanation
-        return hydrateTrader(base, null, null, null, detail, sources)
+        return hydrateTrader(base, null, null, null, detail, sources, liveCopiers)
       }
       const [performanceResult, historyResult] = await Promise.allSettled([
         fetchSocialProviderPerformance(supabase, profile.profileUserId),
@@ -200,7 +212,7 @@ export function useSocialTradingPreview() {
         historyResult.status === 'rejected' ? `Trade-history request failed: ${errorMessage(historyResult.reason)}` : null,
         performanceResult.status === 'fulfilled' && !performance ? 'The selected source was missing from the performance response.' : null,
       ].filter((message): message is string => Boolean(message))
-      return hydrateTrader(base, history, performance, source, diagnostics.join(' ') || null, sources)
+      return hydrateTrader(base, history, performance, source, diagnostics.join(' ') || null, sources, liveCopiers)
     })).then(next => {
       if (active) setHydratedTraders(next)
     }).finally(() => {
