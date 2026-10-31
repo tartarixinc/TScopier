@@ -1,6 +1,6 @@
 begin;
 
-select plan(73);
+select plan(74);
 
 select is(public.social_trade_ticket_is_verified(null), false, 'null broker ticket is unverified');
 select is(public.social_trade_ticket_is_verified(''), false, 'blank broker ticket is unverified');
@@ -232,11 +232,15 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '40000000-0000-0000-0000-000000000002', true);
 select is((select performance_status from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), 'incomplete', 'missing realized result is explicit instead of being counted as zero');
 select is((select closed_trade_count::integer from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), 14, 'ticketless, malformed, and unresolved closed rows remain in completeness counts');
-select is((select realized_profit from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), 55::numeric, 'unverified rows do not inflate known realized P/L');
-select is((select win_rate from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), 70.00::numeric, 'win rate denominator contains only verified results');
-select is((select profit_factor from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), 4.6667::numeric, 'partial profit factor uses only verified known wins and losses');
+select is((select realized_profit from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), 55::numeric, 'unverified or unresolved rows do not inflate known realized P/L');
+select is((select win_rate from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), 70.00::numeric, 'win rate denominator contains only verified complete results');
+select is((select profit_factor from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), 4.6667::numeric, 'partial profit factor uses only verified complete wins and losses');
 select is((select history_complete from public.get_social_provider_performance('40000000-0000-0000-0000-000000000001')), false, 'unresolved closed rows prevent complete history');
-select is((select count(*)::integer from public.get_social_source_trade_history(current_setting('test.source_a_id')::uuid)), 12, 'unverified ticket rows are excluded from trade history');
+select is((select count(*)::integer from public.get_social_source_trade_history(current_setting('test.source_a_id')::uuid)), 12, 'unverified tickets and unresolved closes are excluded from trade history');
+select is((select count(*)::integer
+  from public.get_social_source_trade_history(current_setting('test.source_a_id')::uuid) history
+  where history.trade_id = (select id from public.trades where metaapi_order_id = '610002')
+), 0, 'closed status without a close timestamp remains integrity-only');
 select is((select eligibility_reason from public.get_social_copy_sources('40000000-0000-0000-0000-000000000001')), 'history_incomplete', 'eligibility uses the unresolved closed-record definition');
 select ok((
   select exists (

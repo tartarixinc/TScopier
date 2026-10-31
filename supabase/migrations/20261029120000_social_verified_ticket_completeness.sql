@@ -122,36 +122,43 @@ as $$
     count(*) filter (
       where (status = 'closed' or closed_at is not null)
         and public.social_trade_ticket_is_verified(metaapi_order_id)
+        and closed_at is not null
         and profit is not null
     ),
     min(opened_at) filter (
       where (status = 'closed' or closed_at is not null)
         and public.social_trade_ticket_is_verified(metaapi_order_id)
+        and closed_at is not null
         and profit is not null
     ),
     max(closed_at) filter (
       where (status = 'closed' or closed_at is not null)
         and public.social_trade_ticket_is_verified(metaapi_order_id)
+        and closed_at is not null
         and profit is not null
     ),
     sum(profit) filter (
       where (status = 'closed' or closed_at is not null)
         and public.social_trade_ticket_is_verified(metaapi_order_id)
+        and closed_at is not null
         and profit is not null
     ),
     count(*) filter (
       where (status = 'closed' or closed_at is not null)
         and public.social_trade_ticket_is_verified(metaapi_order_id)
+        and closed_at is not null
         and profit is not null and profit > 0
     ),
     sum(profit) filter (
       where (status = 'closed' or closed_at is not null)
         and public.social_trade_ticket_is_verified(metaapi_order_id)
+        and closed_at is not null
         and profit is not null and profit > 0
     ),
     abs(sum(profit) filter (
       where (status = 'closed' or closed_at is not null)
         and public.social_trade_ticket_is_verified(metaapi_order_id)
+        and closed_at is not null
         and profit is not null and profit < 0
     ))
   from scoped;
@@ -421,7 +428,7 @@ begin
     select distinct on (public.social_normalize_trade_ticket('fxsocket', t.metaapi_order_id)) t.*
     from public.trades t
     where t.broker_account_id = v_source.broker_account_id
-      and (lower(t.status) = 'open' or t.closed_at is not null or lower(t.status) = 'closed')
+      and ((lower(t.status) = 'open' and t.closed_at is null) or t.closed_at is not null)
       and public.social_trade_ticket_is_verified(t.metaapi_order_id)
       and not exists (
         select 1
