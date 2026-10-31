@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { BarChart3, LineChart, Wallet } from 'lucide-react'
+import { BarChart3, Check, CircleMinus, LineChart, Wallet } from 'lucide-react'
 import clsx from 'clsx'
 import { supabase } from '../../lib/supabase'
 import { summarizeSocialTradesByDay } from '../../lib/socialPerformancePresentation'
 import { eligibilityDiagnosticForReason } from '../../lib/socialEligibility'
+import { SocialEligibilityDiagnostics } from './SocialEligibilityDiagnostics'
+import { fetchSocialCopySources, type SocialCopySource } from '../../lib/socialCopy'
 import {
   fetchSocialProviderPerformance,
   fetchSocialTradeHistory,
   fetchSocialTradeHistoryAccess,
+  canLoadSocialTradeHistory,
+  socialCopyEligibilityChecks,
+  socialPerformanceStatusMessage,
   setSocialTradeHistorySharing,
   type SocialProviderPerformance,
   type SocialTradeHistoryAccess,
@@ -31,13 +36,9 @@ function money(value: number | null, currency: string | null): string {
 }
 
 function performanceNotice(performance: SocialProviderPerformance): { variant: 'warning' | 'error'; text: string } | null {
-  if (performance.performanceStatus === 'available') return null
-  if (performance.performanceStatus === 'no_history') return { variant: 'warning', text: 'No TSCopier-recorded trading history exists for this selected source yet.' }
-  if (performance.performanceStatus === 'pending') return { variant: 'warning', text: 'History synchronization is pending. Performance remains unavailable until synchronization succeeds.' }
-  if (performance.performanceStatus === 'stale') return { variant: 'warning', text: 'History is stale. The figures shown are historical and copying is blocked until the source synchronizes.' }
-  if (performance.performanceStatus === 'incomplete') return { variant: 'warning', text: 'History is incomplete because at least one closed trade lacks a broker ticket or realized result.' }
-  if (performance.performanceStatus === 'failed') return { variant: 'error', text: 'History synchronization failed. The source account must be reconnected.' }
-  return { variant: 'error', text: 'History is unavailable because the selected source is inactive, disconnected, missing, or unsupported.' }
+  const text = socialPerformanceStatusMessage(performance.performanceStatus, performance.statusReason)
+  if (!text) return null
+  return { variant: performance.performanceStatus === 'failed' || performance.performanceStatus === 'unavailable' ? 'error' : 'warning', text }
 }
 
 function EnvironmentBadge({ mode, synthetic = false }: { mode: SocialProviderPerformance['accountMode']; synthetic?: boolean }) {
@@ -83,6 +84,7 @@ function PnlCalendar({ trades, currency }: { trades: SocialTradeHistoryItem[]; c
 export function SocialTradeHistoryPanel({ traderUserId, isSelf }: { traderUserId: string; isSelf: boolean }) {
   const [access, setAccess] = useState<SocialTradeHistoryAccess | null>(null)
   const [performance, setPerformance] = useState<SocialProviderPerformance | null>(null)
+  const [source, setSource] = useState<SocialCopySource | null>(null)
   const [trades, setTrades] = useState<SocialTradeHistoryItem[]>([])
   const [tab, setTab] = useState<ProfileTab>('performance')
   const [loading, setLoading] = useState(true)
@@ -93,19 +95,33 @@ export function SocialTradeHistoryPanel({ traderUserId, isSelf }: { traderUserId
     setLoading(true)
     try {
       const nextAccess = await fetchSocialTradeHistoryAccess(supabase, traderUserId)
-      const rows = nextAccess.canView ? await fetchSocialProviderPerformance(supabase, traderUserId) : []
+      const canLoad = canLoadSocialTradeHistory(nextAccess, isSelf)
+      const rows = canLoad ? await fetchSocialProviderPerformance(supabase, traderUserId) : []
       const selected = rows.find(item => item.sourceStatus === 'published') ?? null
-      const nextTrades = nextAccess.canView && selected ? await fetchSocialTradeHistory(supabase, selected.sourceId) : []
-      setAccess(nextAccess); setPerformance(selected); setTrades(nextTrades); setError(null)
+      const sources = canLoad ? await fetchSocialCopySources(supabase, traderUserId) : []
+      const nextTrades = canLoad && selected ? await fetchSocialTradeHistory(supabase, selected.sourceId) : []
+      setAccess(nextAccess); setPerformance(selected); setSource(sources.find(item => item.sourceId === selected?.sourceId) ?? null); setTrades(nextTrades); setError(null)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to load trade history.')
     } finally { setLoading(false) }
-  }, [traderUserId])
+  }, [isSelf, traderUserId])
   useEffect(() => { void Promise.resolve().then(refresh) }, [refresh])
 
   const open = useMemo(() => trades.filter(trade => trade.status === 'open'), [trades])
   const closed = useMemo(() => trades.filter(trade => trade.status === 'closed'), [trades])
   const notice = performance ? performanceNotice(performance) : null
+  const eligibilityDiagnostic = performance
+    ? source?.eligibilityDiagnostics.find(diagnostic => diagnostic.code === performance.eligibilityReason)
+      ?? eligibilityDiagnosticForReason(performance.eligibilityReason)
+    : eligibilityDiagnosticForReason('source_not_published')
+  const platform = source?.platform.trim().toUpperCase()
+  const platformLabel = platform === 'MT4' || platform === 'MT5' ? platform : 'Unavailable'
+  const accountType = performance?.accountMode === 'demo'
+    ? 'Demo account'
+    : performance?.accountMode === 'live'
+      ? 'Live account'
+      : 'Unavailable'
+  const partialMetrics = performance != null && !performance.historyComplete && performance.closedTradeCount > 0
   const changeSharing = async () => {
     if (saving || !access) return
     setSaving(true); setError(null)
@@ -116,13 +132,80 @@ export function SocialTradeHistoryPanel({ traderUserId, isSelf }: { traderUserId
 
   if (loading) return <Card><p className="py-6 text-sm text-neutral-500">Loading performance and trade history…</p></Card>
   if (error) return <Card><Alert variant="error">{error}</Alert><Button type="button" size="sm" variant="secondary" className="mt-3" onClick={() => void refresh()}>Retry</Button></Card>
-  if (access && !access.canView) return <Card><h2 className="text-sm font-semibold">Private trading history</h2><p className="mt-2 text-sm text-neutral-500">This trader has not shared trading history with you.</p></Card>
-  if (!performance) return <Card><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-sm font-semibold">Performance unavailable</h2><p className="mt-2 text-sm text-neutral-500">{eligibilityDiagnosticForReason('source_not_published').explanation} {eligibilityDiagnosticForReason('source_not_published').nextAction}</p></div>{isSelf && access ? <Button type="button" size="sm" variant="secondary" loading={saving} disabled={saving} onClick={() => void changeSharing()}>{access.sharingEnabled ? 'Stop sharing' : 'Share trade history'}</Button> : null}</div></Card>
+  if (access && !isSelf && !access.canView) return <Card><h2 className="text-sm font-semibold">Private trading history</h2><p className="mt-2 text-sm text-neutral-500">This trader has not shared trading history with you.</p></Card>
+  if (!performance) return <Card><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-sm font-semibold">Performance unavailable</h2><p className="mt-2 text-sm text-neutral-500">{eligibilityDiagnostic.explanation} {eligibilityDiagnostic.nextAction}</p></div>{isSelf && access ? <Button type="button" size="sm" variant="secondary" loading={saving} disabled={saving} onClick={() => void changeSharing()}>{access.sharingEnabled ? 'Stop sharing' : 'Share trade history'}</Button> : null}</div></Card>
 
   return <div className="space-y-4">
-    <Card><div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div><div className="flex flex-wrap items-center gap-2"><h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">{performance.sourceLabel}</h2><EnvironmentBadge mode={performance.accountMode} synthetic={performance.isSynthetic} /></div><p className="mt-1 text-xs text-neutral-500">Selected source account · Last synchronized {when(performance.lastSyncSucceededAt)}</p><p className="mt-2 text-xs text-neutral-500">{eligibilityDiagnosticForReason(performance.eligibilityReason).explanation} {eligibilityDiagnosticForReason(performance.eligibilityReason).nextAction}</p></div>{isSelf && access ? <Button type="button" size="sm" variant="secondary" loading={saving} disabled={saving} onClick={() => void changeSharing()}>{access.sharingEnabled ? 'Stop sharing' : 'Share trade history'}</Button> : null}</div>{notice ? <div className="mt-4"><Alert variant={notice.variant}>{notice.text}</Alert></div> : null}</Card>
+    <Card>
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+        {isSelf && access ? <div className="order-first flex sm:order-last sm:justify-end"><Button type="button" size="sm" variant="secondary" loading={saving} disabled={saving} onClick={() => void changeSharing()}>{access.sharingEnabled ? 'Stop sharing' : 'Share trade history'}</Button></div> : null}
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <div>
+              <p className="text-[11px] text-neutral-500">Trading platform</p>
+              <h2 className="text-base font-bold text-neutral-900 dark:text-neutral-50">{platformLabel} Account</h2>
+            </div>
+            <EnvironmentBadge mode={performance.accountMode} synthetic={performance.isSynthetic} />
+          </div>
+          <dl className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+            <div className="flex items-center gap-1"><dt className="text-neutral-500">Account type</dt><dd className="font-semibold text-neutral-800 dark:text-neutral-200">{accountType}</dd></div>
+            <div><dt className="sr-only">Source account synchronization</dt><dd className="text-neutral-500">Selected source · Last synchronized {when(performance.lastSyncSucceededAt)}</dd></div>
+          </dl>
+          <p className="mt-2 text-xs text-neutral-500">
+            {eligibilityDiagnostic.explanation}
+            {eligibilityDiagnostic.nextAction ? ` ${eligibilityDiagnostic.nextAction}` : ''}
+          </p>
+          {source?.eligibilityDiagnostics.length ? (
+            <div className="mt-2">
+              <SocialEligibilityDiagnostics diagnostics={source.eligibilityDiagnostics} title="Copy eligibility" />
+            </div>
+          ) : performance ? (
+            <ul aria-label="Copy eligibility" className="mt-2 grid gap-x-4 gap-y-1 sm:grid-cols-2">
+              {socialCopyEligibilityChecks(performance.isCopyEligible, performance.eligibilityReason).map(check => (
+                <li key={check.label} title={check.label} className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-xs text-neutral-600 dark:text-neutral-300">
+                  {check.status === 'passed'
+                    ? <Check className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
+                    : <CircleMinus className="h-3.5 w-3.5 shrink-0 text-red-600 dark:text-red-400" aria-hidden />}
+                  <span className="truncate" aria-label={`${check.status === 'passed' ? 'Passed' : 'Not passed'}: ${check.label}`}>{check.label}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      </div>
+      {notice ? <div className="mt-3"><Alert variant={notice.variant}>{notice.text}</Alert></div> : null}
+    </Card>
     <div className="flex gap-2 overflow-x-auto"><ProfileTabButton icon={<BarChart3 className="h-4 w-4" />} active={tab === 'performance'} onClick={() => setTab('performance')}>Performance</ProfileTabButton><ProfileTabButton icon={<LineChart className="h-4 w-4" />} active={tab === 'trading'} onClick={() => setTab('trading')}>Trading</ProfileTabButton><ProfileTabButton icon={<Wallet className="h-4 w-4" />} active={tab === 'portfolio'} onClick={() => setTab('portfolio')}>Portfolio</ProfileTabButton></div>
-    {tab === 'performance' ? <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_300px]"><div className="min-w-0 space-y-4"><DailyPerformance trades={closed} currency={performance.currency} /><PnlCalendar trades={closed} currency={performance.currency} /><Card><h2 className="text-sm font-semibold">Statistics</h2><dl className="mt-4 grid grid-cols-2 gap-5 sm:grid-cols-3"><Metric label="Realized P/L" value={money(performance.realizedProfit, performance.currency)} tone={performance.realizedProfit == null ? undefined : performance.realizedProfit >= 0 ? 'up' : 'down'} /><Metric label="Closed trades" value={String(performance.closedTradeCount)} /><Metric label="Open trades" value={String(performance.openTradeCount)} /><Metric label="Win rate" value={performance.winRate == null ? 'Unavailable' : `${performance.winRate.toFixed(2)}%`} /><Metric label="Profit factor" value={performance.profitFactor == null ? 'Unavailable' : performance.profitFactor.toFixed(2)} /><Metric label="History period" value={performance.periodStartedAt && performance.periodEndedAt ? `${new Date(performance.periodStartedAt).toLocaleDateString()} – ${new Date(performance.periodEndedAt).toLocaleDateString()}` : 'Unavailable'} /></dl></Card></div><Card className="xl:sticky xl:top-4"><h2 className="text-sm font-semibold">Overview</h2><dl className="mt-4 space-y-3"><Metric label="Account environment" value={performance.accountMode.toUpperCase()} /><Metric label="Return" value="Unavailable" /><Metric label="Maximum drawdown" value="Unavailable" /><Metric label="Equity curve" value="Unavailable" /><Metric label="Calculated" value={when(performance.calculatedAt)} /></dl><p className="mt-4 text-xs leading-5 text-neutral-500">Returns, drawdown and an equity curve remain unavailable because cash-flow and periodic equity history do not yet support defensible calculations.</p></Card></div> : null}
+    {tab === 'performance' ? (
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="min-w-0 space-y-4">
+          <DailyPerformance trades={closed} currency={performance.currency} />
+          <PnlCalendar trades={closed} currency={performance.currency} />
+          <Card>
+            <h2 className="text-sm font-semibold">Statistics</h2>
+            <dl className="mt-4 grid grid-cols-2 gap-5 sm:grid-cols-3">
+              <Metric label={partialMetrics ? 'Realized P/L (partial)' : 'Realized P/L'} value={money(performance.realizedProfit, performance.currency)} tone={performance.realizedProfit == null ? undefined : performance.realizedProfit >= 0 ? 'up' : 'down'} />
+              <Metric label="Closed trades" value={String(performance.closedTradeCount)} />
+              <Metric label="Open trades" value={String(performance.openTradeCount)} />
+              <Metric label={partialMetrics ? 'Win rate (partial)' : 'Win rate'} value={performance.winRate == null ? 'Unavailable' : `${performance.winRate.toFixed(2)}%`} />
+              <Metric label={partialMetrics ? 'Profit factor (partial)' : 'Profit factor'} value={performance.profitFactor == null ? 'Unavailable' : performance.profitFactor.toFixed(2)} />
+              <Metric label="History period" value={performance.periodStartedAt && performance.periodEndedAt ? `${new Date(performance.periodStartedAt).toLocaleDateString()} – ${new Date(performance.periodEndedAt).toLocaleDateString()}` : 'Unavailable'} />
+            </dl>
+          </Card>
+        </div>
+        <Card className="xl:sticky xl:top-4">
+          <h2 className="text-sm font-semibold">Overview</h2>
+          <dl className="mt-4 space-y-3">
+            <Metric label="Account environment" value={performance.accountMode.toUpperCase()} />
+            <Metric label="Return" value="Unavailable" />
+            <Metric label="Maximum drawdown" value="Unavailable" />
+            <Metric label="Equity curve" value="Unavailable" />
+            <Metric label="Calculated" value={when(performance.calculatedAt)} />
+          </dl>
+          <p className="mt-4 text-xs leading-5 text-neutral-500">Returns, drawdown and an equity curve remain unavailable because cash-flow and periodic equity history do not yet support defensible calculations.</p>
+        </Card>
+      </div>
+    ) : null}
     {tab === 'trading' ? <div className="space-y-4">{open.length > 0 ? <Card padding="none" className="overflow-hidden"><h2 className="border-b border-neutral-100 px-4 py-3 text-sm font-semibold dark:border-neutral-800">Open positions ({open.length})</h2><TradeRows rows={open} /></Card> : <Card><p className="text-sm text-neutral-500">No open positions are recorded for this source.</p></Card>}{closed.length > 0 ? <Card padding="none" className="overflow-hidden"><h2 className="border-b border-neutral-100 px-4 py-3 text-sm font-semibold dark:border-neutral-800">Closed trades ({closed.length})</h2><TradeRows rows={closed} /></Card> : <Card><p className="text-sm text-neutral-500">No qualifying closed history is recorded for this source.</p></Card>}</div> : null}
     {tab === 'portfolio' ? <Card><h2 className="text-sm font-semibold">Portfolio history unavailable</h2><p className="mt-2 text-sm leading-6 text-neutral-500">The approved preview's balance and equity charts require periodic broker equity snapshots. They are intentionally unavailable until the backend can substantiate them.</p></Card> : null}
     <p className="text-xs leading-5 text-neutral-500">Metrics and rows include only TSCopier-recorded trades attributed to this selected source account. Destination-side copy executions are excluded. Broker account identifiers and credentials are never shown.</p>

@@ -5,7 +5,7 @@ const ELIGIBILITY_REASONS: Record<string, string> = {
   source_not_published: 'The trader source is not published.',
   source_unsupported: 'Only supported MT4/MT5 source accounts can be copied.',
   account_mode_unknown: 'The source account type could not be verified.',
-  demo_only: 'Copying currently requires an eligible demo source account.',
+  demo_only: 'The source account does not meet the server-side copy eligibility requirements.',
   source_inactive: 'The trader source account is inactive.',
   source_disconnected: 'The trader source account is disconnected.',
   sync_failed: 'The trader source failed to synchronize.',
@@ -27,5 +27,7 @@ export function copyTraderUnavailableReason(trader: SocialTrader): string | null
   if (trader.syntheticDemo) return trader.sources?.[0]?.eligibilityReason === 'synthetic_preview_disabled'
     ? 'Synthetic participation is disabled for this environment.'
     : ELIGIBILITY_REASONS.synthetic_demo
-  return ELIGIBILITY_REASONS[trader.copyEligibilityReason ?? ''] ?? 'This trader is not currently eligible for copying.'
+  const reason = trader.copyEligibilityReason
+    ?? trader.sources?.find(source => !source.isCopyEligible)?.eligibilityReason
+  return ELIGIBILITY_REASONS[reason ?? ''] ?? 'This trader is not currently eligible for copying.'
 }

@@ -54,8 +54,16 @@ export interface SocialCalendarDay {
   trades: number
 }
 
+export type SocialMonthlyPerformanceState = 'verified' | 'no_activity' | 'incomplete' | 'unavailable'
+
+export interface SocialMonthlyPerformance {
+  label: string
+  profit: number | null
+  state: SocialMonthlyPerformanceState
+}
+
 export interface SocialTraderStats {
-  monthly: Array<{ label: string; profit: number }>
+  monthly: SocialMonthlyPerformance[]
   calendar: SocialCalendarDay[]
   longTrades: number | null
   shortTrades: number | null
@@ -101,6 +109,7 @@ export interface SocialTrader {
   followsYou: boolean
   /** Demo-only source balance used to illustrate proportional sizing. */
   previewBalance: number | null
+  accountEquity?: number | null
   sourceId?: string | null
   sourceLabel?: string | null
   sourceProvider?: string | null
@@ -114,6 +123,7 @@ export interface SocialTrader {
   performanceError?: string | null
   /** True only when the source-scoped history request completed successfully. */
   historyAvailable?: boolean
+  historyComplete?: boolean
   performancePeriodStartedAt?: string | null
   performancePeriodEndedAt?: string | null
   /** Active copy subscriptions are distinct from social followers. */
@@ -340,6 +350,10 @@ export const SOCIAL_TRADERS: SocialTrader[] = [
 export function socialTraderStats(trader: SocialTrader): SocialTraderStats {
   const historyAvailable = trader.historyAvailable !== false
   const closed = trader.closedPerformance
+  const completeHistory = historyAvailable
+    && trader.historyComplete !== false
+    && (trader.closedTrades == null || trader.closedTrades === closed.length)
+    && (trader.openTradeCount == null || trader.openTradeCount === trader.openTrades.length)
   const latest = closed.reduce<Date | null>((pick, trade) => {
     const date = new Date(trade.closedAt)
     return Number.isNaN(date.getTime()) || (pick && pick >= date) ? pick : date
@@ -352,10 +366,23 @@ export function socialTraderStats(trader: SocialTrader): SocialTraderStats {
     const key = `${date.getUTCFullYear()}-${date.getUTCMonth()}`
     monthlyTotals.set(key, (monthlyTotals.get(key) ?? 0) + trade.profit)
   }
-  const monthly = Array.from({ length: 6 }, (_, offset) => {
+  const periodStart = trader.performancePeriodStartedAt ? new Date(trader.performancePeriodStartedAt) : null
+  const periodEnd = trader.performancePeriodEndedAt ? new Date(trader.performancePeriodEndedAt) : null
+  const hasValidPeriod = periodStart != null && periodEnd != null
+    && Number.isFinite(periodStart.getTime()) && Number.isFinite(periodEnd.getTime())
+  const monthly = Array.from({ length: 6 }, (_, offset): SocialMonthlyPerformance => {
     const date = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth() - (5 - offset), 1))
     const key = `${date.getUTCFullYear()}-${date.getUTCMonth()}`
-    return { label: date.toLocaleDateString('en', { month: 'short', timeZone: 'UTC' }), profit: monthlyTotals.get(key) ?? 0 }
+    const label = date.toLocaleDateString('en', { month: 'short', timeZone: 'UTC' })
+    const knownProfit = monthlyTotals.get(key)
+    if (knownProfit != null) return { label, profit: knownProfit, state: completeHistory ? 'verified' : 'incomplete' }
+    if (!completeHistory) return { label, profit: null, state: historyAvailable ? 'incomplete' : 'unavailable' }
+    const monthStart = date.getTime()
+    const monthEnd = Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1) - 1
+    const fullyCovered = hasValidPeriod && periodStart!.getTime() <= monthStart && periodEnd!.getTime() >= monthEnd
+    return fullyCovered
+      ? { label, profit: 0, state: 'no_activity' }
+      : { label, profit: null, state: 'unavailable' }
   })
   const calendarYear = anchor.getUTCFullYear()
   const calendarMonth = anchor.getUTCMonth()
@@ -375,16 +402,13 @@ export function socialTraderStats(trader: SocialTrader): SocialTraderStats {
   })
   const best = closed.reduce<typeof closed[number] | null>((pick, trade) => !pick || trade.profit > pick.profit ? trade : pick, null)
   const worst = closed.reduce<typeof closed[number] | null>((pick, trade) => !pick || trade.profit < pick.profit ? trade : pick, null)
-  const profitableTrades = historyAvailable ? closed.filter(trade => trade.profit > 0).length : null
-  const losingTrades = historyAvailable ? closed.filter(trade => trade.profit < 0).length : null
-  const longTrades = historyAvailable ? closed.filter(trade => trade.side === 'buy').length : null
-  const shortTrades = historyAvailable ? closed.filter(trade => trade.side === 'sell').length : null
+  const profitableTrades = completeHistory ? closed.filter(trade => trade.profit > 0).length : null
+  const losingTrades = completeHistory ? closed.filter(trade => trade.profit < 0).length : null
+  const longTrades = completeHistory ? closed.filter(trade => trade.side === 'buy').length : null
+  const shortTrades = completeHistory ? closed.filter(trade => trade.side === 'sell').length : null
   const grossProfit = closed.filter(trade => trade.profit > 0).reduce((sum, trade) => sum + trade.profit, 0)
   const grossLoss = Math.abs(closed.filter(trade => trade.profit < 0).reduce((sum, trade) => sum + trade.profit, 0))
   const holdingDays = closed.map(trade => Math.max(0, (new Date(trade.closedAt).getTime() - new Date(trade.openedAt).getTime()) / 86_400_000)).filter(Number.isFinite)
-  const completeHistory = historyAvailable
-    ? trader.closedTrades === closed.length && (trader.openTradeCount ?? trader.openTrades.length) === trader.openTrades.length
-    : false
   const positionEvents = completeHistory ? [
     ...trader.openTrades.map(trade => ({ at: new Date(trade.openedAt).getTime(), change: 1 })),
     ...closed.flatMap(trade => [
@@ -405,20 +429,20 @@ export function socialTraderStats(trader: SocialTrader): SocialTraderStats {
     shortTrades,
     maxOpenTrades,
     sharpe: null,
-    avgProfit: historyAvailable && closed.length ? Math.round((closed.reduce((sum, trade) => sum + trade.profit, 0) / closed.length) * 100) / 100 : null,
-    avgHoldingDays: historyAvailable && holdingDays.length ? Math.round((holdingDays.reduce((sum, value) => sum + value, 0) / holdingDays.length) * 100) / 100 : null,
-    profitFactor: historyAvailable && grossLoss > 0 ? Math.round((grossProfit / grossLoss) * 100) / 100 : null,
+    avgProfit: completeHistory && closed.length ? Math.round((closed.reduce((sum, trade) => sum + trade.profit, 0) / closed.length) * 100) / 100 : null,
+    avgHoldingDays: completeHistory && holdingDays.length ? Math.round((holdingDays.reduce((sum, value) => sum + value, 0) / holdingDays.length) * 100) / 100 : null,
+    profitFactor: completeHistory && grossLoss > 0 ? Math.round((grossProfit / grossLoss) * 100) / 100 : null,
     dailyProfitPercent: null,
     monthlyProfitPercent: null,
     profitableTrades,
     losingTrades,
-    equity: null,
+    equity: trader.accountEquity ?? null,
     deposit: null,
     openPosition: null,
-    bestTradeProfit: historyAvailable ? best?.profit ?? null : null,
-    bestTradeAt: historyAvailable ? best?.closedAt ?? null : null,
-    worstTradeProfit: historyAvailable ? worst?.profit ?? null : null,
-    worstTradeAt: historyAvailable ? worst?.closedAt ?? null : null,
+    bestTradeProfit: completeHistory ? best?.profit ?? null : null,
+    bestTradeAt: completeHistory ? best?.closedAt ?? null : null,
+    worstTradeProfit: completeHistory ? worst?.profit ?? null : null,
+    worstTradeAt: completeHistory ? worst?.closedAt ?? null : null,
     amountFollowing: null,
   }
 }

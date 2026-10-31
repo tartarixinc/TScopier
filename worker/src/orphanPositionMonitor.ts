@@ -52,6 +52,7 @@ import { extractOpenOrderFromBrokerRaw } from './managementBrokerClose'
 import { isTscopierComment, parseTscopierComment, signalIdMatchesPrefix } from './tscopierComment'
 import { isLikelyMarketPositionRow } from './signalEntryPendingHelpers'
 import { livePositionVolume, positiveNumber, resolveCanonicalOpenPosition } from './livePositionIdentity'
+import { normalizeMtBrokerTicket } from './brokerTradeTicket'
 import { brokerOrderOpenMs } from './tradeExecutor/helpers'
 import { symbolsCompatibleForBasket } from './basketModFollowUp'
 import { writeExecutionLog } from './observability/executionLog'
@@ -109,10 +110,12 @@ export function positionFromBrokerRow(raw: unknown): OrphanCandidate | null {
   const parsed = parseTscopierComment(base.comment)
   if (!parsed?.signalIdPrefix) return null
 
-  const ticket = base.ticket > 0
+  const rawTicket = base.ticket > 0
     ? base.ticket
-    : firstPositiveNumber(row, ['positionTicket', 'PositionTicket', 'positionId', 'PositionId']) ?? 0
-  if (ticket <= 0) return null
+    : firstPositiveNumber(row, ['positionTicket', 'PositionTicket', 'positionId', 'PositionId'])
+  const ticketIdentity = normalizeMtBrokerTicket(rawTicket)
+  if (ticketIdentity == null) return null
+  const ticket = Number(ticketIdentity)
 
   return {
     ticket,

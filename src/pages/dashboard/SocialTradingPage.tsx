@@ -453,7 +453,10 @@ function CopyActionButton({
 function PerformanceNotice({ loading, trader }: { loading: boolean, trader: SocialTrader }) {
   if (loading) return <Alert variant={'warning'}>Loading source-scoped performance and trade history...</Alert>
   if (trader.performanceError) return <Alert variant={'error'}>{trader.performanceError}</Alert>
-  if (trader.performanceStatus === 'no_history') return <Alert variant={'warning'}>No recorded trade history is available for this source yet.</Alert>
+  if (trader.performanceStatus === 'no_history') return <Alert variant={'warning'}>Verified source history contains no trades yet.</Alert>
+  if (trader.performanceStatus === 'pending') return <Alert variant={'warning'}>Source history synchronization has not completed yet. Statistics remain unavailable.</Alert>
+  if (trader.performanceStatus === 'incomplete') return <Alert variant={'warning'}>Source history is incomplete. Known trades are shown, but historical totals remain unavailable.</Alert>
+  if (trader.performanceStatus === 'unavailable') return <Alert variant={'warning'}>Source performance is unavailable.</Alert>
   if (trader.performanceStatus === 'stale') return <Alert variant={'warning'}>Source history is stale. Historical values are shown and copying remains unavailable until synchronization succeeds.</Alert>
   return null
 }
@@ -535,14 +538,14 @@ export function SocialTraderActivityPage() {
                   <SocialProfileLinks links={trader.socialLinks ?? {}} />
                   <p className="mt-2 text-xs text-neutral-500">
                     Source: {trader.sourceLabel
-                      ? [trader.sourceLabel, trader.sourceProvider, trader.sourcePlatform, trader.sourceAccountMode].filter(Boolean).join(' · ')
+                      ? [trader.sourceLabel, trader.sourcePlatform, trader.sourceAccountMode].filter(Boolean).join(' · ')
                       : 'Unavailable'}
                   </p>
                 </div>
               </div>
             </div>
             <dl className="grid grid-cols-3 gap-4 sm:gap-8">
-              <HeaderStat label={copy.aum} value={trader.previewBalance == null ? 'Unavailable' : formatMoney(trader.previewBalance)} />
+              <HeaderStat label={copy.aum} value="Unavailable" />
               <HeaderStat label={copy.followers} value={String(trader.followerCount)} />
               <HeaderStat label={copy.leverage} value={trader.profile.leverage ?? 'Unavailable'} />
             </dl>
@@ -740,24 +743,26 @@ function ProfileTab({
   )
 }
 
-function MonthlyProfitChart({ title, data }: { title: string; data: Array<{ label: string; profit: number }> }) {
+function MonthlyProfitChart({ title, data }: { title: string; data: SocialTraderStats['monthly'] }) {
   const { formatAxisMoney } = useFormatMoney()
   const { theme } = useTheme()
   const colors = chartThemeColors(theme)
+  const hasKnownPerformance = data.some(month => month.profit != null)
   return (
     <Card>
       <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{title}</h2>
-      <div className="mt-4 h-64">
+      {!hasKnownPerformance ? <div className="mt-4 flex h-64 items-center justify-center rounded-lg border border-dashed border-neutral-200 px-6 text-center text-sm text-neutral-500 dark:border-neutral-700">Monthly performance is unavailable until complete verified history covers this period.</div> : <div className="mt-4 h-64">
         <ResponsiveContainer width="100%" height={256}>
           <BarChart data={data} margin={{ top: 16, right: 8, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} vertical={false} />
             <XAxis dataKey="label" tick={{ fontSize: 11, fill: colors.tick }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 11, fill: colors.tick }} axisLine={false} tickLine={false} tickFormatter={value => formatAxisMoney(Number(value))} width={48} />
-            <Tooltip {...chartTooltipProps(colors)} formatter={value => formatAxisMoney(Number(value ?? 0))} />
+            <Tooltip {...chartTooltipProps(colors)} formatter={(value, _name, item) => { const month = item.payload as SocialTraderStats['monthly'][number]; return value == null || month.profit == null ? ['Unavailable', 'Performance'] : [formatAxisMoney(Number(value)), month.state === 'no_activity' ? 'Verified no activity' : month.state === 'incomplete' ? 'Partial P/L' : 'P/L'] }} />
             <Bar dataKey="profit" fill="#4ade80" radius={[4, 4, 0, 0]} maxBarSize={36} />
           </BarChart>
         </ResponsiveContainer>
-      </div>
+      </div>}
+      {hasKnownPerformance && data.some(month => month.state === 'incomplete' || month.state === 'unavailable') ? <p className="mt-2 text-xs text-neutral-500">Blank months are unavailable or outside complete verified history; they are not zero-performance months.</p> : null}
     </Card>
   )
 }
@@ -1105,7 +1110,7 @@ function OverviewPanel({
             <dd className="font-semibold text-green-500 dark:text-teal-300">{trader.winRate == null ? 'Unavailable' : trader.winRate.toFixed(2) + '%'}</dd>
           </div>
           <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800">
-            <div className="h-full rounded-full bg-green-400" style={{ width: Math.min(trader.winRate ?? 0, 100) + '%' }} />
+            {trader.winRate != null ? <div className="h-full rounded-full bg-green-400" style={{ width: Math.min(trader.winRate, 100) + '%' }} /> : null}
           </div>
         </div>
         <OverviewRow label={copy.profitableTrades} value={stats.profitableTrades == null ? 'Unavailable' : String(stats.profitableTrades)} />
@@ -1113,8 +1118,9 @@ function OverviewPanel({
         <OverviewRow label={copy.balance} value={trader.previewBalance == null ? 'Unavailable' : formatMoney(trader.previewBalance)} />
         <OverviewRow label={copy.equity} value={stats.equity == null ? 'Unavailable' : formatMoney(stats.equity)} />
         <OverviewRow label={copy.deposit} value={stats.deposit == null ? 'Unavailable' : formatMoney(stats.deposit)} />
-        <OverviewRow label={copy.totalTrades} value={trader.closedTrades == null || trader.openTradeCount == null ? 'Unavailable' : String(trader.closedTrades + trader.openTradeCount)} />
-        <OverviewRow label={copy.lastTrade} value={lastTrade ? formatWhen(lastTrade) : trader.historyAvailable ? '—' : 'Unavailable'} />
+        <OverviewRow label={copy.totalTrades} value={!trader.historyComplete || trader.closedTrades == null || trader.openTradeCount == null ? 'Unavailable' : String(trader.closedTrades + trader.openTradeCount)} />
+        <OverviewRow label={copy.openTrades} value={!trader.historyComplete || trader.openTradeCount == null ? 'Unavailable' : String(trader.openTradeCount)} />
+        <OverviewRow label={copy.lastTrade} value={!trader.historyComplete ? 'Unavailable' : lastTrade ? formatWhen(lastTrade) : trader.historyAvailable ? '—' : 'Unavailable'} />
         <OverviewRow label={copy.openPosition} value={stats.openPosition == null ? 'Unavailable' : formatSignedMoney(stats.openPosition)} tone={stats.openPosition == null ? undefined : stats.openPosition >= 0 ? 'up' : 'down'} />
         <OverviewRow label={copy.liveCopiers} value={trader.liveCopiers == null ? 'Unavailable' : String(trader.liveCopiers)} />
 <OverviewRow label={copy.bestTrade} value={stats.bestTradeProfit == null || !stats.bestTradeAt ? 'Unavailable' : formatSignedMoney(stats.bestTradeProfit) + ' / ' + formatWhen(stats.bestTradeAt)} tone="up" />

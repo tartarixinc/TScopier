@@ -5,6 +5,7 @@ import {
   decideBrokerPendingOpenedState,
   resolveFilledPositionTicket,
 } from './brokerPendingFillDetect'
+import { rawOrderTicket } from './signalEntryPendingHelpers'
 
 const leg = {
   signal_id: '4d999b3e-4f40-46ac-9c3f-3c41c04384b6',
@@ -78,4 +79,10 @@ describe('brokerPendingFillDetect', () => {
     assert.equal(r.matchedBy, 'comment')
     assert.equal(r.ticket, '3003')
   })
+})
+it('raw MT broker ticket parsing rejects malformed and non-positive identifiers', () => {
+  for (const ticket of ['', ' ', 'NaN', 'Infinity', '1.5', '0', '-1', NaN, Infinity, 1.5]) {
+    assert.equal(rawOrderTicket({ ticket }), 0, String(ticket))
+  }
+  assert.equal(rawOrderTicket({ ticket: '123' }), 123)
 })

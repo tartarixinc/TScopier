@@ -82,6 +82,30 @@ export function isSocialCopyProviderSupported(account: Pick<BrokerAccount, 'prov
     && (platform === 'MT4' || platform === 'MT5')
 }
 
+/** Canonical provider-aware trade identity. Numeric MetaTrader providers use a
+ * positive JavaScript-safe integer string; opaque-capable providers preserve
+ * their non-empty trimmed string without numeric coercion. */
+const SOCIAL_OPAQUE_TICKET_PROVIDERS = new Set(['ctrader', 'binance', 'bybit', 'kucoin', 'dxtrade', 'tradelocker', 'matchtrader'])
+
+export function normalizeSocialBrokerTicket(provider: string | null | undefined, ticket: string | null | undefined): string | null {
+  const normalizedProvider = provider?.trim().toLowerCase() || 'fxsocket'
+  if (typeof ticket !== 'string') return null
+  if (normalizedProvider === 'fxsocket' || normalizedProvider === 'mtapi') {
+    if (!/^[0-9]+$/.test(ticket)) return null
+    try {
+      const numeric = BigInt(ticket)
+      return numeric > 0n && numeric <= BigInt(Number.MAX_SAFE_INTEGER) ? numeric.toString() : null
+    } catch { return null }
+  }
+  if (!SOCIAL_OPAQUE_TICKET_PROVIDERS.has(normalizedProvider)) return null
+  const opaque = ticket.trim()
+  return opaque.length > 0 && opaque.length <= 255 && !/[\u0000-\u001f\u007f]/.test(opaque) ? opaque : null
+}
+
+export function isVerifiedSocialBrokerTicket(provider: string | null | undefined, ticket: string | null | undefined): boolean {
+  return normalizeSocialBrokerTicket(provider, ticket) != null
+}
+
 export function isSocialDestinationEligible(account: BrokerAccount): boolean {
   const mode = resolveSocialAccountMode(account)
   return account.is_active === true

@@ -37,6 +37,7 @@ import { convergeLayeringPlanAfterLegTerminal, recoverCancellingLayeringPlans } 
 import { recoverNativeLayeringSubmissions } from './tradeExecutor/layeringModeBrokerPendingRecovery'
 import { captureBusinessIssue } from './observability/businessEvents'
 import { writeExecutionLog } from './observability/executionLog'
+import { normalizeMtBrokerTicket } from './brokerTradeTicket'
 const ACTIVE_MS = monitorActiveIntervalMs('RANGE_BROKER_PENDING_TICK_MS', 2_000)
 const IDLE_MS = monitorIdleIntervalMs('RANGE_BROKER_PENDING_IDLE_MS', 15_000)
 const MISSING_BEFORE_ASSUME_GONE = 6
@@ -205,9 +206,8 @@ async function markBrokerRangeLegFilled(
     }),
   })
 
-  const ticketForTrade = positionTicket?.trim() && /^\d+$/.test(positionTicket.trim())
-    ? positionTicket.trim()
-    : (leg.ticket ?? null)
+  const ticketForTrade = normalizeMtBrokerTicket(positionTicket)
+    ?? normalizeMtBrokerTicket(leg.ticket)
 
   await markRangeLegFired(supabase, leg.id, ticketForTrade)
   if (leg.layer_plan_id) {

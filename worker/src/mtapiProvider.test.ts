@@ -361,6 +361,17 @@ test('orderSend calls OrderSendSafe on MT5 and normalizes the response', async (
   assert.equal(capturedUrl?.searchParams.get('takeprofit'), '1.16')
 })
 
+test('orderSend rejects an invalid or missing broker ticket', async () => {
+  for (const ticket of [null, 'NaN', 'Infinity', 'malformed', 0, -1, 1.5]) {
+    const api = provider(() => new Response(JSON.stringify({ ticket })))
+    await assert.rejects(
+      api.orderSend('session', { symbol: 'EURUSDm', operation: 'Buy', volume: 0.01 }),
+      /no valid broker ticket/,
+      String(ticket),
+    )
+  }
+})
+
 test('orderModify calls OrderModifySafe on MT5 and normalizes the response', async () => {
   let capturedUrl: URL | undefined
   const api = provider(url => {

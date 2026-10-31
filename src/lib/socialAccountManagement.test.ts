@@ -23,6 +23,10 @@ test('the expandable You selector refreshes an authorized account-specific query
   assert.match(ownView, /\.eq\('broker_account_id', accountId\)/)
   assert.match(ownView, /snapshot\.accountId === accountId/)
   assert.match(ownView, /openTrades: \[\]/)
+  assert.match(ownView, /const seenTickets = new Set<string>\(\)/)
+  assert.match(ownView, /Number\.isFinite\(profit\)/)
+  assert.match(ownView, /closedRecords\.length === completeClosed\.length/)
+  assert.match(ownView, /!hasUnverifiedRows/)
 })
 
 test('copy setup requires an explicit eligible provider source', () => {

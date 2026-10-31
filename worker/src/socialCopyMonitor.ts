@@ -4,6 +4,11 @@ import { authorityFromBrokerRow } from './brokerWriteAuthority'
 import { apiForBrokerAccount } from './providerResolver'
 import { rawOrderTicket } from './signalEntryPendingHelpers'
 import {
+  COPY_BROKER_COLUMNS,
+  LEGACY_COPY_BROKER_COLUMNS,
+  missingProviderIdColumn,
+} from './copyShared/copyHelpers'
+import {
   brokerErrorCode,
   commentsMatch,
   constrainedCopyVolume,
@@ -137,18 +142,26 @@ export class SocialCopyMonitor {
   private async loadContext(subscription: SocialCopySubscriptionRow): Promise<{
     source: SourceRow; sourceBroker: BrokerRow; destinationBroker: BrokerRow
   }> {
-    const [sourceResult, destinationResult] = await Promise.all([
-      this.supabase.from('social_copy_sources').select('id,broker_account_id,status').eq('id', subscription.source_id).single(),
-      this.supabase.from('broker_accounts').select('id,user_id,provider,platform,is_active,connection_status,linked_account_type,mtapi_session_id,fxsocket_account_id,metaapi_account_id,ctrader_account_id,writer_epoch,provider_transition_state').eq('id', subscription.destination_broker_account_id).single(),
-    ])
+    const sourceResult = await this.supabase.from('social_copy_sources')
+      .select('id,broker_account_id,status').eq('id', subscription.source_id).single()
     if (sourceResult.error || !sourceResult.data) throw new Error('SOURCE_UNAVAILABLE')
-    if (destinationResult.error || !destinationResult.data) throw new Error('DESTINATION_UNAVAILABLE')
     const source = sourceResult.data as SourceRow
-    const { data: sourceBroker, error } = await this.supabase.from('broker_accounts')
-      .select('id,user_id,provider,platform,is_active,connection_status,linked_account_type,mtapi_session_id,fxsocket_account_id,metaapi_account_id,ctrader_account_id,writer_epoch,provider_transition_state')
-      .eq('id', source.broker_account_id).single()
-    if (error || !sourceBroker) throw new Error('SOURCE_ACCOUNT_UNAVAILABLE')
-    return { source, sourceBroker: sourceBroker as BrokerRow, destinationBroker: destinationResult.data as BrokerRow }
+    const readBrokerAccounts = (columns: string) => Promise.all([
+      this.supabase.from('broker_accounts').select(columns).eq('id', source.broker_account_id).single(),
+      this.supabase.from('broker_accounts').select(columns).eq('id', subscription.destination_broker_account_id).single(),
+    ])
+    let [sourceBroker, destinationBroker] = await readBrokerAccounts(COPY_BROKER_COLUMNS)
+    const readError = sourceBroker.error ?? destinationBroker.error
+    if (readError && missingProviderIdColumn(readError.message)) {
+      ;[sourceBroker, destinationBroker] = await readBrokerAccounts(LEGACY_COPY_BROKER_COLUMNS)
+    }
+    if (sourceBroker.error || !sourceBroker.data) throw new Error('SOURCE_ACCOUNT_UNAVAILABLE')
+    if (destinationBroker.error || !destinationBroker.data) throw new Error('DESTINATION_UNAVAILABLE')
+    return {
+      source,
+      sourceBroker: sourceBroker.data as unknown as BrokerRow,
+      destinationBroker: destinationBroker.data as unknown as BrokerRow,
+    }
   }
 
   private async reconcile(subscription: SocialCopySubscriptionRow): Promise<void> {
