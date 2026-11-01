@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { BarChart3, ChevronRight, LineChart, Wallet, X } from 'lucide-react'
+import { BarChart3, ChevronRight, LineChart, Share2, Wallet, X } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import clsx from 'clsx'
 import { AccountGrowthChart } from '../../components/dashboard/AccountGrowthChart'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { CopyTraderModal } from '../../components/social/CopyTraderModal'
 import { TraderReviews } from '../../components/social/TraderReviews'
+import { ShareProfileModal } from '../../components/social/ShareProfileModal'
 import { SocialProfileLinks } from '../../components/social/SocialProfileLinks'
 import { PageShell } from '../../components/layout/PageShell'
 import { PerformanceTradeOutcomeChart } from '../../components/performance/PerformanceTradeOutcomeChart'
@@ -493,6 +494,8 @@ export function SocialTraderActivityPage() {
   const liveOwn = useLiveOwnOpenPnl(selectedOwnAccountId, trader?.openTradeCount ?? 0, Boolean(trader?.isYou))
   const ownAvatarUrl = useOwnAvatarUrl()
   const [copyModalOpen, setCopyModalOpen] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
+  const ownProvider = useProviderStatus()
   const [profileParams, setProfileParams] = useSearchParams()
   const wantsCopy = profileParams.get('copy') === '1'
   const copyIntentReady = wantsCopy && Boolean(trader) && !trader?.isYou && !social.loading && !social.performanceLoading
@@ -582,7 +585,14 @@ export function SocialTraderActivityPage() {
               <HeaderStat label={copy.followers} value={String(trader.followerCount)} />
               <HeaderStat label={copy.leverage} value={trader.profile.leverage ?? '—'} />
             </dl>
-            {trader.isYou ? null : (
+            {trader.isYou ? (
+              ownProvider.status === 'approved' && ownProvider.slug ? (
+                <Button type="button" variant="secondary" onClick={() => setShareOpen(true)}>
+                  <Share2 className="h-4 w-4" />
+                  Share profile
+                </Button>
+              ) : null
+            ) : (
               <CopyActionButton
                 disabled={!canOpenCopyTrader(trader)}
                 disabledReason={copyTraderUnavailableReason(trader) ?? undefined}
@@ -593,6 +603,9 @@ export function SocialTraderActivityPage() {
           </div>
         </Card>
       </div>
+      {shareOpen && ownProvider.slug ? (
+        <ShareProfileModal slug={ownProvider.slug} name={trader.displayName} manageHref={`/social-trading/${trader.id}`} onClose={() => setShareOpen(false)} />
+      ) : null}
       {trader.isYou ? (
         <OwnAccountSelector
           selectedAccountId={selectedOwnAccountId}

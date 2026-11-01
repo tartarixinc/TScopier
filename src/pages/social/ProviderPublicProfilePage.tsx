@@ -147,6 +147,15 @@ export function ProviderPublicProfilePage() {
                   </div>
                   <SocialProfileLinks links={profile.socialLinks} />
                 </div>
+                {isOwner ? null : (
+                  <a
+                    href={user ? appUrl(providerCopyLandingPath(profile.profileUserId)) : authHref('/signup')}
+                    onClick={user ? undefined : rememberLanding}
+                    className="inline-flex shrink-0 rounded-lg bg-green-400 px-4 py-2 text-sm font-semibold text-neutral-950 hover:bg-green-500"
+                  >
+                    Copy Provider
+                  </a>
+                )}
               </div>
               {profile.bio && <p className="mt-4 whitespace-pre-line text-sm text-neutral-800 dark:text-neutral-200">{profile.bio}</p>}
             </section>
