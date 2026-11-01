@@ -7,7 +7,7 @@ import clsx from 'clsx'
 import { AccountGrowthChart } from '../../components/dashboard/AccountGrowthChart'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { CopyTraderModal } from '../../components/social/CopyTraderModal'
-import { SocialFollowDirectory, SocialFollowProfile } from '../../components/social/SocialFollowDirectory'
+import { SocialFollowProfile } from '../../components/social/SocialFollowDirectory'
 import { PageShell } from '../../components/layout/PageShell'
 import { PerformanceTradeOutcomeChart } from '../../components/performance/PerformanceTradeOutcomeChart'
 import { Button } from '../../components/ui/Button'
@@ -382,14 +382,8 @@ export function SocialTradingPage() {
         <DirectoryTab to="/social-trading?view=following" active={view === 'following'}>{copy.tabFollowing}</DirectoryTab>
       </nav>
       <PageHeader title={heading} />
-      <SocialFollowDirectory copy={copy} />
       {import.meta.env.DEV ? (
       <>
-      <div className="flex items-center gap-2 pt-2">
-        <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">{copy.demoDirectory}</h2>
-        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">{copy.demoBadge}</span>
-      </div>
-      <p className="text-xs text-neutral-500 dark:text-neutral-400">{copy.sampleNote}</p>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
         <SummaryStat label={copy.open} value={openCount} selected={visibility === 'open'} onClick={() => toggleVisibility('open')} />
         <SummaryStat label={copy.private} value={privateCount} selected={visibility === 'private'} onClick={() => toggleVisibility('private')} />
