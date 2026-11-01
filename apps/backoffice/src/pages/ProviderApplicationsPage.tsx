@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import clsx from 'clsx'
 import { supabase } from '../lib/supabase'
+import { sendProviderApprovalEmail } from '../lib/adminApi'
 import { PageShell } from '../components/layout/PageShell'
 import { PageHeader } from '../components/layout/PageHeader'
 import { DataPanel } from '../components/ui/DataPanel'
@@ -189,7 +190,14 @@ export function ProviderApplicationsPage() {
       p_user_id: row.user_id, p_decision: decision, p_reason: reason, p_account_kind: kind,
     })
     if (rpcError) setError(rpcError.message)
-    else await load(tab)
+    else {
+      await load(tab)
+      if (decision === 'approve' || decision === 'reinstate') {
+        // The decision is already saved; a failed email must not look like a failed approval.
+        try { await sendProviderApprovalEmail(row.user_id, decision) }
+        catch (emailError) { setError(`Approved, but the notification email failed: ${emailError instanceof Error ? emailError.message : 'unknown error'}`) }
+      }
+    }
     setBusyId(null)
   }, [load, tab])
 

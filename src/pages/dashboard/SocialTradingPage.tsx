@@ -30,7 +30,7 @@ import { interpolate } from '../../i18n/interpolate'
 import { chartThemeColors, chartTooltipProps } from '../../lib/chartTheme'
 import { AccountKindBadge } from '../../components/social/AccountKindBadge'
 import { platformIconSrc } from '../../lib/activityRoute'
-import { formatAccountAmount, normalizeAccountKind, snapshotFreshness } from '../../lib/providerApplication'
+import { formatAccountAmount, normalizeAccountKind } from '../../lib/providerApplication'
 import { copyPriceOfferLabel } from '../../lib/socialCopyPrice'
 import { canOpenCopyTrader, copyTraderUnavailableReason } from '../../lib/socialCopyAvailability'
 import { consumePostAuthRedirect } from '../../lib/postAuthRedirect'
@@ -158,8 +158,10 @@ export function SocialTradingPage() {
   }, [query, requestsOnly, social.profiles, social.traders, sort, view, visibility])
 
   const heading = view === 'followers' ? copy.tabFollowers : view === 'following' ? copy.tabFollowing : copy.tabProviders
-  const openCount = social.traders.filter(trader => trader.access === 'open').length
-  const privateCount = social.traders.length - openCount
+  // Count only approved providers, matching what the Providers list shows.
+  const providerTraders = social.traders.filter(trader => trader.providerStatus === 'approved')
+  const openCount = providerTraders.filter(trader => trader.access === 'open').length
+  const privateCount = providerTraders.length - openCount
   const followerCount = social.currentProfile?.followerCount ?? 0
   const requestCount = social.profiles.filter(profile => profile.viewerRelationshipStatus === 'pending').length
   const toggleVisibility = (next: SocialAccess) => {
@@ -293,10 +295,7 @@ export function SocialTradingPage() {
                       <td className="px-3 py-3 text-neutral-900 dark:text-neutral-50">{trader.followerCount}</td>
                       <td className="px-3 py-3 text-neutral-900 dark:text-neutral-50">
                         {trader.previewBalance == null ? '—' : (
-                          <>
-                            <span className="block font-medium">{formatAccountAmount(trader.previewBalance, trader.accountCurrency)}</span>
-                            <span className="block text-xs text-neutral-600 dark:text-neutral-400">Equity {formatAccountAmount(trader.accountEquity, trader.accountCurrency)}</span>
-                          </>
+                          <span className="block font-medium">{formatAccountAmount(trader.previewBalance, trader.accountCurrency)}</span>
                         )}
                       </td>
                       <td className="px-3 py-3 font-medium text-neutral-900 dark:text-neutral-100">
@@ -342,20 +341,14 @@ export function SocialTradingPage() {
 function AccountCell({ trader }: { trader: SocialTrader }) {
   const kind = normalizeAccountKind(trader.accountKind)
   const icon = trader.accountPlatform ? platformIconSrc(trader.accountPlatform) : null
-  const freshness = snapshotFreshness(trader.accountSnapshotAt)
   if (!trader.accountKind && !trader.accountPlatform) return <span className="text-neutral-600 dark:text-neutral-400">{'\u2014'}</span>
   return (
-    <div className="flex flex-col items-start gap-1">
+    <div className="flex items-center gap-1.5">
       <span className="inline-flex items-center gap-1.5 text-xs font-medium text-neutral-900 dark:text-neutral-50">
         {icon ? <img src={icon} alt="" className="h-4 w-4 object-contain" /> : null}
         {trader.accountPlatform ?? ''}
       </span>
-      <span className="inline-flex items-center gap-1.5">
-        <AccountKindBadge kind={kind} />
-        {freshness === 'stale' ? (
-          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-950/40 dark:text-amber-300" title="Balance and equity were last synced more than 30 minutes ago">Stale</span>
-        ) : null}
-      </span>
+      <AccountKindBadge kind={kind} />
     </div>
   )
 }
