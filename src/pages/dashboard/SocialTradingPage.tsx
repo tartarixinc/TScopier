@@ -93,7 +93,7 @@ function formatWhen(iso: string): string {
 }
 
 function percent(value: number | null): string {
-  return value == null ? 'Unavailable' : `${value.toFixed(1)}%`
+  return value == null ? '—' : `${value.toFixed(1)}%`
 }
 
 function SideLabel({ side, buy, sell }: { side: SocialTradeSide; buy: string; sell: string }) {
@@ -153,10 +153,6 @@ export function SocialTradingPage() {
     })
   }, [query, requestsOnly, social.profiles, social.traders, sort, view, visibility])
 
-  const chooseAccess = (value: SocialAccess) => {
-    void social.setAccess(value)
-  }
-
   const heading = view === 'followers' ? copy.tabFollowers : view === 'following' ? copy.tabFollowing : copy.tabProviders
   const openCount = social.traders.filter(trader => trader.access === 'open').length
   const privateCount = social.traders.length - openCount
@@ -166,7 +162,7 @@ export function SocialTradingPage() {
     setVisibility(current => current === next ? 'all' : next)
   }
 
-  const priceLabel = (cents: number | null) => cents == null ? 'Unavailable' : copyPriceOfferLabel(cents, formatMoney, {
+  const priceLabel = (cents: number | null) => cents == null ? '—' : copyPriceOfferLabel(cents, formatMoney, {
     free: copy.priceFree,
     paid: copy.pricePerMonth,
   })
@@ -285,14 +281,14 @@ export function SocialTradingPage() {
                       <td className="px-3 py-3">
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
                           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                          {trader.syntheticDemo ? 'Synthetic demo' : trader.performanceStatus === 'available' ? copy.statusActive : 'Unavailable'}
+                          {trader.syntheticDemo ? 'Synthetic demo' : trader.performanceStatus === 'available' ? copy.statusActive : '—'}
                         </span>
                       </td>
                       <td className="px-3 py-3 font-medium text-neutral-900 dark:text-neutral-100">{percent(trader.roi)}</td>
                       <td className="px-3 py-3 text-neutral-900 dark:text-neutral-50">{percent(trader.winRate)}</td>
                       <td className="px-3 py-3 text-neutral-900 dark:text-neutral-50">{trader.followerCount}</td>
                       <td className="px-3 py-3 text-neutral-900 dark:text-neutral-50">
-                        {trader.previewBalance == null ? 'Unavailable' : (
+                        {trader.previewBalance == null ? '—' : (
                           <>
                             <span className="block font-medium">{formatAccountAmount(trader.previewBalance, trader.accountCurrency)}</span>
                             <span className="block text-xs text-neutral-600 dark:text-neutral-400">Equity {formatAccountAmount(trader.accountEquity, trader.accountCurrency)}</span>
@@ -304,11 +300,7 @@ export function SocialTradingPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-2">
-                          {trader.isYou ? (
-                            <div className="flex flex-wrap items-center justify-end gap-2">
-                              <AccessChoice access={access} copy={copy} onChange={chooseAccess} />
-                           </div>
-                          ) : (
+                          {trader.isYou ? null : (
                             <CopyActionButton
                               disabled={!canOpenCopyTrader(trader)}
                               disabledReason={copyTraderUnavailableReason(trader) ?? undefined}
@@ -432,37 +424,6 @@ function AccessTag({
   )
 }
 
-function AccessChoice({
-  access,
-  copy,
-  onChange,
-  labelled = false,
-}: {
-  access: SocialAccess
-  copy: { whoCanCopy: string; anyoneCanCopy: string; requestsRequired: string }
-  onChange: (access: SocialAccess) => void
-  labelled?: boolean
-}) {
-  return (
-    <label
-      className="relative z-10 flex shrink-0 flex-col gap-1 text-xs text-neutral-900 dark:text-neutral-50"
-      onClick={event => event.stopPropagation()}
-      onKeyDown={event => event.stopPropagation()}
-    >
-      {labelled ? <span>{copy.whoCanCopy}</span> : <span className="sr-only">{copy.whoCanCopy}</span>}
-      <select
-        value={access}
-        aria-label={copy.whoCanCopy}
-        onChange={event => onChange(event.target.value === 'private' ? 'private' : 'open')}
-        className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-50"
-      >
-        <option value="open">{copy.anyoneCanCopy}</option>
-        <option value="private">{copy.requestsRequired}</option>
-      </select>
-    </label>
-  )
-}
-
 function CopyActionButton({
   copyLabel,
   disabled = false,
@@ -541,10 +502,6 @@ export function SocialTraderActivityPage() {
     )
   }
 
-  const chooseAccess = (value: SocialAccess) => {
-    void social.setAccess(value)
-  }
-
   const pendingRequests = social.profiles
     .filter(profile => profile.followsViewerStatus === 'pending')
     .map(profile => social.traders.find(person => person.id === profile.profileUserId))
@@ -553,7 +510,7 @@ export function SocialTraderActivityPage() {
   const name = trader.isYou ? copy.you : trader.displayName
   const joined = trader.profile.joinedAt
     ? new Date(trader.profile.joinedAt).toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric' })
-    : 'Unavailable'
+    : '—'
 
   return (
     <>
@@ -584,21 +541,17 @@ export function SocialTraderActivityPage() {
                   <p className="mt-2 text-xs text-neutral-500">
                     Source: {trader.sourceLabel
                       ? [trader.sourceLabel, trader.sourcePlatform, trader.sourceAccountMode].filter(Boolean).join(' · ')
-                      : 'Unavailable'}
+                      : '—'}
                   </p>
                 </div>
               </div>
             </div>
             <dl className="grid grid-cols-3 gap-4 sm:gap-8">
-              <HeaderStat label={copy.aum} value="Unavailable" />
+              <HeaderStat label={copy.aum} value="—" />
               <HeaderStat label={copy.followers} value={String(trader.followerCount)} />
-              <HeaderStat label={copy.leverage} value={trader.profile.leverage ?? 'Unavailable'} />
+              <HeaderStat label={copy.leverage} value={trader.profile.leverage ?? '—'} />
             </dl>
-            {trader.isYou ? (
-              <div className="flex flex-wrap items-end gap-3">
-                <AccessChoice access={access} copy={copy} onChange={chooseAccess} labelled />
-             </div>
-            ) : (
+            {trader.isYou ? null : (
               <CopyActionButton
                 disabled={!canOpenCopyTrader(trader)}
                 disabledReason={copyTraderUnavailableReason(trader) ?? undefined}
@@ -802,7 +755,7 @@ function MonthlyProfitChart({ title, data }: { title: string; data: SocialTrader
             <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} vertical={false} />
             <XAxis dataKey="label" tick={{ fontSize: 11, fill: colors.tick }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 11, fill: colors.tick }} axisLine={false} tickLine={false} tickFormatter={value => formatAxisMoney(Number(value))} width={48} />
-            <Tooltip {...chartTooltipProps(colors)} formatter={(value, _name, item) => { const month = item.payload as SocialTraderStats['monthly'][number]; return value == null || month.profit == null ? ['Unavailable', 'Performance'] : [formatAxisMoney(Number(value)), month.state === 'no_activity' ? 'Verified no activity' : month.state === 'incomplete' ? 'Partial P/L' : 'P/L'] }} />
+            <Tooltip {...chartTooltipProps(colors)} formatter={(value, _name, item) => { const month = item.payload as SocialTraderStats['monthly'][number]; return value == null || month.profit == null ? ['—', 'Performance'] : [formatAxisMoney(Number(value)), month.state === 'no_activity' ? 'Verified no activity' : month.state === 'incomplete' ? 'Partial P/L' : 'P/L'] }} />
             <Bar dataKey="profit" fill="#4ade80" radius={[4, 4, 0, 0]} maxBarSize={36} />
           </BarChart>
         </ResponsiveContainer>
@@ -823,19 +776,19 @@ function StatisticsGrid({
   copy: SocialTradingPageTranslations
   formatMoney: (value: number) => string
 }) {
-  const growth = trader.roi == null ? 'Unavailable' : `${trader.roi.toFixed(2)}%`
+  const growth = trader.roi == null ? '—' : `${trader.roi.toFixed(2)}%`
   return (
     <Card>
       <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{copy.statisticsMonth}</h2>
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-4">
         <Metric label={copy.growth} value={growth} tone={trader.roi == null ? undefined : trader.roi >= 0 ? 'up' : 'down'} />
-        <Metric label={copy.longTrades} value={stats.longTrades == null ? 'Unavailable' : String(stats.longTrades)} />
-        <Metric label={copy.maxOpenTrades} value={stats.maxOpenTrades == null ? 'Unavailable' : String(stats.maxOpenTrades)} />
-        <Metric label={copy.sharpeRatio} value={stats.sharpe == null ? 'Unavailable' : stats.sharpe.toFixed(2)} />
-        <Metric label={copy.avgProfit} value={stats.avgProfit == null ? 'Unavailable' : formatMoney(stats.avgProfit)} />
-        <Metric label={copy.shortTrades} value={stats.shortTrades == null ? 'Unavailable' : String(stats.shortTrades)} />
-        <Metric label={copy.avgHoldingTime} value={stats.avgHoldingDays == null ? 'Unavailable' : interpolate(copy.holdingDays, { count: stats.avgHoldingDays })} />
-        <Metric label={copy.profitFactor} value={stats.profitFactor == null ? 'Unavailable' : stats.profitFactor.toFixed(2)} />
+        <Metric label={copy.longTrades} value={stats.longTrades == null ? '—' : String(stats.longTrades)} />
+        <Metric label={copy.maxOpenTrades} value={stats.maxOpenTrades == null ? '—' : String(stats.maxOpenTrades)} />
+        <Metric label={copy.sharpeRatio} value={stats.sharpe == null ? '—' : stats.sharpe.toFixed(2)} />
+        <Metric label={copy.avgProfit} value={stats.avgProfit == null ? '—' : formatMoney(stats.avgProfit)} />
+        <Metric label={copy.shortTrades} value={stats.shortTrades == null ? '—' : String(stats.shortTrades)} />
+        <Metric label={copy.avgHoldingTime} value={stats.avgHoldingDays == null ? '—' : interpolate(copy.holdingDays, { count: stats.avgHoldingDays })} />
+        <Metric label={copy.profitFactor} value={stats.profitFactor == null ? '—' : stats.profitFactor.toFixed(2)} />
       </dl>
     </Card>
   )
@@ -1048,7 +1001,7 @@ function DayTradesModal({
                 <Metric label={copy.grossPnl} value={formatSignedMoney(gross)} tone={gross >= 0 ? 'up' : 'down'} />
                 <Metric label={copy.winRate} value={`${winRate.toFixed(2)}%`} />
                 <Metric label={copy.losingTrades} value={String(losses)} />
-                <Metric label={copy.totalLots} value={'Unavailable'} />
+                <Metric label={copy.totalLots} value={'—'} />
               </dl>
             </div>
             <div className="mt-5 overflow-x-auto">
@@ -1073,9 +1026,9 @@ function DayTradesModal({
                           <SideLabel side={fill.side} buy={copy.buy} sell={copy.sell} />
                         </span>
                       </td>
-                      <td className="px-2 py-3 text-neutral-900 dark:text-neutral-50">{fill.unit ?? 'Unavailable'}</td>
-                      <td className="px-2 py-3 text-neutral-900 dark:text-neutral-50">{fill.openRate ?? 'Unavailable'}</td>
-                      <td className="px-2 py-3 text-neutral-900 dark:text-neutral-50">{fill.closeRate ?? 'Unavailable'}</td>
+                      <td className="px-2 py-3 text-neutral-900 dark:text-neutral-50">{fill.unit ?? '—'}</td>
+                      <td className="px-2 py-3 text-neutral-900 dark:text-neutral-50">{fill.openRate ?? '—'}</td>
+                      <td className="px-2 py-3 text-neutral-900 dark:text-neutral-50">{fill.closeRate ?? '—'}</td>
                       <td className="px-2 py-3 text-neutral-900 dark:text-neutral-50">{stamp(fill.openedAt)}</td>
                       <td className="px-2 py-3 text-neutral-900 dark:text-neutral-50">{stamp(fill.closedAt)}</td>
                       <td className={clsx('px-2 py-3 text-end font-medium', fill.profit >= 0 ? 'text-green-500 dark:text-teal-300' : 'text-red-600 dark:text-red-400')}>
@@ -1135,43 +1088,43 @@ function OverviewPanel({
       <div className="mt-4 grid grid-cols-2 gap-3">
         <div>
           <p className={clsx('text-lg font-semibold', stats.dailyProfitPercent == null ? 'text-neutral-900 dark:text-neutral-50' : stats.dailyProfitPercent >= 0 ? 'text-green-500 dark:text-teal-300' : 'text-red-600')}>
-            {stats.dailyProfitPercent == null ? 'Unavailable' : stats.dailyProfitPercent.toFixed(2) + '%'}
+            {stats.dailyProfitPercent == null ? '—' : stats.dailyProfitPercent.toFixed(2) + '%'}
           </p>
           <p className="text-xs text-neutral-900 dark:text-neutral-50">{copy.dailyProfit}</p>
         </div>
         <div>
           <p className={clsx('text-lg font-semibold', stats.monthlyProfitPercent == null ? 'text-neutral-900 dark:text-neutral-50' : stats.monthlyProfitPercent >= 0 ? 'text-green-500 dark:text-teal-300' : 'text-red-600')}>
-            {stats.monthlyProfitPercent == null ? 'Unavailable' : stats.monthlyProfitPercent.toFixed(2) + '%'}
+            {stats.monthlyProfitPercent == null ? '—' : stats.monthlyProfitPercent.toFixed(2) + '%'}
           </p>
           <p className="text-xs text-neutral-900 dark:text-neutral-50">{copy.monthlyProfit}</p>
         </div>
       </div>
       <dl className="mt-4 space-y-3 text-sm">
-        <OverviewRow label={copy.growth} value={trader.roi == null ? 'Unavailable' : trader.roi.toFixed(2) + '%'} tone={trader.roi == null ? undefined : trader.roi >= 0 ? 'up' : 'down'} />
-        <OverviewRow label={copy.drawdown} value={trader.maxDrawdown == null ? 'Unavailable' : trader.maxDrawdown.toFixed(2) + '%'} tone="down" />
+        <OverviewRow label={copy.growth} value={trader.roi == null ? '—' : trader.roi.toFixed(2) + '%'} tone={trader.roi == null ? undefined : trader.roi >= 0 ? 'up' : 'down'} />
+        <OverviewRow label={copy.drawdown} value={trader.maxDrawdown == null ? '—' : trader.maxDrawdown.toFixed(2) + '%'} tone="down" />
         <div>
           <div className="flex items-center justify-between">
             <dt className="text-neutral-900 dark:text-neutral-50">{copy.winRate}</dt>
-            <dd className="font-semibold text-green-500 dark:text-teal-300">{trader.winRate == null ? 'Unavailable' : trader.winRate.toFixed(2) + '%'}</dd>
+            <dd className="font-semibold text-green-500 dark:text-teal-300">{trader.winRate == null ? '—' : trader.winRate.toFixed(2) + '%'}</dd>
           </div>
           <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800">
             {trader.winRate != null ? <div className="h-full rounded-full bg-green-400" style={{ width: Math.min(trader.winRate, 100) + '%' }} /> : null}
           </div>
         </div>
-        <OverviewRow label={copy.profitableTrades} value={stats.profitableTrades == null ? 'Unavailable' : String(stats.profitableTrades)} />
-        <OverviewRow label={copy.losingTrades} value={stats.losingTrades == null ? 'Unavailable' : String(stats.losingTrades)} />
-        <OverviewRow label={copy.balance} value={trader.previewBalance == null ? 'Unavailable' : trader.accountCurrency ? formatAccountAmount(trader.previewBalance, trader.accountCurrency) : formatMoney(trader.previewBalance)} />
-        <OverviewRow label={copy.equity} value={stats.equity == null ? 'Unavailable' : formatMoney(stats.equity)} />
-        <OverviewRow label={copy.deposit} value={stats.deposit == null ? 'Unavailable' : formatMoney(stats.deposit)} />
-        <OverviewRow label={copy.totalTrades} value={!trader.historyComplete || trader.closedTrades == null || trader.openTradeCount == null ? 'Unavailable' : String(trader.closedTrades + trader.openTradeCount)} />
-        <OverviewRow label={copy.openTrades} value={!trader.historyComplete || trader.openTradeCount == null ? 'Unavailable' : String(trader.openTradeCount)} />
-        <OverviewRow label={copy.lastTrade} value={!trader.historyComplete ? 'Unavailable' : lastTrade ? formatWhen(lastTrade) : trader.historyAvailable ? '—' : 'Unavailable'} />
-        <OverviewRow label={copy.openPosition} value={stats.openPosition == null ? 'Unavailable' : formatSignedMoney(stats.openPosition)} tone={stats.openPosition == null ? undefined : stats.openPosition >= 0 ? 'up' : 'down'} />
-        <OverviewRow label={copy.liveCopiers} value={trader.liveCopiers == null ? 'Unavailable' : String(trader.liveCopiers)} />
-<OverviewRow label={copy.bestTrade} value={stats.bestTradeProfit == null || !stats.bestTradeAt ? 'Unavailable' : formatSignedMoney(stats.bestTradeProfit) + ' / ' + formatWhen(stats.bestTradeAt)} tone="up" />
-<OverviewRow label={copy.worstTrade} value={stats.worstTradeProfit == null || !stats.worstTradeAt ? 'Unavailable' : formatSignedMoney(stats.worstTradeProfit) + ' / ' + formatWhen(stats.worstTradeAt)} tone="down" />
-        <OverviewRow label={copy.timezone} value={trader.profile.timezone ?? 'Unavailable'} />
-        <OverviewRow label={copy.amountFollowing} value={stats.amountFollowing == null ? 'Unavailable' : formatMoney(stats.amountFollowing)} />
+        <OverviewRow label={copy.profitableTrades} value={stats.profitableTrades == null ? '—' : String(stats.profitableTrades)} />
+        <OverviewRow label={copy.losingTrades} value={stats.losingTrades == null ? '—' : String(stats.losingTrades)} />
+        <OverviewRow label={copy.balance} value={trader.previewBalance == null ? '—' : trader.accountCurrency ? formatAccountAmount(trader.previewBalance, trader.accountCurrency) : formatMoney(trader.previewBalance)} />
+        <OverviewRow label={copy.equity} value={stats.equity == null ? '—' : formatMoney(stats.equity)} />
+        <OverviewRow label={copy.deposit} value={stats.deposit == null ? '—' : formatMoney(stats.deposit)} />
+        <OverviewRow label={copy.totalTrades} value={!trader.historyComplete || trader.closedTrades == null || trader.openTradeCount == null ? '—' : String(trader.closedTrades + trader.openTradeCount)} />
+        <OverviewRow label={copy.openTrades} value={!trader.historyComplete || trader.openTradeCount == null ? '—' : String(trader.openTradeCount)} />
+        <OverviewRow label={copy.lastTrade} value={!trader.historyComplete ? '—' : lastTrade ? formatWhen(lastTrade) : trader.historyAvailable ? '—' : '—'} />
+        <OverviewRow label={copy.openPosition} value={stats.openPosition == null ? '—' : formatSignedMoney(stats.openPosition)} tone={stats.openPosition == null ? undefined : stats.openPosition >= 0 ? 'up' : 'down'} />
+        <OverviewRow label={copy.liveCopiers} value={trader.liveCopiers == null ? '—' : String(trader.liveCopiers)} />
+<OverviewRow label={copy.bestTrade} value={stats.bestTradeProfit == null || !stats.bestTradeAt ? '—' : formatSignedMoney(stats.bestTradeProfit) + ' / ' + formatWhen(stats.bestTradeAt)} tone="up" />
+<OverviewRow label={copy.worstTrade} value={stats.worstTradeProfit == null || !stats.worstTradeAt ? '—' : formatSignedMoney(stats.worstTradeProfit) + ' / ' + formatWhen(stats.worstTradeAt)} tone="down" />
+        <OverviewRow label={copy.timezone} value={trader.profile.timezone ?? '—'} />
+        <OverviewRow label={copy.amountFollowing} value={stats.amountFollowing == null ? '—' : formatMoney(stats.amountFollowing)} />
       </dl>
     </Card>
   )

@@ -76,7 +76,7 @@ test("production social UI retains the approved directory and profile informatio
   assert.match(history, /Recent realized performance/);
   assert.match(history, /P\/L calendar/);
   assert.match(history, /DEMO DATA/);
-  assert.match(history, /Maximum drawdown[^]*Unavailable/);
+  assert.match(history, /Maximum drawdown[^]*—/);
   assert.match(history, /Destination-side copy executions are excluded/);
   assert.doesNotMatch(
     history,
