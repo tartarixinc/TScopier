@@ -37,6 +37,8 @@ export const channelWorkerRu: ChannelWorkerTranslations = {
 
   planFallbackNamed: 'План ордеров скорректирован для {symbol} (использован один ордер вместо нескольких).',
   planFallbackGeneric: 'План ордеров скорректирован (использован один ордер вместо нескольких).',
+  planFallbackPartialTpMinLot: 'Частичная фиксация TP пропущена: объём слишком мал для деления, у брокера размещается только последний тейк-профит.',
+  planFallbackPartialTpMinLotNamed: 'Частичная фиксация TP для {symbol} пропущена: объём слишком мал для деления, у брокера размещается только последний тейк-профит.',
 
   orderDidNotPlaceNamed: 'Ордер не размещен {on}{err}',
   orderDidNotPlaceGeneric: 'Ордер не размещен{err}',

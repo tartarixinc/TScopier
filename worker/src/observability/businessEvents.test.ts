@@ -7,6 +7,7 @@ import {
 } from './sentry'
 import {
   captureBusinessIssue,
+  classifyBrokerFailureReason,
   resetBusinessEventsForTests,
 } from './businessEvents'
 import { captureDeferredBusinessFailure } from './deferredBusinessEvents'
@@ -234,4 +235,15 @@ test('business event names and reason codes are stable and redact nested secrets
   assert.doesNotMatch(json, /abcdefghijklmnopqrstuvwxyz/)
   assert.doesNotMatch(json, /person@example.com/)
   assert.doesNotMatch(json, /1234567890/)
+})
+
+test('classifyBrokerFailureReason separates trading-disabled from missing symbols', () => {
+  assert.equal(
+    classifyBrokerFailureReason('Trading is disabled for symbol XAUUSD.crp (:1387714)'),
+    'BROKER_SYMBOL_TRADE_DISABLED',
+  )
+  assert.equal(
+    classifyBrokerFailureReason('Symbol not found: XAUUSD (:1387714)'),
+    'BROKER_SYMBOL_NOT_FOUND',
+  )
 })

@@ -207,6 +207,7 @@ export const configureModalPl: ConfigureModalTranslations = {
     singleTpTargetTp3: 'TP3',
     singleTpLotBreakdownTitle: 'Lot breakdown',
     singleTpLotBreakdownSlice: '{lot} lots closes @ {tp}',
+    partialTpMinLotWarning: 'Przy locie {lot} tej transakcji nie da się podzielić: {levels} nie zostaną zamknięte jako częściowe TP, u brokera składa się tylko ostatni poziom take profit. Każdy poziom wymaga co najmniej 0.01 lotu — zwiększ lot, aby zamykać na każdym poziomie.',
     singleTpLotBreakdownJoin: ', ',
     signalEntryTitle: 'Wykonanie wejścia sygnału',
     signalEntryBody: 'Użyj sygnału Cena wejścia ma zastosowanie tylko w trybie pojedynczego handlu. Po włączeniu sygnał musi zawierać jawnie przeanalizowany wpis (cena, strefa, cena @ lub etykiety takie jak „Cena wejściowa:”). Po jakimkolwiek opóźnieniu kanału pracownik porównuje aktualną wycenę z tym wpisem: Kupuj na rynku tylko wtedy, gdy zapytanie jest na poziomie wpisu lub poniżej; w przeciwnym razie ustanawia limit kupna na wejściu. Sprzedaż jest odwrotnością. Broker typu take-profit celuje w ostatnią przeanalizowaną TP, jeśli masz kilka celów, z opcjonalnymi częściowymi zamknięciami z drabiny TP. Copier śledzi każdy oczekujący wpis, więc wypełnienia są synchronizowane z Twoją listą handlową; oczekujące są anulowane, gdy koszyk jest płaski. Same wiadomości typu „kup teraz” bez wpisu są pomijane.',

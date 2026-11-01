@@ -49,6 +49,7 @@
     border-color: var(--color-gray-200, currentcolor);
   }
 }
+@config '../tailwind.config.js';
 
 body {
   margin: 0;

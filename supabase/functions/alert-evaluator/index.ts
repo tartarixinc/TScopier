@@ -38,6 +38,12 @@
  *   executions_failing     { max_failed: number }            // windowed; distinct failing signals, order_close_audit excluded
  *   dead_letters_high      { max_open: number }
  *   telegram_gap           { max_not_listening: number }     // paying subscribers only (active/trialing)
+ *   openai_credits_exhausted { grace_seconds: number }
+ *
+ * OpenAI credits are the one external dependency this evaluator probes
+ * itself: every run makes a one-token request and writes the outcome to
+ * system_probe_state target 'openai_api'. That row also powers the admin
+ * Systems Health page, so the screen and the email always agree.
  *
  * Principles: never treat unknown as healthy (a stale probe row fires), never
  * invent an outage from an unreadable table (skip and log instead), and keep
@@ -55,10 +61,36 @@ const corsHeaders = {
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
-const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+// Prefer the dedicated secret: the project-level SUPABASE_SERVICE_ROLE_KEY
+// override can drift from the current API key (it did on staging — every call
+// 401'd), and we must not disturb that shared value. Fall back to the standard
+// name so behaviour is unchanged where the dedicated secret is absent.
+const SERVICE_ROLE_KEY =
+  Deno.env.get("ALERT_EVALUATOR_SERVICE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const RESEND_FROM = Deno.env.get("ALERT_RESEND_FROM") || "TScopier <alerts@tscopier.ai>";
 const ADMIN_ALERTS_URL = (Deno.env.get("ADMIN_ALERTS_URL") || "http://panel.tscopier.cloud/monitoring/alerts").replace(/\/$/, "");
+// Emails must never look like production when they come from staging (or the
+// other way round). Derive the label from the project ref; ALERT_ENV overrides.
+const ALERT_ENV =
+  Deno.env.get("ALERT_ENV") ||
+  (SUPABASE_URL.includes("axdcledcyhyvzrnfkwat") ? "staging" : "production");
+
+// First human action per rule — the description says what the alert means;
+// this says what to do about it at 3am.
+const NEXT_ACTION: Record<string, string> = {
+  bridge_down: "Check the MTAPI bridge service and the Systems Health page — MT5/MT4 copies are blocked until it recovers.",
+  probe_stale: "Open the Systems Health page — the named target stopped reporting. If it is the alert evaluator itself, other alerts may be delayed.",
+  mtapi_accounts_error: "Check the Bridges / Reconnects pages — this usually means a bridge-side problem, not isolated user issues.",
+  mtapi_reconnect_storm: "Accounts are flapping between connected and error; check bridge and network stability before users report failed copies.",
+  workers_offline: "Check the Railway listener service — nothing is listening, so no signals are being received at all.",
+  trade_workers_offline: "Check the Railway trade-worker service — existing open trades are not being managed while this fires.",
+  queue_stuck: "Open the Signals and Execution pages — trades are delayed; check trade-worker and bridge health first.",
+  executions_failing: "Open the Execution logs page and filter by failure reason.",
+  dead_letters_high: "Open the dead-letter view and replay or discard the parked messages.",
+  telegram_gap: "Linked accounts without a listener are not being copied — check worker leases on the Systems Health page.",
+  openai_credits_exhausted: "Add OpenAI credits now (Billing → Add credits). Until then AI parsing is refused and only the regex parser runs, so complex signals may be missed.",
+};
 
 const EMAIL_BATCH_LIMIT = 25;
 const EMAIL_MAX_ATTEMPTS = 5; // recovery (resolved) emails only; firing retries are uncapped
@@ -139,6 +171,119 @@ async function headCount(
   const { count, error } = await q;
   if (error) return null;
   return count ?? 0;
+}
+
+// ---------------------------------------------------------------------------
+// OpenAI credit probe.
+//
+// A one-token chat request is the only reliable way to learn that the
+// organization can no longer spend: OpenAI's billing errors (429
+// credit_balance_exhausted / insufficient_quota, spend limits) are returned
+// only when a real request is made. The outcome is written to
+// system_probe_state target 'openai_api' so the alert rule and the admin
+// Systems Health page read the exact same fact.
+//
+// Other failures are deliberately NOT treated as "credits exhausted":
+//   - 401/403 (bad key)            -> down, detail "auth:…"  (page shows warn)
+//   - 429 without a billing code   -> up,   detail "rate_limited:…"
+//   - 5xx / timeout / network      -> unknown (never a false all-clear)
+// ---------------------------------------------------------------------------
+
+const OPENAI_CREDITS_PROBE_MODEL = Deno.env.get("OPENAI_CREDITS_PROBE_MODEL") || "gpt-4o-mini";
+const OPENAI_CREDITS_PROBE_TIMEOUT_MS = 8_000;
+const OPENAI_BILLING_CODES = new Set([
+  "credit_balance_exhausted",
+  "insufficient_quota",
+  "billing_hard_limit_reached",
+  "organization_spend_limit_exceeded",
+  "project_spend_limit_exceeded",
+  "organization_usage_limit_exceeded",
+]);
+
+interface OpenAiProbeResult {
+  ran: boolean;
+  state?: "up" | "down" | "unknown";
+  detail?: string;
+}
+
+async function recordOpenAiProbe(
+  sb: any,
+  state: "up" | "down" | "unknown",
+  latencyMs: number | null,
+  detail: string,
+): Promise<void> {
+  const { error } = await sb.rpc("record_probe_result", {
+    p_target: "openai_api",
+    p_state: state,
+    p_latency_ms: latencyMs,
+    p_detail: detail.slice(0, 300),
+  });
+  if (error) console.warn(`[alert-evaluator] openai probe write failed err=${error.message}`);
+}
+
+async function probeOpenAiCredits(sb: any): Promise<OpenAiProbeResult> {
+  const apiKey = Deno.env.get("OPENAI_API_KEY") ?? "";
+  if (!apiKey) {
+    // Record the gap so the page cannot show an old green row forever.
+    const detail = "probe_error:OPENAI_API_KEY not configured";
+    await recordOpenAiProbe(sb, "unknown", null, detail);
+    return { ran: true, state: "unknown", detail };
+  }
+
+  const startedAt = Date.now();
+  try {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: OPENAI_CREDITS_PROBE_MODEL,
+        messages: [{ role: "user", content: "ping" }],
+        max_tokens: 1,
+        temperature: 0,
+      }),
+      signal: AbortSignal.timeout(OPENAI_CREDITS_PROBE_TIMEOUT_MS),
+    });
+    const latencyMs = Date.now() - startedAt;
+    const body = await res.json().catch(() => ({}) as Record<string, unknown>);
+    const err = (body as { error?: { code?: string; type?: string; message?: string } }).error;
+
+    if (res.ok) {
+      const detail = `credits ok (${OPENAI_CREDITS_PROBE_MODEL})`;
+      await recordOpenAiProbe(sb, "up", latencyMs, detail);
+      return { ran: true, state: "up", detail };
+    }
+
+    const code = String(err?.code ?? err?.type ?? "");
+    const message = String(err?.message ?? `HTTP ${res.status}`).slice(0, 160);
+
+    if (res.status === 429 && OPENAI_BILLING_CODES.has(code)) {
+      const detail = `billing:${code || "insufficient_quota"} — ${message}`;
+      await recordOpenAiProbe(sb, "down", latencyMs, detail);
+      return { ran: true, state: "down", detail };
+    }
+    if (res.status === 401 || res.status === 403) {
+      const detail = `auth:${code || `HTTP_${res.status}`} — ${message}`;
+      await recordOpenAiProbe(sb, "down", latencyMs, detail);
+      return { ran: true, state: "down", detail };
+    }
+    if (res.status === 429) {
+      // Rate limited, but the account can still spend: not a credits outage.
+      const detail = `rate_limited:${code || `HTTP_429`}`;
+      await recordOpenAiProbe(sb, "up", latencyMs, detail);
+      return { ran: true, state: "up", detail };
+    }
+
+    const detail = `probe_error:HTTP_${res.status}${code ? `:${code}` : ""} — ${message}`;
+    await recordOpenAiProbe(sb, "unknown", latencyMs, detail);
+    return { ran: true, state: "unknown", detail };
+  } catch (err) {
+    const detail = `probe_error:${err instanceof Error ? err.message : String(err)}`;
+    await recordOpenAiProbe(sb, "unknown", null, detail);
+    return { ran: true, state: "unknown", detail };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -477,6 +622,39 @@ async function evalTelegramGap(sb: any, rule: RuleRow, nowMs: number): Promise<E
   };
 }
 
+/**
+ * OpenAI credits — reads the probe row written by probeOpenAiCredits on this
+ * same run. Only a billing-coded down state fires; auth/probe errors are
+ * surfaced on the Systems Health page but must not claim credits ran out.
+ */
+async function evalOpenAiCredits(sb: any, rule: RuleRow, nowMs: number): Promise<EvalOutcome> {
+  const graceMs = num(rule.threshold.grace_seconds, 60) * 1000;
+  const { data, error } = await sb
+    .from("system_probe_state")
+    .select("state, down_since, detail, updated_at")
+    .eq("target", "openai_api")
+    .maybeSingle();
+  if (error) return { kind: "skip", reason: error.message };
+  if (!data) return { kind: "skip", reason: "openai_api probe has not reported yet" };
+  if (data.state !== "down") return { kind: "ok", fired: false, value: null, message: "" };
+
+  const detail = String(data.detail ?? "");
+  if (!detail.startsWith("billing:")) {
+    return { kind: "skip", reason: `openai probe down for a non-billing reason: ${detail}` };
+  }
+  const since = data.down_since ? Date.parse(data.down_since) : NaN;
+  const ageMs = Number.isFinite(since) ? nowMs - since : graceMs;
+  if (ageMs >= graceMs) {
+    return {
+      kind: "ok",
+      fired: true,
+      value: Math.round(ageMs / 1000),
+      message: `OpenAI is refusing requests: ${detail}`,
+    };
+  }
+  return { kind: "ok", fired: false, value: 0, message: "" };
+}
+
 async function evaluate(sb: any, rule: RuleRow, nowMs: number): Promise<EvalOutcome> {
   switch (rule.code) {
     case "bridge_down": return evalBridgeDown(sb, rule, nowMs);
@@ -489,6 +667,7 @@ async function evaluate(sb: any, rule: RuleRow, nowMs: number): Promise<EvalOutc
     case "executions_failing": return evalExecutionsFailing(sb, rule, nowMs);
     case "dead_letters_high": return evalDeadLettersHigh(sb, rule);
     case "telegram_gap": return evalTelegramGap(sb, rule, nowMs);
+    case "openai_credits_exhausted": return evalOpenAiCredits(sb, rule, nowMs);
     default:
       return { kind: "skip", reason: `no evaluator for rule ${rule.code}` };
   }
@@ -516,6 +695,10 @@ function alertEmailHtml(opts: {
   const resolvedNote = !isFiring
     ? `<p style="margin:0 0 12px 0;font-size:14px;color:#404040;">The condition cleared at ${esc(event.resolved_at ?? "")}.</p>`
     : "";
+  const actionText = NEXT_ACTION[rule.code];
+  const actionLine = actionText
+    ? `<p style="margin:0 0 12px 0;padding:10px 12px;background:#f4f4f5;border-left:3px solid ${accent};font-size:13px;line-height:1.5;color:#404040;"><strong>What to do:</strong> ${esc(actionText)}</p>`
+    : "";
   return `<!doctype html>
 <html>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:Helvetica Neue,Arial,sans-serif;">
@@ -523,9 +706,11 @@ function alertEmailHtml(opts: {
     <div style="background:#ffffff;border:1px solid #e4e4e7;border-radius:10px;padding:24px;">
       <p style="margin:0 0 4px 0;font-size:13px;font-weight:700;letter-spacing:0.06em;color:#71717a;">TSCOPIER SYSTEMS</p>
       <span style="display:inline-block;background:${accent};color:#ffffff;font-size:11px;font-weight:700;letter-spacing:0.08em;padding:3px 8px;border-radius:999px;">${label}</span>
+      <span style="display:inline-block;background:#f4f4f5;color:#52525b;font-size:11px;font-weight:700;letter-spacing:0.08em;padding:3px 8px;border-radius:999px;margin-left:6px;">${esc(ALERT_ENV.toUpperCase())}</span>
       <h1 style="margin:12px 0 4px 0;font-size:20px;color:#18181b;">${esc(rule.name)}</h1>
       <p style="margin:0 0 16px 0;font-size:14px;line-height:1.5;color:#404040;">${esc(event.message ?? "")}</p>
       ${valueLine}
+      ${actionLine}
       <p style="margin:0 0 16px 0;font-size:13px;line-height:1.5;color:#71717a;">${esc(rule.description)}</p>
       ${resolvedNote}
       <p style="margin:0 0 20px 0;"><a href="${esc(ADMIN_ALERTS_URL)}" style="font-size:14px;font-weight:600;color:${accent};text-decoration:none;">Open the Alerts console &rarr;</a></p>
@@ -550,8 +735,8 @@ async function sendAlertEmail(
 
   const html = alertEmailHtml({ rule, event, kind });
   const subject = kind === "firing"
-    ? `TScopier alert: ${rule.name}`
-    : `TScopier recovered: ${rule.name}`;
+    ? `TScopier [${ALERT_ENV}] alert: ${rule.name}`
+    : `TScopier [${ALERT_ENV}] recovered: ${rule.name}`;
 
   let sent = 0;
   let lastError = "";
@@ -652,6 +837,13 @@ Deno.serve(async (req) => {
     const rules = (rulesRes.data ?? []) as RuleRow[];
     summary.rules = rules.length;
     const codes = rules.map(r => r.code);
+
+    // Probe before evaluating so the openai_credits_exhausted rule always sees
+    // this run's fresh result. Failures are recorded as unknown, never thrown.
+    const openaiProbe = await probeOpenAiCredits(sb);
+    if (openaiProbe.ran && openaiProbe.state !== "up") {
+      summary.warnings.push(`openai probe: ${openaiProbe.state} — ${openaiProbe.detail ?? ""}`);
+    }
 
     const openRes = await sb
       .from("alert_events")

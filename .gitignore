@@ -61,3 +61,5 @@ docs/nginx-setup/
 # Python bytecode (never commit)
 __pycache__/
 *.pyc
+
+.env*

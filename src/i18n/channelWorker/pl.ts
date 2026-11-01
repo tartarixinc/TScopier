@@ -37,6 +37,8 @@ export const channelWorkerPl: ChannelWorkerTranslations = {
 
   planFallbackNamed: 'Dostosowano plan zleceń dla {symbol} (użyto jednego zlecenia zamiast kilku).',
   planFallbackGeneric: 'Dostosowano plan zleceń (użyto jednego zlecenia zamiast kilku).',
+  planFallbackPartialTpMinLot: 'Pomięto częściowe realizacje TP: lot jest zbyt mały do podziału, więc u brokera składa się tylko ostatni poziom take profit.',
+  planFallbackPartialTpMinLotNamed: 'Pomięto częściowe realizacje TP dla {symbol}: lot jest zbyt mały do podziału, więc u brokera składa się tylko ostatni poziom take profit.',
 
   orderDidNotPlaceNamed: 'Nie złożono zlecenia {on}{err}',
   orderDidNotPlaceGeneric: 'Nie złożono zlecenia{err}',

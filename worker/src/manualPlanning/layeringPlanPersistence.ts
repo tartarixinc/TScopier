@@ -9,6 +9,7 @@ import {
 } from './layeringModes'
 import type { CalculatedLayerPlanSuccess, LayerPlanReason } from './layeringModeCalculators'
 import type { LayeringMode, LayeringPlanSnapshot, LayerPlanAnchorSource, LayerPlanSide } from './types'
+import { stableStringify } from '../stableJson'
 
 export type LayerPlanPersistenceStatus =
   | 'prepared'
@@ -221,17 +222,6 @@ function isoTimestamp(value: string): string | null {
 
 function uniqueReasons(reasons: readonly string[]): readonly string[] {
   return Object.freeze([...new Set(reasons)])
-}
-
-function stableStringify(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
-  if (value != null && typeof value === 'object') {
-    const entries = Object.entries(value as Record<string, unknown>)
-      .filter(([, item]) => item !== undefined)
-      .sort(([a], [b]) => a.localeCompare(b))
-    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`).join(',')}}`
-  }
-  return JSON.stringify(value)
 }
 
 function canonicalSemanticSnapshot(snapshot: LayeringPlanSnapshot): Record<string, unknown> | null {

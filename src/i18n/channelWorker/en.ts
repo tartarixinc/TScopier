@@ -37,6 +37,8 @@ export const channelWorkerEn: ChannelWorkerTranslations = {
 
   planFallbackNamed: 'Adjusted the order plan for {symbol} (using one order instead of several).',
   planFallbackGeneric: 'Adjusted the order plan (using one order instead of several).',
+  planFallbackPartialTpMinLot: 'Partial take-profits skipped: the lot is too small to split, so only the final take-profit is placed on the broker.',
+  planFallbackPartialTpMinLotNamed: 'Partial take-profits skipped for {symbol}: the lot is too small to split, so only the final take-profit is placed on the broker.',
 
   orderDidNotPlaceNamed: 'Did not place an order {on}{err}',
   orderDidNotPlaceGeneric: 'Did not place an order{err}',

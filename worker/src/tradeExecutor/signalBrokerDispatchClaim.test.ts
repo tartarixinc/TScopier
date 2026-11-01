@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  claimIsStale,
   claimSignalBrokerDispatch,
   isDuplicateKeyError,
   shouldTakeOverStaleClaim,
@@ -30,6 +31,13 @@ describe('signalBrokerDispatchClaim', () => {
       from() {
         return {
           insert: async () => ({ error: { code: '23505', message: 'duplicate key' } }),
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({ data: null, error: null }),
+              }),
+            }),
+          }),
         }
       },
     }
@@ -102,5 +110,92 @@ describe('signalBrokerDispatchClaim', () => {
       shouldTakeOverStaleClaim({ isRevisionRefresh: false, materialized: false, entryInFlight: false }),
       false,
     )
+  })
+})
+
+describe('dispatch claim lease', () => {
+  it('claimIsStale only after the lease expires', () => {
+    const now = Date.parse('2026-10-20T12:00:00.000Z')
+    assert.equal(claimIsStale('2026-10-20T11:59:00.000Z', now, 120_000), false)
+    assert.equal(claimIsStale('2026-10-20T11:57:00.000Z', now, 120_000), true)
+    assert.equal(claimIsStale(null, now, 120_000), false)
+    assert.equal(claimIsStale('not-a-date', now, 120_000), false)
+  })
+
+  function fakeClaimSupabase(createdAt: string, insertErrors: Array<unknown>) {
+    let inserts = 0
+    let deletes = 0
+    const supabase = {
+      from(table: string) {
+        assert.equal(table, 'signal_broker_dispatch_claims')
+        return {
+          insert: async () => ({ error: insertErrors[inserts++] ?? null }),
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({ data: { created_at: createdAt }, error: null }),
+              }),
+            }),
+          }),
+          delete: () => ({
+            eq: () => ({
+              eq: () => ({
+                eq: () => ({
+                  select: async () => {
+                    deletes += 1
+                    return { data: [{ id: 'claim-1' }], error: null }
+                  },
+                }),
+              }),
+            }),
+          }),
+        }
+      },
+    }
+    return { supabase, deletes: () => deletes }
+  }
+
+  it('takes over a stale claim and retries the insert', async () => {
+    const createdAt = new Date(Date.now() - 10 * 60_000).toISOString()
+    const fake = fakeClaimSupabase(createdAt, [{ code: '23505', message: 'duplicate key' }, null])
+    assert.equal(await claimSignalBrokerDispatch(fake.supabase as never, 's1', 'b1'), true)
+    assert.equal(fake.deletes(), 1)
+  })
+
+  it('does not take over a fresh claim', async () => {
+    const createdAt = new Date().toISOString()
+    const fake = fakeClaimSupabase(createdAt, [{ code: '23505', message: 'duplicate key' }])
+    assert.equal(await claimSignalBrokerDispatch(fake.supabase as never, 's1', 'b1'), false)
+    assert.equal(fake.deletes(), 0)
+  })
+})
+
+describe('stale claim delete guard', () => {
+  it('does not report a takeover when the guarded delete removed no row', async () => {
+    const createdAt = new Date(Date.now() - 10 * 60_000).toISOString()
+    let inserts = 0
+    const supabase = {
+      from() {
+        return {
+          insert: async () => { inserts += 1; return { error: { code: '23505', message: 'duplicate key' } } },
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({ data: { created_at: createdAt }, error: null }),
+              }),
+            }),
+          }),
+          delete: () => ({
+            eq: () => ({
+              eq: () => ({
+                eq: () => ({ select: async () => ({ data: [], error: null }) }),
+              }),
+            }),
+          }),
+        }
+      },
+    }
+    assert.equal(await claimSignalBrokerDispatch(supabase as never, 's1', 'b1'), false)
+    assert.equal(inserts, 1)
   })
 })
