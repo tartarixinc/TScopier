@@ -69,6 +69,18 @@
     .btn-primary:hover:not(:disabled) { background: #1e293b; }
     .btn-ghost { background: transparent; color: #64748b; margin-top: 12px; }
     .btn-ghost:hover { color: #0f172a; }
+    .recovery-group { margin-top: 20px; text-align: left; }
+    .recovery-label {
+      display: block; font-size: 13px; font-weight: 600;
+      color: #334155; margin-bottom: 8px;
+    }
+    .recovery-input {
+      display: block; width: 100%; padding: 10px 12px; font-size: 14px;
+      border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 10px;
+      color: #0f172a;
+    }
+    .recovery-input:focus { outline: none; border-color: #0d9488; }
+    .recovery-status { font-size: 12px; color: #64748b; margin-top: 8px; text-align: center; }
     .divider { height: 1px; background: #e2e8f0; margin: 24px 0; }
     .note { font-size: 12px; color: #94a3b8; text-align: center; line-height: 1.5; }
     .note a { color: #94a3b8; text-decoration: underline; }
@@ -131,6 +143,22 @@
     </div>
     <h1 id="error-title">Invalid link</h1>
     <p class="subtitle" id="error-sub">This unsubscribe link is missing required parameters. Please use the link directly from your email.</p>
+    <div class="recovery-group">
+      <label class="recovery-label" for="recovery-email">Get a fresh unsubscribe link</label>
+      <input id="recovery-email" class="recovery-input" type="email" placeholder="you@example.com" autocomplete="email" />
+      <button id="btn-recovery" type="button" class="btn btn-primary">Email me a new link</button>
+      <p class="recovery-status" id="recovery-status"></p>
+    </div>
+  </div>
+
+  <div id="view-recovery-sent" class="card hidden">
+    <div class="icon-circle success">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+    </div>
+    <h1>Check your inbox</h1>
+    <p class="subtitle">If that address receives TScopier emails, a fresh unsubscribe link is on its way. Open it and confirm to finish.</p>
   </div>
 
   <div class="footer">Tartarix Inc. &middot; 131 Continental Dr, Suite 305, Newark, DE 19713 US</div>
@@ -146,7 +174,7 @@
       var errorParam = params.get('error')
 
       function show(id) {
-        ;['view-loading', 'view-confirm', 'view-success', 'view-error'].forEach(function (v) {
+        ;['view-loading', 'view-confirm', 'view-success', 'view-error', 'view-recovery-sent'].forEach(function (v) {
           document.getElementById(v).classList.toggle('hidden', v !== id)
         })
       }
@@ -248,6 +276,48 @@
           .finally(function () {
             btn.disabled = false
             btn.textContent = 'Unsubscribe me'
+          })
+      })
+
+      document.getElementById('btn-recovery').addEventListener('click', function () {
+        var btn = document.getElementById('btn-recovery')
+        var statusEl = document.getElementById('recovery-status')
+        var email = (document.getElementById('recovery-email').value || '').trim()
+        if (!email || email.indexOf('@') === -1) {
+          statusEl.textContent = 'Enter the email address that receives the TScopier emails.'
+          return
+        }
+        btn.disabled = true
+        btn.textContent = 'Sending…'
+        statusEl.textContent = ''
+        fetch(FN, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            apikey: ANON,
+            Authorization: 'Bearer ' + ANON,
+          },
+          body: JSON.stringify({ action: 'send_recovery_link', email: email }),
+        })
+          .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d } }) })
+          .then(function (res) {
+            if (res.ok && res.d && res.d.ok) {
+              show('view-recovery-sent')
+              return
+            }
+            if (res.d && res.d.error === 'rate_limited') {
+              statusEl.textContent = 'Too many attempts. Please wait a while and try again.'
+              return
+            }
+            statusEl.textContent = 'We could not process that right now. Please try again in a moment.'
+          })
+          .catch(function () {
+            statusEl.textContent = 'We could not process that right now. Please try again in a moment.'
+          })
+          .finally(function () {
+            btn.disabled = false
+            btn.textContent = 'Email me a new link'
           })
       })
     })()

@@ -11,6 +11,7 @@ type View =
   | 'confirm'
   | 'success'
   | 'already'
+  | 'recovery-sent'
   | 'error'
 
 const REASONS = [
@@ -35,6 +36,9 @@ export function EmailUnsubscribePage() {
   })
   const [reason, setReason] = useState<string>('')
   const [submitting, setSubmitting] = useState(false)
+  const [recoveryEmail, setRecoveryEmail] = useState('')
+  const [recoverySubmitting, setRecoverySubmitting] = useState(false)
+  const [recoveryStatus, setRecoveryStatus] = useState('')
   const [errorTitle, setErrorTitle] = useState('Invalid link')
   const [errorMessage, setErrorMessage] = useState(
     'This unsubscribe link is missing required parameters. Please use the link directly from your email.',
@@ -146,6 +150,39 @@ export function EmailUnsubscribePage() {
     }
   }
 
+  const handleRecovery = async () => {
+    const email = recoveryEmail.trim()
+    if (!email || !email.includes('@') || recoverySubmitting) return
+    setRecoverySubmitting(true)
+    setRecoveryStatus('')
+    try {
+      const res = await fetch(FN_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          apikey: ANON_KEY,
+          Authorization: `Bearer ${ANON_KEY}`,
+        },
+        body: JSON.stringify({ action: 'send_recovery_link', email }),
+      })
+      const data = await res.json().catch(() => ({})) as { ok?: boolean; error?: string }
+      if (!res.ok || !data.ok) {
+        setRecoveryStatus(
+          data.error === 'rate_limited'
+            ? 'Too many attempts. Please wait a while and try again.'
+            : 'We could not process that right now. Please try again in a moment.',
+        )
+        return
+      }
+      setView('recovery-sent')
+    } catch {
+      setRecoveryStatus('We could not process that right now. Please try again in a moment.')
+    } finally {
+      setRecoverySubmitting(false)
+    }
+  }
+
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-[#0f1b1a] px-4 py-6 font-sans antialiased">
       <div className="mb-8">
@@ -248,7 +285,47 @@ export function EmailUnsubscribePage() {
               </svg>
             </div>
             <h1 className="mb-2 text-center text-xl font-bold text-slate-900">{errorTitle}</h1>
-            <p className="text-center text-sm leading-relaxed text-slate-500">{errorMessage}</p>
+            <p className="mb-6 text-center text-sm leading-relaxed text-slate-500">{errorMessage}</p>
+            <div className="text-left">
+              <label htmlFor="recovery-email" className="mb-2 block text-[13px] font-semibold text-slate-700">
+                Get a fresh unsubscribe link
+              </label>
+              <input
+                id="recovery-email"
+                type="email"
+                autoComplete="email"
+                placeholder="you@example.com"
+                value={recoveryEmail}
+                onChange={(e) => setRecoveryEmail(e.target.value)}
+                className="mb-3 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm text-slate-900 focus:border-teal-600 focus:outline-none"
+              />
+              <button
+                type="button"
+                disabled={recoverySubmitting}
+                onClick={() => void handleRecovery()}
+                className="block w-full rounded-lg bg-slate-900 px-6 py-3 text-center text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {recoverySubmitting ? 'Sending…' : 'Email me a new link'}
+              </button>
+              {recoveryStatus && (
+                <p className="mt-3 text-center text-xs leading-relaxed text-slate-500">{recoveryStatus}</p>
+              )}
+            </div>
+          </>
+        )}
+
+        {view === 'recovery-sent' && (
+          <>
+            <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-7 w-7">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            </div>
+            <h1 className="mb-2 text-center text-xl font-bold text-slate-900">Check your inbox</h1>
+            <p className="text-center text-sm leading-relaxed text-slate-500">
+              If that address receives TScopier emails, a fresh unsubscribe link is on its way.
+              Open it and confirm to finish.
+            </p>
           </>
         )}
       </div>

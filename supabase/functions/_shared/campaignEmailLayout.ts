@@ -74,7 +74,7 @@ export function buildCampaignEmailHtml(args: {
   const info = args.infoBox ? buildInfoBox(args.infoBox.title, args.infoBox.bodyHtml) : ""
   const secondary = args.secondaryCta
     ? `<p style="margin:20px 0 0 0;text-align:center;font-size:14px;line-height:1.5;">
-        <a href="${args.secondaryCta.url}" style="color:${BRAND.teal};font-weight:600;text-decoration:none;">${escapeHtml(args.secondaryCta.label)} →</a>
+        <a href="${escapeHtml(args.secondaryCta.url)}" style="color:${BRAND.teal};font-weight:600;text-decoration:none;">${escapeHtml(args.secondaryCta.label)} →</a>
       </p>`
     : ""
 
@@ -113,7 +113,7 @@ export function buildCampaignEmailHtml(args: {
               <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
                 <tr>
                   <td style="border-radius:10px;background-color:${BRAND.teal};box-shadow:0 2px 8px rgba(13,148,136,0.35);">
-                    <a href="${args.primaryCta.url}" target="_blank" style="display:inline-block;padding:14px 36px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:10px;">
+                    <a href="${escapeHtml(args.primaryCta.url)}" target="_blank" style="display:inline-block;padding:14px 36px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:10px;">
                       ${escapeHtml(args.primaryCta.label)}
                     </a>
                   </td>
@@ -127,13 +127,13 @@ export function buildCampaignEmailHtml(args: {
             <td style="background-color:${BRAND.pageBg};padding:22px 32px;border-top:1px solid ${BRAND.border};text-align:center;">
               <p style="margin:0 0 10px 0;font-size:12px;line-height:1.6;color:${BRAND.textSubtle};">${COMPANY_FOOTER}</p>
               <p style="margin:0;font-size:12px;color:${BRAND.textSubtle};">
-                <a href="${args.unsubscribeUrl}" style="color:${BRAND.textSubtle};text-decoration:underline;">Unsubscribe</a> from subscription reminder emails
+                <a href="${escapeHtml(args.unsubscribeUrl)}" style="color:${BRAND.textSubtle};text-decoration:underline;">Unsubscribe</a> from subscription reminder emails
               </p>
             </td>
           </tr>
         </table>
         <p style="margin:16px 0 0 0;font-size:11px;color:${BRAND.textSubtle};text-align:center;">
-          <a href="${args.appUrl}" style="color:${BRAND.textSubtle};text-decoration:none;">${escapeHtml(args.appUrl.replace(/^https?:\/\//, ""))}</a>
+          <a href="${escapeHtml(args.appUrl)}" style="color:${BRAND.textSubtle};text-decoration:none;">${escapeHtml(args.appUrl.replace(/^https?:\/\//, ""))}</a>
         </p>
       </td>
     </tr>
