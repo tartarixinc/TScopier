@@ -40,7 +40,12 @@ function headlineMeta(headline: TradeNotificationHeadline): {
     case 'social_copy_stopped':
       return { icon: Check, className: HEADLINE_ICON_CLASS }
     case 'social_copy_suspended':
+    case 'provider_application_rejected':
+    case 'provider_suspended':
       return { icon: TriangleAlert, className: REVIEW_ICON_CLASS }
+    case 'provider_application_approved':
+    case 'provider_reinstated':
+      return { icon: CircleCheck, className: HEADLINE_ICON_CLASS }
   }
 }
 

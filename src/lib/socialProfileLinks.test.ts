@@ -25,4 +25,12 @@ describe('social profile links', () => {
     expect(validateSocialProfileLinks({ x: value })).not.toBeNull()
     expect(safeExternalSocialUrl('x', value)).toBeNull()
   })
+
+  it('accepts Telegram profile links and rejects look-alike hosts', () => {
+    expect(validateSocialProfileLinks({ telegram: 'https://t.me/trader' })).toBeNull()
+    expect(validateSocialProfileLinks({ telegram: 'https://telegram.me/trader' })).toBeNull()
+    expect(validateSocialProfileLinks({ telegram: 'https://t.me' })).not.toBeNull()
+    expect(validateSocialProfileLinks({ telegram: 'https://t.me.evil.example/trader' })).not.toBeNull()
+    expect(safeExternalSocialUrl('telegram', 'http://t.me/trader')).toBeNull()
+  })
 })

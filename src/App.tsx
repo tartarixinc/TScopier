@@ -39,6 +39,12 @@ const MirrorTradingPage = lazy(() =>
 const SocialTradingPage = lazy(() =>
   import('./pages/dashboard/SocialTradingPage').then(m => ({ default: m.SocialTradingPage })),
 )
+const ProviderPublicProfilePage = lazy(() =>
+  import('./pages/social/ProviderPublicProfilePage').then(m => ({ default: m.ProviderPublicProfilePage })),
+)
+const ProviderApplyPage = lazy(() =>
+  import('./pages/dashboard/ProviderApplyPage').then(m => ({ default: m.ProviderApplyPage })),
+)
 const SocialTraderActivityPage = lazy(() =>
   import('./pages/dashboard/SocialTradingPage').then(m => ({ default: m.SocialTraderActivityPage })),
 )
@@ -143,6 +149,9 @@ export default function App() {
           {/* Public pricing — paywall / acquisition (no auth required). */}
           <Route path="/pricing" element={<LazyPage><AppPricingPage /></LazyPage>} />
 
+          {/* Public provider profile (shareable link; anon-readable via get_provider_public_profile). */}
+          <Route path="/p/:slug" element={<LazyPage><ProviderPublicProfilePage /></LazyPage>} />
+
           <Route element={<VerifyEmailLayout />}>
             <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/auth/confirmed" element={<AuthConfirmedPage />} />
@@ -168,6 +177,7 @@ export default function App() {
             <Route path="/brokers/ctrader/callback" element={<LazyPage><CtraderCallbackPage /></LazyPage>} />
             <Route path="/brokers" element={<LazyPage><AccountConfigPage /></LazyPage>} />
             <Route path="/mirror-trading" element={<LazyPage><MirrorTradingPage /></LazyPage>} />
+            <Route path="/social-trading/provider" element={<LazyPage><ProviderApplyPage /></LazyPage>} />
             <Route path="/social-trading/:traderId" element={<LazyPage><SocialTraderActivityPage /></LazyPage>} />
             <Route path="/social-trading" element={<LazyPage><SocialTradingPage /></LazyPage>} />
             <Route path="/configurations" element={<LazyPage><ConfigurationsPage /></LazyPage>} />

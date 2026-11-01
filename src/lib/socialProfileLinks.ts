@@ -1,6 +1,7 @@
 export const SOCIAL_PROFILE_PLATFORMS = [
   { key: 'x', label: 'X', placeholder: 'https://x.com/username', hosts: ['x.com', 'twitter.com'] },
   { key: 'instagram', label: 'Instagram', placeholder: 'https://instagram.com/username', hosts: ['instagram.com'] },
+  { key: 'telegram', label: 'Telegram', placeholder: 'https://t.me/username', hosts: ['t.me', 'telegram.me', 'telegram.org'] },
   { key: 'linkedin', label: 'LinkedIn', placeholder: 'https://linkedin.com/in/username', hosts: ['linkedin.com'] },
   { key: 'youtube', label: 'YouTube', placeholder: 'https://youtube.com/@channel', hosts: ['youtube.com', 'youtu.be'] },
   { key: 'tiktok', label: 'TikTok', placeholder: 'https://tiktok.com/@username', hosts: ['tiktok.com'] },

@@ -23,8 +23,12 @@ import { useTheme } from '../../context/ThemeContext'
 import { useFormatMoney } from '../../hooks/useFormatMoney'
 import { useSocialTradingPreview } from '../../hooks/useSocialTradingPreview'
 import { useOwnSocialAccountView } from '../../hooks/useOwnSocialAccountView'
+import { providerEntryLabel, useProviderStatus } from '../../hooks/useProviderStatus'
 import { interpolate } from '../../i18n/interpolate'
 import { chartThemeColors, chartTooltipProps } from '../../lib/chartTheme'
+import { AccountKindBadge } from '../../components/social/AccountKindBadge'
+import { platformIconSrc } from '../../lib/activityRoute'
+import { formatAccountAmount, normalizeAccountKind, snapshotFreshness } from '../../lib/providerApplication'
 import { copyPriceOfferLabel } from '../../lib/socialCopyPrice'
 import { canOpenCopyTrader, copyTraderUnavailableReason } from '../../lib/socialCopyAvailability'
 import { OwnAccountSelector } from '../../components/social/OwnAccountSelector'
@@ -113,6 +117,7 @@ export function SocialTradingPage() {
   const [visibility, setVisibility] = useState<'all' | SocialAccess>('all')
   const [requestsOnly, setRequestsOnly] = useState(false)
   const social = useSocialTradingPreview()
+  const provider = useProviderStatus()
   const [setupTrader, setSetupTrader] = useState<SocialTrader | null>(null)
   const ownAvatarUrl = useOwnAvatarUrl()
   const view: DirectoryView = params.get('view') === 'followers'
@@ -126,6 +131,9 @@ export function SocialTradingPage() {
     const needle = query.trim().toLowerCase()
     const filtered = social.traders.filter(trader => {
       const relationship = social.profiles.find(profile => profile.profileUserId === trader.id)
+      // "You" appears only once your provider application is approved; the main list is providers only.
+      if (trader.isYou && trader.providerStatus !== 'approved') return false
+      if (view === 'all' && trader.providerStatus !== 'approved') return false
       if (view === 'followers' && relationship?.followsViewerStatus !== 'accepted') return false
       if (view === 'following' && relationship?.viewerRelationshipStatus !== 'accepted') return false
       if (visibility !== 'all' && trader.access !== visibility) return false
@@ -171,7 +179,14 @@ export function SocialTradingPage() {
         <DirectoryTab to="/social-trading?view=followers" active={view === 'followers'}>{copy.tabFollowers}</DirectoryTab>
         <DirectoryTab to="/social-trading?view=following" active={view === 'following'}>{copy.tabFollowing}</DirectoryTab>
       </nav>
-      <PageHeader title={heading} />
+      <PageHeader
+        title={heading}
+        actions={provider.loading ? undefined : (
+          <Link to="/social-trading/provider" className="inline-flex items-center rounded-lg bg-green-400 px-4 py-2 text-sm font-medium text-neutral-950 hover:bg-green-500">
+            {providerEntryLabel(provider.status)}
+          </Link>
+        )}
+      />
       {!social.loading && !social.currentProfile ? (
         <Card>
           <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{copy.joinTitle}</h2>
@@ -220,10 +235,11 @@ export function SocialTradingPage() {
           <p className="px-4 py-8 text-sm text-neutral-900 dark:text-neutral-50">{copy.empty}</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] text-sm">
+            <table className="w-full min-w-[1080px] text-sm">
               <thead>
                 <tr className="border-b border-neutral-100 text-left text-xs font-medium text-neutral-900 dark:border-neutral-800 dark:text-neutral-50">
                   <th className="px-4 py-3">{copy.colName}</th>
+                  <th className="px-3 py-3">Account</th>
                   <th className="px-3 py-3">{copy.colStatus}</th>
                   <th className="px-3 py-3">{copy.roi}</th>
                   <th className="px-3 py-3">{copy.winRate}</th>
@@ -265,6 +281,7 @@ export function SocialTradingPage() {
                           </div>
                         </div>
                       </td>
+                      <td className="px-3 py-3"><AccountCell trader={trader} /></td>
                       <td className="px-3 py-3">
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
                           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
@@ -274,7 +291,14 @@ export function SocialTradingPage() {
                       <td className="px-3 py-3 font-medium text-neutral-900 dark:text-neutral-100">{percent(trader.roi)}</td>
                       <td className="px-3 py-3 text-neutral-900 dark:text-neutral-50">{percent(trader.winRate)}</td>
                       <td className="px-3 py-3 text-neutral-900 dark:text-neutral-50">{trader.followerCount}</td>
-                      <td className="px-3 py-3 text-neutral-900 dark:text-neutral-50">{trader.previewBalance == null ? 'Unavailable' : formatMoney(trader.previewBalance)}</td>
+                      <td className="px-3 py-3 text-neutral-900 dark:text-neutral-50">
+                        {trader.previewBalance == null ? 'Unavailable' : (
+                          <>
+                            <span className="block font-medium">{formatAccountAmount(trader.previewBalance, trader.accountCurrency)}</span>
+                            <span className="block text-xs text-neutral-600 dark:text-neutral-400">Equity {formatAccountAmount(trader.accountEquity, trader.accountCurrency)}</span>
+                          </>
+                        )}
+                      </td>
                       <td className="px-3 py-3 font-medium text-neutral-900 dark:text-neutral-100">
                         {priceLabel(trader.monthlyCopyPriceCents)}
                       </td>
@@ -316,6 +340,27 @@ export function SocialTradingPage() {
       />
     ) : null}
     </>
+  )
+}
+
+function AccountCell({ trader }: { trader: SocialTrader }) {
+  const kind = normalizeAccountKind(trader.accountKind)
+  const icon = trader.accountPlatform ? platformIconSrc(trader.accountPlatform) : null
+  const freshness = snapshotFreshness(trader.accountSnapshotAt)
+  if (!trader.accountKind && !trader.accountPlatform) return <span className="text-neutral-600 dark:text-neutral-400">{'\u2014'}</span>
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-neutral-900 dark:text-neutral-50">
+        {icon ? <img src={icon} alt="" className="h-4 w-4 object-contain" /> : null}
+        {trader.accountPlatform ?? ''}
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <AccountKindBadge kind={kind} />
+        {freshness === 'stale' ? (
+          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-950/40 dark:text-amber-300" title="Balance and equity were last synced more than 30 minutes ago">Stale</span>
+        ) : null}
+      </span>
+    </div>
   )
 }
 
@@ -1115,7 +1160,7 @@ function OverviewPanel({
         </div>
         <OverviewRow label={copy.profitableTrades} value={stats.profitableTrades == null ? 'Unavailable' : String(stats.profitableTrades)} />
         <OverviewRow label={copy.losingTrades} value={stats.losingTrades == null ? 'Unavailable' : String(stats.losingTrades)} />
-        <OverviewRow label={copy.balance} value={trader.previewBalance == null ? 'Unavailable' : formatMoney(trader.previewBalance)} />
+        <OverviewRow label={copy.balance} value={trader.previewBalance == null ? 'Unavailable' : trader.accountCurrency ? formatAccountAmount(trader.previewBalance, trader.accountCurrency) : formatMoney(trader.previewBalance)} />
         <OverviewRow label={copy.equity} value={stats.equity == null ? 'Unavailable' : formatMoney(stats.equity)} />
         <OverviewRow label={copy.deposit} value={stats.deposit == null ? 'Unavailable' : formatMoney(stats.deposit)} />
         <OverviewRow label={copy.totalTrades} value={!trader.historyComplete || trader.closedTrades == null || trader.openTradeCount == null ? 'Unavailable' : String(trader.closedTrades + trader.openTradeCount)} />

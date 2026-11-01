@@ -41,6 +41,15 @@ export interface SocialDirectoryProfile {
   monthlyCopyPriceCents: number | null
   syntheticDemo: boolean
   socialLinks: Record<string, string>
+  slug: string | null
+  providerStatus: 'none' | 'pending' | 'approved' | 'rejected' | 'suspended'
+  bio: string | null
+  accountKind: 'demo' | 'live' | 'prop' | 'unknown' | null
+  platform: string | null
+  balance: number | null
+  equity: number | null
+  currency: string | null
+  snapshotAt: string | null
 }
 
 interface SocialDirectoryRow {
@@ -62,6 +71,15 @@ interface SocialDirectoryRow {
   monthly_copy_price_cents?: number | string | null
   is_synthetic_demo?: boolean
   social_links?: unknown
+  slug?: string | null
+  provider_status?: SocialDirectoryProfile['providerStatus']
+  bio?: string | null
+  account_kind?: SocialDirectoryProfile['accountKind']
+  platform?: string | null
+  balance?: number | string | null
+  equity?: number | string | null
+  currency?: string | null
+  snapshot_at?: string | null
 }
 
 interface RpcErrorLike {
@@ -160,6 +178,15 @@ function mapProfile(row: SocialDirectoryRow): SocialDirectoryProfile {
     socialLinks: row.social_links && typeof row.social_links === 'object' && !Array.isArray(row.social_links)
       ? Object.fromEntries(Object.entries(row.social_links).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
       : {},
+    slug: row.slug ?? null,
+    providerStatus: row.provider_status ?? 'none',
+    bio: row.bio ?? null,
+    accountKind: row.account_kind ?? null,
+    platform: row.platform ?? null,
+    balance: row.balance == null ? null : Number(row.balance),
+    equity: row.equity == null ? null : Number(row.equity),
+    currency: row.currency ?? null,
+    snapshotAt: row.snapshot_at ?? null,
   }
 }
 

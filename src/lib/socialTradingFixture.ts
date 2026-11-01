@@ -130,6 +130,14 @@ export interface SocialTrader {
   liveCopiers?: number | null
   syntheticDemo?: boolean
   socialLinks?: Record<string, string>
+  /** Public share slug (/p/{slug}) and provider review state. */
+  slug?: string | null
+  providerStatus?: 'none' | 'pending' | 'approved' | 'rejected' | 'suspended'
+  /** Server-side snapshot of the published source account (see refresh_social_source_snapshot). */
+  accountKind?: 'demo' | 'live' | 'prop' | 'unknown' | null
+  accountPlatform?: string | null
+  accountCurrency?: string | null
+  accountSnapshotAt?: string | null
   profile: SocialProfileMeta
   openTrades: SocialOpenTrade[]
   closedPerformance: SocialClosedTrade[]

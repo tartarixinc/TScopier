@@ -8,6 +8,7 @@ describe('SocialProfileLinks', () => {
     const markup = renderToStaticMarkup(createElement(SocialProfileLinks, { links: {
       x: 'https://x.com/trader',
       instagram: 'https://instagram.com/trader',
+      telegram: 'https://t.me/trader',
       linkedin: 'https://linkedin.com/in/trader',
       youtube: 'https://youtube.com/@trader',
       tiktok: 'https://tiktok.com/@trader',
@@ -21,9 +22,10 @@ describe('SocialProfileLinks', () => {
     expect(markup).toContain('#25F4EE')
     expect(markup).toContain('#FE2C55')
     expect(markup).toContain('#1877F2')
-    expect(markup.match(/target="_blank"/g)).toHaveLength(6)
-    expect(markup.match(/rel="noopener noreferrer"/g)).toHaveLength(6)
-    expect(markup.match(/referrerPolicy="no-referrer"/g)).toHaveLength(6)
+    expect(markup).toContain('#229ED9')
+    expect(markup.match(/target="_blank"/g)).toHaveLength(7)
+    expect(markup.match(/rel="noopener noreferrer"/g)).toHaveLength(7)
+    expect(markup.match(/referrerPolicy="no-referrer"/g)).toHaveLength(7)
   })
 
   it('omits an unsafe link instead of rendering a clickable logo', () => {

@@ -162,3 +162,31 @@ test("synthetic participation is default-off and permanently routed away from br
   assert.match(demoSeed, /is_synthetic: true/);
   assert.match(demoSeed, /SOCIAL_COPY_PREVIEW_SYNTHETIC_ENABLED/);
 });
+
+const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+const wizard = readFileSync(
+  new URL("../pages/dashboard/ProviderApplyPage.tsx", import.meta.url),
+  "utf8",
+);
+
+test("provider onboarding is wired into routes, the directory and the account snapshot", () => {
+  assert.match(app, /path="\/p\/:slug"/);
+  assert.match(app, /path="\/social-trading\/provider"/);
+  assert.match(app, /path="\/social-trading\/:traderId"/);
+  // The directory lists approved providers and shows the server snapshot, not browser state.
+  assert.match(page, /trader\.providerStatus !== 'approved'/);
+  assert.match(page, /AccountKindBadge/);
+  assert.match(page, /formatAccountAmount\(trader\.previewBalance, trader\.accountCurrency\)/);
+  assert.match(previewHook, /previewBalance: profile\.balance/);
+  assert.doesNotMatch(page, /localStorage|COPY_PRICE_STORAGE_KEY/);
+});
+
+test("the provider wizard persists drafts server-side and submits for admin review", () => {
+  assert.match(wizard, /useProviderApplication\(\)/);
+  assert.match(wizard, /validateProviderStep/);
+  assert.match(wizard, /Submit application/);
+  assert.doesNotMatch(wizard, /localStorage|sessionStorage/);
+  const hook = readFileSync(new URL("../hooks/useProviderApplication.ts", import.meta.url), "utf8");
+  assert.match(hook, /saveProviderDraft\(supabase/);
+  assert.match(hook, /submitProviderApplication\(supabase/);
+});
