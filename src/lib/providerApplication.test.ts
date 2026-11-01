@@ -3,6 +3,7 @@ import type { BrokerAccount } from '../types/database'
 import {
   centsToPriceInput,
   emptyProviderDraft,
+  floatingOpenPnl,
   formatAccountAmount,
   priceInputToCents,
   providerAccountIneligibility,
@@ -103,6 +104,16 @@ describe('snapshot freshness and formatting', () => {
     expect(snapshotFreshness('nonsense', now)).toBe('unknown')
     expect(snapshotFreshness(new Date(now - 60_000).toISOString(), now)).toBe('fresh')
     expect(snapshotFreshness(new Date(now - SNAPSHOT_STALE_AFTER_MS - 1).toISOString(), now)).toBe('stale')
+  })
+
+  it('does not report a misleading 0 floating P/L from a stale snapshot with open trades', () => {
+    const fresh = new Date(now - 60_000).toISOString()
+    const stale = new Date(now - SNAPSHOT_STALE_AFTER_MS - 1).toISOString()
+    expect(floatingOpenPnl({ equity: 100, balance: 100, openCount: 1, snapshotAt: stale, now })).toBeNull()
+    expect(floatingOpenPnl({ equity: 100, balance: 100, openCount: 1, snapshotAt: null, now })).toBeNull()
+    expect(floatingOpenPnl({ equity: 112.5, balance: 100, openCount: 1, snapshotAt: fresh, now })).toBe(12.5)
+    expect(floatingOpenPnl({ equity: 100, balance: 100, openCount: 0, snapshotAt: stale, now })).toBe(0)
+    expect(floatingOpenPnl({ equity: null, balance: 100, openCount: 0, snapshotAt: fresh, now })).toBeNull()
   })
 
   it('formats amounts in the account currency and tolerates missing values', () => {

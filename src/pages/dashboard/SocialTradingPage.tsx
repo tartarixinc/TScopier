@@ -1171,6 +1171,8 @@ function Metric({ label, value, tone }: { label: string; value: string; tone?: '
   )
 }
 
+const TRADE_TABLE_PAGE_SIZE = 10
+
 function TradeTable({
   title,
   whenLabel,
@@ -1189,6 +1191,11 @@ function TradeTable({
   }
   formatSignedMoney: (value: number) => string
 }) {
+  const [page, setPage] = useState(0)
+  const pageCount = Math.max(1, Math.ceil(rows.length / TRADE_TABLE_PAGE_SIZE))
+  const currentPage = Math.min(page, pageCount - 1)
+  const pageStart = currentPage * TRADE_TABLE_PAGE_SIZE
+  const pageRows = rows.slice(pageStart, pageStart + TRADE_TABLE_PAGE_SIZE)
   return (
     <Card padding="none" className="overflow-hidden">
       <h2 className="border-b border-neutral-100 px-4 py-3 text-sm font-semibold text-neutral-900 dark:border-neutral-800 dark:text-neutral-50">
@@ -1205,7 +1212,7 @@ function TradeTable({
             </tr>
           </thead>
           <tbody>
-            {rows.map(row => (
+            {pageRows.map(row => (
               <tr key={row.id} className="border-t border-neutral-100 dark:border-neutral-800">
                 <td className="px-4 py-3 font-medium text-neutral-900 dark:text-neutral-50">{row.symbol}</td>
                 <td className="px-3 py-3">
@@ -1220,6 +1227,32 @@ function TradeTable({
           </tbody>
         </table>
       </div>
+      {rows.length > TRADE_TABLE_PAGE_SIZE ? (
+        <nav className="flex items-center justify-between gap-3 border-t border-neutral-100 px-4 py-3 text-xs dark:border-neutral-800" aria-label={`${title} pages`}>
+          <p className="text-neutral-600 dark:text-neutral-400">
+            {pageStart + 1}&ndash;{Math.min(pageStart + TRADE_TABLE_PAGE_SIZE, rows.length)} of {rows.length}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPage(Math.max(0, currentPage - 1))}
+              disabled={currentPage === 0}
+              className="rounded-lg border border-neutral-200 px-3 py-1.5 font-medium disabled:cursor-not-allowed disabled:opacity-40 dark:border-neutral-700"
+            >
+              Previous
+            </button>
+            <span className="text-neutral-600 dark:text-neutral-400">Page {currentPage + 1} of {pageCount}</span>
+            <button
+              type="button"
+              onClick={() => setPage(Math.min(pageCount - 1, currentPage + 1))}
+              disabled={currentPage >= pageCount - 1}
+              className="rounded-lg border border-neutral-200 px-3 py-1.5 font-medium disabled:cursor-not-allowed disabled:opacity-40 dark:border-neutral-700"
+            >
+              Next
+            </button>
+          </div>
+        </nav>
+      ) : null}
     </Card>
   )
 }

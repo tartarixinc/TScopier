@@ -7,7 +7,7 @@ import { SocialProfileLinks } from '../../components/social/SocialProfileLinks'
 import { TscopierLogo } from '../../components/ui/TscopierLogo'
 import { useAuth } from '../../context/AuthContext'
 import { platformIconSrc } from '../../lib/activityRoute'
-import { formatAccountAmount, snapshotFreshness } from '../../lib/providerApplication'
+import { floatingOpenPnl, formatAccountAmount, snapshotFreshness } from '../../lib/providerApplication'
 import { ProviderPublicPerformance } from '../../components/social/ProviderPublicPerformance'
 import {
   fetchProviderPublicPerformance,
@@ -84,9 +84,12 @@ export function ProviderPublicProfilePage() {
   const price = profile?.monthlyCopyPriceCents == null ? null : normalizeCopyPriceCents(profile.monthlyCopyPriceCents)
   const freshness = snapshotFreshness(profile?.snapshotAt)
   const icon = profile?.platform ? platformIconSrc(profile.platform) : null
-  const openPnl = profile?.equity != null && profile.balance != null
-    ? Math.round((profile.equity - profile.balance) * 100) / 100
-    : null
+  const openPnl = floatingOpenPnl({
+    equity: profile?.equity,
+    balance: profile?.balance,
+    openCount: publicData?.performance?.openCount,
+    snapshotAt: profile?.snapshotAt,
+  })
   const landing = profile ? providerCopyLandingPath(profile.profileUserId) : null
   // Same-origin hint for the app host; the `next` param carries it across origins (marketing -> app).
   const rememberLanding = () => { if (landing) stashPostAuthRedirect(landing) }

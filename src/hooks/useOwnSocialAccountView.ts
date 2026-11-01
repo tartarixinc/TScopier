@@ -141,6 +141,7 @@ export function useOwnSocialAccountView(base: SocialTrader | undefined, accountI
             ...hydrated,
             previewBalance: account.last_balance ?? null,
             accountEquity: account.last_equity ?? null,
+            accountSnapshotAt: account.last_synced_at ?? null,
             accountDeposits: account.total_deposits ?? account.performance_baseline_balance ?? null,
             accountWithdrawals: account.total_withdrawals ?? null,
             sourceLabel: socialBrokerDisplayLabel(account),

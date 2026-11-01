@@ -202,6 +202,24 @@ export function snapshotFreshness(snapshotAt: string | null | undefined, now: nu
   return now - at > SNAPSHOT_STALE_AFTER_MS ? 'stale' : 'fresh'
 }
 
+/**
+ * Floating P/L of open trades = equity - balance from the account snapshot (open trades store no
+ * profit). With open trades and a stale/unknown snapshot, equity and balance are both outdated and
+ * equal, so the difference is a misleading 0 - return null (shown as an em dash) instead.
+ */
+export function floatingOpenPnl(input: {
+  equity: number | null | undefined
+  balance: number | null | undefined
+  openCount: number | null | undefined
+  snapshotAt: string | null | undefined
+  now?: number
+}): number | null {
+  const { equity, balance, openCount, snapshotAt } = input
+  if (equity == null || balance == null || !Number.isFinite(equity) || !Number.isFinite(balance)) return null
+  if ((openCount ?? 0) > 0 && snapshotFreshness(snapshotAt, input.now) !== 'fresh') return null
+  return Math.round((equity - balance) * 100) / 100
+}
+
 // ---------------------------------------------------------------------------
 // Step validation
 // ---------------------------------------------------------------------------

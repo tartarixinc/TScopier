@@ -1,5 +1,6 @@
 import type { AccountGrowthSeries, TradeVolumeDay } from './dashboardCharts'
 import type { SocialCopySource } from './socialCopy'
+import { floatingOpenPnl } from './providerApplication'
 
 export type SocialTradeSide = 'buy' | 'sell'
 
@@ -450,10 +451,12 @@ export function socialTraderStats(trader: SocialTrader): SocialTraderStats {
     equity: trader.accountEquity ?? null,
     deposit: trader.accountDeposits ?? null,
     // Floating P/L of open trades = equity - balance from the account snapshot (open trades store no profit).
-    openPosition: trader.accountEquity != null && trader.previewBalance != null
-      && Number.isFinite(trader.accountEquity) && Number.isFinite(trader.previewBalance)
-      ? Math.round((trader.accountEquity - trader.previewBalance) * 100) / 100
-      : null,
+    openPosition: floatingOpenPnl({
+      equity: trader.accountEquity,
+      balance: trader.previewBalance,
+      openCount: trader.openTradeCount ?? trader.openTrades.length,
+      snapshotAt: trader.accountSnapshotAt,
+    }),
     bestTradeProfit: completeHistory ? best?.profit ?? null : null,
     bestTradeAt: completeHistory ? best?.closedAt ?? null : null,
     worstTradeProfit: completeHistory ? worst?.profit ?? null : null,
