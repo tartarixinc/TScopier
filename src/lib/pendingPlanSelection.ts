@@ -1,3 +1,5 @@
+import { peekPostAuthRedirect } from './postAuthRedirect'
+
 const STORAGE_KEY = 'tsc_pending_plan'
 
 export type PendingPlanSelection = {
@@ -78,7 +80,9 @@ export function signupUrlWithPlan(selection: PendingPlanSelection, ref?: string 
 /** After auth: pending plan → pricing checkout; otherwise dashboard (paywall redirects unpaid). */
 export function postAuthAppPath(opts?: { startCheckout?: boolean }): string {
   const pending = loadPendingPlanSelection()
-  let path = pending || opts?.startCheckout ? '/pricing?startCheckout=1' : '/dashboard'
+  const wantsCheckout = Boolean(pending || opts?.startCheckout)
+  // A pending plan keeps priority; otherwise return the visitor to where they came from (e.g. a provider page).
+  let path = wantsCheckout ? '/pricing?startCheckout=1' : peekPostAuthRedirect() ?? '/dashboard'
   // Local dual-shell: keep the app mount even when VITE_DEV_SITE=marketing.
   if (typeof window !== 'undefined') {
     const host = window.location.hostname

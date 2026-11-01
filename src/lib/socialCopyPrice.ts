@@ -1,17 +1,7 @@
 import { interpolate } from '../i18n/interpolate'
 
-/** Stored beside the social-trading access setting. Value is USD cents. 0 is free. */
-export const COPY_PRICE_STORAGE_KEY = 'tscopier:social-trading:copy-price-cents'
-
+/** Prices are USD cents, stored server-side on social_profiles.monthly_copy_price_cents. 0 is free. */
 const MAX_COPY_PRICE_CENTS = 1_000_000_00
-
-export function readMonthlyCopyPriceCents(stored: string | null, fallbackCents: number): number {
-  const fallback = normalizeCopyPriceCents(fallbackCents)
-  if (stored == null || stored.trim() === '') return fallback
-  const parsed = Number(stored)
-  if (!Number.isInteger(parsed)) return fallback
-  return normalizeCopyPriceCents(parsed)
-}
 
 export function normalizeCopyPriceCents(cents: number): number {
   if (!Number.isFinite(cents) || cents <= 0) return 0

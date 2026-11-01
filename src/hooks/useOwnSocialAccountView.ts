@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useBrokerAccounts } from '../context/BrokerAccountsContext'
 import { isVerifiedSocialBrokerTicket, normalizeSocialBrokerTicket, resolveSocialAccountMode, socialBrokerDisplayLabel } from '../lib/socialAccount'
+import { formatAccountLeverage } from '../lib/providerApplication'
+import { computeMaxDrawdownPct, computeReturnPct } from '../lib/maxDrawdown'
 import { supabase } from '../lib/supabase'
 import { hydrateTrader } from './useSocialTradingPreview'
 import type { SocialProviderPerformance, SocialTradeHistoryItem } from '../lib/socialTradeHistory'
@@ -127,8 +129,16 @@ export function useOwnSocialAccountView(base: SocialTrader | undefined, accountI
             : null,
           winRate: closed.length ? (positive.length / closed.length) * 100 : null,
           profitFactor: grossLoss > 0 ? grossProfit / grossLoss : null,
-          returnPercentage: null,
-          maximumDrawdown: null,
+          returnPercentage: historyComplete
+            ? computeReturnPct(account.performance_baseline_balance, closed.map(item => ({ profit: item.realizedProfit })))
+            : null,
+          // Realized-balance drawdown from the performance baseline; only for a complete history.
+          maximumDrawdown: historyComplete
+            ? computeMaxDrawdownPct(
+              account.performance_baseline_balance,
+              closed.map(item => ({ closedAt: item.closedAt, profit: item.realizedProfit })),
+            )
+            : null,
           equityCurveAvailable: false,
           isCopyEligible: false,
           eligibilityReason: 'owner_view',
@@ -139,8 +149,12 @@ export function useOwnSocialAccountView(base: SocialTrader | undefined, accountI
           accountId,
           trader: {
             ...hydrated,
+            profile: { ...hydrated.profile, leverage: formatAccountLeverage(account) },
             previewBalance: account.last_balance ?? null,
             accountEquity: account.last_equity ?? null,
+            accountSnapshotAt: account.last_synced_at ?? null,
+            accountDeposits: account.total_deposits ?? account.performance_baseline_balance ?? null,
+            accountWithdrawals: account.total_withdrawals ?? null,
             sourceLabel: socialBrokerDisplayLabel(account),
             sourceProvider: account.provider ?? null,
             sourcePlatform: account.platform,

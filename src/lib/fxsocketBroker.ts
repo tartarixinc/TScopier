@@ -538,16 +538,18 @@ export const fxsocketBroker = {
     account: BrokerAccount
     summary?: AccountSummary
     pending?: boolean
+    /** Set when the server fell back to the cached row because the broker call failed. */
+    error?: string
   }> {
     return call({
       body: { action: 'refresh_summary', account_id: accountId },
       edgeFn: brokerEdgeFn(provider),
       expect: (b) => {
-        const row = b as { account?: BrokerAccount; summary?: AccountSummary; pending?: boolean }
+        const row = b as { account?: BrokerAccount; summary?: AccountSummary; pending?: boolean; error?: string }
         const account = row.account
         if (!account) throw new Error('Refresh did not return an account')
         const summary = row.summary
-        return { account, summary, pending: row.pending === true }
+        return { account, summary, pending: row.pending === true, ...(row.error ? { error: row.error } : {}) }
       },
     })
   },

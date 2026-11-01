@@ -31,7 +31,7 @@ function when(value: string | null): string {
 }
 
 function money(value: number | null, currency: string | null): string {
-  if (value == null) return 'Unavailable'
+  if (value == null) return '—'
   return `${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${currency ? ` ${currency}` : ''}`
 }
 
@@ -115,12 +115,12 @@ export function SocialTradeHistoryPanel({ traderUserId, isSelf }: { traderUserId
       ?? eligibilityDiagnosticForReason(performance.eligibilityReason)
     : eligibilityDiagnosticForReason('source_not_published')
   const platform = source?.platform.trim().toUpperCase()
-  const platformLabel = platform === 'MT4' || platform === 'MT5' ? platform : 'Unavailable'
+  const platformLabel = platform === 'MT4' || platform === 'MT5' ? platform : '—'
   const accountType = performance?.accountMode === 'demo'
     ? 'Demo account'
     : performance?.accountMode === 'live'
       ? 'Live account'
-      : 'Unavailable'
+      : '—'
   const partialMetrics = performance != null && !performance.historyComplete && performance.closedTradeCount > 0
   const changeSharing = async () => {
     if (saving || !access) return
@@ -187,9 +187,9 @@ export function SocialTradeHistoryPanel({ traderUserId, isSelf }: { traderUserId
               <Metric label={partialMetrics ? 'Realized P/L (partial)' : 'Realized P/L'} value={money(performance.realizedProfit, performance.currency)} tone={performance.realizedProfit == null ? undefined : performance.realizedProfit >= 0 ? 'up' : 'down'} />
               <Metric label="Closed trades" value={String(performance.closedTradeCount)} />
               <Metric label="Open trades" value={String(performance.openTradeCount)} />
-              <Metric label={partialMetrics ? 'Win rate (partial)' : 'Win rate'} value={performance.winRate == null ? 'Unavailable' : `${performance.winRate.toFixed(2)}%`} />
-              <Metric label={partialMetrics ? 'Profit factor (partial)' : 'Profit factor'} value={performance.profitFactor == null ? 'Unavailable' : performance.profitFactor.toFixed(2)} />
-              <Metric label="History period" value={performance.periodStartedAt && performance.periodEndedAt ? `${new Date(performance.periodStartedAt).toLocaleDateString()} – ${new Date(performance.periodEndedAt).toLocaleDateString()}` : 'Unavailable'} />
+              <Metric label={partialMetrics ? 'Win rate (partial)' : 'Win rate'} value={performance.winRate == null ? '—' : `${performance.winRate.toFixed(2)}%`} />
+              <Metric label={partialMetrics ? 'Profit factor (partial)' : 'Profit factor'} value={performance.profitFactor == null ? '—' : performance.profitFactor.toFixed(2)} />
+              <Metric label="History period" value={performance.periodStartedAt && performance.periodEndedAt ? `${new Date(performance.periodStartedAt).toLocaleDateString()} – ${new Date(performance.periodEndedAt).toLocaleDateString()}` : '—'} />
             </dl>
           </Card>
         </div>
@@ -197,9 +197,9 @@ export function SocialTradeHistoryPanel({ traderUserId, isSelf }: { traderUserId
           <h2 className="text-sm font-semibold">Overview</h2>
           <dl className="mt-4 space-y-3">
             <Metric label="Account environment" value={performance.accountMode.toUpperCase()} />
-            <Metric label="Return" value="Unavailable" />
-            <Metric label="Maximum drawdown" value="Unavailable" />
-            <Metric label="Equity curve" value="Unavailable" />
+            <Metric label="Return" value="—" />
+            <Metric label="Maximum drawdown" value="—" />
+            <Metric label="Equity curve" value="—" />
             <Metric label="Calculated" value={when(performance.calculatedAt)} />
           </dl>
           <p className="mt-4 text-xs leading-5 text-neutral-500">Returns, drawdown and an equity curve remain unavailable because cash-flow and periodic equity history do not yet support defensible calculations.</p>

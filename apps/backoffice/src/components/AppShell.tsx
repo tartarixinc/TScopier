@@ -7,6 +7,7 @@ import {
   Radio,
   ScrollText,
   HandCoins,
+  UserCheck,
   LogOut,
   Menu,
   X,
@@ -31,6 +32,7 @@ const NAV_SECTIONS = [
       { to: '/channels-backtests', icon: Radio, label: 'Channels & Backtests' },
       { to: '/copier-logs', icon: ScrollText, label: 'Copier Logs' },
       { to: '/affiliate-payouts', icon: HandCoins, label: 'Affiliate Payouts' },
+      { to: '/provider-applications', icon: UserCheck, label: 'Provider Applications' },
     ],
   },
 ]

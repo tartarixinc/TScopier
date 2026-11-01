@@ -76,7 +76,7 @@ test("production social UI retains the approved directory and profile informatio
   assert.match(history, /Recent realized performance/);
   assert.match(history, /P\/L calendar/);
   assert.match(history, /DEMO DATA/);
-  assert.match(history, /Maximum drawdown[^]*Unavailable/);
+  assert.match(history, /Maximum drawdown[^]*—/);
   assert.match(history, /Destination-side copy executions are excluded/);
   assert.doesNotMatch(
     history,
@@ -161,4 +161,66 @@ test("synthetic participation is default-off and permanently routed away from br
   assert.match(demoSeed, /is_synthetic_demo: true/);
   assert.match(demoSeed, /is_synthetic: true/);
   assert.match(demoSeed, /SOCIAL_COPY_PREVIEW_SYNTHETIC_ENABLED/);
+});
+
+const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+const wizard = readFileSync(
+  new URL("../pages/dashboard/ProviderApplyPage.tsx", import.meta.url),
+  "utf8",
+);
+
+test("provider onboarding is wired into routes, the directory and the account snapshot", () => {
+  assert.match(app, /path="\/p\/:slug"/);
+  assert.match(app, /path="\/social-trading\/provider"/);
+  assert.match(app, /path="\/social-trading\/:traderId"/);
+  // The directory lists approved providers and shows the server snapshot, not browser state.
+  assert.match(page, /trader\.providerStatus !== 'approved'/);
+  assert.match(page, /AccountKindBadge/);
+  assert.match(page, /formatAccountAmount\(trader\.previewBalance, trader\.accountCurrency\)/);
+  assert.match(previewHook, /previewBalance: profile\.balance/);
+  assert.doesNotMatch(page, /localStorage|COPY_PRICE_STORAGE_KEY/);
+});
+
+test("the provider wizard persists drafts server-side and submits for admin review", () => {
+  assert.match(wizard, /useProviderApplication\(\)/);
+  assert.match(wizard, /validateProviderStep/);
+  assert.match(wizard, /Submit application/);
+  assert.doesNotMatch(wizard, /localStorage|sessionStorage/);
+  const hook = readFileSync(new URL("../hooks/useProviderApplication.ts", import.meta.url), "utf8");
+  assert.match(hook, /saveProviderDraft\(supabase/);
+  assert.match(hook, /submitProviderApplication\(supabase/);
+});
+
+test("the public provider page reads only the slug-gated public RPCs and carries the visitor into the copy flow", () => {
+  const publicPage = readFileSync(new URL("../pages/social/ProviderPublicProfilePage.tsx", import.meta.url), "utf8");
+  const publicLib = readFileSync(new URL("../lib/providerPublicProfile.ts", import.meta.url), "utf8");
+  assert.match(publicLib, /rpc\('get_provider_public_performance'/);
+  assert.match(publicLib, /rpc\('get_provider_public_trade_history'/);
+  assert.doesNotMatch(publicLib + publicPage, /get_social_provider_performance|get_social_source_trade_history|get_social_trade_history\b/);
+  assert.match(publicPage, /stashPostAuthRedirect\(landing\)/);
+  assert.match(publicPage, /providerCopyLandingPath\(profile\.profileUserId\)/);
+  assert.match(publicPage, /Sign up to copy/);
+  assert.match(page, /profileParams\.get\('copy'\) === '1'/);
+  assert.match(page, /consumePostAuthRedirect\(\)/);
+});
+
+test("the marketing host serves /p/:slug and hands auth off to the app with a next path", () => {
+  const marketing = readFileSync(new URL("../MarketingApp.tsx", import.meta.url), "utf8");
+  assert.match(marketing, /path="\/p\/:slug" element=\{<ProviderPublicProfilePage \/>\}/);
+  const publicPage = readFileSync(new URL("../pages/social/ProviderPublicProfilePage.tsx", import.meta.url), "utf8");
+  assert.match(publicPage, /withQuery\(appUrl\(path\), \{ next: landing \}\)/);
+  for (const file of ["AuthPage", "SignupPage"]) {
+    const auth = readFileSync(new URL(`../pages/auth/${file}.tsx`, import.meta.url), "utf8");
+    assert.match(auth, /capturePostAuthRedirectFromUrl\(/);
+  }
+});
+
+test("deposits come from server-written account totals, never from browser-supplied values", () => {
+  const edge = readFileSync(new URL("../../supabase/functions/mtapi-broker/index.ts", import.meta.url), "utf8");
+  assert.match(edge, /fetchCashflowTotals\(/);
+  assert.match(edge, /cashflowSyncDue\(/);
+  const ownView = readFileSync(new URL("../hooks/useOwnSocialAccountView.ts", import.meta.url), "utf8");
+  assert.match(ownView, /account\.total_deposits \?\? account\.performance_baseline_balance/);
+  const select = readFileSync(new URL("../lib/brokerAccountSelect.ts", import.meta.url), "utf8");
+  assert.match(select, /'total_deposits'/);
 });

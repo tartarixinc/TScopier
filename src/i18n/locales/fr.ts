@@ -603,7 +603,6 @@ export const fr: Translations = {
     tabPerformance: 'Performance',
     tabTrading: 'Trading',
     tabPortfolio: 'Portefeuille',
-    aum: 'AUM',
     leverage: 'Effet de levier',
     joined: 'Inscrit',
     rank: 'Rang',
