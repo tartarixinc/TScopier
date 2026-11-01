@@ -108,7 +108,8 @@ export type SocialProviderPerformance = {
   realizedProfit: number | null
   winRate: number | null
   profitFactor: number | null
-  returnPercentage: null
+  /** ROI (% of the performance baseline balance), realized P/L only; null unless the history is complete. */
+  returnPercentage: number | null
   /** Max drawdown (%) of the realized-balance curve; only set for the owner's own view. */
   maximumDrawdown: number | null
   equityCurveAvailable: false
@@ -156,8 +157,8 @@ type PerformanceRow = {
   realized_profit: number | string | null
   win_rate: number | string | null
   profit_factor: number | string | null
-  return_percentage: null
-  maximum_drawdown: null
+  return_percentage: number | string | null
+  maximum_drawdown: number | string | null
   equity_curve_available: boolean
   is_copy_eligible: boolean
   eligibility_reason: string
@@ -198,8 +199,8 @@ export async function fetchSocialProviderPerformance(client: SupabaseClient, tra
     realizedProfit: row.realized_profit == null ? null : Number(row.realized_profit),
     winRate: row.win_rate == null ? null : Number(row.win_rate),
     profitFactor: row.profit_factor == null ? null : Number(row.profit_factor),
-    returnPercentage: null,
-    maximumDrawdown: null,
+    returnPercentage: row.return_percentage == null ? null : Number(row.return_percentage),
+    maximumDrawdown: row.maximum_drawdown == null ? null : Number(row.maximum_drawdown),
     equityCurveAvailable: false,
     isCopyEligible: row.is_copy_eligible === true,
     eligibilityReason: row.eligibility_reason,

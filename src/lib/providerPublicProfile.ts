@@ -122,6 +122,8 @@ export type ProviderPublicPerformance = {
   cashflowSyncedAt: string | null
   /** Max drawdown (%) of the realized-balance curve; null unless the history is complete. */
   maxDrawdown: number | null
+  /** ROI (%) of realized P/L against the starting balance; null unless the history is complete. */
+  returnPercentage: number | null
 }
 
 export type ProviderPublicTrade = {
@@ -159,6 +161,7 @@ type PerformanceRow = {
   deposit_source: string | null
   cashflow_synced_at: string | null
   max_drawdown: number | string | null
+  return_percentage: number | string | null
 }
 
 type TradeRow = {
@@ -209,6 +212,7 @@ export function mapProviderPublicPerformance(row: PerformanceRow): ProviderPubli
     depositSource: row.deposit_source === 'broker_history' || row.deposit_source === 'starting_balance' ? row.deposit_source : null,
     cashflowSyncedAt: row.cashflow_synced_at,
     maxDrawdown: num(row.max_drawdown),
+    returnPercentage: num(row.return_percentage),
   }
 }
 

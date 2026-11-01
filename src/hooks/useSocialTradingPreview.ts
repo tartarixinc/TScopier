@@ -113,7 +113,8 @@ export function hydrateTrader(
   const historyClosedRows = ordered.filter(trade => trade.status === 'closed')
   const historyComplete = history != null
     && performance != null
-    && (performance.performanceStatus === 'available' || performance.performanceStatus === 'no_history')
+    // 'stale' keeps the last synced history; the row is flagged stale separately.
+    && (performance.performanceStatus === 'available' || performance.performanceStatus === 'stale' || performance.performanceStatus === 'no_history')
     && open.length === performance.openTradeCount
     && historyClosedRows.length === performance.closedTradeCount
     && closed.length === historyClosedRows.length

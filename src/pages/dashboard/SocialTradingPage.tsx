@@ -285,7 +285,7 @@ export function SocialTradingPage() {
                       <td className="px-3 py-3">
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
                           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                          {trader.syntheticDemo ? 'Synthetic demo' : trader.performanceStatus === 'available' ? copy.statusActive : '—'}
+                          {trader.syntheticDemo ? 'Synthetic demo' : trader.performanceStatus === 'available' || trader.performanceStatus === 'stale' ? copy.statusActive : '—'}
                         </span>
                       </td>
                       <td className="px-3 py-3 font-medium text-neutral-900 dark:text-neutral-100">{percent(trader.roi)}</td>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeMaxDrawdownPct } from './maxDrawdown'
+import { computeMaxDrawdownPct, computeReturnPct } from './maxDrawdown'
 
 const trade = (day: number, profit: number) => ({ closedAt: `2026-10-${String(day).padStart(2, '0')}T12:00:00Z`, profit })
 
@@ -23,5 +23,16 @@ describe('computeMaxDrawdownPct', () => {
     expect(computeMaxDrawdownPct(null, [trade(1, 10)])).toBeNull()
     expect(computeMaxDrawdownPct(0, [trade(1, 10)])).toBeNull()
     expect(computeMaxDrawdownPct(1000, [{ closedAt: null, profit: -500 }, { closedAt: trade(1, 0).closedAt, profit: null }])).toBe(0)
+  })
+})
+
+describe('computeReturnPct', () => {
+  it('is realized P/L over the baseline balance', () => {
+    expect(computeReturnPct(50000, [{ profit: 1333.94 }])).toBe(2.67)
+    expect(computeReturnPct(1000, [{ profit: -50 }, { profit: 20 }])).toBe(-3)
+  })
+  it('is null without a baseline or trades', () => {
+    expect(computeReturnPct(null, [{ profit: 1 }])).toBeNull()
+    expect(computeReturnPct(1000, [])).toBeNull()
   })
 })

@@ -23,3 +23,14 @@ export function computeMaxDrawdownPct(
   }
   return Math.round(maxDd * 100) / 100
 }
+
+/** ROI (%) of the realized P/L against the performance baseline balance. Null without a usable baseline or trades. */
+export function computeReturnPct(
+  baseline: number | null | undefined,
+  trades: ReadonlyArray<{ profit: number | null }>,
+): number | null {
+  if (baseline == null || !Number.isFinite(baseline) || baseline <= 0) return null
+  const profits = trades.map(trade => trade.profit).filter((p): p is number => p != null && Number.isFinite(p))
+  if (profits.length === 0) return null
+  return Math.round((profits.reduce((sum, p) => sum + p, 0) / baseline) * 10000) / 100
+}
