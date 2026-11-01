@@ -49,7 +49,8 @@ import { TradeBrokerDriftMonitor } from './tradeBrokerDriftMonitor'
 import { attachBrokerStreamProxy } from './brokerStreamProxy'
 import { getFxsocketStreamManager } from './fxsocketStreamManager'
 import { CopyLimitMonitor } from './copyLimitMonitor'
-import { parseEnvBool, workerConfig, WORKER_BUILD_TAG } from './workerConfig'
+import { parseEnvBool, isKnownRole, KNOWN_ROLES, workerConfig, WORKER_BUILD_TAG } from './workerConfig'
+import type { DiscordListenerHandle } from './discordListener'
 import { validateListenerTradeShardConfig, validateListenerMgmtShardConfig, validateListenerQueueConfig } from './tradeSignalPush'
 import { SignalQueueConsumerManager } from './queue/signalQueueConsumer'
 import { deployedTradeShardCount, signalQueueConfig, redisQueueConfigured } from './queue/signalQueueConfig'
@@ -69,6 +70,14 @@ import {
   createSupabaseBrokerWriteAuthorityStore,
   registerBrokerWriteAuthorityStore,
 } from './brokerWriteAuthority'
+
+if (!isKnownRole(process.env.WORKER_ROLE)) {
+  console.error(
+    `[worker] FATAL: unknown WORKER_ROLE="${process.env.WORKER_ROLE}" — expected one of `
+    + KNOWN_ROLES.join('|'),
+  )
+  process.exit(1)
+}
 
 initWorkerSentry()
 installWorkerProcessSentryHandlers()
@@ -112,6 +121,7 @@ let authService: AuthService | null = null
 let tradeExecutor: TradeExecutor | null = null
 let signalQueueConsumers: SignalQueueConsumerManager | null = null
 let mtapiSessionManager: MtapiSessionManager | null = null
+let discordListener: DiscordListenerHandle | null = null
 
 const monitors: Array<{ stop: () => void }> = []
 const monitorLoops: MonitorLoopHandle[] = []
@@ -213,6 +223,14 @@ function startTradeMonitors(executor: TradeExecutor | null) {
 async function main() {
   initializeBrokerExecutionCapability()
 
+  if (workerConfig.runsDiscordListener && (workerConfig.shardCount > 1 || workerConfig.shardId > 0)) {
+    console.error(
+      '[worker] FATAL: discord_listener must run as a single replica'
+      + ' (WORKER_SHARD_COUNT=1, WORKER_SHARD_ID=0) — one gateway per bot token',
+    )
+    process.exit(1)
+  }
+
   if (workerConfig.runsListener) {
     const shardErr = validateListenerTradeShardConfig()
     if (shardErr) {
@@ -236,11 +254,13 @@ async function main() {
     + ` instance=${workerConfig.instanceId} build=${WORKER_BUILD_TAG}`,
   )
 
-  const sessionKeys = telegramSessionKeyFingerprints()
-  console.log(
-    `[worker] telegram-session-encryption primary=${sessionKeys.primary ?? 'not-configured'}`
-    + ` previous=${sessionKeys.previous.join(',') || 'none'}`,
-  )
+  if (!workerConfig.runsDiscordListener) {
+    const sessionKeys = telegramSessionKeyFingerprints()
+    console.log(
+      `[worker] telegram-session-encryption primary=${sessionKeys.primary ?? 'not-configured'}`
+      + ` previous=${sessionKeys.previous.join(',') || 'none'}`,
+    )
+  }
 
   if (workerConfig.runsListener || workerConfig.runsBacktestHttp) {
     authService = new AuthService(supabase, sessionManager)
@@ -334,6 +354,13 @@ async function main() {
     sessionManager.setTradeExecutor(null)
   }
 
+  if (workerConfig.runsDiscordListener) {
+    // Loaded lazily: discord.js costs ~2s and ~46 MB and only this role needs it.
+    const { startDiscordListener } = await import('./discordListener')
+    discordListener = await startDiscordListener()
+    console.log(`[worker] discord listener started guilds=${discordListener.client.guilds.cache.size}`)
+  }
+
   if (workerConfig.runsListener) {
     // Register periodic lease renewal + session sync BEFORE (and independent of)
     // loadAll. Previously loadAll was awaited first, so a single hung listener
@@ -403,9 +430,12 @@ async function main() {
     if (workerConfig.runsListener) {
       await sessionManager.disconnectAll()
     }
-    const drainMs = telegramShutdownDrainMs()
-    console.log(`[worker] Telegram shutdown drain ${drainMs}ms before exit`)
-    await new Promise(r => setTimeout(r, drainMs))
+    await discordListener?.stop()
+    if (!workerConfig.runsDiscordListener) {
+      const drainMs = telegramShutdownDrainMs()
+      console.log(`[worker] Telegram shutdown drain ${drainMs}ms before exit`)
+      await new Promise(r => setTimeout(r, drainMs))
+    }
     clearTimeout(shutdownWarnTimer)
     await flushWorkerSentry(1800)
     process.exit(0)

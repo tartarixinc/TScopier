@@ -9,8 +9,10 @@
  * (b) the gateway rejects requests without this post-breach secret.
  *
  * Call installRelayFetch() at the top of every worker ENTRYPOINT (before any
- * Supabase client is constructed): index.ts, whatsappListener.ts,
- * discordListener.ts, and standalone diagnostics that create their own client.
+ * Supabase client is constructed): index.ts, whatsappListener.ts, and standalone
+ * diagnostics that create their own client. discordListener.ts does not install
+ * it when started from index.ts (index.ts already did); its `require.main`
+ * bootstrap installs it for the legacy `npm run discord` entrypoint.
  */
 
 type FetchInput = Parameters<typeof fetch>[0]
