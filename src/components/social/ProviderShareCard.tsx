@@ -5,7 +5,19 @@ import { Link } from 'react-router-dom'
 import { providerShareTargets, providerShareUrl, providerSharePath } from '../../lib/providerApplication'
 import { Button } from '../ui/Button'
 
-export function ProviderShareCard({ slug, name }: { slug: string; name: string }) {
+export function ProviderShareCard({
+  slug,
+  name,
+  shareTradeHistory = null,
+  manageHref,
+}: {
+  slug: string
+  name: string
+  /** false = visitors cannot see performance yet; null/true = no hint. */
+  shareTradeHistory?: boolean | null
+  /** Where the provider can turn trade-history sharing on. */
+  manageHref?: string
+}) {
   const [copied, setCopied] = useState(false)
   const url = providerShareUrl(typeof window === 'undefined' ? 'https://app.tscopier.ai' : window.location.origin, slug)
 
@@ -25,6 +37,12 @@ export function ProviderShareCard({ slug, name }: { slug: string; name: string }
       <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-400">
         Share this link anywhere. People can see your profile and follow or copy you after signing in.
       </p>
+      {shareTradeHistory === false && (
+        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+          Turn on Share trade history so visitors can see your performance on this link.{' '}
+          {manageHref && <Link to={manageHref} className="font-medium underline">Open my profile</Link>}
+        </p>
+      )}
       <div className="mt-3 flex flex-col gap-4 sm:flex-row">
         <div className="min-w-0 flex-1 space-y-3">
           <div className="flex items-center gap-2">

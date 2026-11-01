@@ -82,3 +82,30 @@ test('public profile exposes only approved, listed, non-synthetic providers', ()
   assert.match(profile, /sp\.is_synthetic_demo = false/)
   assert.doesNotMatch(profile, /email|broker_account_id|account_login/)
 })
+
+const publicPerf = read('_provider_public_performance.sql')
+
+test('public performance and history are anon-readable only through the slug-gated, share-gated RPCs', () => {
+  assert.match(publicPerf, /grant execute on function public\.get_provider_public_performance\(text\) to anon, authenticated/)
+  assert.match(publicPerf, /grant execute on function public\.get_provider_public_trade_history\(text, integer\) to anon, authenticated/)
+  // Internal helpers are never callable by clients.
+  assert.match(publicPerf, /revoke all on function public\.provider_public_source_trades\(uuid\) from public, anon, authenticated/)
+  assert.match(publicPerf, /revoke all on function public\.provider_public_shared_source\(text\) from public, anon, authenticated/)
+  assert.doesNotMatch(publicPerf, /grant execute on function public\.provider_public_(source_trades|shared_source)/)
+  // Visibility: approved + listed + non-synthetic + the provider's Share trade history toggle.
+  const resolver = publicPerf.slice(publicPerf.indexOf('function public.provider_public_shared_source'), publicPerf.indexOf('function public.get_provider_public_performance'))
+  assert.match(resolver, /sp\.provider_status = 'approved'/)
+  assert.match(resolver, /sp\.is_listed = true/)
+  assert.match(resolver, /sp\.is_synthetic_demo = false/)
+  assert.match(resolver, /sp\.share_trade_history/)
+})
+
+test('public RPCs return no metrics or trades unless the provider shares trade history', () => {
+  const perf = publicPerf.slice(publicPerf.indexOf('function public.get_provider_public_performance'), publicPerf.indexOf('function public.get_provider_public_trade_history'))
+  assert.match(perf, /not coalesce\(v_src\.shared, false\)/)
+  assert.match(perf, /return query select false/)
+  const history = publicPerf.slice(publicPerf.indexOf('function public.get_provider_public_trade_history'), publicPerf.indexOf('revoke all on function public.provider_public_source_trades'))
+  assert.match(history, /not coalesce\(v_src\.shared, false\)/)
+  assert.match(history, /least\(coalesce\(p_limit, 100\), 250\)/)
+  assert.doesNotMatch(publicPerf, /email|account_login|broker_account_id,\s*t\./)
+})

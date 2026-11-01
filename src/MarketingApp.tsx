@@ -9,6 +9,7 @@ import { TermsOfServicePage } from './pages/marketing/TermsOfServicePage'
 import { PrivacyPolicyPage } from './pages/marketing/PrivacyPolicyPage'
 import { CookiePolicyPage } from './pages/marketing/CookiePolicyPage'
 import { ReferralLandingRedirect } from './pages/marketing/ReferralLandingRedirect'
+import { ProviderPublicProfilePage } from './pages/social/ProviderPublicProfilePage'
 import { appUrl } from './lib/site'
 import { GoogleAnalyticsRouteTracker } from './components/analytics/GoogleAnalyticsRouteTracker'
 import { CookieConsentBanner } from './components/marketing/CookieConsentBanner'
@@ -37,6 +38,8 @@ export default function MarketingApp() {
             <Route path="/terms" element={<TermsOfServicePage />} />
             <Route path="/privacy" element={<PrivacyPolicyPage />} />
             <Route path="/cookie-policy" element={<CookiePolicyPage />} />
+            {/* Shareable provider profile (same page as the app host; sign-up links cross to the app). */}
+            <Route path="/p/:slug" element={<ProviderPublicProfilePage />} />
             {/* After static marketing routes so reserved paths are not treated as refs. */}
             <Route path="/:referralCode" element={<ReferralLandingRedirect />} />
             <Route path="*" element={<MarketingCatchAll />} />

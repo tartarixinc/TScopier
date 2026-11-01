@@ -87,3 +87,139 @@ export async function fetchProviderPublicProfile(client: SupabaseClient, slug: s
   const row = ((data ?? []) as Row[])[0]
   return row ? mapProviderPublicProfile(row) : null
 }
+
+// ---------------------------------------------------------------------------
+// Public performance + trade history (anon-readable, gated by share_trade_history)
+// ---------------------------------------------------------------------------
+
+export type ProviderPublicMonth = { month: string; profit: number; trades: number }
+
+export type ProviderPublicPerformance = {
+  /** false when the provider has not made their trading history public. */
+  shared: boolean
+  currency: string | null
+  lastSyncedAt: string | null
+  historyComplete: boolean
+  openCount: number | null
+  closedCount: number | null
+  wins: number | null
+  winRate: number | null
+  profitFactor: number | null
+  realizedProfit: number | null
+  grossProfit: number | null
+  grossLoss: number | null
+  bestProfit: number | null
+  bestAt: string | null
+  worstProfit: number | null
+  worstAt: string | null
+  periodStart: string | null
+  periodEnd: string | null
+  monthly: ProviderPublicMonth[]
+}
+
+export type ProviderPublicTrade = {
+  tradeId: string
+  symbol: string
+  direction: 'buy' | 'sell'
+  status: 'open' | 'closed'
+  openedAt: string
+  closedAt: string | null
+  realizedProfit: number | null
+}
+
+type PerformanceRow = {
+  shared: boolean
+  currency: string | null
+  last_synced_at: string | null
+  history_complete: boolean | null
+  open_count: number | string | null
+  closed_count: number | string | null
+  wins: number | string | null
+  win_rate: number | string | null
+  profit_factor: number | string | null
+  realized_profit: number | string | null
+  gross_profit: number | string | null
+  gross_loss: number | string | null
+  best_profit: number | string | null
+  best_at: string | null
+  worst_profit: number | string | null
+  worst_at: string | null
+  period_start: string | null
+  period_end: string | null
+  monthly: unknown
+}
+
+type TradeRow = {
+  trade_id: string
+  symbol: string
+  direction: string
+  trade_status: string
+  opened_at: string
+  closed_at: string | null
+  realized_profit: number | string | null
+}
+
+function parseMonthly(value: unknown): ProviderPublicMonth[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap(item => {
+    if (!item || typeof item !== 'object') return []
+    const row = item as Record<string, unknown>
+    const month = typeof row.month === 'string' ? row.month : ''
+    const profit = Number(row.profit)
+    const trades = Number(row.trades)
+    return month && Number.isFinite(profit) ? [{ month, profit, trades: Number.isFinite(trades) ? trades : 0 }] : []
+  })
+}
+
+export function mapProviderPublicPerformance(row: PerformanceRow): ProviderPublicPerformance {
+  return {
+    shared: row.shared === true,
+    currency: row.currency,
+    lastSyncedAt: row.last_synced_at,
+    historyComplete: row.history_complete === true,
+    openCount: num(row.open_count),
+    closedCount: num(row.closed_count),
+    wins: num(row.wins),
+    winRate: num(row.win_rate),
+    profitFactor: num(row.profit_factor),
+    realizedProfit: num(row.realized_profit),
+    grossProfit: num(row.gross_profit),
+    grossLoss: num(row.gross_loss),
+    bestProfit: num(row.best_profit),
+    bestAt: row.best_at,
+    worstProfit: num(row.worst_profit),
+    worstAt: row.worst_at,
+    periodStart: row.period_start,
+    periodEnd: row.period_end,
+    monthly: parseMonthly(row.monthly),
+  }
+}
+
+export function mapProviderPublicTrade(row: TradeRow): ProviderPublicTrade {
+  return {
+    tradeId: row.trade_id,
+    symbol: row.symbol,
+    direction: row.direction === 'sell' ? 'sell' : 'buy',
+    status: row.trade_status === 'closed' ? 'closed' : 'open',
+    openedAt: row.opened_at,
+    closedAt: row.closed_at,
+    realizedProfit: num(row.realized_profit),
+  }
+}
+
+export async function fetchProviderPublicPerformance(client: SupabaseClient, slug: string): Promise<ProviderPublicPerformance | null> {
+  const normalized = slug.trim().toLowerCase()
+  if (!isValidProviderSlug(normalized)) return null
+  const { data, error } = await client.rpc('get_provider_public_performance', { p_slug: normalized })
+  if (error) throw new Error(error.message || 'Unable to load this provider’s performance.')
+  const row = ((data ?? []) as PerformanceRow[])[0]
+  return row ? mapProviderPublicPerformance(row) : null
+}
+
+export async function fetchProviderPublicTrades(client: SupabaseClient, slug: string, limit = 100): Promise<ProviderPublicTrade[]> {
+  const normalized = slug.trim().toLowerCase()
+  if (!isValidProviderSlug(normalized)) return []
+  const { data, error } = await client.rpc('get_provider_public_trade_history', { p_slug: normalized, p_limit: limit })
+  if (error) throw new Error(error.message || 'Unable to load this provider’s trade history.')
+  return ((data ?? []) as TradeRow[]).map(mapProviderPublicTrade)
+}

@@ -190,3 +190,26 @@ test("the provider wizard persists drafts server-side and submits for admin revi
   assert.match(hook, /saveProviderDraft\(supabase/);
   assert.match(hook, /submitProviderApplication\(supabase/);
 });
+
+test("the public provider page reads only the slug-gated public RPCs and carries the visitor into the copy flow", () => {
+  const publicPage = readFileSync(new URL("../pages/social/ProviderPublicProfilePage.tsx", import.meta.url), "utf8");
+  const publicLib = readFileSync(new URL("../lib/providerPublicProfile.ts", import.meta.url), "utf8");
+  assert.match(publicLib, /rpc\('get_provider_public_performance'/);
+  assert.match(publicLib, /rpc\('get_provider_public_trade_history'/);
+  assert.doesNotMatch(publicLib + publicPage, /get_social_provider_performance|get_social_source_trade_history|get_social_trade_history\b/);
+  assert.match(publicPage, /stashPostAuthRedirect\(providerCopyLandingPath/);
+  assert.match(publicPage, /Sign up to copy/);
+  assert.match(page, /profileParams\.get\('copy'\) === '1'/);
+  assert.match(page, /consumePostAuthRedirect\(\)/);
+});
+
+test("the marketing host serves /p/:slug and hands auth off to the app with a next path", () => {
+  const marketing = readFileSync(new URL("../MarketingApp.tsx", import.meta.url), "utf8");
+  assert.match(marketing, /path="\/p\/:slug" element=\{<ProviderPublicProfilePage \/>\}/);
+  const publicPage = readFileSync(new URL("../pages/social/ProviderPublicProfilePage.tsx", import.meta.url), "utf8");
+  assert.match(publicPage, /withQuery\(appUrl\(path\), \{ next: landing \}\)/);
+  for (const file of ["AuthPage", "SignupPage"]) {
+    const auth = readFileSync(new URL(`../pages/auth/${file}.tsx`, import.meta.url), "utf8");
+    assert.match(auth, /capturePostAuthRedirectFromUrl\(/);
+  }
+});

@@ -9,10 +9,12 @@ import { ProviderShareCard } from '../../components/social/ProviderShareCard'
 import { SocialBrandIcon } from '../../components/social/SocialProfileLinks'
 import { Alert } from '../../components/ui/Alert'
 import { Button } from '../../components/ui/Button'
+import { useAuth } from '../../context/AuthContext'
 import { useAddTradingAccount } from '../../context/AddTradingAccountContext'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
 import { useUserProfile } from '../../context/UserProfileContext'
 import { useProviderApplication } from '../../hooks/useProviderApplication'
+import { useOwnTradeHistorySharing } from '../../hooks/useOwnTradeHistorySharing'
 import { resolveAccountLogin } from '../../lib/brokerFromServer'
 import { platformIconSrc } from '../../lib/activityRoute'
 import {
@@ -411,6 +413,9 @@ function StatusScreen({
     suspended: { icon: XCircle, tone: 'text-error-600', title: 'Provider profile suspended', body: rejectionReason ?? 'An administrator paused your provider profile. Contact support to learn more.' },
   }[status]
   const Icon = content.icon
+  const { user } = useAuth()
+  const userId = user?.id ?? null
+  const sharing = useOwnTradeHistorySharing(status === 'approved' ? userId : null)
   return (
     <div className="space-y-5">
       <div className="flex items-start gap-3 rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
@@ -421,7 +426,7 @@ function StatusScreen({
           {onEdit && <Button className="mt-3" size="sm" onClick={onEdit}>{status === 'rejected' ? 'Edit and resubmit' : 'Edit profile'}</Button>}
         </div>
       </div>
-      {status === 'approved' && slug && <ProviderShareCard slug={slug} name={name} />}
+      {status === 'approved' && slug && <ProviderShareCard slug={slug} name={name} shareTradeHistory={sharing} manageHref={userId ? `/social-trading/${userId}` : undefined} />}
       {children}
     </div>
   )

@@ -24,3 +24,20 @@ describe('AccountKindBadge', () => {
     expect(renderToStaticMarkup(createElement(AccountKindBadge, { kind }))).toContain(label)
   })
 })
+
+describe('ProviderShareCard sharing hint', () => {
+  const render = (props: Record<string, unknown>) => renderToStaticMarkup(
+    createElement(MemoryRouter, null, createElement(ProviderShareCard, { slug: 'jane-doe', name: 'Jane', ...props })),
+  )
+
+  it('asks the provider to turn on Share trade history when it is off', () => {
+    const markup = render({ shareTradeHistory: false, manageHref: '/social-trading/u-1' })
+    expect(markup).toContain('Turn on Share trade history')
+    expect(markup).toContain('href="/social-trading/u-1"')
+  })
+
+  it('shows no hint when sharing is on or unknown', () => {
+    expect(render({ shareTradeHistory: true })).not.toContain('Turn on Share trade history')
+    expect(render({})).not.toContain('Turn on Share trade history')
+  })
+})

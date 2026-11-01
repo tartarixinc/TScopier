@@ -31,6 +31,7 @@ import { platformIconSrc } from '../../lib/activityRoute'
 import { formatAccountAmount, normalizeAccountKind, snapshotFreshness } from '../../lib/providerApplication'
 import { copyPriceOfferLabel } from '../../lib/socialCopyPrice'
 import { canOpenCopyTrader, copyTraderUnavailableReason } from '../../lib/socialCopyAvailability'
+import { consumePostAuthRedirect } from '../../lib/postAuthRedirect'
 import { OwnAccountSelector } from '../../components/social/OwnAccountSelector'
 
 import { resolveUserAvatarUrl } from '../../lib/userAvatar'
@@ -481,6 +482,24 @@ export function SocialTraderActivityPage() {
   const trader = ownAccountView.trader
   const ownAvatarUrl = useOwnAvatarUrl()
   const [copyModalOpen, setCopyModalOpen] = useState(false)
+  const [profileParams, setProfileParams] = useSearchParams()
+  const wantsCopy = profileParams.get('copy') === '1'
+  const copyIntentReady = wantsCopy && Boolean(trader) && !trader?.isYou && !social.loading && !social.performanceLoading
+    && trader?.performanceStatusReason !== 'not_loaded'
+  const copyIntentEligible = Boolean(trader) && canOpenCopyTrader(trader as SocialTrader)
+  useEffect(() => {
+    if (!copyIntentReady) return
+    // Arrived from a provider's public page: finish the sign-up -> copy journey once.
+    consumePostAuthRedirect()
+    void Promise.resolve().then(() => {
+      if (copyIntentEligible) setCopyModalOpen(true)
+      setProfileParams(current => {
+        const next = new URLSearchParams(current)
+        next.delete('copy')
+        return next
+      }, { replace: true })
+    })
+  }, [copyIntentReady, copyIntentEligible, setProfileParams])
   const [profileTab, setProfileTab] = useState<'performance' | 'trading' | 'portfolio'>('performance')
   const access = social.currentProfile?.access ?? trader?.access ?? 'open'
 
