@@ -33,6 +33,7 @@ import { copyPriceOfferLabel } from '../../lib/socialCopyPrice'
 import { canOpenCopyTrader, copyTraderUnavailableReason } from '../../lib/socialCopyAvailability'
 import { consumePostAuthRedirect } from '../../lib/postAuthRedirect'
 import { OwnAccountSelector } from '../../components/social/OwnAccountSelector'
+import { useDefaultOwnSourceAccount } from '../../hooks/useDefaultOwnSourceAccount'
 
 import { resolveUserAvatarUrl } from '../../lib/userAvatar'
 import {
@@ -477,7 +478,10 @@ export function SocialTraderActivityPage() {
   const { traderId } = useParams()
   const social = useSocialTradingPreview()
   const directoryTrader = traderId ? social.traders.find(item => item.id === traderId) : undefined
-  const [selectedOwnAccountId, setSelectedOwnAccountId] = useState('')
+  const [pickedOwnAccountId, setSelectedOwnAccountId] = useState('')
+  // Default the "You" page to the published source account so its data shows without picking one first.
+  const defaultOwnAccountId = useDefaultOwnSourceAccount(Boolean(directoryTrader?.isYou))
+  const selectedOwnAccountId = pickedOwnAccountId || defaultOwnAccountId
   const ownAccountView = useOwnSocialAccountView(directoryTrader, selectedOwnAccountId)
   const trader = ownAccountView.trader
   const ownAvatarUrl = useOwnAvatarUrl()
