@@ -9,6 +9,7 @@ import { auditOrderClose } from './orderCloseAudit'
 import { createConcurrencyGate } from './perAccountConcurrency'
 import { createBrokerGateway, type BrokerGateway, type BrokerPriority } from './brokerGateway'
 import { redactBridgeSecrets } from './mtapiRedaction'
+import { normalizeMtBrokerTicket } from './brokerTradeTicket'
 
 type FetchLike = typeof fetch
 type RecoveryHandler = (sessionId: string) => Promise<string | null>
@@ -45,6 +46,12 @@ function object(value: unknown): Record<string, unknown> {
 function numberValue(value: unknown): number | undefined {
   const n = typeof value === 'number' ? value : Number(value)
   return Number.isFinite(n) ? n : undefined
+}
+
+/** Like numberValue but drops zero/negative, for fields where 0 means "not set". */
+function positiveValue(value: unknown): number | undefined {
+  const n = numberValue(value)
+  return n != null && n > 0 ? n : undefined
 }
 
 function boolValue(value: unknown): boolean | undefined {
@@ -139,6 +146,14 @@ export class MtapiProvider implements BrokerProvider {
   private readonly platformBySession = new Map<string, MtPlatform>()
   private readonly canonicalSession = new Map<string, string>()
   private recoveryHandler?: RecoveryHandler
+  /**
+   * Bridge hosts (base URLs) whose build answered 404/501 for
+   * `OrderCancelTask`. Keyed per host because MT4 and MT5 can point at
+   * different bridge deployments (`MTAPI_MT4_BASE_URL` vs
+   * `MTAPI_MT5_BASE_URL`): a missing endpoint on one must not disable the
+   * cancel path on the other. See `orderCancel`.
+   */
+  private readonly cancelEndpointMissingHosts = new Set<string>()
 
   constructor(options: MtapiProviderOptions = {}) {
     this.fetchImpl = options.fetchImpl ?? fetch
@@ -427,7 +442,11 @@ export class MtapiProvider implements BrokerProvider {
       // retry is opt-in (`MTAPI_ORDER_THROTTLE_RETRY=true`) until it is.
       const orderThrottleRetry = env('MTAPI_ORDER_THROTTLE_RETRY') === 'true' ? 'pre_accept' : 'off'
       const raw = await this.requestWithRetry('OrderSendSafe', params, id, false, orderThrottleRetry)
-      return normalizeOrderResponse(raw, { platform: this.platform(id), operation: args.operation })
+      const result = normalizeOrderResponse(raw, { platform: this.platform(id), operation: args.operation })
+      if (normalizeMtBrokerTicket(result.ticket) == null) {
+        throw new MtapiApiError('OrderSendSafe returned no valid broker ticket', 502, 'INVALID_TICKET')
+      }
+      return result
     } finally {
       release()
     }
@@ -489,6 +508,61 @@ export class MtapiProvider implements BrokerProvider {
     } finally {
       release()
     }
+  }
+
+  /**
+   * Remove a resting pending order.
+   *
+   * `OrderCloseSafe` is a position close: for several pendings the bridge
+   * answers `Invalid request` and the order survives, which turned into a
+   * failed close every sweep cycle (prod 2026-10-23, order 387155920,
+   * 215 `order_close_audit` failures in 24h). The bridge documents
+   * `GET /OrderCancelTask` as its pending-cancel endpoint, so pendings go there
+   * first. A 404/501 means this bridge build does not expose the endpoint: the
+   * capability is remembered for that host (one warning per process) and
+   * `OrderCloseSafe` is used instead, so behaviour on older bridges is
+   * unchanged. The latch is keyed by base URL so MT4 and MT5 bridges (which
+   * can be different deployments) fail independently.
+   */
+  async orderCancel(id: string, args: { ticket: number }): Promise<OrderResult> {
+    const host = baseUrl(this.platform(id))
+    if (this.cancelEndpointMissingHosts.has(host)) {
+      return this.orderClose(id, { ticket: args.ticket })
+    }
+    const release = await tradeOpGate.acquire(id, perAccountTradeConcurrency())
+    try {
+      const raw = await this.requestWithRetry('OrderCancelTask', { ticket: args.ticket }, id)
+      const result = normalizeOrderResponse(raw, { platform: this.platform(id) })
+      auditOrderClose({
+        source: 'mtapi',
+        accountId: id,
+        ticket: args.ticket,
+        ok: true,
+        message: result.state ?? null,
+      })
+      return result
+    } catch (err) {
+      const status = err instanceof MtapiApiError ? err.status : 0
+      const unsupported = status === 404 || status === 501
+      if (!unsupported) {
+        auditOrderClose({
+          source: 'mtapi',
+          accountId: id,
+          ticket: args.ticket,
+          ok: false,
+          message: err instanceof Error ? err.message : String(err),
+        })
+        throw err
+      }
+      this.cancelEndpointMissingHosts.add(host)
+      console.warn(
+        `[mtapiProvider] OrderCancelTask unavailable on ${host} (HTTP ${status})`
+        + ' — pending cancels fall back to OrderCloseSafe',
+      )
+    } finally {
+      release()
+    }
+    return this.orderClose(id, { ticket: args.ticket })
   }
 
   private async requestWithRetry(
@@ -724,25 +798,41 @@ export class MtapiProvider implements BrokerProvider {
 
   async symbolParams(id: string, symbol: string): Promise<SymbolParams> {
     const row = object(await this.readRequest('SymbolParams', { symbol }, id))
-    const info = object(row.symbolInfo ?? row.SymbolInfo)
-    const group = object(row.symbolGroup ?? row.SymbolGroup)
     if (Object.keys(row).length === 0) {
       throw new MtapiApiError('SymbolParams returned an invalid response', 502, 'INVALID_RESPONSE')
     }
+    // MT5 sends `symbolInfo` / `symbolGroup`; MT4 sends the instrument under
+    // `symbol` as an object plus `group` / `groupParams`. Read both shapes so
+    // lot limits are not lost on MT4 (which made every MT4 mirror copy fail as
+    // an unsupported symbol).
+    const mt4Symbol = object(row.symbol)
+    // Merge, so an empty `symbolInfo` cannot hide the MT4 instrument object.
+    const info = { ...mt4Symbol, ...object(row.symbolInfo ?? row.SymbolInfo) }
+    const group = object(row.symbolGroup ?? row.SymbolGroup ?? row.group ?? row.Group)
+    const groupParams = object(row.groupParams ?? row.GroupParams)
+    const declaredName = row.symbolName ?? row.SymbolName
+    const symbolName = typeof row.symbol === 'string'
+      ? row.symbol
+      : typeof declaredName === 'string' && declaredName.trim()
+        ? declaredName.trim()
+        : String(mt4Symbol.symbolAsString ?? (typeof row.Symbol === 'string' ? row.Symbol : symbol))
     return {
       ...row,
-      symbolName: String(row.symbol ?? row.Symbol ?? symbol),
+      symbolName,
       symbol: {
-        digits: numberValue(info.digits ?? info.Digits),
-        point: numberValue(info.points ?? info.point ?? info.Point),
-        contractSize: numberValue(info.contractSize ?? info.ContractSize),
-        stopsLevel: numberValue(info.stopsLevel ?? info.StopsLevel),
-        freezeLevel: numberValue(info.freezeLevel ?? info.FreezeLevel),
+        digits: positiveValue(info.digits ?? info.Digits),
+        point: positiveValue(info.points ?? info.point ?? info.Point),
+        contractSize: positiveValue(info.contractSize ?? info.ContractSize ?? info.contract_size),
+        stopsLevel: numberValue(info.stopsLevel ?? info.StopsLevel ?? info.stops_level),
+        freezeLevel: numberValue(info.freezeLevel ?? info.FreezeLevel ?? info.freeze_level),
       },
       groupParams: {
-        minLot: numberValue(group.minLots ?? group.minLot ?? group.MinLots),
-        maxLot: numberValue(group.maxLots ?? group.maxLot ?? group.MaxLots),
-        lotStep: numberValue(group.lotsStep ?? group.lotStep ?? group.LotsStep),
+        minLot: numberValue(groupParams.minLot ?? groupParams.MinLot ?? groupParams.min_lot
+          ?? group.minLots ?? group.minLot ?? group.MinLots ?? group.min_lot),
+        maxLot: numberValue(groupParams.maxLot ?? groupParams.MaxLot ?? groupParams.max_lot
+          ?? group.maxLots ?? group.maxLot ?? group.MaxLots ?? group.max_lot),
+        lotStep: numberValue(groupParams.lotStep ?? groupParams.LotStep ?? groupParams.lot_step
+          ?? group.lotsStep ?? group.lotStep ?? group.LotsStep ?? group.lot_step),
       },
     }
   }

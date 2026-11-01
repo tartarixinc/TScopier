@@ -19,7 +19,9 @@ import glob
 import os
 import sys
 
-MIGRATIONS_GLOB = "supabase/migrations/*.sql"
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MIGRATIONS_DIR = os.path.join(REPO_ROOT, "supabase", "migrations")
+MIGRATIONS_GLOB = os.path.join(MIGRATIONS_DIR, "*.sql")
 
 
 def main() -> int:
@@ -32,6 +34,11 @@ def main() -> int:
 
     duplicates = {v: names for v, names in by_version.items() if len(names) > 1}
     total = sum(len(names) for names in by_version.values())
+    if total == 0:
+        print(f"FAIL — no migration files found under {MIGRATIONS_DIR}")
+        print("Check the repository layout; a guard that finds nothing cannot")
+        print("detect collisions.")
+        return 1
     print(f"Checked {total} migration file(s); {len(by_version)} distinct version(s).")
 
     if not duplicates:

@@ -97,7 +97,7 @@ function HeroLiveMoneyValue({
 
 function HeroStatBlock({ stat, label }: { stat: LandingHeroHeadlineStat; label: string }) {
   return (
-    <div className="rounded-2xl bg-[#F7F8FA] px-5 py-4 dark:bg-white/[0.03] dark:ring-1 dark:ring-inset dark:ring-white/[0.06]">
+    <div className="rounded-2xl bg-[#F7F8FA] px-5 py-4 dark:bg-white/3 dark:ring-1 dark:ring-inset dark:ring-white/6">
       <p className="inline-flex items-center gap-1 text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-900 dark:text-neutral-50">
         <span className="min-w-0">{label}</span>
         {stat.showHint ? <Info className="h-3.5 w-3.5 shrink-0" aria-hidden /> : null}
@@ -162,7 +162,7 @@ function copierStatusClass(status: LandingHeroCopierLogRow['status']): string {
     case 'parsed':
       return 'text-green-500 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60'
     case 'skipped':
-      return 'text-warning-800 bg-warning-50 dark:!text-amber-100 dark:!bg-amber-900'
+      return 'text-warning-800 bg-warning-50 dark:text-amber-100! dark:bg-amber-900!'
     case 'failed':
       return 'text-error-800 bg-error-50 dark:text-error-300 dark:bg-error-950/70'
     default:
@@ -337,7 +337,7 @@ export function HeroDashboardPreview() {
               <div className="flex h-9 min-w-0 max-w-md flex-1 items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800/80 dark:text-neutral-50">
                 <Search className="h-4 w-4 shrink-0" aria-hidden />
                 <span className="min-w-0 truncate">{t.globalSearch.placeholder}</span>
-                <span className="ms-auto hidden text-xs ltr:sm:inline">{t.globalSearch.shortcut}</span>
+                <span className="ms-auto hidden text-xs sm:ltr:inline">{t.globalSearch.shortcut}</span>
               </div>
               <div className="ms-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
                 <span className="flex items-center gap-1.5 px-2 py-1.5 text-sm font-medium text-neutral-900 dark:text-neutral-50">

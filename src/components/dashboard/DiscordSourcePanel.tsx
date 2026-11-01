@@ -191,7 +191,7 @@ export function DiscordSourcePanel({
     const steps = [copy.discordHow1, copy.discordHow2, copy.discordHow3]
     return (
       <Card className="overflow-hidden" padding="none">
-        <div className="relative border-b border-neutral-100 bg-gradient-to-br from-neutral-200/80 via-neutral-50 to-white px-5 pb-5 pt-6 dark:border-neutral-800 dark:from-[#2a2e39] dark:via-[#1e222d] dark:to-neutral-950 sm:px-6 sm:pt-7">
+        <div className="relative border-b border-neutral-100 bg-linear-to-br from-neutral-200/80 via-neutral-50 to-white px-5 pb-5 pt-6 dark:border-neutral-800 dark:from-[#2a2e39] dark:via-[#1e222d] dark:to-neutral-950 sm:px-6 sm:pt-7">
           <div className="mx-auto flex max-w-md flex-col items-center text-center">
             <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl border border-neutral-100 bg-white shadow-md dark:border-neutral-700 dark:bg-neutral-800">
               <img src="/discord-logo.png" alt="" className="h-10 w-10 rounded-full object-cover" loading="lazy" aria-hidden />
@@ -204,7 +204,7 @@ export function DiscordSourcePanel({
           <ul className="mb-5 space-y-2.5">
             {steps.map((line, index) => (
               <li key={line} className="flex items-start gap-2.5 text-sm text-neutral-900 dark:text-neutral-50">
-                <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-semibold text-green-500 dark:bg-primary-900/50 dark:text-primary-300">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-semibold text-green-500 dark:bg-primary-900/50 dark:text-primary-300">
                   {index + 1}
                 </span>
                 {line}
@@ -502,7 +502,7 @@ function BrokerMenu({
 }) {
   const ce = useT().copierEnginePage
   return (
-    <div className="absolute left-0 top-full z-30 mt-1 min-w-[12rem] rounded-lg border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+    <div className="absolute left-0 top-full z-30 mt-1 min-w-48 rounded-lg border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
       {brokers.length === 0 ? (
         <p className="px-3 py-2 text-xs text-neutral-900 dark:text-neutral-50">{emptyLabel}</p>
       ) : brokers.map(broker => (

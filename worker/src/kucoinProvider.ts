@@ -27,6 +27,8 @@ import type {
 } from './fxsocketClient'
 import type { MtHistoryProfile } from './mtTradeFields'
 import type { BrokerProvider } from './brokerProvider'
+import type { BrokerAccountMode } from './copyShared/brokerAccountMode'
+import { noteObservedClose, observedCloseRows, type ObservedClose } from './copyShared/observedCloses'
 import {
   KucoinApiError,
   KucoinClient,
@@ -104,6 +106,8 @@ type AccountState = {
   loadedAt: number
   client: KucoinClient
   legs: Map<number, Leg>
+  /** Positions watched disappearing from the book — see `noteClosedPosition`. */
+  closed: ObservedClose[]
   hydrated: boolean
   /** Symbols whose margin mode and leverage we already applied, keyed `symbol:mode:leverage`. */
   applied: Set<string>
@@ -255,6 +259,38 @@ export class KucoinProvider implements BrokerProvider {
     const status = await this.mtStatus(id)
     return status.account?.tradeAllowed === true
   }
+
+  /**
+   * Account-wide position mode (1 = hedge, 0 = one-way). Read directly rather
+   * than through `hedgeMode`, whose error fallback reports one-way: a failed
+   * call must stay "unknown" instead of being persisted as the wrong mode.
+   */
+  async accountMode(id: string): Promise<BrokerAccountMode | null> {
+    const st = await this.state(id)
+    const result = asRecord(await st.client.signed('GET', '/api/v2/position/getPositionMode'))
+    const raw = result.positionMode
+    if (raw == null || raw === '') return null
+    const mode = Number(raw)
+    if (!Number.isFinite(mode)) return null
+    return mode === 1 ? 'hedging' : 'netting'
+  }
+  /**
+   * The exchange's own answer, read straight from the position list rather than
+   * from the copier's leg book (which can miss a leg after a restart). A failed
+   * read returns null so the caller keeps the copy open instead of guessing.
+   */
+  async stillHoldsPosition(id: string, symbol: string, side: 'buy' | 'sell'): Promise<boolean | null> {
+    try {
+      // `state()` is inside the try as well: a missing or unreadable credential is
+      // just another "cannot answer", which the contract says returns null.
+      const st = await this.state(id)
+      const positions = await this.positions(st)
+      return this.netFor(positions, symbol, side === 'buy' ? 'Buy' : 'Sell') > 0
+    } catch {
+      return null
+    }
+  }
+
 
   // ── Orders ──────────────────────────────────────────────────────────────
 
@@ -528,7 +564,7 @@ export class KucoinProvider implements BrokerProvider {
     for (const [lower, upper] of windows) {
       closed.push(...await this.listPositionHistory(st, lower, upper))
     }
-    if (closed.length === 0) return []
+    if (closed.length === 0) return observedCloseRows(st.closed, start, end)
 
     const fills: Record<string, unknown>[] = []
     const orderLinks = new Map<string, string>()
@@ -570,7 +606,7 @@ export class KucoinProvider implements BrokerProvider {
     }
 
     const contracts = await this.contracts().catch(() => new Map<string, KucoinContract>())
-    return closed.map(row => {
+    const rows: Record<string, unknown>[] = closed.map(row => {
       const symbol = String(row.symbol ?? '')
       const type = String(row.type ?? '')
       const longPosition = /LONG/.test(type)
@@ -608,9 +644,16 @@ export class KucoinProvider implements BrokerProvider {
         commission: -(finite(row.tradeFee) ?? 0),
         swap: -(finite(row.fundingFee) ?? 0),
         comment: entryOid ? commentFromOrderLinkId(entryOid) : (closeTicketFill ? this.commentForTicket(st, closeTicketFill) : ''),
+        // Rows come from history-positions (closed positions only), so `closeTime`
+        // is a real close time — history readers need it to confirm a close.
         time: closeTime || undefined,
+        closeTime: closeTime || undefined,
       }
     })
+    // Positions this worker watched disappear from KuCoin's book, reported
+    // under the ticket the copier tracks (see `noteClosedPosition`).
+    rows.push(...observedCloseRows(st.closed, start, end))
+    return rows
   }
 
   async historyPositions(id: string, from: string, to: string): Promise<unknown[]> {
@@ -742,6 +785,7 @@ export class KucoinProvider implements BrokerProvider {
       loadedAt: this.now(),
       client: new KucoinClient(credential, { fetchImpl: this.fetchImpl, now: this.now }),
       legs: new Map(),
+      closed: [],
       hydrated: false,
       applied: new Set(),
     }
@@ -1227,6 +1271,28 @@ export class KucoinProvider implements BrokerProvider {
   }
 
   /**
+   * Remember a position as closed once the exchange itself reports nothing
+   * left for it.
+   *
+   * KuCoin's history-positions rows carry a closing-order id, which is the
+   * ticket the copier tracks only when the copier placed that close: a
+   * stop-loss, take-profit or manual close never matches the tracked ticket.
+   * The mirror engine refuses to close a copy without history confirming the
+   * source is gone, so without this the copy would stay open forever. Noting
+   * the leg as it leaves the live book lets `orderHistory` answer with the
+   * tracked ticket instead — and only when the exchange reports no remaining
+   * position, so a protective order that merely disappeared (cancelled, not
+   * executed) can never confirm a close that did not happen.
+   */
+  private noteClosedPosition(st: AccountState, positions: PositionRow[], leg: Leg): void {
+    if (leg.kind !== 'position') return
+    if (this.netFor(positions, leg.symbol, leg.side) > 0) return
+    noteObservedClose(st.closed, {
+      ticket: leg.ticket, symbol: leg.symbol, operation: operationOf(leg), lots: leg.lots, at: this.now(),
+    })
+  }
+
+  /**
    * Reconcile our legs with KuCoin: drop legs whose position is gone or whose protective
    * order fired (cancelling the surviving partner), and trim quantities to what the
    * position still holds.
@@ -1245,6 +1311,7 @@ export class KucoinProvider implements BrokerProvider {
         if (!slGone && !tpGone) continue
         // One of the pair fired. Cancel the partner so it cannot reduce another leg.
         await this.cancelProtection(st, leg).catch(() => undefined)
+        this.noteClosedPosition(st, positions, leg)
         st.legs.delete(leg.ticket)
       }
     }
@@ -1261,6 +1328,7 @@ export class KucoinProvider implements BrokerProvider {
         const take = Math.min(leg.lots, left)
         if (!(take > 0)) {
           await this.cancelProtection(st, leg).catch(() => undefined)
+          this.noteClosedPosition(st, positions, leg)
           st.legs.delete(leg.ticket)
           continue
         }

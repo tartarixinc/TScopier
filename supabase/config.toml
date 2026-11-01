@@ -116,3 +116,6 @@ verify_jwt = true
 
 [functions.alert-evaluator]
 verify_jwt = false
+
+[functions.billing-backfill]
+verify_jwt = false

@@ -154,6 +154,7 @@ Deno.serve(async (req: Request) => {
           .from("subscriptions")
           .update({
             status: "canceled",
+            canceled_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           })
           .eq("user_id", userId);

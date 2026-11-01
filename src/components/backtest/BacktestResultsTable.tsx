@@ -98,7 +98,7 @@ export function BacktestResultsTable({ trades }: BacktestResultsTableProps) {
                 <td className="py-2.5 px-2 text-end tabular-nums text-neutral-900 dark:text-neutral-50">
                   {trade.sl != null ? formatEntryPrice(trade.sl) : '—'}
                 </td>
-                <td className="py-2.5 px-2 tabular-nums text-neutral-900 dark:text-neutral-50 max-w-[10rem] truncate" title={formatTpLevels(trade.tp_levels)}>
+                <td className="py-2.5 px-2 tabular-nums text-neutral-900 dark:text-neutral-50 max-w-40 truncate" title={formatTpLevels(trade.tp_levels)}>
                   {formatTpLevels(trade.tp_levels)}
                 </td>
                 <td className="py-2.5 px-2 text-neutral-900 dark:text-neutral-50 whitespace-nowrap">

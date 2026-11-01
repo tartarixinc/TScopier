@@ -16,9 +16,9 @@ export function SellSignalsSection() {
   const providerPage = useProviderPage()
 
   return (
-    <section id="providers" className="mx-auto max-w-[80rem] scroll-mt-28 px-3 py-8 sm:px-5 sm:py-12">
+    <section id="providers" className="mx-auto max-w-7xl scroll-mt-28 px-3 py-8 sm:px-5 sm:py-12">
       <article
-        className="relative isolate grid overflow-hidden rounded-[2rem] ring-1 ring-black/5 lg:min-h-[34rem] lg:grid-cols-[0.95fr_1.05fr] dark:ring-white/10"
+        className="relative isolate grid overflow-hidden rounded-4xl ring-1 ring-black/5 lg:min-h-136 lg:grid-cols-[0.95fr_1.05fr] dark:ring-white/10"
         style={{ backgroundImage: 'linear-gradient(160deg, #161d26 0%, #0c1015 75%)' }}
       >
         <div
@@ -45,7 +45,7 @@ export function SellSignalsSection() {
               return (
                 <li key={point.title} className="flex items-start gap-3.5">
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-green-400 text-neutral-950">
-                    <Icon className="h-[1.125rem] w-[1.125rem]" aria-hidden />
+                    <Icon className="h-4.5 w-4.5" aria-hidden />
                   </span>
                   <div>
                     <p className="text-sm font-semibold text-white sm:text-base">{point.title}</p>
@@ -67,7 +67,7 @@ export function SellSignalsSection() {
           </div>
         </div>
 
-        <div className="relative h-[20rem] overflow-hidden sm:h-[26rem] lg:h-auto">
+        <div className="relative h-80 overflow-hidden sm:h-104 lg:h-auto">
           <div className="absolute left-6 top-6 w-[125%] sm:left-10 sm:top-10 lg:top-14">
             <SocialTradingPreview />
           </div>

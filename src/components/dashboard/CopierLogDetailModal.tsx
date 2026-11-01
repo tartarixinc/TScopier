@@ -263,7 +263,7 @@ export function CopierLogDetailModal({
                     <span className="text-xs text-neutral-900 dark:text-neutral-50 whitespace-nowrap tabular-nums shrink-0 pt-0.5">
                       {new Date(row.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                     </span>
-                    <span className="min-w-0 break-words">
+                    <span className="min-w-0 wrap-break-word">
                       {summarizeExecutionLogRow(row, copierLogs)}
                     </span>
                   </li>
@@ -307,7 +307,7 @@ function DetailRow({
     <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-3 sm:items-start">
       <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50 shrink-0 sm:w-28">{label}</span>
       <span className={clsx(
-        'text-sm text-neutral-900 dark:text-neutral-100 min-w-0 break-words',
+        'text-sm text-neutral-900 dark:text-neutral-100 min-w-0 wrap-break-word',
         emphasize && 'font-medium',
         mono && ' text-xs text-neutral-900 dark:text-neutral-50',
       )}>

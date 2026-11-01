@@ -77,7 +77,7 @@ export function AssistantBrokerConnectCard({
   return (
     <div
       className={clsx(
-        'animate-assistant-msg-in ms-[2.375rem] rounded-2xl border border-teal-200/80 bg-white p-3.5 shadow-sm',
+        'animate-assistant-msg-in ms-9.5 rounded-2xl border border-teal-200/80 bg-white p-3.5 shadow-xs',
         'dark:border-teal-900/50 dark:bg-neutral-900',
       )}
     >
@@ -103,7 +103,7 @@ export function AssistantBrokerConnectCard({
             value={login}
             disabled={busy}
             onChange={e => setLogin(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm outline-none focus:border-green-400 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+            className="mt-1 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm outline-hidden focus:border-green-400 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
           />
         </label>
         <label className="block text-xs text-neutral-900 dark:text-neutral-50">
@@ -112,7 +112,7 @@ export function AssistantBrokerConnectCard({
             value={server}
             disabled={busy}
             onChange={e => setServer(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm outline-none focus:border-green-400 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+            className="mt-1 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm outline-hidden focus:border-green-400 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
           />
         </label>
         <label className="block text-xs text-neutral-900 dark:text-neutral-50">
@@ -121,7 +121,7 @@ export function AssistantBrokerConnectCard({
             value={label}
             disabled={busy}
             onChange={e => setLabel(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm outline-none focus:border-green-400 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+            className="mt-1 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm outline-hidden focus:border-green-400 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
           />
         </label>
         <label className="block text-xs text-neutral-900 dark:text-neutral-50">

@@ -222,7 +222,7 @@ export function AuthPage() {
           type="submit"
           loading={loading}
           disabled={captchaMisconfigured || (captchaRequired && !captchaToken)}
-          className="w-full !mt-6"
+          className="w-full mt-6!"
           size="lg"
         >
           {loginT.submit}

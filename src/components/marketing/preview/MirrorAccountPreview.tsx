@@ -52,7 +52,7 @@ export function MirrorAccountPreview() {
           </thead>
           {GROUPS.map(group => (
             <tbody key={group.master.label}>
-              <tr className="border-b border-neutral-100 bg-neutral-50/70 dark:border-neutral-800 dark:bg-white/[0.03]">
+              <tr className="border-b border-neutral-100 bg-neutral-50/70 dark:border-neutral-800 dark:bg-white/3">
                 <td className="px-4 py-3" colSpan={2}>
                   <div className="flex items-center gap-2">
                     <ChevronDown className="h-4 w-4 text-neutral-900 dark:text-neutral-50" />

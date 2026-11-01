@@ -53,6 +53,7 @@ function sanitizeProfile(row: Partial<ProfileFields> | null | undefined): Profil
     notification_sound_enabled: base.notification_sound_enabled !== false,
     notification_email_enabled: base.notification_email_enabled !== false,
     copier_paused: base.copier_paused === true,
+    social_links: base.social_links && typeof base.social_links === 'object' ? base.social_links : {},
   }
 }
 
@@ -107,6 +108,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
             notification_email_enabled: row.notification_email_enabled ?? true,
             copier_paused: row.copier_paused ?? false,
             avatar_url: row.avatar_url ?? null,
+            social_links: row.social_links ?? {},
           }),
         )
       } else {

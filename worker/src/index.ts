@@ -3,6 +3,12 @@ import path from 'path'
 
 dotenv.config()
 dotenv.config({ path: path.resolve(process.cwd(), '../.env') })
+
+// After env is loaded: route SUPABASE_URL fetches through the VPS gateway
+// header when SUPABASE_RELAY_TOKEN is set (env-breach containment).
+import { installRelayFetch } from './relayFetch'
+installRelayFetch()
+
 import {
   captureWorkerFatalError,
   captureWorkerLog,
@@ -12,6 +18,7 @@ import {
   installWorkerProcessSentryHandlers,
 } from './observability/sentry'
 import { startWorkerHeartbeatCheckIns, stopWorkerHeartbeatCheckIns } from './observability/workerHeartbeat'
+import { telegramSessionKeyFingerprints } from './telegramSessionCrypto'
 // Must be loaded before any TelegramClient runtime code — patches console.log
 // to suppress GramJS flood-wait INFO noise (83% of log volume) and
 // console.error to aggregate the `Error: TIMEOUT` stacks GramJS's update loop
@@ -33,6 +40,7 @@ import { AutoManagementMonitor } from './autoManagementMonitor'
 import { TrailingStopMonitor } from './trailingStopMonitor'
 import { BasketSlTpReconcileMonitor } from './basketSlTpReconcileMonitor'
 import { NewsTradingMonitor } from './newsTradingMonitor'
+import { OrphanPositionMonitor } from './orphanPositionMonitor'
 import { V2ReconcileMonitor } from './engine/v2ReconcileMonitor'
 import { v2EngineConfigured } from './engine/executionMode'
 import { OpenTradeReconcileMonitor } from './openTradeReconcileMonitor'
@@ -132,6 +140,7 @@ function startTradeMonitors(executor: TradeExecutor | null) {
     const openTradeReconcileMonitor = new OpenTradeReconcileMonitor(supabase)
     const closedTradeFillMonitor = new ClosedTradeFillMonitor(supabase)
     const tradeBrokerDriftMonitor = new TradeBrokerDriftMonitor(supabase)
+    const orphanPositionMonitor = new OrphanPositionMonitor(supabase)
     virtualPendingMonitor.start()
     registerVirtualPendingMonitor(virtualPendingMonitor)
     rangeBrokerPendingMonitor.start()
@@ -141,6 +150,8 @@ function startTradeMonitors(executor: TradeExecutor | null) {
     openTradeReconcileMonitor.start()
     closedTradeFillMonitor.start()
     tradeBrokerDriftMonitor.start()
+    orphanPositionMonitor.start()
+    trackMonitor(orphanPositionMonitor)
     trackMonitor(virtualPendingMonitor)
     trackMonitor(rangeBrokerPendingMonitor)
     trackMonitor(cweCloseMonitor)
@@ -223,6 +234,12 @@ async function main() {
   console.log(
     `[worker] starting role=${workerConfig.role} shard=${workerConfig.shardId}/${workerConfig.shardCount}`
     + ` instance=${workerConfig.instanceId} build=${WORKER_BUILD_TAG}`,
+  )
+
+  const sessionKeys = telegramSessionKeyFingerprints()
+  console.log(
+    `[worker] telegram-session-encryption primary=${sessionKeys.primary ?? 'not-configured'}`
+    + ` previous=${sessionKeys.previous.join(',') || 'none'}`,
   )
 
   if (workerConfig.runsListener || workerConfig.runsBacktestHttp) {

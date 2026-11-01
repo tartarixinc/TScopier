@@ -106,6 +106,9 @@ function rowFromSub(
       ? new Date(subscription.trial_end * 1000).toISOString()
       : null,
     current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+    canceled_at: subscription.canceled_at
+      ? new Date(subscription.canceled_at * 1000).toISOString()
+      : null,
     updated_at: new Date().toISOString(),
   };
 }
@@ -253,9 +256,17 @@ Deno.serve(async (req: Request) => {
 
   const active = row.status === "active" || row.status === "trialing";
   if (active) {
-    await supabase.from("user_profiles").update({ copier_paused: false }).eq("user_id", user.id);
+    await supabase
+      .from("user_profiles")
+      .update({ copier_paused: false, copier_pause_reason: null })
+      .eq("user_id", user.id);
   } else {
-    await supabase.from("user_profiles").update({ copier_paused: true }).eq("user_id", user.id);
+    // pickBest only returns active/trialing/past_due, so non-active here means
+    // the first payment has not gone through yet.
+    await supabase
+      .from("user_profiles")
+      .update({ copier_paused: true, copier_pause_reason: "payment_failed" })
+      .eq("user_id", user.id);
     await supabase.from("worker_session_leases").delete().eq("user_id", user.id);
   }
 

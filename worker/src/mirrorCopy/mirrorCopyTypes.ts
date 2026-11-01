@@ -28,6 +28,18 @@
  * That matches what the app itself displays.
  */
 
+/** Why the engine closed a copied trade; written to mirror_copy_trade_mappings.close_reason. */
+export const MIRROR_CLOSE_REASON = {
+  /** Customer closed the copy, stopped copying, or removed the slave. */
+  USER_FORCE_CLOSE: 'user_force_close',
+  /** The master trade closed and the copy followed it. */
+  SOURCE_CLOSED: 'mirror_source_closed',
+  /** The broker position disappeared before the engine closed it (manual/SL/TP). */
+  POSITION_GONE: 'position_gone',
+} as const
+
+export type MirrorCloseReason = (typeof MIRROR_CLOSE_REASON)[keyof typeof MIRROR_CLOSE_REASON]
+
 export type MirrorCopySizingMode = 'fixed_lot' | 'lot_multiplier' | 'unsupported'
 export type MirrorCopyDirectionFilter = 'both' | 'buy' | 'sell'
 export type MirrorCopyOrderType = 'market' | 'limit' | 'stop'

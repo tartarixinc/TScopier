@@ -10,7 +10,9 @@ import {
 import clsx from 'clsx'
 import { supabase } from '../../lib/supabase'
 import { platformIconSrc } from '../../lib/activityRoute'
+import { humanizeMirrorDeleteError } from '../../lib/brokerCopyLink'
 import { useAuth } from '../../context/AuthContext'
+import { useConfirm } from '../../context/ConfirmDialogContext'
 import { useT } from '../../context/LocaleContext'
 import { interpolate } from '../../i18n/interpolate'
 import { Toggle } from '../../components/ui/Toggle'
@@ -49,6 +51,7 @@ import {
 } from '../../lib/brokerAccountSelect'
 import { triggerBackgroundChannelAiTraining } from '../../lib/channelAiTrainingBackground'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
+import { useMirrorSlaveChannelGuard } from '../../hooks/useMirrorSlaveChannelGuard'
 import { useSubscription } from '../../context/SubscriptionContext'
 import {
   effectivePlan as resolveEffectivePlan,
@@ -831,6 +834,7 @@ async function resolveLatestManualSettingsPlanContext(args: {
 
 export function AccountConfigPage() {
   const t = useT()
+  const confirm = useConfirm()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const cm = t.accountConfig.configureModal
@@ -880,6 +884,7 @@ export function AccountConfigPage() {
     setHealthPollingPaused,
     upsertBroker,
   } = useBrokerAccounts()
+  const { guardBroker, modal: mirrorGuardModal } = useMirrorSlaveChannelGuard()
   const brokerBalanceRefreshStartedRef = useRef(false)
   const configureQueryHandledRef = useRef<string | null>(null)
   const { openAddTradingAccount, pendingConfigureBrokerId, clearPendingConfigureBroker } = useAddTradingAccount()
@@ -1911,6 +1916,9 @@ export function AccountConfigPage() {
     const channelId = configDraft.selectedChannelId
     if (configDraft.channelIds.includes(channelId)) return
 
+    const approved = await guardBroker(configAccount)
+    if (!approved) return
+
     setChannelConnecting(true)
     setError('')
     try {
@@ -1977,7 +1985,7 @@ export function AccountConfigPage() {
     return () => clearInterval(timer)
   }, [configDraft.selectedChannelId, trainingRunningByChannel, trainingSavingByChannel])
 
-  const closeConfigureModal = (options?: { force?: boolean }) => {
+  const closeConfigureModal = async (options?: { force?: boolean }): Promise<boolean> => {
     if (!options?.force && configAccount) {
       const draftForSignature = applyPendingConfigureDraftFields(
         configDraft,
@@ -1999,7 +2007,13 @@ export function AccountConfigPage() {
         && !storedPerChannelConfigComplete(healChannelTradingConfigsMap(configAccount), selectedId),
       )
       if (dirty || needsPersistedSave) {
-        if (!window.confirm(cm.closeUnsavedConfirm)) return
+        const discard = await confirm({
+          title: cm.closeUnsavedTitle ?? 'Discard changes',
+          body: cm.closeUnsavedConfirm,
+          confirmLabel: cm.discardChanges ?? 'Discard',
+          cancelLabel: t.common.cancel,
+        })
+        if (!discard) return false
       }
     }
     setConfigAccount(null)
@@ -2015,6 +2029,7 @@ export function AccountConfigPage() {
     setPendingDeletePreset(null)
     setChannelLinkEditMode(false)
     setError('')
+    return true
   }
 
   const toggleDraftChannel = (channelId: string) => {
@@ -2411,7 +2426,13 @@ export function AccountConfigPage() {
     }
 
     if (channelIds.length === 0) {
-      const proceed = window.confirm(bl.channelsEmptySaveWarning)
+      const proceed = await confirm({
+        title: bl.channelsEmptySaveTitle ?? 'Save without channels',
+        body: bl.channelsEmptySaveWarning,
+        confirmLabel: t.common.save,
+        cancelLabel: t.common.cancel,
+        tone: 'primary',
+      })
       if (!proceed) return false
     }
 
@@ -2444,6 +2465,14 @@ export function AccountConfigPage() {
     if (shouldBlockMultiTradeSave({ requestedMulti, effectivePlan: savePlanCtx.effectivePlan })) {
       setError(`${cm.risk.basicPlanTradeStyleLimit} Subscription upgrade may still be syncing. Please wait a few seconds and save again.`)
       return false
+    }
+
+    // After the cheap validations, right before the first write, so a
+    // destructive "disconnect mirror" choice is never wasted on a failed save.
+    const newlyLinkedChannelIds = channelIds.filter(id => !previouslyLinkedChannelIds.includes(id))
+    if (newlyLinkedChannelIds.length > 0) {
+      const approved = await guardBroker(configAccount)
+      if (!approved) return false
     }
 
     setConfigSaving(true)
@@ -2714,7 +2743,7 @@ export function AccountConfigPage() {
           if (prev.some(b => b.id === id)) return prev
           return sortBrokerAccountsNewestFirst([...prev, removed])
         })
-        setError(/unauthorized/i.test(msg) ? bl.deleteSessionExpired : msg)
+        setError(/unauthorized/i.test(msg) ? bl.deleteSessionExpired : humanizeMirrorDeleteError(msg) ?? msg)
       }
     } finally {
       setDeleteInProgress(false)
@@ -2831,30 +2860,30 @@ export function AccountConfigPage() {
         </div>
         <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center">
           <div className="relative min-w-0 flex-1">
-            <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-900 dark:text-neutral-50" />
+            <Search className="pointer-events-none absolute inset-s-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-900 dark:text-neutral-50" />
             <input
               type="search"
               value={brokerSearchQuery}
               onChange={e => setBrokerSearchQuery(e.target.value)}
               placeholder={bl.accountSearchPlaceholder}
               aria-label={bl.accountSearchLabel}
-              className="w-full rounded-lg border border-neutral-200 bg-white py-2 ps-9 pe-3 text-sm text-neutral-900 placeholder:text-neutral-900 dark:placeholder:text-neutral-50 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-green-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50"
+              className="w-full rounded-lg border border-neutral-200 bg-white py-2 ps-9 pe-3 text-sm text-neutral-900 placeholder:text-neutral-500 dark:placeholder:text-neutral-400 focus:border-transparent focus:outline-hidden focus:ring-2 focus:ring-green-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50"
             />
           </div>
           <div className="relative w-full sm:w-56">
-            <SlidersHorizontal className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-900 dark:text-neutral-50" />
+            <SlidersHorizontal className="pointer-events-none absolute inset-s-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-900 dark:text-neutral-50" />
             <select
               value={brokerFilter}
               aria-label={bl.brokerFilterLabel}
               onChange={event => setBrokerFilter(event.target.value)}
-              className="w-full appearance-none rounded-lg border border-neutral-200 bg-white py-2 ps-9 pe-8 text-sm text-neutral-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-green-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50"
+              className="w-full appearance-none rounded-lg border border-neutral-200 bg-white py-2 ps-9 pe-8 text-sm text-neutral-900 focus:border-transparent focus:outline-hidden focus:ring-2 focus:ring-green-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50"
             >
               <option value="all">{bl.platformFilterAll}</option>
               {platformFilterOptions.map(platform => (
                 <option key={platform} value={platform}>{platform}</option>
               ))}
             </select>
-            <ChevronRight className="pointer-events-none absolute end-3 top-1/2 h-4 w-4 -translate-y-1/2 rotate-90 text-neutral-900 dark:text-neutral-50" />
+            <ChevronRight className="pointer-events-none absolute inset-e-3 top-1/2 h-4 w-4 -translate-y-1/2 rotate-90 text-neutral-900 dark:text-neutral-50" />
           </div>
         </div>
 
@@ -2907,7 +2936,7 @@ export function AccountConfigPage() {
                       void openBrokerConfigurations(broker)
                     }
                   }}
-                  className="cursor-pointer border-t border-neutral-100 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-green-400 dark:border-neutral-800 dark:hover:bg-neutral-900"
+                  className="cursor-pointer border-t border-neutral-100 hover:bg-neutral-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-green-400 dark:border-neutral-800 dark:hover:bg-neutral-900"
                 >
                   <td className="px-4 py-3">
                     <p className="font-medium text-neutral-900 dark:text-neutral-50">{broker.label}</p>
@@ -2954,7 +2983,7 @@ export function AccountConfigPage() {
                             e.stopPropagation()
                             setStatusModalBroker(broker)
                           }}
-                          className="inline-flex rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400"
+                          className="inline-flex rounded-full focus:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400"
                           aria-label={bl.statusHealthView}
                         >
                           <Badge variant={healthVariant} size="sm">{healthLabel}</Badge>
@@ -3063,7 +3092,7 @@ export function AccountConfigPage() {
       />
 
       {brokerPendingDelete && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
+        <div className="fixed inset-0 z-60 flex items-center justify-center px-4">
           <div className="absolute inset-0 bg-neutral-950/55" aria-hidden />
           <div
             role="dialog"
@@ -3120,13 +3149,13 @@ export function AccountConfigPage() {
       ) : null}
 
       {configAccount && createPortal(
-        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 pb-[env(safe-area-inset-bottom)]">
+        <div className="fixed inset-0 z-100 flex items-end sm:items-center justify-center p-0 sm:p-4 pb-[env(safe-area-inset-bottom)]">
           <div className="fixed inset-0 bg-neutral-950/55" aria-hidden />
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="configure-trading-title"
-            className="relative z-[1] w-full max-w-5xl h-[100dvh] sm:h-[88vh] max-h-[100dvh] sm:max-h-[88vh] flex flex-col rounded-none sm:rounded-2xl bg-white dark:bg-neutral-900 shadow-xl border-0 sm:border border-neutral-200/65 dark:border-neutral-800/55 overflow-hidden"
+            className="relative z-1 w-full max-w-5xl h-dvh sm:h-[88vh] max-h-dvh sm:max-h-[88vh] flex flex-col rounded-none sm:rounded-2xl bg-white dark:bg-neutral-900 shadow-xl border-0 sm:border border-neutral-200/65 dark:border-neutral-800/55 overflow-hidden"
           >
             <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-neutral-100 dark:border-neutral-800 flex items-start justify-between gap-3 shrink-0">
               <div className="min-w-0 flex-1">
@@ -3180,8 +3209,9 @@ export function AccountConfigPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        closeConfigureModal()
-                        navigate('/channels')
+                        void (async () => {
+                          if (await closeConfigureModal()) navigate('/channels')
+                        })()
                       }}
                       className="shrink-0 rounded-md p-1.5 transition-colors min-h-[32px] min-w-[32px] flex items-center justify-center text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 hover:bg-neutral-100 dark:hover:text-neutral-50 dark:hover:bg-neutral-800"
                       aria-label={cm.addChannel}
@@ -3233,7 +3263,7 @@ export function AccountConfigPage() {
                       className={clsx(
                               'flex-1 min-w-0 flex items-center gap-2 text-start px-2 py-2 rounded-lg text-sm transition-colors min-h-[44px] sm:min-h-0',
                               selected
-                                ? 'bg-white dark:bg-neutral-950 text-green-500 shadow-sm border border-primary-100 dark:border-primary-900/50'
+                                ? 'bg-white dark:bg-neutral-950 text-green-500 shadow-xs border border-primary-100 dark:border-primary-900/50'
                                 : linked
                                   ? 'text-neutral-900 dark:text-neutral-50 hover:bg-white dark:hover:bg-neutral-900 border border-transparent'
                                   : 'text-neutral-900 dark:text-neutral-50 hover:bg-white dark:hover:bg-neutral-900 border border-dashed border-neutral-200 dark:border-neutral-700',
@@ -4767,7 +4797,7 @@ export function AccountConfigPage() {
                           <li key={preset.id} className="flex items-stretch gap-1 px-2 py-1.5">
                             <button
                               type="button"
-                              className="min-w-0 flex-1 rounded-lg px-3 py-2.5 text-start text-sm font-medium text-neutral-900 dark:text-neutral-50 hover:bg-neutral-50 dark:hover:bg-neutral-800/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400"
+                              className="min-w-0 flex-1 rounded-lg px-3 py-2.5 text-start text-sm font-medium text-neutral-900 dark:text-neutral-50 hover:bg-neutral-50 dark:hover:bg-neutral-800/80 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400"
                               disabled={configSaving || presetSaving}
                               onClick={() => {
                                 setShowManagePresetsModal(false)
@@ -4778,7 +4808,7 @@ export function AccountConfigPage() {
                             </button>
                             <button
                               type="button"
-                              className="shrink-0 inline-flex items-center justify-center rounded-lg p-2.5 text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-neutral-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 disabled:opacity-50"
+                              className="shrink-0 inline-flex items-center justify-center rounded-lg p-2.5 text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-neutral-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400 disabled:opacity-50"
                               aria-label={cm.managePresetsEdit}
                               title={cm.managePresetsEdit}
                               disabled={configSaving || presetSaving}
@@ -4788,7 +4818,7 @@ export function AccountConfigPage() {
                             </button>
                             <button
                               type="button"
-                              className="shrink-0 inline-flex items-center justify-center rounded-lg p-2.5 text-neutral-900 dark:text-neutral-50 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-50"
+                              className="shrink-0 inline-flex items-center justify-center rounded-lg p-2.5 text-neutral-900 dark:text-neutral-50 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-50"
                               aria-label={cm.managePresetsDelete}
                               title={cm.managePresetsDelete}
                               disabled={configSaving || presetSaving}
@@ -4966,7 +4996,7 @@ export function AccountConfigPage() {
                             <label className="flex items-center gap-3 px-5 py-3 text-sm text-neutral-900 dark:text-neutral-50 hover:bg-neutral-50 dark:hover:bg-neutral-800/60 cursor-pointer">
                               <input
                                 type="checkbox"
-                                className="rounded border-neutral-300 text-green-400 focus:ring-green-400"
+                                className="rounded-sm border-neutral-300 text-green-400 focus:ring-green-400"
                                 checked={checked}
                                 onChange={() => toggleExportPreset(preset.id)}
                               />
@@ -5061,6 +5091,7 @@ export function AccountConfigPage() {
         </div>,
         document.body,
       )}
+      {mirrorGuardModal}
     </PageShell>
   )
 }
@@ -5159,8 +5190,8 @@ function CategoryRow({
           type="button"
           disabled={disabled}
           className={clsx(
-            'px-2.5 py-1 text-xs rounded disabled:cursor-not-allowed disabled:opacity-60',
-            value === 'allow' ? 'bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-50 shadow-sm' : 'text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50 dark:text-neutral-50',
+            'px-2.5 py-1 text-xs rounded-sm disabled:cursor-not-allowed disabled:opacity-60',
+            value === 'allow' ? 'bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-50 shadow-xs' : 'text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50 dark:text-neutral-50',
           )}
           onClick={() => onChange('allow')}
           aria-pressed={value === 'allow'}
@@ -5171,8 +5202,8 @@ function CategoryRow({
           type="button"
           disabled={disabled}
           className={clsx(
-            'px-2.5 py-1 text-xs rounded disabled:cursor-not-allowed disabled:opacity-60',
-            value === 'ignore' ? 'bg-amber-50 text-amber-700 shadow-sm' : 'text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50 dark:text-neutral-50',
+            'px-2.5 py-1 text-xs rounded-sm disabled:cursor-not-allowed disabled:opacity-60',
+            value === 'ignore' ? 'bg-amber-50 text-amber-700 shadow-xs' : 'text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50 dark:text-neutral-50',
           )}
           onClick={() => onChange('ignore')}
           aria-pressed={value === 'ignore'}
@@ -5284,7 +5315,7 @@ function BrokerPageButton({
       onClick={onClick}
       aria-current={active ? 'page' : undefined}
       className={clsx(
-        'min-w-[2rem] px-2 py-1.5 text-sm rounded-md font-medium tabular-nums transition-colors',
+        'min-w-8 px-2 py-1.5 text-sm rounded-md font-medium tabular-nums transition-colors',
         active
           ? 'bg-green-400 text-neutral-950'
           : 'text-neutral-900 dark:text-neutral-50 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 border border-transparent hover:border-neutral-200 dark:hover:border-neutral-800',

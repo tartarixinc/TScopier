@@ -37,6 +37,10 @@ export interface SocialDirectoryProfile {
   reviewCount: number
   viewerRating: number | null
   sharesTradeHistory: boolean
+  createdAt: string | null
+  monthlyCopyPriceCents: number | null
+  syntheticDemo: boolean
+  socialLinks: Record<string, string>
 }
 
 interface SocialDirectoryRow {
@@ -54,6 +58,10 @@ interface SocialDirectoryRow {
   review_count: number | string
   viewer_rating: number | string | null
   shares_trade_history: boolean
+  created_at?: string | null
+  monthly_copy_price_cents?: number | string | null
+  is_synthetic_demo?: boolean
+  social_links?: unknown
 }
 
 interface RpcErrorLike {
@@ -146,6 +154,12 @@ function mapProfile(row: SocialDirectoryRow): SocialDirectoryProfile {
     reviewCount: count(row.review_count),
     viewerRating: row.viewer_rating == null ? null : Number(row.viewer_rating),
     sharesTradeHistory: row.shares_trade_history === true,
+    createdAt: row.created_at ?? null,
+    monthlyCopyPriceCents: row.monthly_copy_price_cents == null ? null : Number(row.monthly_copy_price_cents),
+    syntheticDemo: row.is_synthetic_demo === true,
+    socialLinks: row.social_links && typeof row.social_links === 'object' && !Array.isArray(row.social_links)
+      ? Object.fromEntries(Object.entries(row.social_links).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
+      : {},
   }
 }
 

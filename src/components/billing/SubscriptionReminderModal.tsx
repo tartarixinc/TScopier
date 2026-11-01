@@ -82,7 +82,7 @@ export function SubscriptionReminderModal() {
   const modal = (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center p-4 sm:p-6"
+      className="fixed inset-0 z-80 flex items-end sm:items-center justify-center p-4 sm:p-6"
       onMouseDown={onOverlayMouseDown}
       onClick={onOverlayClick}
     >

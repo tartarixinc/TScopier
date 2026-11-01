@@ -15,14 +15,18 @@ function asSettings(value: unknown): ManualSettings {
   return ensurePersistedManualSettings({ ...DEFAULT_MANUAL_SETTINGS, ...(value as ManualSettings) })
 }
 
-export async function fetchBrokerCopyLinks(
+/** Shared read of the user's copy links; optional destination narrows to slave links. */
+async function fetchCopyLinkRows(
   supabase: SupabaseClient,
   userId: string,
+  destinationBrokerId?: string,
 ): Promise<{ links: BrokerCopyLinkRow[]; error: string | null }> {
-  const { data, error } = await supabase
+  let query = supabase
     .from('broker_copy_links')
     .select('id,source_broker_account_id,destination_broker_account_id,manual_settings')
     .eq('user_id', userId)
+  if (destinationBrokerId) query = query.eq('destination_broker_account_id', destinationBrokerId)
+  const { data, error } = await query
   if (error) {
     if (/broker_copy_links/i.test(error.message) && /schema cache|does not exist|could not find/i.test(error.message)) {
       return { links: [], error: null }
@@ -36,6 +40,22 @@ export async function fetchBrokerCopyLinks(
     manual_settings: asSettings(row.manual_settings),
   }))
   return { links, error: null }
+}
+
+export async function fetchBrokerCopyLinks(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<{ links: BrokerCopyLinkRow[]; error: string | null }> {
+  return fetchCopyLinkRows(supabase, userId)
+}
+
+/** Read the copy links where this broker is the slave (destination). */
+export async function fetchBrokerCopyDestinationLinks(
+  supabase: SupabaseClient,
+  userId: string,
+  destinationBrokerId: string,
+): Promise<{ links: BrokerCopyLinkRow[]; error: string | null }> {
+  return fetchCopyLinkRows(supabase, userId, destinationBrokerId)
 }
 
 export async function setBrokerCopySource(
@@ -183,13 +203,118 @@ export async function setMirrorCopyLinkStatus(
   return { error: error?.message ?? null }
 }
 
+/** Marker the delete guard raises; stripped before the message reaches the user. */
+const MIRROR_OPEN_COPIES_MARKER = 'MIRROR_OPEN_COPIES:'
+
+/** True when the database refused a link deletion because copies are still open. */
+export function isMirrorOpenCopiesError(message: string | null | undefined): boolean {
+  return !!message && message.includes(MIRROR_OPEN_COPIES_MARKER)
+}
+
+/** Show the guard message without the machine-readable marker. */
+export function humanizeMirrorDeleteError(message: string | null | undefined): string | null {
+  if (!message) return message ?? null
+  return isMirrorOpenCopiesError(message)
+    ? message.slice(message.indexOf(MIRROR_OPEN_COPIES_MARKER) + MIRROR_OPEN_COPIES_MARKER.length).trim()
+    : message
+}
+
+/** Shown when the worker could not confirm the flatten before the deadline. */
+export const MIRROR_STOP_TIMEOUT_MESSAGE =
+  'Copied trades could not be closed on the slave account, so nothing was removed. Check the broker connection and try again.'
+
+export interface StopMirrorCopyOptions {
+  /** How long to wait for the worker to confirm the flatten. */
+  timeoutMs?: number
+  /** Delay between state reads while waiting. */
+  pollMs?: number
+  now?: () => number
+  sleep?: (ms: number) => Promise<void>
+  onState?: (state: MirrorCopyLinkStateRow) => void
+}
+
+const realSleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
+
+/** Worker failures a stop can never recover from on its own; fail fast with the detail. */
+const PERMANENT_STOP_FAILURES = new Set(['EXECUTION_DISABLED', 'LIVE_EXECUTION_DISABLED'])
+
+/**
+ * Ask the worker to stop a link and wait until it confirms the flatten.
+ * A read error does not abort the wait; a permanent worker failure does.
+ */
+export async function stopMirrorCopyLinkAndWait(
+  supabase: SupabaseClient,
+  linkId: string,
+  options: StopMirrorCopyOptions = {},
+): Promise<{ stopped: boolean; error: string | null }> {
+  const {
+    timeoutMs = 60_000,
+    pollMs = 2_000,
+    now = Date.now,
+    sleep = realSleep,
+    onState,
+  } = options
+  const { error } = await setMirrorCopyLinkStatus(supabase, linkId, 'stopped')
+  if (error) return { stopped: false, error }
+  const deadline = now() + timeoutMs
+  for (;;) {
+    const { states } = await fetchMirrorCopyLinkStates(supabase, [linkId])
+    const state = states[linkId]
+    if (state) onState?.(state)
+    if (state?.status === 'stopped') return { stopped: true, error: null }
+    if (state?.status === 'error' && state.error_code && PERMANENT_STOP_FAILURES.has(state.error_code)) {
+      return {
+        stopped: false,
+        error: state.error_detail ? `${state.error_code}: ${state.error_detail}` : state.error_code,
+      }
+    }
+    if (now() >= deadline) return { stopped: false, error: null }
+    await sleep(pollMs)
+  }
+}
+
+export interface SafeDisconnectResult {
+  removed: boolean
+  error: string | null
+}
+
+/**
+ * Delete a copy link, flattening first when the database guard refuses because
+ * copied trades are still open: stop the link, wait for the worker to close the
+ * copies, then retry the delete once. Nothing is deleted on a failed stop.
+ */
+export async function disconnectBrokerCopyLinkSafely(
+  supabase: SupabaseClient,
+  userId: string,
+  link: Pick<BrokerCopyLinkRow, 'id' | 'source_broker_account_id' | 'destination_broker_account_id'>,
+  options: StopMirrorCopyOptions = {},
+): Promise<SafeDisconnectResult> {
+  const attemptDelete = () => disconnectBrokerCopyLink(
+    supabase,
+    userId,
+    link.source_broker_account_id,
+    link.destination_broker_account_id,
+  )
+  const first = await attemptDelete()
+  if (!first.error) return { removed: true, error: null }
+  if (!isMirrorOpenCopiesError(first.error)) return { removed: false, error: first.error }
+  const stop = await stopMirrorCopyLinkAndWait(supabase, link.id, options)
+  if (stop.error) return { removed: false, error: stop.error }
+  if (!stop.stopped) return { removed: false, error: MIRROR_STOP_TIMEOUT_MESSAGE }
+  const retry = await attemptDelete()
+  if (!retry.error) return { removed: true, error: null }
+  return { removed: false, error: humanizeMirrorDeleteError(retry.error) }
+}
+
 /** Badge tone for a link's lifecycle state. */
 export function mirrorCopyStatusTone(
   state: MirrorCopyLinkStateRow | undefined,
 ): 'success' | 'warning' | 'error' | 'neutral' {
   if (!state) return 'neutral'
   if (state.status === 'error' || state.status === 'unsupported_provider' || state.error_code) return 'error'
+  if (state.status === 'stopped') return 'neutral'
+  // A stop request the worker has not confirmed yet is still in flight.
+  if (state.desired_status === 'stopped') return 'warning'
   if (state.status === 'active') return 'success'
-  if (state.status === 'stopped' || state.desired_status === 'stopped') return 'neutral'
   return 'warning'
 }

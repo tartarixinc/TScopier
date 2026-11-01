@@ -122,7 +122,7 @@ export function AddAccountPlatformModal({ open, onClose, onSelect }: AddAccountP
                     className={clsx(
                       'group relative flex h-full w-full flex-col items-center gap-2 rounded-2xl border px-2 py-4 text-center transition-all',
                       available
-                        ? 'border-neutral-200/65 bg-white hover:-translate-y-0.5 hover:border-green-400 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400 dark:border-neutral-800/55 dark:bg-neutral-900'
+                        ? 'border-neutral-200/65 bg-white hover:-translate-y-0.5 hover:border-green-400 hover:shadow-md focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400 dark:border-neutral-800/55 dark:bg-neutral-900'
                         : 'cursor-not-allowed border-neutral-100 bg-neutral-50/60 dark:border-neutral-800/40 dark:bg-neutral-900/50',
                     )}
                   >
@@ -137,7 +137,7 @@ export function AddAccountPlatformModal({ open, onClose, onSelect }: AddAccountP
                         alt=""
                         draggable={false}
                         className={clsx(
-                          'max-h-14 max-w-[4.5rem] object-contain transition-transform',
+                          'max-h-14 max-w-18 object-contain transition-transform',
                           available ? 'group-hover:scale-105' : 'opacity-50 grayscale',
                         )}
                       />

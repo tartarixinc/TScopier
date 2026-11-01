@@ -593,29 +593,32 @@ export async function getSymbolList(ctx: TradeExecutorContext, uuid: string): Pr
     return fetchPromise
   }
 
+/** Normalize a broker /Symbols response (strings or objects) into a name list. */
+export function parseSymbolListResponse(raw: unknown): string[] | null {
+  if (!Array.isArray(raw)) return null
+  const list: string[] = []
+  for (const item of raw) {
+    let name: string | null = null
+    if (typeof item === 'string') name = item
+    else if (item && typeof item === 'object') {
+      const o = item as Record<string, unknown>
+      const n = o.symbolName ?? o.SymbolName ?? o.symbol ?? o.Symbol ?? o.name ?? o.Name
+      if (typeof n === 'string') name = n
+    }
+    if (name && name.trim()) list.push(name)
+  }
+  return list.length ? list : null
+}
+
 export async function fetchSymbolList(ctx: TradeExecutorContext, uuid: string): Promise<SymbolListCacheEntry | null> {
     const api = ctx.apiForUuid(uuid)
     if (!api) return null
     try {
       const raw = await api.symbols(uuid)
-      const list: string[] = []
-      const set = new Set<string>()
-      if (Array.isArray(raw)) {
-        for (const item of raw) {
-          let name: string | null = null
-          if (typeof item === 'string') name = item
-          else if (item && typeof item === 'object') {
-            const o = item as Record<string, unknown>
-            const n = o.symbolName ?? o.SymbolName ?? o.symbol ?? o.Symbol ?? o.name ?? o.Name
-            if (typeof n === 'string') name = n
-          }
-          if (name && name.trim()) {
-            list.push(name)
-            set.add(name.toUpperCase())
-          }
-        }
-      }
-      if (!list.length) return null
+      const names = parseSymbolListResponse(raw)
+      if (!names) return null
+      const list = names
+      const set = new Set(names.map(name => name.toUpperCase()))
       const entry: SymbolListCacheEntry = { set, list, loadedAt: Date.now() }
       ctx.symbolListCache.set(uuid, entry)
       void onBrokerSymbolInventoryReady(ctx, uuid, entry).catch(err => {
@@ -630,63 +633,113 @@ export async function fetchSymbolList(ctx: TradeExecutorContext, uuid: string): 
     }
   }
 
-export function resolveBrokerSymbolFromInventory(ctx: TradeExecutorContext, 
-    inventory: SymbolListCacheEntry,
-    requested: string,
-    opts?: { userDecorated?: boolean },
-  ): string {
-    const target = requested.toUpperCase()
-
-    // Deriv synthetics: the canonical code (R_75, BOOM1000…) rarely matches the
-    // broker's display name (`Volatility 75 Index`), so resolve via the Deriv
-    // alias map before the generic FX suffix/contains heuristics. The synthetic
-    // gate is broker-safe — only canonical synthetic codes ever reach here.
-    if (isDerivSyntheticSymbol(target)) {
-      const brokerSymbol = resolveDerivCanonicalToBrokerSymbol(target, inventory.list)
-      if (brokerSymbol) return brokerSymbol
-      console.warn(
-        `[tradeExecutor] Deriv synthetic ${requested} not found in broker /Symbols list`,
-      )
-      return requested
-    }
-
-    if (opts?.userDecorated === true) {
-      if (inventory.set.has(target)) {
-        const exact = inventory.list.find(s => s.toUpperCase() === target)
-        return exact ?? requested
+/**
+ * Remove known broker decorations (suffixes/prefixes) from an upper-cased
+ * symbol to recover the bare instrument name another account may list, e.g.
+ * `XAUUSDm` -> `XAUUSD`, `#US30` -> `US30`. Used to resolve a symbol that was
+ * decorated for one account against an account that lists it undecorated.
+ */
+export function stripBrokerDecorations(symbolUpper: string): string[] {
+  const suffixes = BROKER_SYMBOL_SUFFIXES.filter(s => s !== '')
+  // Only unambiguous decoration prefixes. Bare letters like 'M' are stripped
+  // nowhere: META->ETA / MRNA->RNA would otherwise become wrong-instrument
+  // matches. Suffix stripping ('XAUUSDm' -> 'XAUUSD') is the incident vector
+  // and stays fully enabled.
+  const prefixes = BROKER_SYMBOL_PREFIXES.filter(p => p !== '' && p !== 'M')
+  const out = new Set<string>()
+  const push = (value: string): void => {
+    if (value !== symbolUpper && value.length >= 3) out.add(value)
+  }
+  for (const suffix of suffixes) {
+    if (symbolUpper.endsWith(suffix)) push(symbolUpper.slice(0, -suffix.length))
+  }
+  for (const prefix of prefixes) {
+    if (symbolUpper.startsWith(prefix)) push(symbolUpper.slice(prefix.length))
+  }
+  for (const prefix of prefixes) {
+    for (const suffix of suffixes) {
+      if (symbolUpper.startsWith(prefix) && symbolUpper.endsWith(suffix)) {
+        push(symbolUpper.slice(prefix.length, symbolUpper.length - suffix.length))
       }
-      console.warn(
-        `[tradeExecutor] user-decorated symbol not in broker /Symbols list: ${requested}`,
-      )
-      return requested
     }
+  }
+  return [...out]
+}
 
+/**
+ * Pure catalog matcher: resolve `requested` against a broker's live /Symbols
+ * inventory. Order: exact -> (decorated add, plus bare-base strip for
+ * reverse direction) -> metal alias -> index alias -> contains -> requested.
+ * Shared by the signal executor and the mirror copy monitor.
+ */
+export function matchBrokerSymbolFromInventory(
+  inventory: SymbolListCacheEntry,
+  requested: string,
+  opts?: { userDecorated?: boolean },
+): string {
+  const target = requested.toUpperCase()
+
+  if (isDerivSyntheticSymbol(target)) {
+    const brokerSymbol = resolveDerivCanonicalToBrokerSymbol(target, inventory.list)
+    if (brokerSymbol) return brokerSymbol
+    console.warn(
+      `[tradeExecutor] Deriv synthetic ${requested} not found in broker /Symbols list`,
+    )
+    return requested
+  }
+
+  if (opts?.userDecorated === true) {
     if (inventory.set.has(target)) {
       const exact = inventory.list.find(s => s.toUpperCase() === target)
       return exact ?? requested
     }
-
-    const candidates = decoratedInventoryCandidates(inventory, target)
-    if (candidates.length) {
-      const winner = candidates[0]
-      return winner!
-    }
-
-    const metal = resolveMetalAliasFromInventory(inventory, target)
-    if (metal) return metal
-
-    const indexAlias = resolveIndexAliasFromInventory(inventory, target)
-    if (indexAlias) return indexAlias
-
-    const contains = inventory.list.filter(s => s.toUpperCase().includes(target))
-    if (contains.length === 1) return contains[0]!
-    if (contains.length > 1) {
-      contains.sort((a, b) => a.length - b.length)
-      return contains[0]!
-    }
-
+    console.warn(
+      `[tradeExecutor] user-decorated symbol not in broker /Symbols list: ${requested}`,
+    )
     return requested
   }
+
+  if (inventory.set.has(target)) {
+    const exact = inventory.list.find(s => s.toUpperCase() === target)
+    return exact ?? requested
+  }
+
+  // The requested name may itself be another account's decoration of the same
+  // instrument (`XAUUSDm` from a master account when this account lists plain
+  // `XAUUSD`). Try the bare bases alongside the requested name so a decorated
+  // source symbol resolves in both directions.
+  const bases = [target, ...stripBrokerDecorations(target)]
+  for (const base of bases) {
+    if (base !== target && inventory.set.has(base)) {
+      return inventory.list.find(s => s.toUpperCase() === base) ?? base
+    }
+    const candidates = decoratedInventoryCandidates(inventory, base)
+    if (candidates.length) return candidates[0]!
+  }
+  for (const base of bases) {
+    const metal = resolveMetalAliasFromInventory(inventory, base)
+    if (metal) return metal
+    const indexAlias = resolveIndexAliasFromInventory(inventory, base)
+    if (indexAlias) return indexAlias
+    if (base !== target) continue
+    const contains = inventory.list.filter(s => s.toUpperCase().includes(base))
+    if (contains.length > 0) {
+      contains.sort((a, b) => a.length - b.length || a.localeCompare(b))
+      return contains[0]!
+    }
+  }
+  return requested
+}
+
+/** Back-compat wrapper (the `ctx` argument is intentionally unused). */
+export function resolveBrokerSymbolFromInventory(
+  _ctx: TradeExecutorContext,
+  inventory: SymbolListCacheEntry,
+  requested: string,
+  opts?: { userDecorated?: boolean },
+): string {
+  return matchBrokerSymbolFromInventory(inventory, requested, opts)
+}
 
 export async function resolveBrokerSymbolForLiveEntry(
     ctx: TradeExecutorContext,

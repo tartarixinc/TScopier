@@ -191,7 +191,7 @@ export function SignalReviewDetailModal({ signal, onClose }: SignalReviewDetailM
             <p className="text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
               Telegram message
             </p>
-            <p className="text-sm text-neutral-900 dark:text-neutral-50 whitespace-pre-wrap break-words rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50/80 dark:bg-neutral-800/30 px-4 py-3">
+            <p className="text-sm text-neutral-900 dark:text-neutral-50 whitespace-pre-wrap wrap-break-word rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50/80 dark:bg-neutral-800/30 px-4 py-3">
               {messageText}
             </p>
             {signal.raw_image_url ? (
@@ -255,7 +255,7 @@ export function SignalReviewDetailModal({ signal, onClose }: SignalReviewDetailM
           ) : null}
 
           {error ? (
-            <p className="text-sm text-red-600 dark:text-red-400 break-words">{error}</p>
+            <p className="text-sm text-red-600 dark:text-red-400 wrap-break-word">{error}</p>
           ) : null}
         </div>
 

@@ -42,6 +42,8 @@ export class FxsocketProvider implements BrokerProvider {
   orderSend(id: string, args: OrderSendArgs): Promise<OrderResult> { return this.client.orderSend(id, args) }
   orderModify(id: string, args: OrderModifyArgs): Promise<OrderResult> { return this.client.orderModify(id, args) }
   orderClose(id: string, args: OrderCloseArgs): Promise<OrderResult> { return this.client.orderClose(id, args) }
+  /** FXSocket's OrderClose already removes pendings — same call, cancel semantics. */
+  orderCancel(id: string, args: { ticket: number }): Promise<OrderResult> { return this.client.orderClose(id, { ticket: args.ticket }) }
   openedOrders(id: string): Promise<unknown[]> { return this.client.openedOrders(id) }
   closedOrders(id: string): Promise<unknown[]> { return this.client.closedOrders(id) }
   orderHistory(id: string, from: string, to: string, timeoutMs?: number): Promise<unknown[]> {

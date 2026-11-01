@@ -536,7 +536,7 @@ function resolveTradeSideFromMessage(
 }
 
 function buildTpRegex(extraLabels: string[] = []): RegExp {
-  const base = ["tp", "take\\s*profit", "target(?:\\s+level)?"]
+  const base = ["tps?", "take\\s*profit", "target(?:\\s+level)?"]
   const custom = extraLabels.map((x) => escapeRegExp(x.trim())).filter(Boolean)
   // Guard against tier ordinals being mistaken for TP prices in shapes like:
   // "Take Profit 1: 4514.00" (capture 4514, not the ordinal 1); the trailing
@@ -548,7 +548,7 @@ function buildTpRegex(extraLabels: string[] = []): RegExp {
   )
 }
 
-function extractTpLevels(message: string, extraLabels: string[] = []): {
+export function extractTpLevels(message: string, extraLabels: string[] = []): {
   values: number[]
   explicitPips: boolean
 } {
@@ -582,29 +582,29 @@ function extractTpLevels(message: string, extraLabels: string[] = []): {
   // up to two ASCII digits, but an ASCII tier is only accepted when followed by the "(" (a
   // full price glued to the label, e.g. "TP4105 (4080)", must not be eaten as a tier).
   collect(new RegExp(
-    `\\b(?:tp|take\\s*profit|target(?:\\s+level)?)(?:\\s*(?:[\\u00B9\\u00B2\\u00B3\\u2070-\\u2079]+|\\d{1,2}(?![0-9])))?\\s*(?:[#.:]\\s*)?(?:\\u2197|\\u2192|\\u27A4)?\\s*\\(\\s*(${SIGNAL_PRICE_NUM})\\s*\\)`,
+    `\\b(?:tps?|take\\s*profit|target(?:\\s+level)?)(?:\\s*(?:[\\u00B9\\u00B2\\u00B3\\u2070-\\u2079]+|\\d{1,2}(?![0-9])))?\\s*(?:[#.:]\\s*)?(?:\\u2197|\\u2192|\\u27A4)?\\s*\\(\\s*(${SIGNAL_PRICE_NUM})\\s*\\)`,
     'giu',
   ))
   // Numbered tiers — "TP 1 4086" must not capture ordinal 1 via the generic TP regex.
-  collect(new RegExp(`\\b(?:tp|take\\s*profit|target(?:\\s+level)?)\\s*#\\s*\\d+\\s*[:=\\-@]\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
-  collect(new RegExp(`\\b(?:tp|take\\s*profit|target(?:\\s+level)?)\\s+\\d+\\s*[:=\\-@]\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
-  collect(new RegExp(`\\b(?:tp|target(?:\\s+level)?)\\s*\\d{1,2}\\s*[:=\\-@]\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
+  collect(new RegExp(`\\b(?:tps?|take\\s*profit|target(?:\\s+level)?)\\s*#\\s*\\d+\\s*[:=\\-@]\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
+  collect(new RegExp(`\\b(?:tps?|take\\s*profit|target(?:\\s+level)?)\\s+\\d+\\s*[:=\\-@]\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
+  collect(new RegExp(`\\b(?:tps?|target(?:\\s+level)?)\\s*\\d{1,2}\\s*[:=\\-@]\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
   // Tier index is 1–2 digits and the price follows on the next line: "TP 1\n4112".
   // The 1–2 digit bound stops "TP 4105" being split so only 100 satisfies the tier;
   // `(?![0-9.])` stops a partial digit run and `(?!\s*%)` stops a "100% sure" line.
-  collect(new RegExp(`\\b(?:tp|target(?:\\s+level)?)\\s*\\d{1,2}\\s+(${SIGNAL_PRICE_NUM})(?![0-9.])(?!\\s*%)`, 'gi'))
-  collect(new RegExp(`\\btp\\s*\\.\\s*(${SIGNAL_PRICE_NUM})(?![0-9.])(?!\\s*%)`, 'gi'))
-  collect(new RegExp(`\\b(?:tp|take\\s*profit)\\b[.\\s]+(${SIGNAL_PRICE_NUM})(?![0-9.])(?!\\s*%)`, 'gi'))
+  collect(new RegExp(`\\b(?:tps?|target(?:\\s+level)?)\\s*\\d{1,2}\\s+(${SIGNAL_PRICE_NUM})(?![0-9.])(?!\\s*%)`, 'gi'))
+  collect(new RegExp(`\\btps?\\s*\\.\\s*(${SIGNAL_PRICE_NUM})(?![0-9.])(?!\\s*%)`, 'gi'))
+  collect(new RegExp(`\\b(?:tps?|take\\s*profit)\\b[.\\s]+(${SIGNAL_PRICE_NUM})(?![0-9.])(?!\\s*%)`, 'gi'))
   // Tier index only (1–2 digits): "TP1. 4066" or "TP1@4066". Must not match "TP 4053.22" (full decimal price).
-  collect(new RegExp(`\\btp\\s*\\d{1,2}\\s*\\.\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
-  collect(new RegExp(`\\btp\\s*\\d{1,2}[@.\\s]+(${SIGNAL_PRICE_NUM})`, 'gi'))
-  collect(new RegExp(`\\btp[\\u00B9\\u00B2\\u00B3\\u2070-\\u2079]+(${SIGNAL_PRICE_NUM})`, 'giu'))
+  collect(new RegExp(`\\btps?\\s*\\d{1,2}\\s*\\.\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
+  collect(new RegExp(`\\btps?\\s*\\d{1,2}[@.\\s]+(${SIGNAL_PRICE_NUM})`, 'gi'))
+  collect(new RegExp(`\\btps?[\\u00B9\\u00B2\\u00B3\\u2070-\\u2079]+(${SIGNAL_PRICE_NUM})`, 'giu'))
   collect(new RegExp(`(?:الهدف\\s*(?:الأول|الثاني|الثالث|\\d+)|جني\\s*الأرباح|جني\\s*الارباح)\\s*[:：]?\\s*(${SIGNAL_PRICE_NUM})`, 'giu'))
 
   collect(buildTpRegex(extraLabels))
   // TP: 4557 / 4527 (slash-separated tiers on one label — not thousands commas)
   for (const m of text.matchAll(
-    /\b(?:tp|take\s*profit|target(?:\s+level)?)\s*[:=]?\s*((?:\d+(?:\.\d+)?(?:\s*(?:\/|\band\b|\|)\s*)+)+\d+(?:\.\d+)?)(?:\s*pips?\b)?/gi,
+    /\b(?:tps?|take\s*profit|target(?:\s+level)?)\s*[:=]?\s*((?:\d+(?:\.\d+)?(?:\s*(?:\/|\band\b|\|)\s*)+)+\d+(?:\.\d+)?)(?:\s*pips?\b)?/gi,
   )) {
     const block = m[1] ?? ''
     const base = m.index ?? 0
@@ -616,6 +616,95 @@ function extractTpLevels(message: string, extraLabels: string[] = []): {
       if (value == null) continue
       const partStart = base + offset + normalized.indexOf(part)
       hits.push({ index: partStart, value })
+    }
+  }
+
+  // "TP: 4010, 4020, 4030" / "TPs: 4010 4020 4030" / "TP: 4,050, 4,060" — a
+  // list of tiers on one label, separated by commas and/or spaces ON THE SAME
+  // LINE. The separator is a single character class (no alternation): a
+  // nested `\s*,\s*|[ \t]` alternation backtracks catastrophically on a
+  // crafted run ("TP: 4010 , , , …" stalled the listener for minutes).
+  //
+  // Guards, in order:
+  //   * "SL.TP 4105" — a combined label whose price is the stop; the same
+  //     guard the single-price collectors use, so the stop cannot become TP1.
+  //   * A run is only split when EVERY segment looks like a full price: a
+  //     decimal point or ≥3 digits, no leading zeros — so `4,050` keeps being
+  //     read as one price (4050), and `405,050` is left to that rule too.
+  //   * Thousands pairs (`4,050, 4,060`) merge back into full prices.
+  //   * Every tier must sit within 10× of the first tier, so an order id or
+  //     stray number on the same line cannot ride into the ladder.
+  {
+    const seg = "\\d+(?:\\.\\d+)?"
+    const listLabels = [
+      'tps?',
+      'take\\s*profit',
+      'target(?:\\s+level)?',
+      ...extraLabels.map((x) => escapeRegExp(x.trim())).filter(Boolean),
+    ].join('|')
+    const listRun = new RegExp(
+      `\\b(?:${listLabels})\\s*[:=]?\\s*(${seg}(?:[\\t ,]+${seg})+)`,
+      "gi",
+    )
+    for (const m of text.matchAll(listRun)) {
+      const labelStart = m.index ?? 0
+      const block = m[1] ?? ""
+      if (block.length > 120) continue
+      if (/\b(?:sl|stop\s*loss|stoploss)[ \t_./-]+$/i.test(text.slice(Math.max(0, labelStart - 24), labelStart))) continue
+      const blockStart = labelStart + m[0].indexOf(block)
+      const after = text.slice(blockStart + block.length, blockStart + block.length + 12)
+      if (/^\s*pips?\b/i.test(after)) explicitPips = true
+      const segments = block.split(/[\t ,]+/).filter(Boolean)
+      if (segments.length < 2) continue
+
+      // Locate every original segment first (positions come from the text as
+      // written, so a merged thousands pair still points at its first digit).
+      const pieces: Array<{ raw: string; at: number }> = []
+      let cursor = blockStart
+      let located = true
+      for (const piece of segments) {
+        const at = text.indexOf(piece, cursor)
+        if (at < 0) { located = false; break }
+        cursor = at + piece.length
+        pieces.push({ raw: piece, at })
+      }
+      if (!located) continue
+
+      // Thousands form in pairs: `4,050, 4,060` (short head, exactly-3 tail).
+      let tiersParts = pieces
+      const allDigits = pieces.every(x => /^\d+$/.test(x.raw))
+      // Merge only for the thousands convention SIGNAL_PRICE_NUM itself uses:
+      // a bare comma inside the pair (`4,050`). A spaced pair (`50, 100`) is a
+      // genuine two-tier ladder and must NOT be merged into 50100.
+      const bareCommaInsidePairs = pieces.every((x, i) => {
+        if (i % 2 !== 0) return true
+        const next = pieces[i + 1]
+        return next != null && text.slice(x.at + x.raw.length, next.at) === ','
+      })
+      const pairShaped = allDigits
+        && pieces.length % 2 === 0
+        && bareCommaInsidePairs
+        && pieces.every((x, i) => (i % 2 === 0 ? x.raw.length <= 2 : x.raw.length === 3))
+      if (pairShaped) {
+        const merged: Array<{ raw: string; at: number }> = []
+        for (let i = 0; i < pieces.length; i += 2) {
+          merged.push({ raw: pieces[i]!.raw + pieces[i + 1]!.raw, at: pieces[i]!.at })
+        }
+        tiersParts = merged
+      }
+
+      const looksLikePrices = tiersParts.every(x =>
+        (x.raw.includes(".") || x.raw.replace(/\D/g, "").length >= 3) && !/^0\d/.test(x.raw),
+      )
+      if (!looksLikePrices) continue
+      const firstValue = parseSignalPriceToken(tiersParts[0]!.raw)
+      if (firstValue == null) continue
+      for (const part of tiersParts) {
+        const value = parseSignalPriceToken(part.raw)
+        if (value == null) continue
+        if (value > firstValue * INFERRED_PRICE_MAX_ENTRY_RATIO || value * INFERRED_PRICE_MAX_ENTRY_RATIO < firstValue) continue
+        hits.push({ index: part.at, value })
+      }
     }
   }
 
@@ -895,6 +984,13 @@ function parseDeterministicManagement(
   message: string,
   lexicon: ChannelLexiconRow | null,
   channelKeywords: ChannelKeywords,
+  /**
+   * True only for the full sync chain (`parseChannelMessageSync`), whose next
+   * stages include the entry parsers. The management-only caller
+   * (`parseModificationDeterministic`) has no entry parsers, so handing a
+   * message back there would drop it instead of re-routing it.
+   */
+  allowEntryHandoff = false,
 ): ChannelParsedSignal | null {
   const t = message.replace(/\s+/g, " ").trim()
   if (!t) return null
@@ -1026,6 +1122,23 @@ function parseDeterministicManagement(
     action = "close"
   }
   else if (looksLikeStopOrTpAdjustCommand(t) || hasAnyKeyword(t, kwModify)) {
+    // "BUY XAUUSD NOW / SL=3990 / TP=4010": here `=` is only a separator —
+    // the same message written with `:` or a space already parses as an entry.
+    // The punctuation form (`label = digits`) must not out-rank an explicit
+    // trade side, so hand the message back to the entry parsers when a side is
+    // present and no real management verb/keyword is. A sideless `SL=…/TP=…`
+    // post stays a modification (a parameter follow-up on an existing trade),
+    // and verb-based management ("SET SL TO …", "MOVE SL …") is untouched.
+    // Shared helper covers channel/lexicon side aliases, not just English.
+    const sideEvidence = messageHasSideKeywords(t, channelKeywords, lexicon)
+    const verbEvidence =
+      new RegExp(`\\b(?:${SL_MGMT_VERBS})\\s+(?:${SL_TEXT_LABELS}|${TP_TEXT_LABELS})\\b`, 'i').test(t)
+      || hasAnyKeyword(t, kwModify)
+    // Only the full sync chain can consume it — and only when there is an
+    // instrument to trade. A symbol-less side message ("BUY SL=3990") has no
+    // entry parser to fall through to, and the management-only path has none
+    // either, so both keep their modify meaning.
+    if (allowEntryHandoff && sideEvidence && sym && !verbEvidence) return null
     action = "modify"
     confidence = 0.95
   }
@@ -1956,7 +2069,7 @@ export function parseChannelMessageSync(
         ? { provider_signal_number: forexBro.provider_signal_number }
         : {}),
     } satisfies ChannelParsedSignal
-    : parseDeterministicManagement(message, lexicon, channelKeywords) ??
+    : parseDeterministicManagement(message, lexicon, channelKeywords, true) ??
     parseChannelParameterFollowUp(message, lexicon, channelKeywords) ??
     parseSimpleSignal(message, lexicon, channelKeywords) ??
     parseEntryFromKeywords(message, lexicon, channelKeywords))

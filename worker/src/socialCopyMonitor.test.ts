@@ -8,7 +8,8 @@ const subscription = (patch: Partial<SocialCopySubscriptionRow> = {}): SocialCop
   source_id: 'source-1',
   destination_broker_account_id: 'dst',
   sizing_mode: 'fixed_lot', fixed_lot: 0.12, lot_multiplier: 1, max_lot: 0.2,
-  max_daily_loss: null, requested_account_mode: 'demo', symbol_map: {},
+  max_daily_loss: null, requested_account_mode: 'demo',
+  source_account_mode: 'demo', destination_account_mode: 'demo', execution_path: 'broker', symbol_map: {},
   status: 'pending', desired_status: 'active', error_code: null, ...patch,
 })
 
@@ -19,8 +20,13 @@ class Query implements PromiseLike<{ data: unknown; error: Row | null }> {
   private mutation: 'insert' | 'update' | null = null
   private payload: Row = {}
   private wantsSingle = false
+  private selectedColumns = '*'
   constructor(private db: FakeDb, private table: string) {}
-  select(): this { return this }
+  select(columns = '*'): this {
+    this.selectedColumns = columns
+    if (this.table === 'broker_accounts') this.db.brokerAccountSelections.push(columns)
+    return this
+  }
   order(): this { return this }
   eq(key: string, value: unknown): this { this.filters.push(row => row[key] === value); return this }
   in(key: string, values: unknown[]): this { this.filters.push(row => values.includes(row[key])); return this }
@@ -48,6 +54,11 @@ class Query implements PromiseLike<{ data: unknown; error: Row | null }> {
       rows.push(row)
       return { data: this.wantsSingle ? row : [row], error: null }
     }
+    if (this.mutation === null && this.table === 'broker_accounts' && this.db.missingBrokerColumn
+      && this.selectedColumns.split(',').some(column => column.trim() === this.db.missingBrokerColumn)) {
+      const column = this.db.missingBrokerColumn
+      return { data: null, error: { message: `column broker_accounts.${column} does not exist` } }
+    }
     const data = this.wantsSingle ? (matches[0] ?? null) : matches
     return { data, error: this.wantsSingle && !data ? { message: 'not found' } : null }
   }
@@ -59,6 +70,10 @@ class FakeDb {
     broker_accounts: [broker('src'), broker('dst')],
     social_copy_trade_mappings: [], social_copy_execution_events: [], social_copy_subscriptions: [],
   }
+  /** Test hook: while set, the first broker_accounts select fails as if the
+   * database predates that provider column (see `missingProviderIdColumn`). */
+  missingBrokerColumn: string | null = null
+  brokerAccountSelections: string[] = []
   claimed: SocialCopySubscriptionRow[] = []
   rpc = async (name: string): Promise<{ data: unknown; error: null }> => ({ data: name === 'claim_social_copy_subscriptions' ? this.claimed : name === 'check_social_copy_subscription_authorization' ? true : null, error: null })
   from = (table: string): Query => new Query(this, table)
@@ -177,4 +192,91 @@ test('pause is acknowledged without broker writes and stop closes mapped positio
   await stopping.tick()
   assert.equal(destination.closes, 1)
   assert.equal(db.tables.social_copy_subscriptions[0]?.status, 'stopped')
+})
+
+test('a database without later provider columns retries with the legacy column set', async () => {
+  const db = new FakeDb()
+  db.missingBrokerColumn = 'matchtrader_account_id'
+  const sub = subscription({ status: 'active' })
+  db.claimed = [sub]
+  db.tables.social_copy_subscriptions = [{ ...sub }]
+  const source = provider({ orders: [sourcePosition] })
+  const destination = provider()
+  const monitor = new SocialCopyMonitor(db as never, { executionEnabled: true, providerFor: row => String((row as Row).id) === 'src' ? source : destination })
+  await monitor.tick()
+  assert.ok(db.brokerAccountSelections.some(columns => columns.includes('matchtrader_account_id')))
+  assert.ok(db.brokerAccountSelections.some(columns => !columns.includes('matchtrader_account_id')))
+  assert.equal(destination.sends, 1, 'the fallback read must keep the subscription working')
+  assert.equal(db.tables.social_copy_trade_mappings[0]?.state, 'open')
+})
+
+
+test('synthetic subscriptions are persisted and acknowledged without resolving or writing to a broker', async () => {
+  const db = new FakeDb()
+  const sub = subscription({ execution_path: 'synthetic_simulation' })
+  db.claimed = [sub]
+  db.tables.social_copy_subscriptions = [{ ...sub }]
+  let providerCalls = 0
+  const monitor = new SocialCopyMonitor(db as never, {
+    executionEnabled: true,
+    syntheticSimulationEnabled: true,
+    providerFor: () => { providerCalls++; return provider() },
+  })
+  await monitor.tick()
+  assert.equal(providerCalls, 0)
+  assert.equal(db.tables.social_copy_subscriptions[0]?.status, 'active')
+  assert.equal(db.tables.social_copy_execution_events[0]?.action, 'simulation')
+  assert.deepEqual(db.tables.social_copy_execution_events[0]?.result_payload, {
+    simulated: true,
+    broker_orders_created: 0,
+  })
+})
+
+test('supports every verified Demo and Live source/destination mode combination when live execution is enabled', async () => {
+  const combinations = [
+    ['demo', 'demo'],
+    ['demo', 'live'],
+    ['live', 'demo'],
+    ['live', 'live'],
+  ] as const
+  for (const [sourceMode, destinationMode] of combinations) {
+    const db = new FakeDb()
+    db.tables.broker_accounts = [
+      broker('src'),
+      broker('dst'),
+    ]
+    db.tables.broker_accounts[0]!.linked_account_type = sourceMode
+    db.tables.broker_accounts[1]!.linked_account_type = destinationMode
+    const sub = subscription({
+      requested_account_mode: destinationMode,
+      source_account_mode: sourceMode,
+      destination_account_mode: destinationMode,
+    })
+    db.claimed = [sub]
+    db.tables.social_copy_subscriptions = [{ ...sub }]
+    const source = provider()
+    const destination = provider()
+    const monitor = new SocialCopyMonitor(db as never, {
+      executionEnabled: true,
+      allowLive: true,
+      providerFor: row => String((row as Row).id) === 'src' ? source : destination,
+    })
+    await monitor.tick()
+    assert.equal(db.tables.social_copy_subscriptions[0]?.status, 'active', `${sourceMode}-to-${destinationMode}`)
+    assert.equal(source.sends + destination.sends, 0)
+  }
+})
+
+test('live-involved broker execution fails observably when SOCIAL_COPY_ALLOW_LIVE is disabled', async () => {
+  const db = new FakeDb()
+  db.tables.broker_accounts[0]!.linked_account_type = 'live'
+  const sub = subscription({ source_account_mode: 'live' })
+  db.claimed = [sub]
+  db.tables.social_copy_subscriptions = [{ ...sub }]
+  const api = provider()
+  const monitor = new SocialCopyMonitor(db as never, { executionEnabled: true, allowLive: false, providerFor: () => api })
+  await monitor.tick()
+  assert.equal(db.tables.social_copy_subscriptions[0]?.status, 'error')
+  assert.equal(db.tables.social_copy_subscriptions[0]?.error_code, 'LIVE_EXECUTION_DISABLED')
+  assert.equal(api.sends, 0)
 })

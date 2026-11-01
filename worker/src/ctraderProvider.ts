@@ -763,8 +763,17 @@ export class CtraderProvider implements BrokerProvider {
   private dealRow(live: LiveSession, deal: Record<string, unknown>): Record<string, unknown> {
     const symbol = live.symbolsById.get(finite(deal.symbolId) ?? -1)
     const close = asRecord(deal.closePositionDetail)
+    // DealList mixes opening and closing fills for the same position. Only a
+    // closing deal carries `closePositionDetail`, and only a closing deal may
+    // publish a `closeTime`/`closePrice`: history readers (closed-trade fills,
+    // mirror-copy source-close confirmation) use the presence of a close time
+    // to tell a real close from an opening fill, exactly like the trades reader
+    // in supabase/functions/_shared/ctraderOpenApi.ts. An opening fill with a
+    // close time would read as "the position is closed" while it is still open.
+    const isClose = Object.keys(close).length > 0
     const volume = finite(deal.filledVolume ?? deal.volume) ?? 0
     const price = finite(deal.executionPrice)
+    const closeTime = finite(deal.executionTimestamp) ?? finite(deal.createTimestamp)
     return {
       ticket: finite(deal.positionId ?? deal.dealId) ?? 0,
       positionTicket: finite(deal.positionId),
@@ -777,6 +786,9 @@ export class CtraderProvider implements BrokerProvider {
       swap: moneyFromCents(close.swap),
       commission: moneyFromCents(close.commission),
       comment: deal.comment == null ? '' : String(deal.comment),
+      ...(isClose && closeTime && closeTime > 0
+        ? { closeTime, closePrice: positivePrice(price) }
+        : {}),
     }
   }
 }

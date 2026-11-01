@@ -153,7 +153,7 @@ export function CustomSignalExampleModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-6"
+      className="fixed inset-0 z-110 flex items-end sm:items-center justify-center p-0 sm:p-6"
       role="dialog"
       aria-modal="true"
       aria-labelledby="custom-signal-example-title"
@@ -195,7 +195,7 @@ export function CustomSignalExampleModal({
                 setDraft(d => ({ ...d, rawMessage: e.target.value }))
                 setAnalyzed(false)
               }}
-              className="mt-1.5 w-full rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2.5 text-sm disabled:opacity-50 resize-y min-h-[7rem]"
+              className="mt-1.5 w-full rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2.5 text-sm disabled:opacity-50 resize-y min-h-28"
             />
           </label>
 

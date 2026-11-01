@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import { createHmac } from 'node:crypto'
 import { KucoinProvider } from './kucoinProvider'
+import { historyContainsClosedPosition } from './mirrorCopy/mirrorCopyReconcile'
 import { CLOSE_PREFIX, childOrderLinkId, SL_PREFIX, ticketFromChildLinkId } from './kucoin/symbols'
 import {
   KucoinApiError,
@@ -90,6 +91,7 @@ class FakeKucoin {
   stops: Row[] = []
   openLimits: Row[] = []
   positions: Row[] = []
+  positionsFail = false
   fills: Row[] = []
   closedPositions: Row[] = []
 
@@ -234,7 +236,7 @@ class FakeKucoin {
       return ok({ items: rows, totalPage: 1 })
     })
     on('GET', /^\/api\/v1\/stopOrders$/, () => ok({ items: this.stops, totalPage: 1 }))
-    on('GET', /^\/api\/v1\/positions$/, () => ok(this.positions))
+    on('GET', /^\/api\/v1\/positions$/, () => this.positionsFail ? fail(40001, 'request timeout') : ok(this.positions))
     on('GET', /^\/api\/v1\/fills$/, (call: Call) => {
       let rows = this.fills
       if (call.params.orderId) rows = rows.filter(row => row.orderId === call.params.orderId)
@@ -804,4 +806,47 @@ test('missing credentials are reported as not configured', async () => {
 test('child link ids built for stops round-trip through the helper', () => {
   const ticket = 450_000_000_005
   assert.equal(ticketFromChildLinkId(childOrderLinkId(SL_PREFIX, ticket, 'ab12'), SL_PREFIX), ticket)
+})
+
+test('a stop-loss close outside the copier is confirmable from history', async () => {
+  const { fake, provider } = setup()
+  const placed = await provider.orderSend('acct-1', { ...BUY, stoploss: 60_000, takeprofit: 70_000 })
+  // The stop fires on KuCoin: no copier close order, so history names the
+  // closing order — never the ticket the mirror ledger tracks.
+  fake.stops = fake.stops.filter(row => !String(row.clientOid).startsWith('TSL_'))
+  fake.positions = []
+  assert.deepEqual(await provider.openedOrders('acct-1'), [])
+
+  const from = new Date(NOW - 86_400_000).toISOString()
+  const to = new Date(NOW + 1000).toISOString()
+  const rows = await provider.orderHistory('acct-1', from, to) as Array<Record<string, unknown>>
+  const observed = rows.find(row => row.ticket === placed.ticket)
+  assert.ok(observed, 'the observed close must be reported under the tracked ticket')
+  assert.equal(observed!.observed, 'position_gone')
+  assert.equal(observed!.closeTime, NOW)
+  assert.equal(historyContainsClosedPosition(rows, String(placed.ticket), 'kucoin'), true,
+    'a close seen live must confirm the source position is gone')
+  assert.equal(historyContainsClosedPosition(rows, '424242', 'kucoin'), false,
+    'a ticket that never closed must stay unconfirmed')
+})
+
+test('stillHoldsPosition answers from the exchange position list, not the leg book', async () => {
+  const { fake, provider } = setup()
+  await provider.orderSend('acct-1', BUY)
+  // KuCoin names the instrument its own way on the futures book, so the test
+  // asks about the symbol the position actually carries.
+  const symbol = String(fake.positions[0]!.symbol)
+  assert.equal(await provider.stillHoldsPosition('acct-1', symbol, 'buy'), true)
+  assert.equal(await provider.stillHoldsPosition('acct-1', symbol, 'sell'), false)
+  fake.positions = []
+  assert.equal(await provider.stillHoldsPosition('acct-1', symbol, 'buy'), false)
+  fake.positionsFail = true
+  assert.equal(await provider.stillHoldsPosition('acct-1', symbol, 'buy'), null,
+    'a failed read must be reported as "could not answer", never as "flat"')
+})
+
+test('stillHoldsPosition reports null when the account itself cannot be loaded', async () => {
+  const { fake } = setup()
+  const provider = new KucoinProvider({ loadCredentials: async () => null, fetchImpl: fake.fetchImpl, now: () => NOW, sleep: async () => {} })
+  assert.equal(await provider.stillHoldsPosition('acct-1', 'BTCUSDT', 'buy'), null)
 })

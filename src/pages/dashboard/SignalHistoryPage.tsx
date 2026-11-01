@@ -58,10 +58,10 @@ const OPEN_ROW_CELL = 'transition-colors duration-150'
 const EDIT_PEN_ICON = 'w-4 h-4 shrink-0 text-green-400 dark:text-green-400 opacity-0 group-hover:opacity-100 transition-opacity duration-150'
 
 const selectClass =
-  'px-3 py-2.5 rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 text-sm text-neutral-900 dark:text-neutral-50 focus:outline-none focus:ring-2 focus:ring-green-400 w-full'
+  'px-3 py-2.5 rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 text-sm text-neutral-900 dark:text-neutral-50 focus:outline-hidden focus:ring-2 focus:ring-green-400 w-full'
 
 const dateInputClass =
-  'px-3 py-2.5 rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 text-sm text-neutral-900 dark:text-neutral-50 focus:outline-none focus:ring-2 focus:ring-green-400 w-full'
+  'px-3 py-2.5 rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 text-sm text-neutral-900 dark:text-neutral-50 focus:outline-hidden focus:ring-2 focus:ring-green-400 w-full'
 
 function formatDateInput(date: Date): string {
   const year = date.getFullYear()
@@ -642,8 +642,8 @@ export function SignalHistoryPage() {
                   <tr key={i}>
                     <td colSpan={4} className="px-4 py-4">
                       <div className="space-y-2">
-                        <div className="h-4 w-24 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
-                        <div className="h-4 w-full bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
+                        <div className="h-4 w-24 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
+                        <div className="h-4 w-full bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
                       </div>
                     </td>
                   </tr>
@@ -677,8 +677,8 @@ export function SignalHistoryPage() {
           {listLoading ? (
             [...Array(6)].map((_, i) => (
               <div key={i} className="px-4 py-4 space-y-2">
-                <div className="h-4 w-24 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
-                <div className="h-4 w-full bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
+                <div className="h-4 w-24 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
+                <div className="h-4 w-full bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
               </div>
             ))
           ) : showEmpty ? (

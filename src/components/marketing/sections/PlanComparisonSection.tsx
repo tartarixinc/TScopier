@@ -95,7 +95,7 @@ export function PlanComparisonSection({ variant = 'marketing' }: { variant?: 'ma
           <li
             key={row.feature}
             className={clsx(
-              'overflow-hidden rounded-2xl border border-neutral-200/60 shadow-sm dark:border-neutral-800/55',
+              'overflow-hidden rounded-2xl border border-neutral-200/60 shadow-xs dark:border-neutral-800/55',
               index % 2 === 0 ? 'bg-white dark:bg-neutral-900' : 'bg-neutral-50/60 dark:bg-neutral-900/50',
             )}
           >

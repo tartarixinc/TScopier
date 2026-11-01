@@ -70,9 +70,16 @@ export function evaluateParsedSignalExecutionEligibility(
   const minQuote = minPlausibleQuotePrice(symbol)
   if (minQuote != null && symbol) {
     const sl = positive(parsed.sl)
+    const entry = positive(parsed.entry_price)
     const tps = Array.isArray(parsed.tp) ? parsed.tp.map(positive).filter((n): n is number => n != null) : []
     const plausibleTps = filterPlausibleInstrumentPrices(symbol, tps)
     if (sl != null && sl < minQuote) {
+      return { eligible: false, skipReason: COMMENTARY_NOT_SIGNAL_REASON }
+    }
+    // A recap such as "GOLD SELL 130+ PIPS" parses the pip total as the entry
+    // price. An entry below the instrument's plausible quote range can never be
+    // a real limit, so treat it as commentary instead of opening a market trade.
+    if (entry != null && entry < minQuote) {
       return { eligible: false, skipReason: COMMENTARY_NOT_SIGNAL_REASON }
     }
     if (tps.length > 0 && plausibleTps.length === 0) {

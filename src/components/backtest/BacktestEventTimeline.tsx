@@ -42,7 +42,7 @@ export function BacktestEventTimeline({ trade, labels: labelsProp }: BacktestEve
             <li key={`${ev.type}-${ev.level ?? ''}-${ev.at}-${i}`} className="ml-5">
               <span
                 className={clsx(
-                  'absolute -left-[7px] mt-1.5 h-3 w-3 rounded-full ring-4 ring-white dark:ring-neutral-900',
+                  'absolute left-[-7px] mt-1.5 h-3 w-3 rounded-full ring-4 ring-white dark:ring-neutral-900',
                   isSl ? lossBarClass : isBe ? 'bg-amber-500' : 'bg-green-400',
                 )}
               />

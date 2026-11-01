@@ -776,12 +776,7 @@ export async function fetchTradesAcrossProviders(
         .filter((provider): provider is BrokerEdgeProvider =>
           provider === 'fxsocket' || provider === 'mtapi' || provider === 'ctrader' || provider === 'binance' || provider === 'bybit' || provider === 'kucoin' || provider === 'dxtrade' || provider === 'tradelocker' || provider === 'matchtrader'),
     )
-    // Anchors without a provider field resolve to fxsocket — if nothing was
-    // explicitly marked, still query both so MTAPI-only data is not dropped.
-    const anyExplicit = args.accounts.some(
-      a => a.provider === 'mtapi' || a.provider === 'fxsocket' || a.provider === 'ctrader' || a.provider === 'binance' || a.provider === 'bybit' || a.provider === 'kucoin' || a.provider === 'dxtrade' || a.provider === 'tradelocker' || a.provider === 'matchtrader',
-    )
-    providers = anyExplicit && explicit.size > 0 ? [...explicit] : ['fxsocket', 'mtapi']
+    providers = explicit.size > 0 ? [...explicit] : ['mtapi']
   }
   if (!providers) providers = ['mtapi']
   if (providers.length === 0) return { trades: [] }

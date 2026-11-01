@@ -290,7 +290,7 @@ function makeFireLegHarness(opts: {
   const m = monitor as unknown as {
     getSymbolParams: () => Promise<{ digits: number; point: number | null; minLot: number; lotStep: number; contractSize: null; stopsLevel: number; freezeLevel: number; loadedAt: number }>
     getStaleLegReason: () => Promise<string | null>
-    sendWithStopsFallback: (
+    sendLegOrder: (
       _leg: unknown,
       args: { stoploss?: number; takeprofit?: number },
     ) => Promise<{ openPrice: number; lots: number }>
@@ -316,7 +316,7 @@ function makeFireLegHarness(opts: {
     operations.push('stale-check')
     return opts.staleReason ?? null
   }
-  m.sendWithStopsFallback = async (_leg, args) => {
+  m.sendLegOrder = async (_leg, args) => {
     operations.push('broker-send')
     sendArgs.push({ stoploss: args.stoploss, takeprofit: args.takeprofit })
     brokerSends += 1

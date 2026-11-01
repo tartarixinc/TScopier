@@ -24,6 +24,8 @@ import type {
 } from './fxsocketClient'
 import type { MtHistoryProfile } from './mtTradeFields'
 import type { BrokerProvider } from './brokerProvider'
+import type { BrokerAccountMode } from './copyShared/brokerAccountMode'
+import { noteObservedClose, observedCloseRows, type ObservedClose } from './copyShared/observedCloses'
 import {
   BybitApiError,
   BybitClient,
@@ -95,6 +97,8 @@ type AccountState = {
   loadedAt: number
   client: BybitClient
   legs: Map<number, Leg>
+  /** Positions watched disappearing from the book — see `noteClosedPosition`. */
+  closed: ObservedClose[]
   hydrated: boolean
   /** Symbols whose leverage we already set, keyed `symbol:leverage`. */
   applied: Set<string>
@@ -233,6 +237,43 @@ export class BybitProvider implements BrokerProvider {
     const status = await this.mtStatus(id)
     return status.account?.tradeAllowed === true
   }
+
+  /**
+   * Position mode is account-wide, so any tradeable symbol reports it: hedge
+   * mode lists two rows (index 1 and 2) even when flat, one-way lists a single
+   * index-0 row. An empty answer is ambiguous and stays unknown rather than
+   * being guessed as one-way.
+   */
+  async accountMode(id: string): Promise<BrokerAccountMode | null> {
+    const st = await this.state(id)
+    const legSymbol = [...st.legs.values()][0]?.symbol
+    const symbol = legSymbol
+      ?? (await this.symbols(id)).map(value => String(value ?? '').trim()).find(Boolean)
+    if (!symbol) return null
+    const result = asRecord(await st.client.signed('GET', '/v5/position/list', { category: CATEGORY, symbol }))
+    const rows = asRows(result.list)
+    if (!rows.length) return null
+    const hedged = rows.length > 1 || rows.some(row => (finite(row.positionIdx) ?? 0) !== 0)
+    st.hedge.set(symbol, { value: hedged, at: this.now() })
+    return hedged ? 'hedging' : 'netting'
+  }
+  /**
+   * The exchange's own answer, read straight from the position list rather than
+   * from the copier's leg book (which can miss a leg after a restart). A failed
+   * read returns null so the caller keeps the copy open instead of guessing.
+   */
+  async stillHoldsPosition(id: string, symbol: string, side: 'buy' | 'sell'): Promise<boolean | null> {
+    try {
+      // `state()` is inside the try as well: a missing or unreadable credential is
+      // just another "cannot answer", which the contract says returns null.
+      const st = await this.state(id)
+      const positions = await this.positions(st)
+      return this.netFor(positions, symbol, side === 'buy' ? 'Buy' : 'Sell') > 0
+    } catch {
+      return null
+    }
+  }
+
 
   // ── Orders ──────────────────────────────────────────────────────────────
 
@@ -504,7 +545,7 @@ export class BybitProvider implements BrokerProvider {
         }
       }
     }
-    return closed.map(row => {
+    const rows: Record<string, unknown>[] = closed.map(row => {
       const orderId = String(row.orderId ?? '')
       const linkId = linkIds.get(orderId) ?? ''
       const closedTicket = ticketFromChildLinkId(linkId, CLOSE_PREFIX)
@@ -525,9 +566,16 @@ export class BybitProvider implements BrokerProvider {
         comment: closedTicket
           ? (entryComments.get(closedTicket) ?? this.commentForTicket(st, closedTicket))
           : (isCopierLinkId(linkId) ? commentFromOrderLinkId(linkId) : linkId),
+        // Rows come from closed-pnl, so the timestamp is a close time: history
+        // readers use it to tell a real close from an open echo.
         time: finite(row.updatedTime) ?? finite(row.createdTime),
+        closeTime: finite(row.updatedTime) ?? finite(row.createdTime),
       }
     })
+    // Positions this worker watched disappear from Bybit's book, reported
+    // under the ticket the copier tracks (see `noteClosedPosition`).
+    rows.push(...observedCloseRows(st.closed, start, end))
+    return rows
   }
 
   async historyPositions(id: string, from: string, to: string): Promise<unknown[]> {
@@ -658,6 +706,7 @@ export class BybitProvider implements BrokerProvider {
       loadedAt: this.now(),
       client: new BybitClient(credential, { fetchImpl: this.fetchImpl, now: this.now }),
       legs: new Map(),
+      closed: [],
       hydrated: false,
       applied: new Set(),
       hedge: new Map(),
@@ -1117,6 +1166,28 @@ export class BybitProvider implements BrokerProvider {
   }
 
   /**
+   * Remember a position as closed once the exchange itself reports nothing
+   * left for it.
+   *
+   * Bybit's closed-pnl rows carry the id of the closing order, which is the
+   * ticket the copier tracks only when the copier placed that close: a
+   * stop-loss, take-profit or manual close never matches the tracked ticket.
+   * The mirror engine refuses to close a copy without history confirming the
+   * source is gone, so without this the copy would stay open forever. Noting
+   * the leg as it leaves the live book lets `orderHistory` answer with the
+   * tracked ticket instead — and only when the exchange reports no remaining
+   * position, so a protective order that merely disappeared (cancelled, not
+   * executed) can never confirm a close that did not happen.
+   */
+  private noteClosedPosition(st: AccountState, positions: PositionRow[], leg: Leg): void {
+    if (leg.kind !== 'position') return
+    if (this.netFor(positions, leg.symbol, leg.side) > 0) return
+    noteObservedClose(st.closed, {
+      ticket: leg.ticket, symbol: leg.symbol, operation: operationOf(leg), lots: leg.qty, at: this.now(),
+    })
+  }
+
+  /**
    * Reconcile our legs with Bybit: drop legs whose position is gone or whose
    * protective order fired (cancelling the surviving partner), and trim quantities
    * to what the position still holds.
@@ -1135,6 +1206,7 @@ export class BybitProvider implements BrokerProvider {
         if (!slGone && !tpGone) continue
         // One of the pair fired. Cancel the partner so it cannot reduce another leg.
         await this.cancelProtection(st, leg).catch(() => undefined)
+        this.noteClosedPosition(st, positions, leg)
         st.legs.delete(leg.ticket)
       }
     }
@@ -1151,6 +1223,7 @@ export class BybitProvider implements BrokerProvider {
         const take = Math.min(leg.qty, left)
         if (!(take > 0)) {
           await this.cancelProtection(st, leg).catch(() => undefined)
+          this.noteClosedPosition(st, positions, leg)
           st.legs.delete(leg.ticket)
           continue
         }

@@ -104,8 +104,8 @@ export function BrokerConfigurationsModal({
         <div className="overflow-y-auto px-5 py-4">
           {loading ? (
             <div className="space-y-3" aria-hidden>
-              <div className="h-8 animate-pulse rounded bg-neutral-100 dark:bg-white/5" />
-              <div className="h-24 animate-pulse rounded bg-neutral-100 dark:bg-white/5" />
+              <div className="h-8 animate-pulse rounded-sm bg-neutral-100 dark:bg-white/5" />
+              <div className="h-24 animate-pulse rounded-sm bg-neutral-100 dark:bg-white/5" />
             </div>
           ) : error ? (
             <p className="text-sm text-error-600 dark:text-error-400">{copy.loadError}</p>

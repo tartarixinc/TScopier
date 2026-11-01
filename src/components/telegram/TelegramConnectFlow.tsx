@@ -170,7 +170,7 @@ export function TelegramConnectFlow({
 
   return (
     <Card className="mb-4 overflow-hidden" padding="none">
-      <div className="relative px-5 pt-6 pb-5 sm:px-6 sm:pt-7 bg-gradient-to-br from-[#229ED9]/12 via-sky-50/90 to-white dark:from-[#229ED9]/20 dark:via-sky-950/30 dark:to-neutral-900 border-b border-neutral-100 dark:border-neutral-800">
+      <div className="relative px-5 pt-6 pb-5 sm:px-6 sm:pt-7 bg-linear-to-br from-[#229ED9]/12 via-sky-50/90 to-white dark:from-[#229ED9]/20 dark:via-sky-950/30 dark:to-neutral-900 border-b border-neutral-100 dark:border-neutral-800">
         <div className="flex flex-col items-center text-center max-w-md mx-auto">
           <div className="w-14 h-14 rounded-2xl bg-white dark:bg-neutral-800 shadow-md border border-neutral-100 dark:border-neutral-700 flex items-center justify-center mb-3">
             <img src="/Telegram.svg" alt="" className="w-8 h-8 object-contain" loading="lazy" aria-hidden />
@@ -200,7 +200,7 @@ export function TelegramConnectFlow({
                     </span>
                     <span
                       className={clsx(
-                        'text-[10px] sm:text-xs font-medium truncate max-w-[4.5rem] sm:max-w-none text-center',
+                        'text-[10px] sm:text-xs font-medium truncate max-w-18 sm:max-w-none text-center',
                         current ? 'text-green-500 dark:text-green-400' : done ? 'text-neutral-900 dark:text-neutral-50' : 'text-neutral-900 dark:text-neutral-50',
                       )}
                     >
@@ -228,7 +228,7 @@ export function TelegramConnectFlow({
           <ul className="space-y-2.5 mb-5">
             {howItWorks.map((line, i) => (
               <li key={i} className="flex items-start gap-2.5 text-sm text-neutral-900 dark:text-neutral-50">
-                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary-100 dark:bg-primary-900/50 text-green-500 dark:text-primary-300 text-xs font-semibold flex items-center justify-center mt-0.5">
+                <span className="shrink-0 w-5 h-5 rounded-full bg-primary-100 dark:bg-primary-900/50 text-green-500 dark:text-primary-300 text-xs font-semibold flex items-center justify-center mt-0.5">
                   {i + 1}
                 </span>
                 {line}
@@ -239,7 +239,7 @@ export function TelegramConnectFlow({
 
         {(stage === 'phone' || stage === 'twoFa' || stage === 'qr') && (
           <div className="mb-4 px-3 py-2.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-900/50 rounded-xl flex items-start gap-2.5">
-            <TriangleAlert className="w-4 h-4 text-amber-600 dark:text-amber-500 flex-shrink-0 mt-0.5" />
+            <TriangleAlert className="w-4 h-4 text-amber-600 dark:text-amber-500 shrink-0 mt-0.5" />
             <p className="text-xs text-amber-800 dark:text-amber-200/90 leading-relaxed">{ce.tgConnectPhoneWarning}</p>
           </div>
         )}
@@ -328,7 +328,7 @@ export function TelegramConnectFlow({
             {codeDelivery === 'app' && (
               <Alert variant="warning" className="text-left">
                 <div className="flex items-start gap-2">
-                  <Smartphone className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  <Smartphone className="w-4 h-4 mt-0.5 shrink-0" />
                   <p>{ce.tgConnectCodeAppHint}</p>
                 </div>
               </Alert>
@@ -386,7 +386,7 @@ export function TelegramConnectFlow({
         {stage === 'qr' && (
           <div className="space-y-4">
             <div className="flex flex-col items-center gap-4">
-              <div className="rounded-2xl bg-white p-4 shadow-sm border border-neutral-200 dark:border-neutral-700">
+              <div className="rounded-2xl bg-white p-4 shadow-xs border border-neutral-200 dark:border-neutral-700">
                 {qrUrl ? (
                   <QRCodeSVG value={qrUrl} size={200} level="M" includeMargin />
                 ) : (

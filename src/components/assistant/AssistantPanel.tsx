@@ -598,7 +598,7 @@ export function AssistantPanel() {
   const showBrokerCard = brokerConnect.active
 
   return createPortal(
-    <div className="fixed inset-0 z-[80] flex justify-end" role="dialog" aria-modal="true" aria-label={a.title}>
+    <div className="fixed inset-0 z-80 flex justify-end" role="dialog" aria-modal="true" aria-label={a.title}>
       <button
         type="button"
         className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
@@ -674,7 +674,7 @@ export function AssistantPanel() {
                         }
                       }}
                       className={clsx(
-                        'group flex cursor-pointer items-center gap-2 px-3 py-2 outline-none hover:bg-neutral-50 focus-visible:bg-neutral-50 dark:hover:bg-neutral-900 dark:focus-visible:bg-neutral-900',
+                        'group flex cursor-pointer items-center gap-2 px-3 py-2 outline-hidden hover:bg-neutral-50 focus-visible:bg-neutral-50 dark:hover:bg-neutral-900 dark:focus-visible:bg-neutral-900',
                         thread.id === activeThreadId && 'bg-teal-50/60 dark:bg-teal-950/30',
                       )}
                       onClick={() => {
@@ -731,13 +731,13 @@ export function AssistantPanel() {
           ref={listRef}
           className={clsx(
             'flex-1 space-y-4 overflow-y-auto px-4 py-5',
-            'bg-[radial-gradient(ellipse_at_top,_rgba(74,222,128,0.06),_transparent_55%),linear-gradient(to_bottom,_#f8fafc,_#ffffff)]',
-            'dark:bg-[radial-gradient(ellipse_at_top,_rgba(74,222,128,0.12),_transparent_50%),linear-gradient(to_bottom,_#020617,_#0f172a)]',
+            'bg-[radial-gradient(ellipse_at_top,rgba(74,222,128,0.06),transparent_55%),linear-gradient(to_bottom,#f8fafc,#ffffff)]',
+            'dark:bg-[radial-gradient(ellipse_at_top,rgba(74,222,128,0.12),transparent_50%),linear-gradient(to_bottom,#020617,#0f172a)]',
           )}
         >
           {messages.length === 0 && !showTelegramCard && !showBrokerCard && (
             <div className="animate-assistant-msg-in mx-auto max-w-sm pt-6 text-center">
-              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-green-400 to-green-500 text-neutral-950 shadow-lg shadow-green-400/25">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-linear-to-br from-green-400 to-green-500 text-neutral-950 shadow-lg shadow-green-400/25">
                 <Sparkles className="h-5 w-5" />
               </div>
               <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{a.welcomeTitle}</p>
@@ -747,7 +747,7 @@ export function AssistantPanel() {
                   <button
                     key={s}
                     type="button"
-                    className="rounded-full border border-neutral-200/90 bg-white/90 px-3 py-1.5 text-start text-xs text-neutral-900 shadow-sm transition hover:border-teal-300 hover:text-teal-800 dark:border-neutral-700 dark:bg-neutral-900/80 dark:text-neutral-50 dark:hover:border-green-500 dark:hover:text-teal-200"
+                    className="rounded-full border border-neutral-200/90 bg-white/90 px-3 py-1.5 text-start text-xs text-neutral-900 shadow-xs transition hover:border-teal-300 hover:text-teal-800 dark:border-neutral-700 dark:bg-neutral-900/80 dark:text-neutral-50 dark:hover:border-green-500 dark:hover:text-teal-200"
                     onClick={() => setDraft(s)}
                   >
                     {s}
@@ -854,7 +854,7 @@ export function AssistantPanel() {
             return (
               <div
                 key={`${item.tool}-${idx}`}
-                className="animate-assistant-msg-in ms-[2.375rem] rounded-2xl border border-amber-200/90 bg-amber-50/95 p-3.5 shadow-sm dark:border-amber-900/50 dark:bg-amber-950/40"
+                className="animate-assistant-msg-in ms-9.5 rounded-2xl border border-amber-200/90 bg-amber-50/95 p-3.5 shadow-xs dark:border-amber-900/50 dark:bg-amber-950/40"
               >
                 <p className="text-[13.5px] font-medium leading-relaxed text-amber-950 dark:text-amber-50">
                   {item.summary}
@@ -866,7 +866,7 @@ export function AssistantPanel() {
                         <dt className="shrink-0 font-semibold text-amber-900/80 dark:text-amber-200/80">
                           {row.label}
                         </dt>
-                        <dd className="min-w-0 break-words text-right text-amber-950 dark:text-amber-50">
+                        <dd className="min-w-0 wrap-break-word text-right text-amber-950 dark:text-amber-50">
                           {row.value}
                         </dd>
                       </div>
@@ -916,7 +916,7 @@ export function AssistantPanel() {
                   />
                   <button
                     type="button"
-                    className="absolute -end-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-neutral-900 text-white shadow dark:bg-neutral-100 dark:text-neutral-900"
+                    className="absolute -inset-e-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-neutral-900 text-white shadow-sm dark:bg-neutral-100 dark:text-neutral-900"
                     aria-label={a.removeImage}
                     onClick={() => setDraftImages(prev => prev.filter((_, i) => i !== idx))}
                     disabled={sending}
@@ -967,7 +967,7 @@ export function AssistantPanel() {
                     ? a.telegram.composerPhoneHint
                     : a.placeholder
               }
-              className="min-h-[44px] flex-1 resize-none rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-green-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+              className="min-h-[44px] flex-1 resize-none rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-hidden focus:border-green-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
               disabled={sending || telegramLink.busy || brokerConnect.busy}
             />
             <Button

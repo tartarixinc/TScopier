@@ -3,7 +3,7 @@ import { ArrowUpRight, TrendingUp } from 'lucide-react'
 import { Grain, ProviderCta } from './shared'
 import { initials, useProviderPage } from './helpers'
 
-const GLASS = 'border border-white/10 bg-white/[0.06] backdrop-blur-xl shadow-[0_24px_60px_-24px_rgba(0,0,0,0.8)]'
+const GLASS = 'border border-white/10 bg-white/6 backdrop-blur-xl shadow-[0_24px_60px_-24px_rgba(0,0,0,0.8)]'
 const BAR_HEIGHTS = [38, 52, 44, 70, 62, 84, 76] as const
 const COPIERS = ['Amira Hassan', 'Leo Berg', 'Nora Okonkwo', 'Kenji Sato'] as const
 
@@ -117,7 +117,7 @@ export function ProviderHeroSection() {
     >
       <Grain className="opacity-[0.1]" />
 
-      <div className="relative mx-auto max-w-[80rem] px-5 pb-12 pt-16 sm:px-8 sm:pt-20 lg:px-14 lg:pb-16 lg:pt-24">
+      <div className="relative mx-auto max-w-7xl px-5 pb-12 pt-16 sm:px-8 sm:pt-20 lg:px-14 lg:pb-16 lg:pt-24">
         <div className="grid items-center gap-12 lg:grid-cols-[1fr_1.05fr] lg:gap-10">
           <div className="text-center lg:text-left">
             <h1 className="mx-auto max-w-2xl text-5xl font-bold tracking-tight sm:text-6xl lg:mx-0 lg:text-[clamp(3.75rem,7.4vh,5.5rem)] lg:leading-[1.02]">

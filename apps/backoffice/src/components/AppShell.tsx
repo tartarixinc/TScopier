@@ -71,7 +71,7 @@ export function AppShell() {
     )
 
   return (
-    <div className="flex h-[100dvh] min-h-0 w-full overflow-hidden bg-neutral-50 dark:bg-neutral-950">
+    <div className="flex h-dvh min-h-0 w-full overflow-hidden bg-neutral-50 dark:bg-neutral-950">
       {mobileNavOpen ? (
         <button
           type="button"
@@ -148,7 +148,7 @@ export function AppShell() {
       </aside>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 border-b border-neutral-100 bg-white/95 px-4 backdrop-blur dark:border-neutral-800 dark:bg-neutral-900/95 lg:hidden">
+        <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 border-b border-neutral-100 bg-white/95 px-4 backdrop-blur-sm dark:border-neutral-800 dark:bg-neutral-900/95 lg:hidden">
           <button
             type="button"
             aria-label="Open menu"

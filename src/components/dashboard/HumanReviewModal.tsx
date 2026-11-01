@@ -38,7 +38,7 @@ export function HumanReviewModal() {
   }
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-6">
+    <div className="fixed inset-0 z-70 flex items-end sm:items-center justify-center p-0 sm:p-6">
       <div
         className="absolute inset-0 bg-neutral-950/55"
         aria-hidden

@@ -25,7 +25,7 @@ export function AuthLayout() {
         <header
           className={clsx(
             'z-20 flex shrink-0 touch-none items-center justify-between bg-white px-5 dark:bg-neutral-950 sm:px-8',
-            'fixed inset-x-0 top-[var(--app-banner-h,0px)] h-[calc(4rem+env(safe-area-inset-top,0px))] pt-[env(safe-area-inset-top,0px)]',
+            'fixed inset-x-0 top-(--app-banner-h,0px) h-[calc(4rem+env(safe-area-inset-top,0px))] pt-[env(safe-area-inset-top,0px)]',
             'lg:static lg:z-auto lg:h-auto lg:px-10 lg:py-4 lg:touch-auto',
           )}
         >

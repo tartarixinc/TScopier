@@ -134,7 +134,7 @@ function directionBadge(direction: string | null | undefined) {
   return (
     <span
       className={clsx(
-        'rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide',
+        'rounded-sm px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide',
         isBuy
           ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
           : 'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300',
@@ -194,7 +194,7 @@ function TradeRow({
       className={clsx(
         'rounded-xl border border-neutral-200/65 bg-white p-2.5 dark:border-neutral-800/55 dark:bg-neutral-900/70',
         clickable &&
-          'cursor-pointer transition hover:border-teal-300 hover:bg-neutral-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400/60 dark:hover:border-green-500 dark:hover:bg-neutral-800/60',
+          'cursor-pointer transition hover:border-teal-300 hover:bg-neutral-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400/60 dark:hover:border-green-500 dark:hover:bg-neutral-800/60',
       )}
       role={clickable ? 'button' : undefined}
       tabIndex={clickable ? 0 : undefined}
@@ -217,7 +217,7 @@ function TradeRow({
           <span className="truncate font-semibold text-neutral-900 dark:text-neutral-50">{symbol}</span>
           {directionBadge(trade.direction)}
           {trade.legs ? (
-            <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50">
+            <span className="rounded-sm bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50">
               {copy.legs}: {trade.legs + 1}
             </span>
           ) : null}
@@ -315,7 +315,7 @@ function ReportRow({ report, copy }: { report: NonNullable<ParsedResult['reports
         </span>
       </div>
       {report.reason ? (
-        <p className="mt-1.5 whitespace-pre-wrap break-words text-[11px] text-neutral-900 dark:text-neutral-50">
+        <p className="mt-1.5 whitespace-pre-wrap wrap-break-word text-[11px] text-neutral-900 dark:text-neutral-50">
           {report.reason}
         </p>
       ) : null}
@@ -355,7 +355,7 @@ export function AssistantTradesCard({
   if (!trades.length && !data.reports?.length) return null
 
   return (
-    <div className="animate-assistant-msg-in ms-[2.375rem] space-y-2">
+    <div className="animate-assistant-msg-in ms-9.5 space-y-2">
       <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
         {copy.title}
       </p>

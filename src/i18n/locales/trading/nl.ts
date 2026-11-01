@@ -80,6 +80,8 @@ export const tradingNl: TradingPagesBundleTranslations = {
     reasonCopyLimitFlatten: 'Automatisch gesloten toen de kopieerlimiet werd bereikt.',
     reasonUserForceClose: 'Door jou gesloten.',
     reasonPositionGone: 'De positie was al weg bij de broker toen we het controleerden.',
+    reasonMirrorSourceClosed: 'De originele transactie is gesloten, dus deze kopie is mee gesloten.',
+    reasonMirrorCopyClosed: 'Deze gekopieerde transactie is gesloten voordat sluitingsredenen werden vastgelegd.',
     reasonStopLoss: 'De broker sloot hem bij de stop loss ({price}).',
     reasonTakeProfit: 'De broker sloot hem bij de take profit ({price}).',
     reasonUnknown: 'Er is geen reden voor het sluiten van deze transactie vastgelegd.',

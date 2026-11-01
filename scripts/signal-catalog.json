@@ -1,0 +1,1012 @@
+{
+  "$comment": "Signal format catalog — real production channel messages pinned as parse expectations.\nPurpose: keep the pipeline tested across the VARIETY of real channels instead of a\nhandful of hand-written formats, and give the test tool a source of diverse messages.\nConsumers:\n  1. worker/src/signalCatalog.test.ts — runs on every `npm test` (regression gate).\n  2. scripts/test-signal.mjs `catalog list|send` — browse categories, live-send an entry\n     case instead of inventing yet another BUY XAUUSD message.\n  3. AI few-shot prompts — cases with \"fewshot\" in useFor are eligible training\n    eligible training examples for the stage-2/stage-3 prompts (cases whose\n    note says KNOWN ISSUE are excluded from fewshot and liveSend on purpose).\nNotes:\n  * expect.* is pinned from the LOCAL deterministic parser at build time; when\n    production recorded something else a \"prodNote\" records the difference.\n  * \"note\" flags known issues kept deliberately — do not treat them as desired.\n  * Messages are verbatim production text from customer channels (no credentials);\n    the test chat channel is excluded. Sources: production signal ids in history.",
+  "version": 1,
+  "generated": "2026-10-25",
+  "caseCount": 55,
+  "categories": {
+    "entry_arabic_bilingual": true,
+    "entry_at_price_slash": true,
+    "entry_entry_price": true,
+    "entry_non_xau": true,
+    "entry_now_plain": true,
+    "entry_numbered_tp": true,
+    "entry_setup_template": true,
+    "entry_superscript_tp": true,
+    "entry_tp_hit_recap": true,
+    "ignore_chatter": true,
+    "ignore_promo": true,
+    "ignore_results_recap": true,
+    "mgmt_breakeven": true,
+    "mgmt_breakeven_reply": true,
+    "mgmt_close_reply": true,
+    "mgmt_close_worse": true,
+    "mgmt_modify_chatter": true,
+    "mgmt_modify_params": true,
+    "mgmt_partial": true,
+    "units_pips": true
+  },
+  "cases": [
+    {
+      "id": "entry_numbered_tp#1",
+      "category": "entry_numbered_tp",
+      "message": "XAUUSD SELL 4022\n\nTP 4019\nTP 4016\nTP 4013\nTP 4010\nTP 4007\n\nSL 4033",
+      "expect": {
+        "action": "sell",
+        "symbol": "XAUUSD",
+        "sl": 4033,
+        "tp": [
+          4019,
+          4016,
+          4013,
+          4010,
+          4007
+        ],
+        "entryPrice": 4022,
+        "tpUnit": "price"
+      },
+      "useFor": [
+        "regression",
+        "liveSend",
+        "fewshot"
+      ]
+    },
+    {
+      "id": "entry_numbered_tp#2",
+      "category": "entry_numbered_tp",
+      "message": "XAUUSD Sell 4025/4028\nبيع الذهب\nTP1. 4021\nTP2. 4018\nTP3. 4014\nTP4. 3998\n\nSL.   4038\nاستخدام إدارة الأمو\n\nUse Money Management.",
+      "expect": {
+        "action": "sell",
+        "symbol": "XAUUSD",
+        "sl": 4038,
+        "tp": [
+          4021,
+          4018,
+          4014,
+          3998
+        ],
+        "tpUnit": "price"
+      },
+      "useFor": [
+        "regression",
+        "liveSend",
+        "fewshot"
+      ]
+    },
+    {
+      "id": "entry_numbered_tp#3",
+      "category": "entry_numbered_tp",
+      "message": "XAUUSD BUY 4021\n\nTP. 4025\nTP. 4029\nTP. 4033\nTP. 4037\nTP. 4041\n\n SL. 4005",
+      "expect": {
+        "action": "buy",
+        "symbol": "XAUUSD",
+        "sl": 4005,
+        "tp": [
+          4025,
+          4029,
+          4033,
+          4037,
+          4041
+        ],
+        "entryPrice": 4021,
+        "tpUnit": "price"
+      },
+      "useFor": [
+        "regression",
+        "liveSend",
+        "fewshot"
+      ]
+    },
+    {
+      "id": "entry_numbered_tp#4",
+      "category": "entry_numbered_tp",
+      "message": "Potential Market Setup: XAU/USD - BUY Opportunity 📈\n\n🔵 Entry Price: 4022\n\nTP1: 4026\nTP2: 4028\nTP3: 4031\nTP4: 4042\n\n🛡 Stop Loss (SL): 4004\n\nThis is a potential trade setup shared for educational purposes, based on my own analysis and ideas. It is not financial advice.",
+      "expect": {
+        "action": "buy",
+        "symbol": "XAUUSD",
+        "sl": 4004,
+        "tp": [
+          4026,
+          4028,
+          4031,
+          4042
+        ],
+        "entryPrice": 4022,
+        "tpUnit": "price"
+      },
+      "useFor": [
+        "regression",
+        "liveSend",
+        "fewshot"
+      ]
+    },
+    {
+      "id": "entry_setup_template#1",
+      "category": "entry_setup_template",
+      "message": "Potential Market Setup: XAU/USD - BUY Opportunity 📈\n\n🔵 Entry Price: 4036\n\nTP1: 4040\nTP2: 4042\nTP3: 4045\nTP4: 4056\n\n🛡 Stop Loss (SL): 4010\n\nThis is a potential trade setup shared for educational purposes, based on my own analysis and ideas. It is not financial advice.",
+      "expect": {
+        "action": "buy",
+        "symbol": "XAUUSD",
+        "sl": 4010,
+        "tp": [
+          4040,
+          4042,
+          4045,
+          4056
+        ],
+        "entryPrice": 4036,
+        "tpUnit": "price"
+      },
+      "useFor": [
+        "regression",
+        "liveSend",
+        "fewshot"
+      ]
+    },
+    {
+      "id": "entry_setup_template#2",
+      "category": "entry_setup_template",
+      "message": "Potential Market Setup: XAU/USD - SELL LIMIT Opportunity 📉\n\n🔵 Entry Price: 4091-4092\n\nTP1: 4088\nTP2: 4086\nTP3: 4083\nTP4: 4072\n\n🛡 Stop Loss (SL): 4108\n\nThis is a potential trade setup shared for educational purposes, based on my own analysis and ideas. It is not financial advice.",
+      "expect": {
+        "action": "sell",
+        "symbol": "XAUUSD",
+        "sl": 4108,
+        "tp": [
+          4088,
+          4086,
+          4083,
+          4072
+        ],
+        "tpUnit": "price"
+      },
+      "useFor": [
+        "regression",
+        "liveSend",
+        "fewshot"
+      ]
+    },
+    {
+      "id": "entry_entry_price#1",
+      "category": "entry_entry_price",
+      "message": "🔵XAUUSD BUY LIMIT ORDER \n\nENTRY: 4070\n\nSL: 4054\n\nTP1: 4081\nTP2: 4088\nTP3: 4095\nTP4: open\n\nWe recommend a max of 1% risk per trade",
+      "expect": {
+        "action": "buy",
+        "symbol": "XAUUSD",
+        "sl": 4054,
+        "tp": [
+          4081,
+          4088,
+          4095
+        ],
+        "entryPrice": 4070,
+        "tpUnit": "price"
+      },
+      "useFor": [
+        "regression",
+        "liveSend",
+        "fewshot"
+      ]
+    },
+    {
+      "id": "entry_at_price_slash#1",
+      "category": "entry_at_price_slash",
+      "message": "BUY LIMITS GOLD @ 4122/4116 AREA\n\nTP 4125\nTP 4129\nTP 4134\nTP OPEN\nSL 4115\n\nHIGH RISK TRADE\n\nI AM THEN ADDING 3 PIPS TO EACH LIMIT ORDER BELOW THE FIRST ENTRY\n\nTHIS REPRESENTS MY PERSONAL EXECUTION AND IS NOT FINANCIAL ADVICE",
+      "expect": {
+        "action": "buy",
+        "symbol": "XAUUSD",
+        "sl": 4115,
+        "tp": [
+          4125,
+          4129,
+          4134
+        ],
+        "entryPrice": 4122,
+        "tpUnit": "price"
+      },
+      "useFor": [
+        "regression",
+        "liveSend",
+        "fewshot"
+      ]
+    },
+    {
+      "id": "entry_at_price_slash#2",
+      "category": "entry_at_price_slash",
+      "message": "BUY GOLD @ 4138/4132\n\nTP 4141\nTP 4145\nTP 4150\nTP OPEN\nSL 4131\n\nHIGH RISK TRADE\n\nI AM THEN ADDING 3 PIPS TO EACH LIMIT ORDER BELOW THE FIRST ENTRY\n\nTHIS REPRESENTS MY PERSONAL EXECUTION AND IS NOT FINANCIAL ADVICE",
+      "expect": {
+        "action": "buy",
+        "symbol": "XAUUSD",
+        "sl": 4131,
+        "tp": [
+          4141,
+          4145,
+          4150
+        ],
+        "entryPrice": 4138,
+        "tpUnit": "price"
+      },
+      "useFor": [
+        "regression",
+        "liveSend",
+        "fewshot"
+      ]
+    },
+    {
+      "id": "entry_at_price_slash#3",
+      "category": "entry_at_price_slash",
+      "message": "BUY GOLD @ 4168/4162\n\nTP 4171\nTP 4175\nTP 4180\nTP OPEN\nSL 4161\n\nHIGH RISK TRADE\n\nI AM THEN ADDING 3 PIPS TO EACH LIMIT ORDER BELOW THE FIRST ENTRY\n\nTHIS REPRESENTS MY PERSONAL EXECUTION AND IS NOT FINANCIAL ADVICE",
+      "expect": {
+        "action": "buy",
+        "symbol": "XAUUSD",
+        "sl": 4161,
+        "tp": [
+          4171,
+          4175,
+          4180
+        ],
+        "entryPrice": 4168,
+        "tpUnit": "price"
+      },
+      "useFor": [
+        "regression",
+        "liveSend",
+        "fewshot"
+      ]
+    },
+    {
+      "id": "entry_non_xau#1",
+      "category": "entry_non_xau",
+      "message": "PAIR: EURUSD\nDIRECTION: SELL\nENTRY: 1.1225\n\nTP1: 1.1205 (+20)\nTP2: 1.1175 (+50)\nTP3: 1.1125 (+100)\n\nSL 1.1265 (-40)\n\nRISK RATING: ★★★☆☆",
+      "expect": {
+        "action": "sell",
+        "symbol": "EURUSD",
+        "sl": 1.1265,
+        "tp": [
+          1.1205,
+          1.1175,
+          1.1125
+        ],
+        "entryPrice": 1.1225,
+        "tpUnit": "price"
+      },
+      "useFor": [
+        "regression",
+        "liveSend",
+        "fewshot"
+      ]
+    },
+    {
+      "id": "entry_non_xau#2",
+      "category": "entry_non_xau",
+      "message": "Sell eurusd now @1.12405\nSl@1.12530\nTp-1@1.12265\nTp-2@1.12063",
+      "expect": {
+        "action": "sell",
+        "symbol": "EURUSD",
+        "sl": 1.1253,
+        "tp": [
+          1,
+          2
+        ],
+        "entryPrice": 1.12405,
+        "tpUnit": "price"
+      },
+      "useFor": [
+        "regression"
+      ],
+      "note": "KNOWN ISSUE: tier ordinals (TP¹/TP² style) read as the prices themselves — flagged with the pips-unit weak spot."
+    },
+    {
+      "id": "entry_non_xau#3",
+      "category": "entry_non_xau",
+      "message": "PAIR: EURUSD\nDIRECTION: SELL\nENTRY: 1.1232\n\nTP1: 1.1212 (+20)\nTP2: 1.1182 (+50)\nTP3: 1.1132 (+100)\n\nSL 1.1272 (-40)\n\nRISK RATING: ★★★☆☆",
+      "expect": {
+        "action": "sell",
+        "symbol": "EURUSD",
+        "sl": 1.1272,
+        "tp": [
+          1.1212,
+          1.1182,
+          1.1132
+        ],
+        "entryPrice": 1.1232,
+        "tpUnit": "price"
+      },
+      "useFor": [
+        "regression",
+        "liveSend",
+        "fewshot"
+      ]
+    },
+    {
+      "id": "entry_non_xau#4",
+      "category": "entry_non_xau",
+      "message": "SILVER ❇️BUY❇️@ 📝57.570\nTP1 🔼 57.770\nTP2 🔼 57.850\nTP3 🔼 58.000\n🥶\nSL 👀 57.350\n📨#FXENGIN",
+      "expect": {
+        "action": "buy",
+        "symbol": "XAGUSD",
+        "sl": 57.35,
+        "tp": [
+          57.77,
+          57.85,
+          58
+        ],
+        "entryPrice": 57.57,
+        "tpUnit": "price"
+      },
+      "useFor": [
+        "regression",
+        "liveSend",
+        "fewshot"
+      ]
+    },
+    {
+      "id": "entry_non_xau#5",
+      "category": "entry_non_xau",
+      "message": "SILVER ❇️BUY❇️@ 📝 57.280\nTP1 🔼 57.600\nTP2 🔼 57.800\nTP3 🔼 58.000\n🥶\nSL 👀 56.950\n📨#FXENGIN",
+      "expect": {
+        "action": "buy",
+        "symbol": "XAGUSD",
+        "sl": 56.95,
+        "tp": [
+          57.6,
+          57.8,
+          58
+        ],
+        "entryPrice": 57.28,
+        "tpUnit": "price"
+      },
+      "useFor": [
+        "regression",
+        "liveSend",
+        "fewshot"
+      ]
+    },
+    {
+      "id": "entry_arabic_bilingual#1",
+      "category": "entry_arabic_bilingual",
+      "message": "XAUUSD Sell 4121/4124\nبيع الذهب\nTP1. 4117\nTP2. 4114\nTP3. 4110\nTP4. 4094\n\nSL.   4134\nاستخدام إدارة الأمو\n\nUse Money Management.",
+      "expect": {
+        "action": "sell",
+        "symbol": "XAUUSD",
+        "sl": 4134,
+        "tp": [
+          4117,
+          4114,
+          4110,
+          4094
+        ],
+        "tpUnit": "price"
+      },
+      "useFor": [
+        "regression",
+        "liveSend",
+        "fewshot"
+      ]
+    },
+    {
+      "id": "entry_arabic_bilingual#2",
+      "category": "entry_arabic_bilingual",
+      "message": "XAUUSD BUY 4120/4117\nشراء الذهب\nTP1. 4124\nTP2. 4127\nTP3. 4131\nTP4. 4148\n\nSL.   4107\nاستخدام إدارة الأموال\n\nUse Money Management",
+      "expect": {
+        "action": "buy",
+        "symbol": "XAUUSD",
+        "sl": 4107,
+        "tp": [
+          4124,
+          4127,
+          4131,
+          4148
+        ],
+        "tpUnit": "price"
+      },
+      "useFor": [
+        "regression",
+        "liveSend",
+        "fewshot"
+      ]
+    },
+    {
+      "id": "entry_arabic_bilingual#3",
+      "category": "entry_arabic_bilingual",
+      "message": "شراء ذهب لوت عالي\n\n\n\n\nBUY NOW XAUUSD 4144/4140\n\n\nTP1: 4154\n\nTP2: 4200\n\nSL: 4130",
+      "expect": {
+        "action": "buy",
+        "symbol": "XAUUSD",
+        "sl": 4130,
+        "tp": [
+          4154,
+          4200
+        ],
+        "tpUnit": "price"
+      },
+      "useFor": [
+        "regression",
+        "liveSend",
+        "fewshot"
+      ]
+    },
+    {
+      "id": "entry_superscript_tp#1",
+      "category": "entry_superscript_tp",
+      "message": "📊XAUUSD BUY 4122📊\n\n📊 TP¹ 4133 📊\n📊 TP² 4136 📊\n📊 TP³ 4139 📊\n📊 TP⁴ 4142 📊\n📊 TP⁵ 4145 📊\n📊 TP⁶ 4148 📊\n📊 TP⁷ 4151 📊\n\n\n❌ SL 4118❌",
+      "expect": {
+        "action": "buy",
+        "symbol": "XAUUSD",
+        "sl": 4118,
+        "tp": [
+          4133,
+          4136,
+          4139,
+          4142,
+          4145,
+          4148,
+          4151
+        ],
+        "entryPrice": 4122,
+        "tpUnit": "price"
+      },
+      "useFor": [
+        "regression",
+        "liveSend",
+        "fewshot"
+      ]
+    },
+    {
+      "id": "entry_superscript_tp#2",
+      "category": "entry_superscript_tp",
+      "message": "XAUUSD SELL  4170\n\nTP¹  4166\nTP²  4162\nTP³  4158\nTP⁴  4154\n\nSL   4180",
+      "expect": {
+        "action": "sell",
+        "symbol": "XAUUSD",
+        "sl": 4180,
+        "tp": [
+          4166,
+          4162,
+          4158,
+          4154
+        ],
+        "entryPrice": 4170,
+        "tpUnit": "price"
+      },
+      "useFor": [
+        "regression",
+        "liveSend",
+        "fewshot"
+      ]
+    },
+    {
+      "id": "entry_superscript_tp#3",
+      "category": "entry_superscript_tp",
+      "message": "XAUUSD #GOLD BUY  4162-4167\n\nTP¹ 4168\nTP² 4171\nTP³ 4174\nSL.  4150",
+      "expect": {
+        "action": "buy",
+        "symbol": "XAUUSD",
+        "sl": 4150,
+        "tp": [
+          4167,
+          4168,
+          4171,
+          4174
+        ],
+        "tpUnit": "price"
+      },
+      "useFor": [
+        "regression",
+        "liveSend",
+        "fewshot"
+      ]
+    },
+    {
+      "id": "entry_tp_hit_recap#1",
+      "category": "entry_tp_hit_recap",
+      "message": "🏁 XAUUSD SELL REACHED TP3 — Trade Closed 🏁\nEntry: 4165.670\nTP1: 4160.385\nSL: 4176.239\nTP2: 4149.816\nTP3: 4139.246\n\nFull target hit. Nice trade!",
+      "expect": {
+        "action": "sell",
+        "symbol": "XAUUSD",
+        "sl": 4176.239,
+        "tp": [
+          4160.385,
+          4149.816,
+          4139.246
+        ],
+        "entryPrice": 4165.67,
+        "tpUnit": "price"
+      },
+      "useFor": [
+        "regression"
+      ],
+      "note": "KNOWN ISSUE: a recap of an already-closed trade (\"REACHED TP3 — Trade closed\") parses as a fresh entry (Luis-incident class). Kept as a pin of current behaviour; flagged for the guard discussion."
+    },
+    {
+      "id": "entry_tp_hit_recap#2",
+      "category": "entry_tp_hit_recap",
+      "message": "🏁 XAUUSD SELL REACHED TP3 — Trade Closed 🏁\nEntry: 4208.760\nTP1: 4202.958\nSL: 4220.364\nTP2: 4191.354\nTP3: 4179.751\n\nFull target hit. Nice trade!",
+      "expect": {
+        "action": "sell",
+        "symbol": "XAUUSD",
+        "sl": 4220.364,
+        "tp": [
+          4202.958,
+          4191.354,
+          4179.751
+        ],
+        "entryPrice": 4208.76,
+        "tpUnit": "price"
+      },
+      "useFor": [
+        "regression"
+      ],
+      "note": "KNOWN ISSUE: a recap of an already-closed trade (\"REACHED TP3 — Trade closed\") parses as a fresh entry (Luis-incident class). Kept as a pin of current behaviour; flagged for the guard discussion."
+    },
+    {
+      "id": "entry_now_plain#1",
+      "category": "entry_now_plain",
+      "message": "📈GOLD BUY NOW📈\n\n🎁GOLD BUY ZONE 4045-4040🎁\n\n\n👑TP1 : 4050📊\n👑TP2 : 4055📊\n👑TP3 : 4060📊\n👑TP4 : open✅\n\n📊SL : PREMIUM ❤️🙏\n\n💥USE SUITABLE LOT SIZES BASED ON YOUR CAPITAL. 🙏MANAGE YOUR RISK ALL TIME MONEY MANAGEMENT IS ❤️✅",
+      "expect": {
+        "action": "buy",
+        "symbol": "XAUUSD",
+        "sl": 4040,
+        "tp": [
+          4050,
+          4055,
+          4060
+        ],
+        "tpUnit": "price"
+      },
+      "useFor": [
+        "regression",
+        "liveSend",
+        "fewshot"
+      ]
+    },
+    {
+      "id": "entry_now_plain#2",
+      "category": "entry_now_plain",
+      "message": "GOLD Sell NOW 4050\nUSE BIG LOT \nSL & TP 👇👇4280\n\nhttps://t.me/StarXhuk900\nhttps://t.me/StarXhuk900\n\n#GOLD Target Will be Post Here 👆",
+      "expect": {
+        "action": "sell",
+        "symbol": "XAUUSD",
+        "tp": [
+          4280
+        ],
+        "entryPrice": 4050,
+        "tpUnit": "price",
+        "sl": null
+      },
+      "useFor": [
+        "regression"
+      ],
+      "note": "KNOWN ISSUE: entry parses without a stop (proposal-1 territory — stop-less signals are still copied)."
+    },
+    {
+      "id": "entry_now_plain#3",
+      "category": "entry_now_plain",
+      "message": "XAUUSD BUY NOW 4060_58\n\nTP 4064\nTP 4068\nTP 4072\nTP 4076\n\nSL 4055\n\nJOIN MY ViP SiGNAL ✅",
+      "expect": {
+        "action": "buy",
+        "symbol": "XAUUSD",
+        "sl": 4055,
+        "tp": [
+          4064,
+          4068,
+          4072,
+          4076
+        ],
+        "tpUnit": "price"
+      },
+      "useFor": [
+        "regression",
+        "liveSend",
+        "fewshot"
+      ]
+    },
+    {
+      "id": "entry_now_plain#4",
+      "category": "entry_now_plain",
+      "message": "GOLD SELL NOW 4080 \n\nTP1 4073 \nTP2 4050\n\nSL 4083 \n\nRR > 10",
+      "expect": {
+        "action": "sell",
+        "symbol": "XAUUSD",
+        "sl": 4083,
+        "tp": [
+          4073,
+          4050
+        ],
+        "entryPrice": 4080,
+        "tpUnit": "price"
+      },
+      "useFor": [
+        "regression",
+        "liveSend",
+        "fewshot"
+      ]
+    },
+    {
+      "id": "entry_now_plain#5",
+      "category": "entry_now_plain",
+      "message": "GOLD SELL NOW 4072 \n\nTP1 4065 \nTP2 4042\n\nSL 4075 \n\nRR > 10",
+      "expect": {
+        "action": "sell",
+        "symbol": "XAUUSD",
+        "sl": 4075,
+        "tp": [
+          4065,
+          4042
+        ],
+        "entryPrice": 4072,
+        "tpUnit": "price"
+      },
+      "useFor": [
+        "regression",
+        "liveSend",
+        "fewshot"
+      ]
+    },
+    {
+      "id": "mgmt_breakeven#1",
+      "category": "mgmt_breakeven",
+      "message": "Good push, my stop loss is at break even now!",
+      "expect": {
+        "action": "breakeven"
+      },
+      "useFor": [
+        "regression"
+      ]
+    },
+    {
+      "id": "mgmt_breakeven#2",
+      "category": "mgmt_breakeven",
+      "message": "TP 1 & 2 are BOTH hit ✅\n\n+ 90 pips profit secured as we used double lotsize 🔥🔥🔥\n\nMove your SL back to entry.",
+      "expect": {
+        "action": "breakeven",
+        "tp": [
+          1
+        ]
+      },
+      "reply": true,
+      "useFor": [
+        "regression"
+      ]
+    },
+    {
+      "id": "mgmt_breakeven#3",
+      "category": "mgmt_breakeven",
+      "message": "You can move stop to breakeven",
+      "expect": {
+        "action": "breakeven"
+      },
+      "useFor": [
+        "regression"
+      ]
+    },
+    {
+      "id": "mgmt_breakeven#4",
+      "category": "mgmt_breakeven",
+      "message": "TP1 & 2 SMASHED +100 Pips ✅🔥\n\nMove SL to your entry now 💰",
+      "expect": {
+        "action": "breakeven"
+      },
+      "reply": true,
+      "useFor": [
+        "regression"
+      ]
+    },
+    {
+      "id": "mgmt_breakeven_reply#1",
+      "category": "mgmt_breakeven_reply",
+      "message": "Opțional putem seta breakeven la prețul de intrare ♻️",
+      "expect": {
+        "action": "breakeven"
+      },
+      "reply": true,
+      "useFor": [
+        "regression"
+      ]
+    },
+    {
+      "id": "mgmt_close_reply#1",
+      "category": "mgmt_close_reply",
+      "message": "Close all trades now",
+      "expect": {
+        "action": "close"
+      },
+      "reply": true,
+      "useFor": [
+        "regression"
+      ]
+    },
+    {
+      "id": "mgmt_close_reply#2",
+      "category": "mgmt_close_reply",
+      "message": "close now close now close now close now close now close now close now close now close now close now close now close now close now close now close now close now close now close now close now close now",
+      "expect": {
+        "action": "close"
+      },
+      "reply": true,
+      "useFor": [
+        "regression"
+      ]
+    },
+    {
+      "id": "mgmt_close_worse#1",
+      "category": "mgmt_close_worse",
+      "message": "All entries in GREEN 💚 \n\nClose worse entries and keep best running 🏃‍♀️ \n\n+40 Pips from best entries 🔥 \n\nSet SL to BE to be risk free (4091)",
+      "expect": {
+        "action": "close_worse_entries"
+      },
+      "reply": true,
+      "useFor": [
+        "regression"
+      ]
+    },
+    {
+      "id": "mgmt_close_worse#2",
+      "category": "mgmt_close_worse",
+      "message": "All entries in GREEN 💚 \n\nClose worse entries and keep best running 🏃‍♀️ \n\n+30 Pips from best entries 🔥 \n\nSet SL to BE to be risk free (4052)",
+      "expect": {
+        "action": "close_worse_entries"
+      },
+      "reply": true,
+      "useFor": [
+        "regression"
+      ]
+    },
+    {
+      "id": "mgmt_partial#1",
+      "category": "mgmt_partial",
+      "message": "set SL TO BE & take partials NOW.",
+      "expect": {
+        "action": "partial_breakeven"
+      },
+      "reply": true,
+      "useFor": [
+        "regression"
+      ]
+    },
+    {
+      "id": "mgmt_partial#2",
+      "category": "mgmt_partial",
+      "message": "At Tp2 I‘ll close half profits & set breakeven for zero risk!🤑🤑👏🏽",
+      "expect": {
+        "action": "partial_breakeven"
+      },
+      "useFor": [
+        "regression"
+      ]
+    },
+    {
+      "id": "ignore_results_recap#1",
+      "category": "ignore_results_recap",
+      "message": "XAUUSD Sell💥\n\nTARGET ² COMPLETE 70+ PIPS DONE  💯✌️✌️💪💪 🔥🔥",
+      "expect": {
+        "action": "ignore",
+        "symbol": "XAUUSD"
+      },
+      "reply": true,
+      "useFor": [
+        "regression"
+      ],
+      "note": "Results recaps must never open trades (the Luis-incident class)."
+    },
+    {
+      "id": "ignore_results_recap#2",
+      "category": "ignore_results_recap",
+      "message": "XAUUSD Sell💥\n\nTARGET ¹ COMPLETE 40+ PIPS DONE  💯✌️✌️💪💪 🔥🔥",
+      "expect": {
+        "action": "ignore",
+        "symbol": "XAUUSD"
+      },
+      "reply": true,
+      "useFor": [
+        "regression"
+      ],
+      "note": "Results recaps must never open trades (the Luis-incident class)."
+    },
+    {
+      "id": "ignore_results_recap#3",
+      "category": "ignore_results_recap",
+      "message": "XAUUSD TP1: +209 pips ✅\nAnother profit target hit!",
+      "expect": {
+        "action": "ignore",
+        "symbol": "XAUUSD"
+      },
+      "reply": true,
+      "useFor": [
+        "regression"
+      ],
+      "note": "Results recaps must never open trades (the Luis-incident class)."
+    },
+    {
+      "id": "ignore_results_recap#4",
+      "category": "ignore_results_recap",
+      "message": "#XAUUSD \nALL TARGET COMPLETE  150+ PIPS DONE\n\n5th setup is done see you on Friday",
+      "expect": {
+        "action": "ignore",
+        "symbol": "XAUUSD"
+      },
+      "useFor": [
+        "regression"
+      ],
+      "note": "Results recaps must never open trades (the Luis-incident class)."
+    },
+    {
+      "id": "ignore_results_recap#5",
+      "category": "ignore_results_recap",
+      "message": "Gold Buy Trade ✔️\nTrade $4048 Closed 🔐 \nStope Loss $4040 ✔️\nGold Take Loss 80- pips\n\n@bullgoldsignsl\n#xauusd #gold #XAUUSD #gainzalgo #traidingview #forex #stocks #crypto #GainzAlgo #InvestSmart #TradingTips",
+      "expect": {
+        "action": "ignore",
+        "symbol": "XAUUSD"
+      },
+      "useFor": [
+        "regression"
+      ],
+      "note": "Results recaps must never open trades (the Luis-incident class)."
+    },
+    {
+      "id": "ignore_promo#1",
+      "category": "ignore_promo",
+      "message": "XAUUSD 5 MIN SCALPING STRATEGY✅\n\n💥300% Growth in a Week 👇\n\nhttps://t.me/+REDACTED\n☝️Join fast☝️☝️",
+      "expect": {
+        "action": "ignore",
+        "symbol": "XAUUSD"
+      },
+      "useFor": [
+        "regression"
+      ]
+    },
+    {
+      "id": "ignore_promo#2",
+      "category": "ignore_promo",
+      "message": "Ready? 🔥🔥🔥\n\n🚀XAUUSD Live Trading 🌟 $1,000 To $20,000 Challenge📊\n\nA new signal will be sent in 15 minutes.💯 🎁\n\nJoin now ✅ 👇\n\nhttps://chat.whatsapp.com/REDACTED",
+      "expect": {
+        "action": "ignore",
+        "symbol": "XAUUSD"
+      },
+      "useFor": [
+        "regression"
+      ]
+    },
+    {
+      "id": "ignore_promo#3",
+      "category": "ignore_promo",
+      "message": "Ready? 🔥🔥🔥\n\n🚀XAUUSD Live Trading 🌟 $1,000 To $20,000 Challenge📊\n\nA new signal will be sent in 15 minutes.💯 🎁\n\nJoin now ✅ 👇\n\nhttps://chat.whatsapp.com/REDACTED",
+      "expect": {
+        "action": "ignore",
+        "symbol": "XAUUSD"
+      },
+      "useFor": [
+        "regression"
+      ]
+    },
+    {
+      "id": "ignore_chatter#1",
+      "category": "ignore_chatter",
+      "message": ".,Use Money Management\n\nPlease HOLD ALL TARGET 🎯💯✔️\n\nاستخدام إدارة الأموال\n\nيرجى حمل كل الأهداف 🎯💯✔️",
+      "expect": {
+        "action": "ignore"
+      },
+      "reply": true,
+      "useFor": [
+        "regression"
+      ]
+    },
+    {
+      "id": "units_pips#1",
+      "category": "units_pips",
+      "message": "#XAUUSD_Sellllllllllllllllll\n\nTP 1 HITWITH 30+ PIPS PROFIT✔️✔️✅✅💥💥",
+      "expect": {
+        "action": "modify",
+        "tp": [
+          1
+        ],
+        "tpUnit": "pips"
+      },
+      "reply": true,
+      "useFor": [
+        "regression"
+      ],
+      "note": "Mixed pips/price formats; includes the known weak spot where a tiered label like Tp-1@157.437 can read the ordinal as a pips value."
+    },
+    {
+      "id": "units_pips#2",
+      "category": "units_pips",
+      "message": "Sell USDJPY now @158.164\nSl@158.560\nTp-1@157.437\nTp-2@156.376",
+      "expect": {
+        "action": "sell",
+        "symbol": "USDJPY",
+        "sl": 158.56,
+        "tp": [
+          1,
+          2
+        ],
+        "entryPrice": 158.164,
+        "tpUnit": "pips"
+      },
+      "useFor": [
+        "regression"
+      ],
+      "note": "KNOWN ISSUE: tier ordinals (TP¹/TP² style) read as the prices themselves — flagged with the pips-unit weak spot."
+    },
+    {
+      "id": "units_pips#3",
+      "category": "units_pips",
+      "message": "TP 2 Preso ✅",
+      "expect": {
+        "action": "modify",
+        "tp": [
+          2
+        ],
+        "tpUnit": "pips"
+      },
+      "useFor": [
+        "regression"
+      ],
+      "note": "Mixed pips/price formats; includes the known weak spot where a tiered label like Tp-1@157.437 can read the ordinal as a pips value."
+    },
+    {
+      "id": "mgmt_modify_chatter#1",
+      "category": "mgmt_modify_chatter",
+      "message": "Who Want Recovery Loss ?\n\nMassage now \nAdmin  @Raheemfx11",
+      "expect": {
+        "action": "modify"
+      },
+      "reply": true,
+      "useFor": [
+        "regression"
+      ],
+      "note": "Chat noise classified as a parameterless modification — a harmless no-op, pinned as-is."
+    },
+    {
+      "id": "mgmt_modify_chatter#2",
+      "category": "mgmt_modify_chatter",
+      "message": "Interested cleint contact now\n I will manage small account\nMinimum equty start 200$ 300$ 500$ 700$ 1000$ 2000$\nContact with me @Sajid_Alifx",
+      "expect": {
+        "action": "modify"
+      },
+      "reply": true,
+      "useFor": [
+        "regression"
+      ],
+      "note": "Chat noise classified as a parameterless modification — a harmless no-op, pinned as-is."
+    },
+    {
+      "id": "mgmt_modify_params#1",
+      "category": "mgmt_modify_params",
+      "message": "Entry 3990\n\nTP 3995\nTP 4000\nTP 4010\nTP 4025\n\nSL 3983",
+      "expect": {
+        "action": "modify",
+        "sl": 3983,
+        "tp": [
+          3995,
+          4000,
+          4010,
+          4025
+        ],
+        "entryPrice": 3990,
+        "tpUnit": "price"
+      },
+      "useFor": [
+        "regression"
+      ]
+    },
+    {
+      "id": "mgmt_modify_params#2",
+      "category": "mgmt_modify_params",
+      "message": "tp 4026, 4031, 4036, 4041, 4071",
+      "expect": {
+        "action": "modify",
+        "tp": [
+          4026,
+          4031,
+          4036,
+          4041,
+          4071
+        ],
+        "tpUnit": "price"
+      },
+      "reply": true,
+      "useFor": [
+        "regression"
+      ]
+    }
+  ]
+}

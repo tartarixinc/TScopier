@@ -27,7 +27,7 @@ function TrustpilotBox({
           style={{ width: `${Math.min(fill, 1) * 100}%`, backgroundColor: TRUSTPILOT_GREEN }}
         />
       ) : null}
-      <svg viewBox="0 0 24 24" className="relative z-[1] h-full w-full p-[3px] text-white" aria-hidden>
+      <svg viewBox="0 0 24 24" className="relative z-1 h-full w-full p-[3px] text-white" aria-hidden>
         <path fill="currentColor" d={STAR_PATH} />
       </svg>
     </div>

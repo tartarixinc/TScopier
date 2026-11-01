@@ -1,6 +1,6 @@
 begin;
 
-select plan(27);
+select plan(42);
 
 insert into auth.users (id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data)
 values
@@ -51,7 +51,7 @@ insert into public.trades (
 select
   '20000000-0000-0000-0000-000000000001',
   '21000000-0000-0000-0000-000000000001',
-  'eligible-' || n,
+  (620000 + n)::text,
   'EURUSD',
   case when n % 2 = 0 then 'buy' else 'sell' end,
   'closed',
@@ -96,6 +96,7 @@ select is(public.follow_social_profile('20000000-0000-0000-0000-000000000001'), 
 
 select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000001', true);
 select lives_ok($$select public.resolve_social_follow_request('20000000-0000-0000-0000-000000000002', 'accepted')$$, 'source accepts subscriber request');
+select is((select count(*)::integer from public.in_app_notifications where event_type = 'social_follow_accepted'), 1, 'accepted follow notifies the followed trader');
 
 select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000002', true);
 select is(
@@ -106,7 +107,7 @@ select throws_ok(
   $$select public.create_social_copy_subscription(
     (select source_id from public.get_social_copy_sources('20000000-0000-0000-0000-000000000001') limit 1),
     '21000000-0000-0000-0000-000000000003', 'fixed_lot', 0.01, 1, 0.1, null, 'demo', '{}')$$,
-  '42501', 'Destination broker account is not owned by the current user',
+  '42501', 'Destination account is not owned, connected, or supported for Social Trading',
   'subscriber cannot route copying into another user account'
 );
 select ok(public.create_social_copy_subscription(
@@ -131,6 +132,24 @@ select throws_ok(
   '42501', null, 'authenticated client cannot directly insert subscriptions'
 );
 select is((select status from public.social_copy_subscriptions limit 1), 'pending', 'subscription remains pending until worker acknowledgement');
+select is(public.get_social_trader_live_copier_count('20000000-0000-0000-0000-000000000001'), 0::bigint, 'pending subscription is not a live copier');
+reset role;
+select is((select count(*)::integer from public.in_app_notifications where event_type = 'social_copy_activated'), 0, 'pending subscription does not create a false activation notification');
+select lives_ok($$update public.social_copy_subscriptions set status = 'active', worker_acknowledged_at = now()$$, 'worker acknowledgement can activate subscription');
+select lives_ok($$update public.social_copy_subscriptions set status = 'active', worker_acknowledged_at = now()$$, 'repeated worker reconciliation is harmless');
+select is((select count(*)::integer from public.in_app_notifications where event_type = 'social_copy_activated'), 1, 'activation notification is deduplicated');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000001', true);
+select is((select count(*)::integer from public.in_app_notifications where event_type = 'social_copy_activated'), 1, 'source trader receives the new copier notification');
+select is(public.get_social_trader_live_copier_count('20000000-0000-0000-0000-000000000001'), 1::bigint, 'worker-acknowledged active subscription is one live copier');
+reset role;
+select lives_ok($$update public.social_copy_subscriptions set status = 'error', error_code = 'TEST_SUSPENSION'$$, 'worker failure can suspend subscription');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000002', true);
+select is((select count(*)::integer from public.in_app_notifications where event_type = 'social_copy_suspended'), 1, 'subscriber receives suspension notification');
+select is(public.get_social_trader_live_copier_count('20000000-0000-0000-0000-000000000001'), 0::bigint, 'error subscription is not a live copier');
+select lives_ok($$update public.in_app_notifications set read_at = now() where event_type = 'social_copy_suspended'$$, 'recipient can mark own notification read');
+select ok((select read_at is not null from public.in_app_notifications where event_type = 'social_copy_suspended'), 'persistent read state is visible to recipient');
 select lives_ok($$select public.set_social_copy_subscription_status((select id from public.social_copy_subscriptions limit 1), 'pause')$$, 'owner can request pause');
 select is((select desired_status from public.social_copy_subscriptions limit 1), 'paused', 'pause desire persists');
 select lives_ok($$select public.set_social_copy_subscription_status((select id from public.social_copy_subscriptions limit 1), 'resume')$$, 'owner can request resume');
@@ -141,12 +160,18 @@ select is(has_function_privilege('authenticated', 'public.claim_social_copy_subs
 
 select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000003', true);
 select throws_ok(
+  $$select public.get_social_trader_live_copier_count('20000000-0000-0000-0000-000000000001')$$,
+  '42501', 'Social profile is not available to this viewer',
+  'private trader live copier count requires an accepted follow'
+);
+select throws_ok(
   $$select public.set_social_copy_subscription_status((select id from public.social_copy_subscriptions), 'stop')$$,
   'P0002', 'Current subscription was not found', 'other user cannot change subscriber lifecycle'
 );
 select is((select count(*)::integer from public.social_copy_subscriptions), 0, 'RLS hides another user subscriptions');
 select is((select count(*)::integer from public.social_copy_trade_mappings), 0, 'RLS hides another user execution mappings');
 select is((select count(*)::integer from public.social_copy_execution_events), 0, 'RLS hides another user audit events');
+select is((select count(*)::integer from public.in_app_notifications), 0, 'RLS hides every other user notification');
 
 select * from finish();
 rollback;

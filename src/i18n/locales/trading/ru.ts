@@ -80,6 +80,8 @@ export const tradingRu: TradingPagesBundleTranslations = {
     reasonCopyLimitFlatten: 'Закрыта автоматически при достижении лимита копирования.',
     reasonUserForceClose: 'Закрыта вами.',
     reasonPositionGone: 'Позиция уже отсутствовала у брокера, когда мы проверили.',
+    reasonMirrorSourceClosed: 'Исходная сделка закрыта, поэтому эта копия закрыта вместе с ней.',
+    reasonMirrorCopyClosed: 'Эта скопированная сделка была закрыта до того, как причины закрытия начали записываться.',
     reasonStopLoss: 'Брокер закрыл её по стоп-лоссу ({price}).',
     reasonTakeProfit: 'Брокер закрыл её по тейк-профиту ({price}).',
     reasonUnknown: 'Причина закрытия этой сделки не записана.',

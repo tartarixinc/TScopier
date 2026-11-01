@@ -134,7 +134,7 @@ export function looksLikeResultsOrSuggestedCommentary(message: string): boolean 
   if (!text) return false
 
   const resultMarkers =
-    /\b(?:results?|recap|performance|total\s+pips?|pips?\s+total|join\s+(?:our\s+)?vip|vip\s+(?:results?|performance)|hits?\s+tp\s*\d*|tp\s*\d*\s*(?:hit|reached)|tp\s*\d*\s*[+=]\s*\d+(?:\.\d+)?\s*pips?)\b/i
+    /\b(?:results?|recap|performance|total\s+pips?|pips?\s+total|join\s+(?:our\s+)?vip|vip\s+(?:results?|performance)|hits?\s+tp\s*\d+|tp\s*\d+\s*(?:hit|reached)|tp\s*\d+\s*(?:&|and)\s*(?:tp\s*)?\d+\s*(?:done|hit|completed|secured|achieved)|tp\s*\d+\s*[+=]\s*\d+(?:\.\d+)?\s*pips?)\b/i
   const arabicResultMarkers =
     /(?:نتائج|حصيلة|أداء|اجمالي\s*(?:النقاط|البيب|البيبات)|إجمالي\s*(?:النقاط|البيب|البيبات)|انضم(?:ام)?|ضرب(?:ت)?\s*(?:الهدف|tp)|الهدف\s*(?:تحقق|ضرب))/iu
   if (resultMarkers.test(text) || arabicResultMarkers.test(text)) return true

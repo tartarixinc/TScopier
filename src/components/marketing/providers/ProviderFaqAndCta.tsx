@@ -38,8 +38,8 @@ export function ProviderFinalCta() {
   const c = useProviderPage().finalCta
 
   return (
-    <section className="mx-auto max-w-[80rem] px-3 pb-12 pt-4 sm:px-5 sm:pb-16">
-      <article className="relative isolate overflow-hidden rounded-[2rem] bg-green-400 px-7 py-14 text-center text-neutral-950 sm:px-12 sm:py-20">
+    <section className="mx-auto max-w-7xl px-3 pb-12 pt-4 sm:px-5 sm:pb-16">
+      <article className="relative isolate overflow-hidden rounded-4xl bg-green-400 px-7 py-14 text-center text-neutral-950 sm:px-12 sm:py-20">
         <div
           className="pointer-events-none absolute inset-0 -z-10 opacity-[0.22] mix-blend-multiply"
           style={{
@@ -59,7 +59,7 @@ export function ProviderFinalCta() {
           <ProviderCta
             label={c.primaryCta}
             placement="final"
-            className="!border-neutral-950 !bg-neutral-950 !text-white !shadow-none hover:!shadow-[0_12px_30px_-10px_rgba(0,0,0,0.6)]"
+            className="border-neutral-950! bg-neutral-950! text-white! shadow-none! hover:shadow-[0_12px_30px_-10px_rgba(0,0,0,0.6)]!"
           />
           <a
             href={marketingUrl('/')}

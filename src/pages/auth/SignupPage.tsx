@@ -10,14 +10,12 @@ import { Alert } from '../../components/ui/Alert'
 import { AuthBackHome } from '../../components/auth/AuthBackHome'
 import { useLocale } from '../../context/LocaleContext'
 import { EMPTY_USER_PROFILE, saveUserProfile } from '../../lib/userProfile'
-import { sendVerificationEmail } from '../../lib/sendVerificationEmail'
 import {
   captureReferralFromUrl,
   loadStoredReferralCode,
   normalizeReferralCode,
   referralCodeLooksValid,
 } from '../../lib/referralCapture'
-import { isEmailVerified } from '../../lib/emailVerification'
 import { marketingUrl } from '../../lib/site'
 import {
   capturePendingPlanFromUrl,
@@ -199,7 +197,9 @@ export function SignupPage() {
       redirectUrl.searchParams.set('ref', normalizedRef)
     }
     const redirectTo = redirectUrl.toString()
-    const { data, error: signUpError } = await supabase.auth.signUp({
+    let signUpResult
+    try {
+      signUpResult = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -212,6 +212,14 @@ export function SignupPage() {
         },
       },
     })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create your account. Please try again.')
+      turnstileRef.current?.reset()
+      setCaptchaToken(null)
+      setLoading(false)
+      return
+    }
+    const { data, error: signUpError } = signUpResult
     if (signUpError) {
       const policyCode = signupErrorPolicyCode(signUpError.message)
       setError(
@@ -224,6 +232,12 @@ export function SignupPage() {
       )
       turnstileRef.current?.reset()
       setCaptchaToken(null)
+      setLoading(false)
+      return
+    }
+
+    if (!data.user) {
+      setError('Account creation did not return a user. Please try again.')
       setLoading(false)
       return
     }
@@ -246,28 +260,22 @@ export function SignupPage() {
 
       }
 
-      const sent = await sendVerificationEmail({
-        email: data.user.email ?? email,
-        accessToken: data.session?.access_token,
-        redirectTo,
-        captchaToken,
-      })
-      if (!sent.ok) {
-        // Do not treat rate_limited/cooldown as success — that fakes "email sent"
-        // when Resend was never called (e.g. global flood cap).
-        setError(sent.error)
-        turnstileRef.current?.reset()
-        setCaptchaToken(null)
-        setLoading(false)
-        return
-      }
     }
 
-    if (data.user && !isEmailVerified(data.user, null)) {
-      await supabase.auth.signOut()
+    if (!data.session) {
+      // Confirm-email projects deliberately return a user without a session.
+      // signUp has already requested the confirmation email, so do not hold the
+      // form spinner on the optional branded resend endpoint.
+      setLoading(false)
+      navigate(`/verify-email?email=${encodeURIComponent(email)}&registered=1`, { replace: true })
+      return
     }
 
-    navigate(`/verify-email?email=${encodeURIComponent(email)}`)
+    // This branch is for an already-authenticated registration response. It is
+    // retained for compatibility, but normal email/password registration waits
+    // for email confirmation and takes the branch above.
+    setLoading(false)
+    navigate(postAuthAppPath(), { replace: true })
   }
 
   return (
@@ -461,7 +469,7 @@ export function SignupPage() {
           type="submit"
           loading={loading}
           disabled={isCreateAccountDisabled(validationInput)}
-          className="w-full !mt-6"
+          className="w-full mt-6!"
           size="lg"
         >
           {signupT.submit}

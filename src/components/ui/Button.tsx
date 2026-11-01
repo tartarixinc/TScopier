@@ -14,12 +14,12 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         disabled={disabled || loading}
         className={clsx(
-          'inline-flex items-center justify-center gap-2 font-medium rounded-lg transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-neutral-900 disabled:opacity-50 disabled:cursor-not-allowed',
+          'inline-flex items-center justify-center gap-2 font-medium rounded-lg transition-all duration-150 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-neutral-900 disabled:opacity-50 disabled:cursor-not-allowed',
           {
-            'bg-green-400 text-neutral-950 hover:bg-green-500 focus:ring-green-400 shadow-sm': variant === 'primary',
-            'bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-50 border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-700 focus:ring-green-400 shadow-sm': variant === 'secondary',
+            'bg-green-400 text-neutral-950 hover:bg-green-500 focus:ring-green-400 shadow-xs': variant === 'primary',
+            'bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-50 border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-700 focus:ring-green-400 shadow-xs': variant === 'secondary',
             'text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800 focus:ring-green-400': variant === 'ghost',
-            'bg-error-500 text-white hover:bg-error-600 focus:ring-error-500 shadow-sm': variant === 'danger',
+            'bg-error-500 text-white hover:bg-error-600 focus:ring-error-500 shadow-xs': variant === 'danger',
           },
           {
             'text-sm px-3 py-1.5': size === 'sm',

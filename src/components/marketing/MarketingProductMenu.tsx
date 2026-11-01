@@ -115,7 +115,7 @@ export function MarketingProductMenu({ triggerClassName }: { triggerClassName: s
     >
       <button
         type="button"
-        className={clsx(triggerClassName, 'inline-flex items-center gap-1', open && 'bg-neutral-900/[0.06] text-neutral-950 dark:bg-white/10 dark:text-white')}
+        className={clsx(triggerClassName, 'inline-flex items-center gap-1', open && 'bg-neutral-900/6 text-neutral-950 dark:bg-white/10 dark:text-white')}
         aria-expanded={open}
         aria-haspopup="true"
         aria-controls={panelId}
@@ -150,10 +150,10 @@ export function MarketingProductMenu({ triggerClassName }: { triggerClassName: s
                   onMouseEnter={() => setActive(product.key)}
                   onFocus={() => setActive(product.key)}
                   className={clsx(
-                    'group flex items-start gap-4 rounded-2xl p-3 transition-colors focus-visible:outline-none',
+                    'group flex items-start gap-4 rounded-2xl p-3 transition-colors focus-visible:outline-hidden',
                     active === product.key
-                      ? 'bg-neutral-900/[0.05] dark:bg-white/[0.08]'
-                      : 'hover:bg-neutral-900/[0.03] dark:hover:bg-white/[0.04]',
+                      ? 'bg-neutral-900/5 dark:bg-white/8'
+                      : 'hover:bg-neutral-900/3 dark:hover:bg-white/4',
                   )}
                 >
                   <span
@@ -167,7 +167,7 @@ export function MarketingProductMenu({ triggerClassName }: { triggerClassName: s
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-1.5 text-sm font-semibold text-neutral-950 dark:text-white">
                       {row.title}
-                      <ArrowRight className="h-3.5 w-3.5 -translate-x-1 opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100 rtl:rotate-180 rtl:translate-x-1 rtl:group-hover:translate-x-0" aria-hidden />
+                      <ArrowRight className="h-3.5 w-3.5 -translate-x-1 opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100 rtl:rotate-180 rtl:translate-x-1 group-hover:rtl:translate-x-0" aria-hidden />
                     </span>
                     <span className="mt-0.5 block text-[0.8rem] leading-relaxed text-neutral-600 dark:text-neutral-400">
                       {row.description}
@@ -237,7 +237,7 @@ function DetailPanel({ active, onNavigate }: { active: ProductKey; onNavigate: (
         : copy.mirrorPanel
 
   return (
-    <div className="relative flex min-h-[21.5rem] flex-col justify-between overflow-hidden rounded-2xl bg-neutral-950 p-5 text-white">
+    <div className="relative flex min-h-86 flex-col justify-between overflow-hidden rounded-2xl bg-neutral-950 p-5 text-white">
       <div className={clsx('pointer-events-none absolute -right-10 -top-10 h-44 w-44 rounded-full blur-3xl transition-colors duration-500', glow.a)} aria-hidden />
       <div className={clsx('pointer-events-none absolute -bottom-12 -left-8 h-40 w-40 rounded-full blur-3xl transition-colors duration-500', glow.b)} aria-hidden />
 
@@ -316,7 +316,7 @@ function DetailPanel({ active, onNavigate }: { active: ProductKey; onNavigate: (
             </div>
             <div className="flex flex-1 flex-col gap-2.5" aria-hidden>
               {[0, 1, 2].map(i => (
-                <span key={i} className="h-px w-full bg-gradient-to-r from-teal-400/80 to-teal-400/10" />
+                <span key={i} className="h-px w-full bg-linear-to-r from-teal-400/80 to-teal-400/10" />
               ))}
             </div>
             <div className="flex flex-col gap-2">
@@ -387,7 +387,7 @@ export function MarketingProductMenuMobile({
                 key={product.key}
                 href={product.href}
                 onClick={onNavigate}
-                className="flex items-start gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-neutral-900/[0.06] dark:hover:bg-white/10"
+                className="flex items-start gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-neutral-900/6 dark:hover:bg-white/10"
               >
                 <span className={clsx('mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-neutral-950', product.tone)}>
                   <Icon className="h-4 w-4" aria-hidden />

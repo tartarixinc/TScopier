@@ -43,7 +43,7 @@ function PageButton({
       type="button"
       onClick={onClick}
       className={clsx(
-        'min-w-[2rem] h-8 px-2 text-sm rounded-md border tabular-nums transition-colors',
+        'min-w-8 h-8 px-2 text-sm rounded-md border tabular-nums transition-colors',
         active
           ? 'border-green-400 bg-green-400 text-neutral-950'
           : 'border-neutral-200/65 dark:border-neutral-800/55 text-neutral-900 dark:text-neutral-50 hover:bg-white dark:hover:bg-neutral-900',
@@ -131,7 +131,7 @@ export function BacktestResultsList({ trades, onSelect }: BacktestResultsListPro
               >
                 <div
                   className={clsx(
-                    'w-1 self-stretch rounded-full shrink-0 min-h-[3rem]',
+                    'w-1 self-stretch rounded-full shrink-0 min-h-12',
                     backtestToneBarClass(tone),
                   )}
                 />
@@ -177,7 +177,7 @@ export function BacktestResultsList({ trades, onSelect }: BacktestResultsListPro
             <select
               value={pageSize}
               onChange={e => setPageSize(Number(e.target.value) as PageSizeOption)}
-              className="h-8 min-w-[4.5rem] rounded-md border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 px-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-green-400"
+              className="h-8 min-w-18 rounded-md border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 px-2 text-sm tabular-nums focus:outline-hidden focus:ring-2 focus:ring-green-400"
               aria-label={bt.resultsPerPage}
             >
               {PAGE_SIZE_OPTIONS.map(n => (

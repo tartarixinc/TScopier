@@ -35,6 +35,17 @@ describe('MTAPI live identity normalization', () => {
     assert.equal(result.ticket, 101)
     assert.equal(result.positionTicket, 303)
   })
+
+  it('does not normalize missing, malformed, or non-positive MT broker tickets', () => {
+    for (const ticket of [null, '', 'NaN', 'Infinity', '1.5', '0', '-1', 0, -1, NaN, Infinity, 1.5]) {
+      assert.equal(Number.isNaN(normalizeOrderResponse({ ticket }, { platform: 'MT5' }).ticket), true)
+    }
+  })
+
+  it('normalizes valid numeric and digit-string MT broker tickets', () => {
+    assert.equal(normalizeOrderResponse({ ticket: 123 }, { platform: 'MT4' }).ticket, 123)
+    assert.equal(normalizeOrderResponse({ ticket: '123' }, { platform: 'MT5' }).ticket, 123)
+  })
 })
 
 describe('broker live volume alias authority', () => {
@@ -170,6 +181,72 @@ describe('canonical live position resolver', () => {
       ['status', 'open'],
       ['broker_position_ticket', '101'],
     ])
+  })
+
+  it('backfills a NULL position column on a certain canonical ticket match (MT4)', async () => {
+    // MT4: the send ticket IS the position ticket, so `replacement` is false —
+    // but the column may never have been captured (prod 2026-10-23: 13 open
+    // GOLD trades on MT4 • 79261348 matched every tick, column stayed NULL).
+    const calls: Array<[string, unknown]> = []
+    const query = {
+      update(payload: unknown) { calls.push(['update', payload]); return this },
+      eq(column: string, value: unknown) { calls.push([column, value]); return this },
+      is(column: string, value: unknown) { calls.push([column, value]); return this },
+      select() { return this },
+      async maybeSingle() { return { data: { id: 'trade-1' }, error: null } },
+    }
+    const supabase = { from: () => query }
+    const mt4Trade = {
+      id: 'trade-1',
+      metaapi_order_id: '303',
+      symbol: 'GOLD',
+      direction: 'sell',
+      lot_size: 0.01,
+      entry_price: 4000,
+    }
+    const resolution = resolveCanonicalOpenPosition({
+      trade: mt4Trade,
+      openedOrders: [{ type: 0, ticket: 303, symbol: 'GOLD', lots: 0.01, openPrice: 4000 }],
+    })
+    assert.equal(resolution.status, 'resolved')
+    if (resolution.status === 'resolved') {
+      assert.equal(resolution.replacement, false)
+      assert.equal(resolution.matchedBy, 'canonical_ticket')
+    }
+    assert.equal(await persistCanonicalPositionTicket(supabase as never, mt4Trade, resolution), true)
+    assert.deepEqual(calls, [
+      ['update', { broker_position_ticket: '303' }],
+      ['id', 'trade-1'],
+      ['status', 'open'],
+      ['broker_position_ticket', null],
+    ])
+  })
+
+  it('does not backfill when the column already holds a ticket', async () => {
+    const calls: Array<[string, unknown]> = []
+    const query = {
+      update(payload: unknown) { calls.push(['update', payload]); return this },
+      eq(column: string, value: unknown) { calls.push([column, value]); return this },
+      is(column: string, value: unknown) { calls.push([column, value]); return this },
+      select() { return this },
+      async maybeSingle() { return { data: { id: 'trade-1' }, error: null } },
+    }
+    const supabase = { from: () => query }
+    const capturedTrade = {
+      id: 'trade-1',
+      metaapi_order_id: '303',
+      broker_position_ticket: '303',
+      symbol: 'GOLD',
+      direction: 'sell',
+      lot_size: 0.01,
+      entry_price: 4000,
+    }
+    const resolution = resolveCanonicalOpenPosition({
+      trade: capturedTrade,
+      openedOrders: [{ type: 0, ticket: 303, symbol: 'GOLD', lots: 0.01, openPrice: 4000 }],
+    })
+    assert.equal(await persistCanonicalPositionTicket(supabase as never, capturedTrade, resolution), true)
+    assert.deepEqual(calls, [])
   })
 
   it('falls back to metaapi_order_id when the position column is missing', async () => {

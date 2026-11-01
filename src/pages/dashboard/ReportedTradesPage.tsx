@@ -118,7 +118,7 @@ export function ReportedTradesPage() {
               </div>
 
               {r.reason ? (
-                <p className="mt-2 whitespace-pre-wrap break-words text-sm text-neutral-900 dark:text-neutral-50">
+                <p className="mt-2 whitespace-pre-wrap wrap-break-word text-sm text-neutral-900 dark:text-neutral-50">
                   {r.reason}
                 </p>
               ) : null}

@@ -86,7 +86,7 @@ function BentoCard({
         </span>
         <p
           className={clsx(
-            ' text-[0.625rem] font-medium uppercase tracking-[0.1em]',
+            ' text-[0.625rem] font-medium uppercase tracking-widest',
             featured ? 'text-neutral-950/70' : 'text-neutral-500',
           )}
         >

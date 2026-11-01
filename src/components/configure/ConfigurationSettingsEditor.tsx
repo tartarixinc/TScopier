@@ -14,7 +14,7 @@ import { formatPreviewLotSize, resolvePreviewManualLot } from '../../lib/manualL
 import { resolveMultiTradePerLegLot } from '../../lib/multiTradeLegUnits'
 import type { BrokerAccount, ManualSettings, ManualTpLot } from '../../types/database'
 
-const controlClass = 'w-28 border-0 bg-transparent p-0 text-end text-sm font-medium text-neutral-900 focus:outline-none focus:ring-0 dark:text-neutral-50 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none'
+const controlClass = 'w-28 border-0 bg-transparent p-0 text-end text-sm font-medium text-neutral-900 focus:outline-hidden focus:ring-0 dark:text-neutral-50 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none'
 
 function finiteNumber(value: unknown, fallback = 0): number {
   const n = typeof value === 'number' ? value : Number(value)
@@ -95,7 +95,7 @@ function Choice({
           ref={menuRef}
           role="listbox"
           style={{ top: menuBox.top, right: menuBox.right }}
-          className="fixed z-[80] min-w-[9.5rem] overflow-hidden rounded-lg border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-950"
+          className="fixed z-80 min-w-38 overflow-hidden rounded-lg border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-950"
         >
           {options.map(option => {
             const selected = option.value === value

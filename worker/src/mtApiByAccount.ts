@@ -71,8 +71,15 @@ export function brokerSessionId(row: {
   return ''
 }
 
-function missingCtraderColumn(message: string): boolean {
-  return /ctrader_account_id|binance_account_id|bybit_account_id|kucoin_account_id|dxtrade_account_id|tradelocker_account_id|matchtrader_account_id/i.test(message)
+/**
+ * True when a select failed only because the database predates one of the
+ * per-provider session columns (or the DXtrade mode flag), so a narrower
+ * column list should be retried. Shared with the copy engines through
+ * `copyShared/copyHelpers`, which re-exports it (it cannot live there: that
+ * module already imports this one, so importing back would be a cycle).
+ */
+export function missingProviderIdColumn(message: string | null | undefined): boolean {
+  return /ctrader_account_id|binance_account_id|bybit_account_id|kucoin_account_id|dxtrade_account_id|tradelocker_account_id|matchtrader_account_id|dxtrade_is_position_based/i.test(String(message ?? ''))
 }
 
 export async function loadPlatformByFxsocketId(
@@ -88,7 +95,7 @@ export async function loadPlatformByFxsocketId(
     .from('broker_accounts')
     .select(`${base},ctrader_account_id,binance_account_id,bybit_account_id,kucoin_account_id,dxtrade_account_id,tradelocker_account_id,matchtrader_account_id`)
     .or(`mtapi_session_id.in.(${idList}),fxsocket_account_id.in.(${idList}),metaapi_account_id.in.(${idList}),ctrader_account_id.in.(${idList}),binance_account_id.in.(${idList}),bybit_account_id.in.(${idList}),kucoin_account_id.in.(${idList}),dxtrade_account_id.in.(${idList}),tradelocker_account_id.in.(${idList}),matchtrader_account_id.in.(${idList})`)
-  const { data, error } = withCtrader.error && missingCtraderColumn(withCtrader.error.message)
+  const { data, error } = withCtrader.error && missingProviderIdColumn(withCtrader.error.message)
     ? await supabase
       .from('broker_accounts')
       .select(base)
@@ -143,7 +150,7 @@ export async function loadBrokerApiByAccountId(
     .from('broker_accounts')
     .select(`${base},ctrader_account_id,binance_account_id,bybit_account_id,kucoin_account_id,dxtrade_account_id,tradelocker_account_id,matchtrader_account_id`)
     .in('id', ids)
-  const { data, error } = withCtrader.error && missingCtraderColumn(withCtrader.error.message)
+  const { data, error } = withCtrader.error && missingProviderIdColumn(withCtrader.error.message)
     ? await supabase.from('broker_accounts').select(base).in('id', ids)
     : withCtrader
   if (error) {

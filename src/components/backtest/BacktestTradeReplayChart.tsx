@@ -318,7 +318,7 @@ export function BacktestTradeReplayChart({ trade }: BacktestTradeReplayChartProp
                   type="button"
                   onClick={() => setSpeedIdx(i)}
                   className={clsx(
-                    'px-2 py-1 rounded text-[10px] font-medium tabular-nums border',
+                    'px-2 py-1 rounded-sm text-[10px] font-medium tabular-nums border',
                     speedIdx === i
                       ? 'bg-teal-50 border-teal-200 text-green-500 dark:bg-teal-950/40 dark:border-teal-800 dark:text-teal-300'
                       : 'bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-50',

@@ -5,6 +5,8 @@ import type { TradeExecutorContext } from './context'
 import { clampOrderStops, roundLot } from './helpers'
 import type { PreparedEntry } from './entryPrepare'
 import { writeExecutionLog } from '../observability/executionLog'
+import { humanizeOrderSendError } from '../brokerTradeError'
+import { normalizeBrokerTradeTicket } from '../brokerTradeTicket'
 /**
  * Place a broker BuyLimit/SellLimit when strict signal entry defers immediates.
  * Multi/range uses aggregated volume and plan TP; single may override TP from parsed.
@@ -61,24 +63,15 @@ export async function placeStrictSignalEntryPending(
   }
 
     try {
-      let result
-      try {
-        result = await api.orderSend(uuid, clamped.args)
-      } catch (sendErr) {
-        const msg = sendErr instanceof Error ? sendErr.message : String(sendErr)
-        const isInvalidStops = /invalid\s+stops/i.test(msg)
-        const hasStops = (Number(clamped.args.stoploss) || 0) > 0
-          || (Number(clamped.args.takeprofit) || 0) > 0
-        if (isInvalidStops && hasStops) {
-          console.warn(
-            `[tradeExecutor] strict entry retry without stops signal=${signal.id} broker=${broker.id}: ${msg}`,
-          )
-          result = await api.orderSend(uuid, { ...clamped.args, stoploss: 0, takeprofit: 0 })
-        } else {
-          throw sendErr
-        }
-      }
+      // Never retry without the stops: a pending entry the broker refuses to
+      // protect is not an entry we want. Fail it and let the user see why.
+      const result = await api.orderSend(uuid, clamped.args)
     const ticket = result.ticket
+      const tradeTicket = normalizeBrokerTradeTicket(broker.provider, ticket)
+      if (tradeTicket == null) {
+        console.error(`[tradeExecutor] strict pending order returned an invalid ticket signal=${signal.id} broker=${broker.id}`)
+        return false
+      }
     const isBuyLeg = se.isBuy
     const pendingSl = clamped.args.stoploss && clamped.args.stoploss > 0 ? clamped.args.stoploss : null
     const pendingTp = clamped.args.takeprofit && clamped.args.takeprofit > 0 ? clamped.args.takeprofit : null
@@ -93,7 +86,7 @@ export async function placeStrictSignalEntryPending(
         signal_id: signal.id,
         telegram_channel_id: signal.channel_id,
         broker_account_id: broker.id,
-        metaapi_order_id: String(ticket),
+        metaapi_order_id: tradeTicket,
         symbol,
         direction: isBuyLeg ? 'buy' : 'sell',
         entry_price: entryPx,
@@ -147,7 +140,7 @@ export async function placeStrictSignalEntryPending(
       slippage: clamped.args.slippage ?? 20,
       comment: clamped.args.comment ?? comment,
       expert_id: clamped.args.expertID ?? null,
-      broker_ticket: String(ticket),
+      broker_ticket: tradeTicket,
       status: 'broker_pending',
       expires_at: expiresAt,
       partial_tp_plan: partialTpPlan,
@@ -182,7 +175,10 @@ export async function placeStrictSignalEntryPending(
     } catch { /* best-effort */ }
     return true
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
+    const msg = humanizeOrderSendError(
+      err instanceof Error ? err.message : String(err),
+      symbol,
+    )
     console.error(
       `[tradeExecutor] strict entry broker OrderSend failed signal=${signal.id} broker=${broker.id} op=${pendingOp} price=${entryPx}: ${msg}`,
     )

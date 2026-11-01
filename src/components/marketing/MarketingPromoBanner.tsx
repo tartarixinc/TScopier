@@ -50,7 +50,7 @@ function Countdown({ endsAt, onDone }: { endsAt: number; onDone: () => void }) {
       {cells.map(([value, label], index) => (
         <div key={label} className="flex items-center gap-1.5">
           {index > 0 ? <span aria-hidden className="text-sm font-semibold text-white/60">:</span> : null}
-          <div className="flex min-w-[2.5rem] flex-col items-center leading-none">
+          <div className="flex min-w-10 flex-col items-center leading-none">
             <span className="text-base font-bold tabular-nums sm:text-lg">{pad(value)}</span>
             <span className="mt-0.5 text-[10px] font-medium uppercase tracking-wide text-white/70">{label}</span>
           </div>
@@ -191,10 +191,10 @@ export function MarketingPromoBanner() {
       ref={ref}
       role="region"
       aria-label={p.regionLabel}
-      className="relative isolate z-40 w-full overflow-hidden bg-gradient-to-r from-indigo-950 via-violet-900 to-indigo-950 text-white"
+      className="relative isolate z-40 w-full overflow-hidden bg-linear-to-r from-indigo-950 via-violet-900 to-indigo-950 text-white"
     >
       <PromoMedia promo={promo} />
-      <div aria-hidden className="absolute inset-0 bg-gradient-to-r from-black/55 via-black/30 to-black/55" />
+      <div aria-hidden className="absolute inset-0 bg-linear-to-r from-black/55 via-black/30 to-black/55" />
 
       <div className="relative mx-auto flex min-h-[76px] max-w-7xl flex-wrap items-center justify-center gap-x-6 gap-y-2 px-10 py-3 sm:px-14 lg:py-0">
         {promo.headline ? (
@@ -210,7 +210,7 @@ export function MarketingPromoBanner() {
           type="button"
           onClick={dismiss}
           aria-label={p.dismiss}
-          className="absolute end-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-md text-white/80 transition-colors hover:bg-white/15 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+          className="absolute inset-e-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-md text-white/80 transition-colors hover:bg-white/15 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
         >
           <X className="h-4 w-4" aria-hidden />
         </button>

@@ -681,7 +681,7 @@ type ToolResult = {
 async function toolGetSetupStatus(supabase: SupabaseClient, userId: string): Promise<ToolResult> {
   const [{ data: session }, { data: profile }, { data: brokers }, { data: channels }, { data: sub }] =
     await Promise.all([
-      supabase.from("telegram_sessions").select("user_id,session_string").eq("user_id", userId).maybeSingle(),
+      supabase.from("telegram_sessions").select("id").eq("user_id", userId).maybeSingle(),
       supabase.from("user_profiles").select("copier_paused,display_name").eq("user_id", userId).maybeSingle(),
       supabase
         .from("broker_accounts")
@@ -695,7 +695,7 @@ async function toolGetSetupStatus(supabase: SupabaseClient, userId: string): Pro
       supabase.from("subscriptions").select("plan,status").eq("user_id", userId).maybeSingle(),
     ]);
 
-  const telegramLinked = Boolean(session?.session_string && String(session.session_string).length > 0);
+  const telegramLinked = Boolean(session?.id);
   const brokerList = brokers ?? [];
   const connected = brokerList.filter((b) => {
     if (!b.is_active) return false;
@@ -1733,7 +1733,11 @@ async function toolSetCopierPaused(
   }
   const { error } = await supabase
     .from("user_profiles")
-    .update({ copier_paused: paused, updated_at: new Date().toISOString() })
+    .update({
+      copier_paused: paused,
+      copier_pause_reason: paused ? "user_paused" : null,
+      updated_at: new Date().toISOString(),
+    })
     .eq("user_id", userId);
   if (error) return { content: JSON.stringify({ error: error.message }) };
   return { content: JSON.stringify({ ok: true, copier_paused: paused }) };

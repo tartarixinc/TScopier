@@ -6,6 +6,7 @@ import {
   Save,
   Shield,
   User,
+  Users,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../../context/AuthContext'
@@ -26,8 +27,10 @@ import { PageShell } from '../../components/layout/PageShell'
 import { Button } from '../../components/ui/Button'
 import { Alert } from '../../components/ui/Alert'
 import { Toggle } from '../../components/ui/Toggle'
+import { normalizeSocialProfileLinks, SOCIAL_PROFILE_PLATFORMS, validateSocialProfileLinks } from '../../lib/socialProfileLinks'
+import { SocialTradingSettings } from '../../components/settings/SocialTradingSettings'
 
-type SettingsSection = 'personal' | 'general' | 'security'
+type SettingsSection = 'personal' | 'social' | 'general' | 'security'
 
 function SettingsCard({
   title,
@@ -88,6 +91,7 @@ export function SettingsPage() {
 
   const sections: { id: SettingsSection; label: string; icon: typeof User }[] = [
     { id: 'personal', label: t.settings.sections.personal, icon: User },
+    { id: 'social', label: 'Social Trading', icon: Users },
     { id: 'general', label: t.settings.sections.general, icon: Globe },
     { id: 'security', label: t.settings.sections.security, icon: Shield },
   ]
@@ -189,10 +193,17 @@ export function SettingsPage() {
 
   const handleSavePersonal = async () => {
     if (!user) return
-    setPersonalSaving(true)
     setPersonalMsg(null)
+    const socialLinkError = validateSocialProfileLinks(profile.social_links)
+    if (socialLinkError) {
+      setPersonalMsg({ type: 'error', text: socialLinkError })
+      return
+    }
+    const socialLinks = normalizeSocialProfileLinks(profile.social_links)
+    setPersonalSaving(true)
     try {
-      await persistProfile()
+      await persistProfile({ ...profile, social_links: socialLinks })
+      patchProfile({ social_links: socialLinks })
       setPersonalMsg({ type: 'success', text: t.settings.saved })
     } catch (e) {
       setPersonalMsg({
@@ -301,7 +312,7 @@ export function SettingsPage() {
               <div className="mb-6 flex items-center gap-4">
                 <UserAvatar user={user} profile={profile} email={user?.email} size="lg" />
                 <div className="min-w-0">
-                  <label className="inline-flex cursor-pointer items-center rounded-lg bg-green-400 px-3 py-1.5 text-sm font-medium text-neutral-950 shadow-sm hover:bg-green-500">
+                  <label className="inline-flex cursor-pointer items-center rounded-lg bg-green-400 px-3 py-1.5 text-sm font-medium text-neutral-950 shadow-xs hover:bg-green-500">
                     <input
                       ref={photoInputRef}
                       type="file"
@@ -370,10 +381,27 @@ export function SettingsPage() {
                     value={profile.address}
                     onChange={e => patchProfile({ address: e.target.value })}
                     rows={3}
-                    className="mt-1.5 w-full px-3 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-900 dark:placeholder:text-neutral-50 focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent resize-y min-h-[88px]"
+                    className="mt-1.5 w-full px-3 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-500 dark:placeholder:text-neutral-400 focus:outline-hidden focus:ring-2 focus:ring-green-400 focus:border-transparent resize-y min-h-[88px]"
                     placeholder={t.settings.placeholders.address}
                   />
                 </div>
+                <div className="sm:col-span-2 border-t border-neutral-100 pt-4 dark:border-neutral-800">
+                  <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Social profiles</h3>
+                  <p className="mt-1 text-xs text-neutral-900 dark:text-neutral-50">Public HTTPS profile links only. TSCopier never requests access to your external accounts.</p>
+                </div>
+                {SOCIAL_PROFILE_PLATFORMS.map(platform => (
+                  <Input
+                    key={platform.key}
+                    label={platform.label}
+                    type="url"
+                    value={profile.social_links?.[platform.key] ?? ''}
+                    placeholder={platform.placeholder}
+                    onChange={event => patchProfile({
+                      social_links: { ...profile.social_links, [platform.key]: event.target.value },
+                    })}
+                    autoComplete="url"
+                  />
+                ))}
               </div>
             </SettingsCard>
           ) : null}
@@ -451,6 +479,8 @@ export function SettingsPage() {
               </div>
             </SettingsCard>
           ) : null}
+
+          {section === 'social' ? <SocialTradingSettings /> : null}
 
           {section === 'security' ? (
             <SettingsCard

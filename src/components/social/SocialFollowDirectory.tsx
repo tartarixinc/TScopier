@@ -5,8 +5,10 @@ import type { SocialTradingPageTranslations } from '../../i18n/locales/types'
 import { fetchSocialCopySources, type SocialCopySource } from '../../lib/socialCopy'
 import type { SocialDirectoryProfile, SocialFollowErrorKind } from '../../lib/socialFollow'
 import {
+  socialDirectoryPerformancePresentation,
   fetchSocialProviderPerformance,
   fetchSocialTradeHistoryAccess,
+  type SocialTradeHistoryAccess,
   type SocialProviderPerformance,
 } from '../../lib/socialTradeHistory'
 import { supabase } from '../../lib/supabase'
@@ -61,19 +63,20 @@ function AccessSelect({ profile, copy, pending, onChange }: {
   </label>
 }
 
-function AccountModeBadge({ mode }: { mode: SocialProviderPerformance['accountMode'] }) {
+function AccountModeBadge({ mode, synthetic = false }: { mode: SocialProviderPerformance['accountMode']; synthetic?: boolean }) {
   const label = mode === 'demo' ? 'DEMO' : mode === 'live' ? 'LIVE' : 'UNKNOWN'
   const tone = mode === 'demo'
     ? 'bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300'
     : mode === 'live'
       ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
       : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300'
-  return <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide ${tone}`}>{label}</span>
+  return <span className="inline-flex flex-wrap items-center gap-1"><span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide ${tone}`}>{label}</span>{synthetic ? <span className="inline-flex rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">DEMO DATA</span> : null}</span>
 }
 
 function PerformanceCells({ profile }: { profile: SocialDirectoryProfile }) {
   const [performance, setPerformance] = useState<SocialProviderPerformance | null>(null)
   const [source, setSource] = useState<SocialCopySource | null>(null)
+  const [access, setAccess] = useState<SocialTradeHistoryAccess | null>(null)
   const [loading, setLoading] = useState(true)
   useEffect(() => {
     let active = true
@@ -83,6 +86,7 @@ function PerformanceCells({ profile }: { profile: SocialDirectoryProfile }) {
           fetchSocialTradeHistoryAccess(supabase, profile.profileUserId),
           fetchSocialCopySources(supabase, profile.profileUserId),
         ])
+        if (active) setAccess(access)
         if (active) setSource(sources[0] ?? null)
         if (!access.canView) return
         const rows = await fetchSocialProviderPerformance(supabase, profile.profileUserId)
@@ -99,19 +103,20 @@ function PerformanceCells({ profile }: { profile: SocialDirectoryProfile }) {
   const missing = loading ? '…' : '—'
   const pnl = performance?.realizedProfit
   const status = performance?.performanceStatus
-  const statusLabel = loading ? 'Loading' : status === 'available' ? 'Current' : status === 'stale' ? 'Stale' : status === 'incomplete' ? 'Incomplete' : status === 'pending' ? 'Pending' : status === 'no_history' ? 'No history' : status === 'failed' ? 'Failed' : 'Unavailable'
+  const presentation = socialDirectoryPerformancePresentation(access, performance, loading)
+  const statusLabel = presentation.statusLabel
   const tone = status === 'available'
     ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
     : status === 'stale' || status === 'pending' || status === 'incomplete' || status === 'no_history'
       ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
       : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300'
   return <>
-    <td className="px-3 py-3"><span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${tone}`}>{statusLabel}</span></td>
+    <td className="px-3 py-3"><span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${tone}`}>{statusLabel}</span>{presentation.message ? <p className="mt-1 max-w-48 text-xs leading-4 text-neutral-500" role="note">{presentation.message}</p> : null}</td>
     <td className={pnl == null ? 'px-3 py-3 text-neutral-500' : pnl >= 0 ? 'px-3 py-3 font-medium text-green-600 dark:text-green-400' : 'px-3 py-3 font-medium text-red-600 dark:text-red-400'}>{pnl == null ? missing : `${pnl.toLocaleString()}${performance?.currency ? ` ${performance.currency}` : ''}`}</td>
     <td className="px-3 py-3">{performance?.winRate == null ? missing : `${performance.winRate.toFixed(2)}%`}</td>
     <td className="px-3 py-3">{performance ? performance.closedTradeCount : missing}</td>
     <td className="px-3 py-3">{performance?.profitFactor == null ? missing : performance.profitFactor.toFixed(2)}</td>
-    <td className="px-3 py-3">{performance || source ? <AccountModeBadge mode={performance?.accountMode ?? source?.accountMode ?? 'unknown'} /> : missing}</td>
+    <td className="px-3 py-3">{performance || source ? <AccountModeBadge mode={performance?.accountMode ?? source?.accountMode ?? 'unknown'} synthetic={performance?.isSynthetic ?? source?.isSynthetic ?? false} /> : missing}</td>
   </>
 }
 
@@ -143,7 +148,7 @@ export function SocialFollowDirectory({ copy }: { copy: SocialTradingPageTransla
     {self ? <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">{[[copy.open, openCount], [copy.private, privateCount], [copy.following, self.followingCount], [copy.followers, self.followerCount], [copy.requests, outgoingPending]].map(([label, value]) => <Card key={String(label)} padding="sm"><p className="text-sm text-neutral-500 dark:text-neutral-400">{label}</p><p className="mt-2 text-2xl font-semibold text-neutral-900 dark:text-neutral-50">{value}</p></Card>)}</div> : null}
     {self && incoming.length > 0 ? <Card padding="none" className="overflow-hidden"><h3 className="border-b border-neutral-100 px-4 py-3 text-sm font-semibold dark:border-neutral-800">{copy.followRequests}</h3><ul className="divide-y divide-neutral-100 dark:divide-neutral-800">{incoming.map(profile => { const pending = social.pendingKeys.has(`incoming:${profile.profileUserId}`); return <li key={profile.profileUserId} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"><div><p className="text-sm font-medium">{profile.displayName}</p><p className="text-xs text-neutral-500">@{profile.username}</p></div><div className="flex gap-2"><Button type="button" size="sm" disabled={pending} onClick={() => void social.resolve(profile.profileUserId, 'accepted')}>{copy.accept}</Button><Button type="button" size="sm" variant="secondary" disabled={pending} onClick={() => void social.resolve(profile.profileUserId, 'declined')}>{copy.decline}</Button></div></li> })}</ul></Card> : null}
     <input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder={copy.searchPlaceholder} className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-950 sm:max-w-xs" />
-    <Card padding="none" className="overflow-hidden">{social.loading ? <p className="px-4 py-8 text-sm text-neutral-500">{copy.loadingDirectory}</p> : visibleProfiles.length === 0 ? <p className="px-4 py-8 text-sm text-neutral-500">{copy.empty}</p> : <div className="overflow-x-auto"><table className="w-full min-w-[1120px] text-sm"><thead><tr className="border-b border-neutral-100 text-left text-xs text-neutral-500 dark:border-neutral-800"><th className="px-4 py-3">{copy.colName}</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Realized P/L</th><th className="px-3 py-3">{copy.winRate}</th><th className="px-3 py-3">Closed trades</th><th className="px-3 py-3">{copy.profitFactor}</th><th className="px-3 py-3">Account</th><th className="px-3 py-3">{copy.followers}</th><th className="px-4 py-3 text-end">{copy.colActions}</th></tr></thead><tbody>{visibleProfiles.map(profile => { const pending = social.pendingKeys.has(`outgoing:${profile.profileUserId}`); const name = profile.isSelf ? copy.you : profile.displayName; return <tr key={profile.profileUserId} className="border-t border-neutral-100 transition-colors hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900/60"><td className="px-4 py-3"><div className="flex items-center gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-sm font-semibold text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200">{name.slice(0, 1).toUpperCase()}</span><div><Link className="font-medium text-neutral-900 hover:text-teal-700 dark:text-neutral-50" to={`/social-trading/${profile.profileUserId}`}>{name}</Link><p className="text-xs text-neutral-500">@{profile.username}{profile.country ? ` · ${profile.country}` : ''} · {profile.access === 'open' ? copy.open : copy.private}</p></div></div></td><PerformanceCells profile={profile} /><td className="px-3 py-3">{profile.followerCount}</td><td className="px-4 py-3 text-end">{profile.isSelf ? <AccessSelect profile={profile} copy={copy} pending={social.pendingKeys.has('access')} onChange={access => void social.setAccess(access)} /> : <div className="flex items-center justify-end gap-2"><TraderReviews traderUserId={profile.profileUserId} traderName={profile.displayName} isSelf={false} averageRating={profile.averageRating} reviewCount={profile.reviewCount} /><FollowButton profile={profile} copy={copy} pending={pending} eligible={Boolean(self)} onFollow={() => void social.follow(profile.profileUserId)} onRemove={() => void social.remove(profile.profileUserId)} /></div>}</td></tr> })}</tbody></table></div>}</Card>
+    <Card padding="none" className="overflow-hidden">{social.loading ? <p className="px-4 py-8 text-sm text-neutral-500">{copy.loadingDirectory}</p> : visibleProfiles.length === 0 ? <p className="px-4 py-8 text-sm text-neutral-500">{copy.empty}</p> : <div className="overflow-x-auto"><table className="w-full min-w-[1120px] text-sm"><thead><tr className="border-b border-neutral-100 text-left text-xs text-neutral-500 dark:border-neutral-800"><th className="px-4 py-3">{copy.colName}</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Realized P/L</th><th className="px-3 py-3">{copy.winRate}</th><th className="px-3 py-3">Closed trades</th><th className="px-3 py-3">{copy.profitFactor}</th><th className="px-3 py-3">Account</th><th className="px-3 py-3">{copy.followers}</th><th className="px-4 py-3 text-end">{copy.colActions}</th></tr></thead><tbody>{visibleProfiles.map(profile => { const pending = social.pendingKeys.has(`outgoing:${profile.profileUserId}`); const name = profile.isSelf ? copy.you : profile.displayName; return <tr key={profile.profileUserId} className="border-t border-neutral-100 transition-colors hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900/60"><td className="px-4 py-3"><div className="flex items-center gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-sm font-semibold text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200">{name.slice(0, 1).toUpperCase()}</span><div><Link className="font-medium text-neutral-900 hover:text-teal-700 dark:text-neutral-50" to={`/social-trading/${profile.profileUserId}`}>{name}</Link><p className="text-xs text-neutral-500">@{profile.username}{profile.country ? ` · ${profile.country}` : ''} · {profile.access === 'open' ? copy.open : copy.private}</p><TraderReviews compact traderUserId={profile.profileUserId} traderName={profile.displayName} isSelf={profile.isSelf} averageRating={profile.averageRating} reviewCount={profile.reviewCount} /></div></div></td><PerformanceCells profile={profile} /><td className="px-3 py-3">{profile.followerCount}</td><td className="px-4 py-3 text-end">{profile.isSelf ? <AccessSelect profile={profile} copy={copy} pending={social.pendingKeys.has('access')} onChange={access => void social.setAccess(access)} /> : <FollowButton profile={profile} copy={copy} pending={pending} eligible={Boolean(self)} onFollow={() => void social.follow(profile.profileUserId)} onRemove={() => void social.remove(profile.profileUserId)} />}</td></tr> })}</tbody></table></div>}</Card>
   </section>
 }
 

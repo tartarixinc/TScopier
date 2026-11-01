@@ -71,6 +71,17 @@ describe('filterTradesByPlausibleMgmtLevels', () => {
   })
 })
 
+describe('filterTradesByPlausibleMgmtLevels side isolation', () => {
+  it('never merges buy and sell baskets on the same symbol', () => {
+    const trades = [
+      row({ id: 'buy', symbol: 'XAUUSD', direction: 'buy', entry_price: 4119, opened_at: '2026-10-21T15:00:00Z' }),
+      row({ id: 'sell', symbol: 'XAUUSD', direction: 'sell', entry_price: 4129, opened_at: '2026-10-21T15:01:00Z' }),
+    ]
+    const matched = filterTradesByPlausibleMgmtLevels(trades, { action: 'modify', sl: 4135, tp: [] })
+    assert.deepEqual(matched.map(t => t.id), ['sell'])
+  })
+})
+
 describe('resolveChannelCweTargets', () => {
   it('scopes symbol-less channel CWE to newest open symbol', () => {
     const trades = [

@@ -179,7 +179,7 @@ export function ChannelSelectStep({ onDone }: Props) {
                     : 'border-neutral-200/65 dark:border-neutral-800/55 hover:border-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800/50'
                 }`}
               >
-                <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border transition-colors ${
+                <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 border transition-colors ${
                   isSelected ? 'bg-green-400 border-green-400' : 'border-neutral-300'
                 }`}>
                   {isSelected && <Check className="w-3 h-3 text-neutral-950" />}

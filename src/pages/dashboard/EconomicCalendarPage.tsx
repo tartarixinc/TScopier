@@ -218,7 +218,7 @@ export function EconomicCalendarPage() {
       {error ? <Alert>{error}</Alert> : null}
 
       <div className={showNewsFilter ? 'grid gap-6 lg:grid-cols-[1fr_20rem]' : ''}>
-        <div className="rounded-xl border border-neutral-200/55 bg-white shadow-sm dark:border-neutral-800/55 dark:bg-neutral-950">
+        <div className="rounded-xl border border-neutral-200/55 bg-white shadow-xs dark:border-neutral-800/55 dark:bg-neutral-950">
           {loading ? (
             <div className="space-y-4 p-4 animate-pulse">
               {Array.from({ length: 6 }).map((_, i) => (
@@ -231,7 +231,7 @@ export function EconomicCalendarPage() {
             <div className="px-4">
               {[...grouped.entries()].map(([day, dayEvents]) => (
                 <section key={day} className="py-2">
-                  <h3 className="sticky top-0 z-10 bg-white/95 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-900 backdrop-blur dark:bg-neutral-900/95 dark:text-neutral-50">
+                  <h3 className="sticky top-0 z-10 bg-white/95 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-900 backdrop-blur-sm dark:bg-neutral-900/95 dark:text-neutral-50">
                     {formatDayHeading(day)}
                   </h3>
                   {dayEvents.map((event) => (

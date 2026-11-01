@@ -4,7 +4,8 @@
  * Kept separate from the monitor so the ticket/comment/recovery rules can be unit
  * tested without a broker or database. The monitor wires these to I/O.
  */
-import { extractClosedTradeFillsByTicket } from '../closedTradeFill'
+import { extractClosedTradeFillsByTicket, mtCloseRowRejection } from '../closedTradeFill'
+import { resolveMtTicket } from '../mtTradeFields'
 
 /**
  * Deterministic broker comment for a copied position: `mc:<link8>:<ticket>`.
@@ -23,13 +24,26 @@ export function mappingIsOpen(state: string): boolean {
 /**
  * Whether closed history contains the given source position ticket.
  *
- * FxSocket history rows are deal-level: `ticket` is the closing deal and `position`
- * is the position id the engine tracks, and a partial close has a non-zero `order`.
- * `extractClosedTradeFillsByTicket` already resolves the position id and rejects
- * partial closes, so recovery reuses it rather than comparing the wrong field.
+ * Two shapes have to be understood, in this order:
  *
- * An inconclusive result (false) must leave the copy open rather than silently drop
- * a possibly-live source ticket.
+ * 1. **Position-level rows** — the row's own `ticket` is the position id and it
+ *    passes the structural close gates (`mtCloseRowRejection`: a close time, a
+ *    positive size, a symbol, no cancelled/pending state). These rows prove the
+ *    position is closed on their own, even when they carry **no price and no
+ *    profit**: a cTrader closing deal and a position this worker watched
+ *    disappear from a crypto book both look exactly like that. Closedness never
+ *    needed a value — the value gates exist so a fill is only *written*, not so
+ *    a close is only *believed*.
+ * 2. **Deal-level rows** (FxSocket) — `ticket` is the closing deal, not the
+ *    position, so they are resolved through
+ *    `extractClosedTradeFillsByTicket`, which reads the position id out of the
+ *    closing deal and rejects partial closes (`order !== 0`). Rows that pass
+ *    that gate also supply their fill, which is why path 1 never pre-empts it
+ *    with a weaker test: an FxSocket row has no close time, so it always falls
+ *    through to here.
+ *
+ * An inconclusive result (false) must leave the copy open rather than silently
+ * drop a possibly-live source ticket.
  */
 export function historyContainsClosedPosition(
   rows: unknown[],
@@ -39,6 +53,13 @@ export function historyContainsClosedPosition(
   const wanted = Number(positionTicket)
   if (!Number.isFinite(wanted) || wanted <= 0) return false
   const name = String(provider ?? 'fxsocket').trim().toLowerCase() || 'fxsocket'
+  for (const row of rows) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) continue
+    const raw = row as Record<string, unknown>
+    if (resolveMtTicket(raw, 'trades') !== wanted) continue
+    if (mtCloseRowRejection(raw, 'trades') != null) continue
+    return true
+  }
   try {
     return extractClosedTradeFillsByTicket(rows, 'trades', name).has(wanted)
   } catch {

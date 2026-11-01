@@ -59,6 +59,10 @@ export type ChannelStopLeg = {
   opened_at: string | null
   entry_price: number | null
   telegram_channel_id: string | null
+  /** DB status ('open' | 'pending'). Pending stop orders are judged against
+   *  their entry price, not the live market, so the live-market SL guard is
+   *  skipped for them. */
+  status?: string
   lot_size?: number
 }
 
@@ -241,6 +245,20 @@ export function buildMgmtModifyFailureDiagnostic(input: {
       tradeFailure = fallbackMgmtModifyTradeFailure(reasonCode)
       source = 'structured'
       break
+    case 'sl_wrong_side':
+      reasonCode = 'INVALID_STOPS'
+      failureReason = 'SL_WRONG_SIDE_OF_MARKET'
+      failurePhase = 'order_modify'
+      tradeFailure = fallbackMgmtModifyTradeFailure(reasonCode, failureReason)
+      source = 'local'
+      break
+    case 'sl_quote_unavailable':
+      reasonCode = 'BROKER_ACCOUNT_UNAVAILABLE'
+      failureReason = 'QUOTE_UNAVAILABLE_FOR_SL_GUARD'
+      failurePhase = 'order_modify'
+      tradeFailure = fallbackMgmtModifyTradeFailure(reasonCode, failureReason)
+      source = 'local'
+      break
     case 'sl_not_applied':
       reasonCode = 'BROKER_ORDER_REJECTED'
       failureReason = 'REQUESTED_SL_NOT_APPLIED'
@@ -419,6 +437,7 @@ function mgmtRowToLeg(row: MgmtTradeRow): ChannelStopLeg {
     opened_at: row.opened_at,
     entry_price: row.entry_price,
     telegram_channel_id: null,
+    status: row.status,
     lot_size: row.lot_size,
   }
 }
@@ -531,6 +550,21 @@ export async function ensureChannelModifyScope(
 export function allChannelModifySymbolBuckets(trades: MgmtTradeRow[]): MgmtTradeRow[] {
   if (!trades.length) return []
   return trades
+}
+
+/** A management stop can only exist on the loss side of the live market. */
+export function mgmtSlApplicableToMarket(
+  targetSl: number | null | undefined,
+  bid: number | null | undefined,
+  ask: number | null | undefined,
+  direction: string,
+): boolean {
+  const sl = Number(targetSl)
+  const b = Number(bid)
+  const a = Number(ask)
+  if (!(sl > 0) || !(b > 0) || !(a > 0)) return true
+  const isBuy = String(direction ?? '').toLowerCase().includes('buy')
+  return isBuy ? sl < b : sl > a
 }
 
 export function brokerOrderSlMatchesTarget(
@@ -780,6 +814,25 @@ export async function applyChannelStopsToBaskets(
 
     api?.seedPlatformCache(uuid, mtPlatformFrom(broker.platform ?? 'mt5'))
 
+    // The live-quote guard only runs when a new SL is requested. A failed quote
+    // read must not silently disable it — an unverifiable stop is a stop we
+    // cannot confirm is on the correct side of market, so the leg is skipped
+    // (fail-closed) instead of being modified blind.
+    let basketQuote: { bid: number; ask: number } | null = null
+    let quoteFailed = false
+    if (api && !tpOnly && hasNewSl) {
+      try {
+        const q = await api.quote(uuid, symbol)
+        basketQuote = { bid: q.bid, ask: q.ask }
+      } catch (e) {
+        quoteFailed = true
+        const msg = e instanceof Error ? e.message : String(e)
+        console.warn(
+          `[channelStopApply] quote read failed broker=${broker.id} symbol=${symbol}: ${msg}; skipping SL apply (fail-closed)`,
+        )
+      }
+    }
+
     const legs = brokerRows
       .filter(r => {
         const ticket = Number(r.metaapi_order_id)
@@ -907,6 +960,50 @@ export async function applyChannelStopsToBaskets(
           })
           if (targetSl != null) slCache.set(chKey, targetSl)
         }
+      }
+
+      // Pending stop orders are validated by the broker against their own entry
+      // price, not the live market — the live-market guard below would wrongly
+      // reject a valid pending Buy Stop / Sell Stop whose SL sits between entry
+      // and market. Only open (filled) legs are checked against the live quote.
+      const isOpenLeg = tr.status !== 'pending'
+
+      if (
+        !tpOnly
+        && targetSl != null
+        && targetSl > 0
+        && isOpenLeg
+        && quoteFailed
+      ) {
+        baseResult.skipped += 1
+        totalSkipped += 1
+        baseResult.errors.push({
+          tradeId: tr.id,
+          ticket,
+          message: `quote read failed for ${symbol}; SL ${targetSl} not applied (fail-closed)`,
+          skipReason: 'sl_quote_unavailable',
+        })
+        continue
+      }
+
+      if (
+        !tpOnly
+        && targetSl != null
+        && targetSl > 0
+        && isOpenLeg
+        && basketQuote != null
+        && !mgmtSlApplicableToMarket(targetSl, basketQuote.bid, basketQuote.ask, direction)
+      ) {
+        baseResult.skipped += 1
+        totalSkipped += 1
+        baseResult.errors.push({
+          tradeId: tr.id,
+          ticket,
+          message: `SL ${targetSl} is on the wrong side of the ${direction} market `
+            + `(bid ${basketQuote.bid} / ask ${basketQuote.ask})`,
+          skipReason: 'sl_wrong_side',
+        })
+        continue
       }
 
       if (targetSl != null && targetSl > 0) {

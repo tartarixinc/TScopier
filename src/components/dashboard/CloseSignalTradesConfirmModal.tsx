@@ -87,7 +87,7 @@ export function CloseSignalTradesConfirmModal({
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center p-4 sm:p-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+      className="fixed inset-0 z-80 flex items-end sm:items-center justify-center p-4 sm:p-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
       onMouseDown={onOverlayMouseDown}
       onClick={onOverlayClick}
     >
@@ -145,7 +145,7 @@ export function CloseSignalTradesConfirmModal({
             size="sm"
             disabled={confirming}
             onClick={onCancel}
-            className="sm:min-w-[7rem]"
+            className="sm:min-w-28"
           >
             {t.common.cancel}
           </Button>
@@ -155,7 +155,7 @@ export function CloseSignalTradesConfirmModal({
             size="sm"
             loading={confirming}
             onClick={onConfirm}
-            className="sm:min-w-[7rem]"
+            className="sm:min-w-28"
           >
             {confirming ? bs.closing : bs.closeConfirmAction}
           </Button>
