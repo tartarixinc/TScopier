@@ -642,6 +642,11 @@ export function SocialTraderActivityPage() {
             <ProfileTab icon={<Wallet className="h-4 w-4" />} active={profileTab === 'portfolio'} onClick={() => setProfileTab('portfolio')}>{copy.tabPortfolio}</ProfileTab>
           </div>
           <PerformanceNotice loading={social.performanceLoading} trader={trader} />
+          {trader.isYou && liveOwn.error ? (
+            <Alert variant={'warning'}>
+              Couldn&apos;t get live data from your trading account, so some values show a dash or the last known number. {liveOwn.error}
+            </Alert>
+          ) : null}
           {profileTab === 'performance' ? (
             <>
               <MonthlyProfitChart title={copy.monthlyStatistics} data={stats.monthly} />
@@ -677,28 +682,7 @@ export function SocialTraderActivityPage() {
                 copy={copy}
                 formatSignedMoney={formatSignedMoney}
               />
-              <Card padding="none" className="overflow-hidden">
-                <h2 className="border-b border-neutral-100 px-4 py-3 text-sm font-semibold text-neutral-900 dark:border-neutral-800 dark:text-neutral-50">
-                  {copy.lastActivities}
-                </h2>
-                <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
-                  {trader.activities.map(activity => (
-                    <li key={activity.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm">
-                      <span className="font-medium text-neutral-900 dark:text-neutral-50">
-                        {activity.kind === 'open' ? copy.opened : copy.closed}
-                      </span>
-                      <span className="text-neutral-900 dark:text-neutral-100">{activity.symbol}</span>
-                      <SideLabel side={activity.side} buy={copy.buy} sell={copy.sell} />
-                      <span className="text-neutral-900 dark:text-neutral-50">{formatWhen(activity.at)}</span>
-                      {activity.profit != null ? (
-                        <span className={clsx('ms-auto font-medium', activity.profit >= 0 ? 'text-green-500 dark:text-teal-300' : 'text-red-600 dark:text-red-400')}>
-                          {formatSignedMoney(activity.profit)}
-                        </span>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
-              </Card>
+              <ActivityList activities={trader.activities} copy={copy} formatSignedMoney={formatSignedMoney} />
             </>
           ) : null}
           {profileTab === 'portfolio' ? (
@@ -1185,6 +1169,79 @@ function Metric({ label, value, tone }: { label: string; value: string; tone?: '
 
 const TRADE_TABLE_PAGE_SIZE = 10
 
+function TablePager({ label, total, pageSize, page, onPageChange }: {
+  label: string
+  total: number
+  pageSize: number
+  page: number
+  onPageChange: (page: number) => void
+}) {
+  if (total <= pageSize) return null
+  const pageCount = Math.ceil(total / pageSize)
+  const start = page * pageSize
+  return (
+    <nav className="flex items-center justify-between gap-3 border-t border-neutral-100 px-4 py-3 text-xs dark:border-neutral-800" aria-label={`${label} pages`}>
+      <p className="text-neutral-600 dark:text-neutral-400">
+        {start + 1}&ndash;{Math.min(start + pageSize, total)} of {total}
+      </p>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onPageChange(Math.max(0, page - 1))}
+          disabled={page === 0}
+          className="rounded-lg border border-neutral-200 px-3 py-1.5 font-medium disabled:cursor-not-allowed disabled:opacity-40 dark:border-neutral-700"
+        >
+          Previous
+        </button>
+        <span className="text-neutral-600 dark:text-neutral-400">Page {page + 1} of {pageCount}</span>
+        <button
+          type="button"
+          onClick={() => onPageChange(Math.min(pageCount - 1, page + 1))}
+          disabled={page >= pageCount - 1}
+          className="rounded-lg border border-neutral-200 px-3 py-1.5 font-medium disabled:cursor-not-allowed disabled:opacity-40 dark:border-neutral-700"
+        >
+          Next
+        </button>
+      </div>
+    </nav>
+  )
+}
+
+function ActivityList({ activities, copy, formatSignedMoney }: {
+  activities: SocialTrader['activities']
+  copy: SocialTradingPageTranslations
+  formatSignedMoney: (value: number) => string
+}) {
+  const [page, setPage] = useState(0)
+  const currentPage = Math.min(page, Math.max(0, Math.ceil(activities.length / TRADE_TABLE_PAGE_SIZE) - 1))
+  const pageActivities = activities.slice(currentPage * TRADE_TABLE_PAGE_SIZE, (currentPage + 1) * TRADE_TABLE_PAGE_SIZE)
+  return (
+    <Card padding="none" className="overflow-hidden">
+      <h2 className="border-b border-neutral-100 px-4 py-3 text-sm font-semibold text-neutral-900 dark:border-neutral-800 dark:text-neutral-50">
+        {copy.lastActivities}
+      </h2>
+      <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
+        {pageActivities.map(activity => (
+          <li key={activity.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm">
+            <span className="font-medium text-neutral-900 dark:text-neutral-50">
+              {activity.kind === 'open' ? copy.opened : copy.closed}
+            </span>
+            <span className="text-neutral-900 dark:text-neutral-100">{activity.symbol}</span>
+            <SideLabel side={activity.side} buy={copy.buy} sell={copy.sell} />
+            <span className="text-neutral-900 dark:text-neutral-50">{formatWhen(activity.at)}</span>
+            {activity.profit != null ? (
+              <span className={clsx('ms-auto font-medium', activity.profit >= 0 ? 'text-green-500 dark:text-teal-300' : 'text-red-600 dark:text-red-400')}>
+                {formatSignedMoney(activity.profit)}
+              </span>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+      <TablePager label={copy.lastActivities} total={activities.length} pageSize={TRADE_TABLE_PAGE_SIZE} page={currentPage} onPageChange={setPage} />
+    </Card>
+  )
+}
+
 function TradeTable({
   title,
   whenLabel,
@@ -1239,32 +1296,7 @@ function TradeTable({
           </tbody>
         </table>
       </div>
-      {rows.length > TRADE_TABLE_PAGE_SIZE ? (
-        <nav className="flex items-center justify-between gap-3 border-t border-neutral-100 px-4 py-3 text-xs dark:border-neutral-800" aria-label={`${title} pages`}>
-          <p className="text-neutral-600 dark:text-neutral-400">
-            {pageStart + 1}&ndash;{Math.min(pageStart + TRADE_TABLE_PAGE_SIZE, rows.length)} of {rows.length}
-          </p>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setPage(Math.max(0, currentPage - 1))}
-              disabled={currentPage === 0}
-              className="rounded-lg border border-neutral-200 px-3 py-1.5 font-medium disabled:cursor-not-allowed disabled:opacity-40 dark:border-neutral-700"
-            >
-              Previous
-            </button>
-            <span className="text-neutral-600 dark:text-neutral-400">Page {currentPage + 1} of {pageCount}</span>
-            <button
-              type="button"
-              onClick={() => setPage(Math.min(pageCount - 1, currentPage + 1))}
-              disabled={currentPage >= pageCount - 1}
-              className="rounded-lg border border-neutral-200 px-3 py-1.5 font-medium disabled:cursor-not-allowed disabled:opacity-40 dark:border-neutral-700"
-            >
-              Next
-            </button>
-          </div>
-        </nav>
-      ) : null}
+      <TablePager label={title} total={rows.length} pageSize={TRADE_TABLE_PAGE_SIZE} page={currentPage} onPageChange={setPage} />
     </Card>
   )
 }

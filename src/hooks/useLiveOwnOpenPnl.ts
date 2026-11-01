@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useBrokerAccounts } from '../context/BrokerAccountsContext'
 import { fxsocketBroker } from '../lib/fxsocketBroker'
 import { resolveProvider } from '../lib/brokerLink'
-import { liveOpenPnlFromSummary } from '../lib/liveOpenPnl'
+import { describeLiveFetchError, liveOpenPnlFromSummary } from '../lib/liveOpenPnl'
 
 const MTAPI_POLL_MS = 60_000
 const DEFAULT_POLL_MS = 15_000
@@ -26,23 +26,30 @@ export function useLiveOwnOpenPnl(accountId: string, openCount: number, enabled:
     const poll = async () => {
       try {
         let summary
+        let serverError: string | undefined
         if (provider === 'mtapi') {
           const refreshed = await fxsocketBroker.refreshSummary(brokerId, 'mtapi')
           if (!cancelled && refreshed.account) upsertBroker(refreshed.account)
           summary = refreshed.pending ? undefined : refreshed.summary
+          serverError = refreshed.error
         } else {
           summary = (await fxsocketBroker.liveSnapshot(brokerId, provider)).summary
         }
         if (cancelled) return
         const openPnl = liveOpenPnlFromSummary(summary, openCount)
-        setLive({
+        // A failed poll must not wipe the last good value, or the page flips between a number and an em dash.
+        setLive(prev => ({
           accountId: brokerId,
-          openPnl,
-          error: openPnl == null ? 'The trading account did not return a live balance.' : null,
-        })
+          openPnl: openPnl ?? (prev?.accountId === brokerId ? prev.openPnl : null),
+          error: openPnl == null ? describeLiveFetchError(serverError) : null,
+        }))
       } catch (cause) {
         if (!cancelled) {
-          setLive({ accountId: brokerId, openPnl: null, error: cause instanceof Error ? cause.message : 'Live fetch failed.' })
+          setLive(prev => ({
+            accountId: brokerId,
+            openPnl: prev?.accountId === brokerId ? prev.openPnl : null,
+            error: describeLiveFetchError(cause instanceof Error ? cause.message : 'Live fetch failed.'),
+          }))
         }
       }
     }

@@ -125,3 +125,14 @@ test('deposit/withdrawal totals are server-written only and exposed through the 
   assert.match(cashflow, /coalesce\(v_cash\.total_deposits, v_cash\.performance_baseline_balance\)/)
   assert.match(cashflow, /grant execute on function public\.get_provider_public_performance\(text\) to anon, authenticated/)
 })
+
+test('every new broker_accounts column the app selects is readable by authenticated users', () => {
+  // broker_accounts is read through column-level grants: one ungranted column in the client select
+  // makes the whole accounts query fail and blanks the You page.
+  const all = readdirSync(dir).filter(name => name.endsWith('.sql')).map(name => readFileSync(new URL(name, dir), 'utf8')).join('\n')
+  const select = readFileSync(new URL('./brokerAccountSelect.ts', import.meta.url), 'utf8')
+  for (const column of ['account_leverage', 'total_deposits', 'total_withdrawals', 'cashflow_synced_at']) {
+    assert.match(select, new RegExp(`'${column}'`), `${column} is in the client select`)
+    assert.match(all, new RegExp(`grant select \\([^)]*\\b${column}\\b[^)]*\\) on public\\.broker_accounts to authenticated`), `${column} must be granted to authenticated`)
+  }
+})

@@ -11,3 +11,15 @@ export function liveOpenPnlFromSummary(summary: AccountSummary | null | undefine
   const pnl = resolveFxsocketFloatingOpenPnl(snap, openCount)
   return pnl == null || !Number.isFinite(pnl) ? null : Math.round(pnl * 100) / 100
 }
+
+/** Turns raw broker bridge errors into something actionable for the account owner. */
+export function describeLiveFetchError(message: string | null | undefined): string {
+  const text = String(message ?? '').trim()
+  if (/client with id .* not found/i.test(text)) {
+    return 'The MT5 session for this account has expired on the broker bridge. Reconnect the account in Trading accounts (your MT password is required) to resume live data.'
+  }
+  if (/too many requests|rate.?limit|throttl/i.test(text)) {
+    return 'The broker is rate limiting requests. Live data will resume shortly.'
+  }
+  return text || 'The trading account did not return a live balance.'
+}
