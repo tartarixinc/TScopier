@@ -18,6 +18,8 @@ import { useAddTradingAccount } from '../../context/AddTradingAccountContext'
 import { useAuth } from '../../context/AuthContext'
 import { useLocale, useT } from '../../context/LocaleContext'
 import { useUserProfile } from '../../context/UserProfileContext'
+import { useLiveOwnOpenPnl } from '../../hooks/useLiveOwnOpenPnl'
+import { findTimezoneLabel } from '../../lib/timezoneOptions'
 import type { SocialTradingPageTranslations } from '../../i18n/locales/types'
 import { useTheme } from '../../context/ThemeContext'
 import { useFormatMoney } from '../../hooks/useFormatMoney'
@@ -483,7 +485,16 @@ export function SocialTraderActivityPage() {
   const defaultOwnAccountId = useDefaultOwnSourceAccount(Boolean(directoryTrader?.isYou))
   const selectedOwnAccountId = pickedOwnAccountId || defaultOwnAccountId
   const ownAccountView = useOwnSocialAccountView(directoryTrader, selectedOwnAccountId)
-  const trader = ownAccountView.trader
+  const { timezone: ownTimezone } = useUserProfile()
+  const rawTrader = ownAccountView.trader
+  // Your own timezone comes from your account settings; other traders' timezones are private.
+  const trader = useMemo(
+    () => rawTrader?.isYou && ownTimezone
+      ? { ...rawTrader, profile: { ...rawTrader.profile, timezone: findTimezoneLabel(ownTimezone) } }
+      : rawTrader,
+    [rawTrader, ownTimezone],
+  )
+  const liveOwn = useLiveOwnOpenPnl(selectedOwnAccountId, trader?.openTradeCount ?? 0, Boolean(trader?.isYou))
   const ownAvatarUrl = useOwnAvatarUrl()
   const [copyModalOpen, setCopyModalOpen] = useState(false)
   const [profileParams, setProfileParams] = useSearchParams()
@@ -529,7 +540,9 @@ export function SocialTraderActivityPage() {
     .filter(profile => profile.followsViewerStatus === 'pending')
     .map(profile => social.traders.find(person => person.id === profile.profileUserId))
     .filter((person): person is SocialTrader => Boolean(person))
-  const stats = socialTraderStats(trader)
+  const baseStats = socialTraderStats(trader)
+  // Your own Open position is fetched live from the trading account; the saved snapshot can be stale.
+  const stats = trader.isYou && liveOwn.openPnl != null ? { ...baseStats, openPosition: liveOwn.openPnl } : baseStats
   const name = trader.isYou ? copy.you : trader.displayName
   const joined = trader.profile.joinedAt
     ? new Date(trader.profile.joinedAt).toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric' })
@@ -569,8 +582,7 @@ export function SocialTraderActivityPage() {
                 </div>
               </div>
             </div>
-            <dl className="grid grid-cols-3 gap-4 sm:gap-8">
-              <HeaderStat label={copy.aum} value="—" />
+            <dl className="grid grid-cols-2 gap-4 sm:gap-8">
               <HeaderStat label={copy.followers} value={String(trader.followerCount)} />
               <HeaderStat label={copy.leverage} value={trader.profile.leverage ?? '—'} />
             </dl>

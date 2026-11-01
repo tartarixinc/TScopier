@@ -591,6 +591,8 @@ export interface BrokerAccount {
   /** UTC time when `performance_baseline_balance` was first captured. */
   performance_baseline_captured_at?: string | null
   /** Sum of all deposits from the broker's balance-operation history (server-written). */
+  /** Broker-reported account leverage (500 = 1:500). */
+  account_leverage?: number | null
   total_deposits?: number | null
   /** Sum of all withdrawals (positive magnitude) from the same history (server-written). */
   total_withdrawals?: number | null

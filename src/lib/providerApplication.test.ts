@@ -4,6 +4,7 @@ import {
   centsToPriceInput,
   emptyProviderDraft,
   floatingOpenPnl,
+  formatAccountLeverage,
   formatAccountAmount,
   priceInputToCents,
   providerAccountIneligibility,
@@ -114,6 +115,14 @@ describe('snapshot freshness and formatting', () => {
     expect(floatingOpenPnl({ equity: 112.5, balance: 100, openCount: 1, snapshotAt: fresh, now })).toBe(12.5)
     expect(floatingOpenPnl({ equity: 100, balance: 100, openCount: 0, snapshotAt: stale, now })).toBe(0)
     expect(floatingOpenPnl({ equity: null, balance: 100, openCount: 0, snapshotAt: fresh, now })).toBeNull()
+  })
+
+  it('formats broker and crypto leverage', () => {
+    expect(formatAccountLeverage({ account_leverage: 500 })).toBe('1:500')
+    expect(formatAccountLeverage({ binance_leverage: 10 })).toBe('10x')
+    expect(formatAccountLeverage({ account_leverage: 100, binance_leverage: 10 })).toBe('1:100')
+    expect(formatAccountLeverage({})).toBeNull()
+    expect(formatAccountLeverage({ account_leverage: 0 })).toBeNull()
   })
 
   it('formats amounts in the account currency and tolerates missing values', () => {

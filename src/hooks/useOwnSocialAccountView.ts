@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useBrokerAccounts } from '../context/BrokerAccountsContext'
 import { isVerifiedSocialBrokerTicket, normalizeSocialBrokerTicket, resolveSocialAccountMode, socialBrokerDisplayLabel } from '../lib/socialAccount'
+import { formatAccountLeverage } from '../lib/providerApplication'
 import { supabase } from '../lib/supabase'
 import { hydrateTrader } from './useSocialTradingPreview'
 import type { SocialProviderPerformance, SocialTradeHistoryItem } from '../lib/socialTradeHistory'
@@ -139,6 +140,7 @@ export function useOwnSocialAccountView(base: SocialTrader | undefined, accountI
           accountId,
           trader: {
             ...hydrated,
+            profile: { ...hydrated.profile, leverage: formatAccountLeverage(account) },
             previewBalance: account.last_balance ?? null,
             accountEquity: account.last_equity ?? null,
             accountSnapshotAt: account.last_synced_at ?? null,

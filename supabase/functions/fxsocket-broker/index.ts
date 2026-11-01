@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
+import { accountLeveragePatch } from "../_shared/accountLeverage.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
 import { searchBrokerDirectory } from "../_shared/fxsocketBsaClient.ts"
 import {
@@ -89,6 +90,7 @@ function summaryToRowPatch(summary: FxsocketAccountSummary) {
     last_equity: summary.equity ?? null,
     last_currency: summary.currency ?? null,
     last_synced_at: new Date().toISOString(),
+    ...accountLeveragePatch(summary.leverage),
   }
 }
 

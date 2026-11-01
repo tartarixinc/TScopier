@@ -35,6 +35,7 @@ export const BROKER_ACCOUNT_CLIENT_SELECT = [
   'total_deposits',
   'total_withdrawals',
   'cashflow_synced_at',
+  'account_leverage',
   'day_start_balance',
   'day_start_balance_on',
   'is_active',

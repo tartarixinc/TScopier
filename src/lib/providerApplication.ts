@@ -202,6 +202,19 @@ export function snapshotFreshness(snapshotAt: string | null | undefined, now: nu
   return now - at > SNAPSHOT_STALE_AFTER_MS ? 'stale' : 'fresh'
 }
 
+/** "1:500" for MT/forex accounts (broker-reported), "10x" for crypto accounts (configured), else null. */
+export function formatAccountLeverage(account: {
+  account_leverage?: number | null
+  binance_leverage?: number | null
+  bybit_leverage?: number | null
+  kucoin_leverage?: number | null
+}): string | null {
+  const valid = (v: number | null | undefined): v is number => v != null && Number.isFinite(v) && v >= 1
+  if (valid(account.account_leverage)) return `1:${Math.round(account.account_leverage)}`
+  const crypto = [account.binance_leverage, account.bybit_leverage, account.kucoin_leverage].find(valid)
+  return crypto != null ? `${Math.round(crypto)}x` : null
+}
+
 /**
  * Floating P/L of open trades = equity - balance from the account snapshot (open trades store no
  * profit). With open trades and a stale/unknown snapshot, equity and balance are both outdated and

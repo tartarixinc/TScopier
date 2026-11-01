@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
+import { accountLeveragePatch } from "../_shared/accountLeverage.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
 import {
   BrokerCredentialEncryptionError,
@@ -527,6 +528,7 @@ Deno.serve(async (req: Request) => {
           last_equity: equity,
           last_currency: currency,
           last_synced_at: new Date().toISOString(),
+          ...accountLeveragePatch(summary.leverage),
         }
         const baselineBalance = resolvePerformanceBaselineBalance(
           (row.performance_baseline_balance as number | null) ?? null,
