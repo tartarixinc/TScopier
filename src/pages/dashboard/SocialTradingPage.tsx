@@ -276,7 +276,10 @@ export function SocialTradingPage() {
                           <TraderAvatar name={name} src={trader.isYou ? ownAvatarUrl : null} size="row" />
                           <div className="min-w-0">
                             <p className="truncate font-medium text-neutral-900 dark:text-neutral-50">{name}</p>{trader.syntheticDemo ? <span className="ms-2 rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">Synthetic demo</span> : null}
-                            <TraderReviews traderUserId={trader.id} traderName={trader.displayName} isSelf={trader.isYou} averageRating={trader.rating} reviewCount={trader.ratingCount} />
+                            {/* The row is a link; keep rating clicks and key presses (and the modal's, which bubble through the portal) from navigating. */}
+                            <div onClick={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}>
+                              <TraderReviews traderUserId={trader.id} traderName={trader.displayName} isSelf={trader.isYou} averageRating={trader.rating} reviewCount={trader.ratingCount} />
+                            </div>
                             <p className="truncate text-xs text-neutral-900 dark:text-neutral-50">
                               #{rank} · {traderAccess === 'open' ? copy.open : copy.private}
                             </p>

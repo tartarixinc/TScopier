@@ -33,10 +33,23 @@ function Stars({ rating, label }: { rating: number; label: string }) {
   )
 }
 
-function ReviewModal({ traderName, traderUserId, existing, onClose, onSaved }: {
+function ReviewList({ reviews }: { reviews: SocialTraderReview[] }) {
+  return (
+    <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">{reviews.map(review => <li key={review.reviewId} className="py-3">
+      <div className="flex flex-wrap items-center gap-2"><Stars rating={review.rating} label={`${review.rating} out of 5`} /><span className="text-sm font-medium">{review.reviewerDisplayName ?? 'Private reviewer'}</span>{review.reviewerUsername ? <span className="text-xs text-neutral-500">@{review.reviewerUsername}</span> : null}{review.isOwn ? <span className="text-xs text-neutral-500">Your review</span> : null}</div>
+      <p className="mt-2 whitespace-pre-wrap text-sm text-neutral-700 dark:text-neutral-300">{review.reviewText}</p>
+    </li>)}</ul>
+  )
+}
+
+function ReviewModal({ traderName, traderUserId, existing, reviews, readOnly, onClose, onSaved }: {
   traderName: string
   traderUserId: string
   existing: SocialTraderReview | null
+  /** Every review for this trader, shown below the form (or alone when read-only). */
+  reviews: SocialTraderReview[]
+  /** Your own profile: read the reviews, but you cannot rate yourself. */
+  readOnly: boolean
   onClose: () => void
   onSaved: () => Promise<void>
 }) {
@@ -101,34 +114,47 @@ function ReviewModal({ traderName, traderUserId, existing, onClose, onSaved }: {
       <button type="button" className="absolute inset-0 bg-neutral-950/60" aria-label="Close review dialog" disabled={submitting} onClick={onClose} />
       <div ref={dialogRef} className="relative max-h-[92vh] w-full overflow-y-auto rounded-t-2xl border border-neutral-200 bg-white shadow-2xl dark:border-neutral-800 dark:bg-neutral-900 sm:max-w-lg sm:rounded-2xl">
         <div className="flex items-start justify-between gap-3 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
-          <div><h2 id="trader-review-title" className="text-lg font-semibold">{existing ? 'Edit your review' : 'Rate trader'}</h2><p className="mt-1 text-sm text-neutral-500">{traderName}</p></div>
+          <div><h2 id="trader-review-title" className="text-lg font-semibold">{readOnly ? 'Your reviews' : existing ? 'Edit your review' : 'Rate trader'}</h2><p className="mt-1 text-sm text-neutral-500">{traderName}</p></div>
           <button ref={closeRef} type="button" className="rounded-lg p-2 hover:bg-neutral-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400 dark:hover:bg-neutral-800" aria-label="Close" disabled={submitting} onClick={onClose}><X className="h-5 w-5" /></button>
         </div>
         <div className="space-y-4 p-5">
           {saved ? <Alert variant="success">Your review was saved.</Alert> : null}
           {error ? <Alert variant="error">{error}</Alert> : null}
-          <fieldset disabled={submitting || saved}>
-            <legend className="text-sm font-medium">Rating</legend>
-            <div className="mt-2 flex gap-2" role="radiogroup" aria-label="Trader rating">
-              {[1, 2, 3, 4, 5].map(star => (
-                <button key={star} type="button" role="radio" aria-checked={rating === star} aria-label={`${star} star${star === 1 ? '' : 's'}`}
-                  onClick={() => setRating(star)} onKeyDown={event => selectByKeyboard(event, star)}
-                  className={clsx('rounded-lg p-2 transition-transform hover:scale-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400', rating > 0 ? RATING_TONES[rating] : RATING_TONES[star], rating === star && 'bg-neutral-100 ring-2 ring-current dark:bg-neutral-800')}>
-                  <Star className={clsx('h-7 w-7', rating >= star && 'fill-current')} />
-                </button>
-              ))}
-            </div>
-          </fieldset>
-          <label className="block text-sm font-medium">Written review
-            <textarea rows={5} maxLength={SOCIAL_REVIEW_MAX_LENGTH} disabled={submitting || saved} value={text} onChange={event => setText(event.target.value)}
-              className="mt-2 w-full resize-y rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-green-400 dark:border-neutral-700 dark:bg-neutral-950" placeholder="Describe your experience with this trader." />
-            <span className="mt-1 block text-end text-xs text-neutral-500">{text.length}/{SOCIAL_REVIEW_MAX_LENGTH}</span>
-          </label>
-          {!saved && validation && (rating > 0 || text.length > 0) ? <p className="text-sm text-red-600 dark:text-red-400">{validation}</p> : null}
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" disabled={submitting} onClick={onClose}>{saved ? 'Done' : 'Cancel'}</Button>
-            {!saved ? <Button type="button" loading={submitting} disabled={Boolean(validation) || submitting} onClick={() => void submit()}>{existing ? 'Save changes' : 'Submit review'}</Button> : null}
-          </div>
+          {readOnly ? (
+            <>
+              {reviews.length === 0 ? <p className="text-sm text-neutral-500">No written reviews yet.</p> : <ReviewList reviews={reviews} />}
+              <div className="flex justify-end"><Button type="button" variant="ghost" onClick={onClose}>Close</Button></div>
+            </>
+          ) : (
+            <>
+              <fieldset disabled={submitting || saved}>
+                <legend className="text-sm font-medium">Rating</legend>
+                <div className="mt-2 flex gap-2" role="radiogroup" aria-label="Trader rating">
+                  {[1, 2, 3, 4, 5].map(star => (
+                    <button key={star} type="button" role="radio" aria-checked={rating === star} aria-label={`${star} star${star === 1 ? '' : 's'}`}
+                      onClick={() => setRating(star)} onKeyDown={event => selectByKeyboard(event, star)}
+                      className={clsx('rounded-lg p-2 transition-transform hover:scale-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400', rating > 0 ? RATING_TONES[rating] : RATING_TONES[star], rating === star && 'bg-neutral-100 ring-2 ring-current dark:bg-neutral-800')}>
+                      <Star className={clsx('h-7 w-7', rating >= star && 'fill-current')} />
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+              <label className="block text-sm font-medium">Written review
+                <textarea rows={5} maxLength={SOCIAL_REVIEW_MAX_LENGTH} disabled={submitting || saved} value={text} onChange={event => setText(event.target.value)}
+                  className="mt-2 w-full resize-y rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-green-400 dark:border-neutral-700 dark:bg-neutral-950" placeholder="Describe your experience with this trader." />
+                <span className="mt-1 block text-end text-xs text-neutral-500">{text.length}/{SOCIAL_REVIEW_MAX_LENGTH}</span>
+              </label>
+              {!saved && validation && (rating > 0 || text.length > 0) ? <p className="text-sm text-red-600 dark:text-red-400">{validation}</p> : null}
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="ghost" disabled={submitting} onClick={onClose}>{saved ? 'Done' : 'Cancel'}</Button>
+                {!saved ? <Button type="button" loading={submitting} disabled={Boolean(validation) || submitting} onClick={() => void submit()}>{existing ? 'Save changes' : 'Submit review'}</Button> : null}
+              </div>
+              <div className="border-t border-neutral-100 pt-4 dark:border-neutral-800">
+                <h3 className="mb-1 text-sm font-semibold">Reviews ({reviews.length})</h3>
+                {reviews.length === 0 ? <p className="text-sm text-neutral-500">No written reviews yet.</p> : <ReviewList reviews={reviews} />}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>, document.body,
@@ -184,19 +210,19 @@ export function TraderReviews({ traderUserId, traderName, isSelf, averageRating,
   }
 
   const action = (
-    <button type="button" disabled={isSelf || opening} aria-busy={opening} onClick={() => void openReview()}
+    <button type="button" disabled={opening} aria-busy={opening} onClick={() => void openReview()}
       className={clsx('inline-flex items-center rounded-lg text-sm hover:bg-neutral-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400 disabled:cursor-not-allowed disabled:opacity-70 dark:hover:bg-neutral-800', compact ? 'py-0.5' : 'gap-2 px-2 py-1')}
-      aria-label={isSelf ? `Your rating: ${summary.average?.toFixed(1) ?? 'not rated'}` : `${ownReview ? 'Edit rating for' : 'Rate'} ${traderName}`}>
+      aria-label={isSelf ? `Read your reviews (rating ${summary.average?.toFixed(1) ?? 'none'})` : `${ownReview ? 'Edit rating for' : 'Rate'} ${traderName}`}>
       <Stars rating={summary.average ?? 0} label={summary.average == null ? 'Not rated' : `${summary.average.toFixed(1)} out of 5`} />
       {!compact ? <><span>{summary.average == null ? 'No ratings' : summary.average.toFixed(1)} ({summary.count})</span>
-      {!isSelf ? <span className="font-medium text-teal-700 dark:text-teal-300">{opening ? 'Loading reviews…' : ownReview ? 'Edit review' : 'Rate trader'}</span> : null}</> : null}
+      <span className="font-medium text-teal-700 dark:text-teal-300">{opening ? 'Loading reviews…' : isSelf ? 'Read reviews' : ownReview ? 'Edit review' : 'Rate trader'}</span></> : null}
     </button>
   )
 
   const loadError = error ? (
     <div className="mt-2 space-y-2">
       <Alert variant="error">{error}</Alert>
-      {!isSelf ? <Button type="button" size="sm" variant="secondary" loading={opening} onClick={() => void openReview()}>Retry loading reviews</Button> : null}
+      <Button type="button" size="sm" variant="secondary" loading={opening} onClick={() => void openReview()}>Retry loading reviews</Button>
     </div>
   ) : null
 
@@ -207,12 +233,9 @@ export function TraderReviews({ traderUserId, traderName, isSelf, averageRating,
         {loading ? <p className="mt-4 text-sm text-neutral-500">Loading reviews…</p> : null}
         {loadError}
         {!loading && !error && reviews.length === 0 ? <p className="mt-4 text-sm text-neutral-500">No written reviews yet.</p> : null}
-        {!loading && reviews.length ? <ul className="mt-4 divide-y divide-neutral-100 dark:divide-neutral-800">{reviews.map(review => <li key={review.reviewId} className="py-3">
-          <div className="flex flex-wrap items-center gap-2"><Stars rating={review.rating} label={`${review.rating} out of 5`} /><span className="text-sm font-medium">{review.reviewerDisplayName ?? 'Private reviewer'}</span>{review.reviewerUsername ? <span className="text-xs text-neutral-500">@{review.reviewerUsername}</span> : null}{review.isOwn ? <span className="text-xs text-neutral-500">Your review</span> : null}</div>
-          <p className="mt-2 whitespace-pre-wrap text-sm text-neutral-700 dark:text-neutral-300">{review.reviewText}</p>
-        </li>)}</ul> : null}
+        {!loading && reviews.length ? <div className="mt-4"><ReviewList reviews={reviews} /></div> : null}
       </Card> : <div>{action}{loadError}</div>}
-      {modalOpen && !isSelf ? <ReviewModal traderName={traderName} traderUserId={traderUserId} existing={ownReview} onClose={() => setModalOpen(false)} onSaved={async () => { await refresh() }} /> : null}
+      {modalOpen ? <ReviewModal traderName={traderName} traderUserId={traderUserId} existing={ownReview} reviews={reviews} readOnly={isSelf} onClose={() => setModalOpen(false)} onSaved={async () => { await refresh() }} /> : null}
     </>
   )
 }
