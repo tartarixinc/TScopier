@@ -7,6 +7,7 @@ import {
   fetchOwnSocialCopySources,
   fetchSocialCopySources,
   fetchSocialCopySubscriptions,
+  fetchSocialTraderLiveCopierCount,
   publishSocialCopySource,
   setSocialCopySourceStatus,
 } from './socialCopy'
@@ -42,6 +43,16 @@ test('maps only persisted source availability and subscription lifecycle state',
   assert.equal(subscriptions[0]?.destinationAccountMode, 'demo')
   assert.equal(subscriptions[0]?.executionPath, 'broker')
   assert.equal(subscriptions[0]?.workerAcknowledgedAt, null)
+})
+
+test('maps only a non-negative safe live copier count', async () => {
+  const client = { rpc: async () => ({ data: 0, error: null }) } as unknown as SupabaseClient
+  assert.equal(await fetchSocialTraderLiveCopierCount(client, 'trader'), 0)
+
+  const invalid = { rpc: async () => ({ data: '-1', error: null }) } as unknown as SupabaseClient
+  await assert.rejects(fetchSocialTraderLiveCopierCount(invalid, 'trader'), /Invalid live copier count/)
+  const unavailable = { rpc: async () => ({ data: null, error: null }) } as unknown as SupabaseClient
+  await assert.rejects(fetchSocialTraderLiveCopierCount(unavailable, 'trader'), /Invalid live copier count/)
 })
 
 test('scopes owned source reads and sharing mutations to backend authorization functions', async () => {

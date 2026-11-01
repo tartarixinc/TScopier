@@ -20,8 +20,13 @@ class Query implements PromiseLike<{ data: unknown; error: Row | null }> {
   private mutation: 'insert' | 'update' | null = null
   private payload: Row = {}
   private wantsSingle = false
+  private selectedColumns = '*'
   constructor(private db: FakeDb, private table: string) {}
-  select(): this { return this }
+  select(columns = '*'): this {
+    this.selectedColumns = columns
+    if (this.table === 'broker_accounts') this.db.brokerAccountSelections.push(columns)
+    return this
+  }
   order(): this { return this }
   eq(key: string, value: unknown): this { this.filters.push(row => row[key] === value); return this }
   in(key: string, values: unknown[]): this { this.filters.push(row => values.includes(row[key])); return this }
@@ -49,9 +54,9 @@ class Query implements PromiseLike<{ data: unknown; error: Row | null }> {
       rows.push(row)
       return { data: this.wantsSingle ? row : [row], error: null }
     }
-    if (this.mutation === null && this.table === 'broker_accounts' && this.db.missingBrokerColumn) {
+    if (this.mutation === null && this.table === 'broker_accounts' && this.db.missingBrokerColumn
+      && this.selectedColumns.split(',').some(column => column.trim() === this.db.missingBrokerColumn)) {
       const column = this.db.missingBrokerColumn
-      this.db.missingBrokerColumn = null
       return { data: null, error: { message: `column broker_accounts.${column} does not exist` } }
     }
     const data = this.wantsSingle ? (matches[0] ?? null) : matches
@@ -68,6 +73,7 @@ class FakeDb {
   /** Test hook: while set, the first broker_accounts select fails as if the
    * database predates that provider column (see `missingProviderIdColumn`). */
   missingBrokerColumn: string | null = null
+  brokerAccountSelections: string[] = []
   claimed: SocialCopySubscriptionRow[] = []
   rpc = async (name: string): Promise<{ data: unknown; error: null }> => ({ data: name === 'claim_social_copy_subscriptions' ? this.claimed : name === 'check_social_copy_subscription_authorization' ? true : null, error: null })
   from = (table: string): Query => new Query(this, table)
@@ -188,7 +194,7 @@ test('pause is acknowledged without broker writes and stop closes mapped positio
   assert.equal(db.tables.social_copy_subscriptions[0]?.status, 'stopped')
 })
 
-test('a database without the later provider columns still copies with the legacy column set', async () => {
+test('a database without later provider columns retries with the legacy column set', async () => {
   const db = new FakeDb()
   db.missingBrokerColumn = 'matchtrader_account_id'
   const sub = subscription({ status: 'active' })
@@ -198,6 +204,8 @@ test('a database without the later provider columns still copies with the legacy
   const destination = provider()
   const monitor = new SocialCopyMonitor(db as never, { executionEnabled: true, providerFor: row => String((row as Row).id) === 'src' ? source : destination })
   await monitor.tick()
+  assert.ok(db.brokerAccountSelections.some(columns => columns.includes('matchtrader_account_id')))
+  assert.ok(db.brokerAccountSelections.some(columns => !columns.includes('matchtrader_account_id')))
   assert.equal(destination.sends, 1, 'the fallback read must keep the subscription working')
   assert.equal(db.tables.social_copy_trade_mappings[0]?.state, 'open')
 })

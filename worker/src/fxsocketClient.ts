@@ -10,6 +10,7 @@ import {
 } from './fxsocketMtStatus'
 import { auditOrderClose } from './orderCloseAudit'
 import { FxsocketNoSendSimulator, isBrokerSimulatorEnforced } from './brokerExecutionMode'
+import { normalizeMtBrokerTicket } from './brokerTradeTicket'
 
 export type { FxsocketMtStatus }
 export {
@@ -212,8 +213,8 @@ function nestedTicket(o: Record<string, unknown>, key: string): unknown {
 
 function positiveTicket(...values: unknown[]): number | undefined {
   for (const value of values) {
-    const ticket = num(value)
-    if (ticket != null && ticket > 0) return ticket
+    const identity = normalizeMtBrokerTicket(value)
+    if (identity != null) return Number(identity)
   }
   return undefined
 }
@@ -1192,7 +1193,7 @@ export class FxsocketBrokerClient {
     const raw = await this.post<unknown>(`${await this.accountBase(id)}/OrderSend`, payload, 90_000)
     assertNoApiError(raw)
     const out = normalizeOrderResponse(raw)
-    if (!Number.isFinite(out.ticket) || out.ticket <= 0) {
+    if (normalizeMtBrokerTicket(out.ticket) == null) {
       const preview = typeof raw === 'object' && raw !== null ? JSON.stringify(raw).slice(0, 500) : String(raw)
       throw new FxsocketApiError(`OrderSend returned no ticket (response: ${preview})`, 200)
     }

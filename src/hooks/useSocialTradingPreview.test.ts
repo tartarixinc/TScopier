@@ -54,16 +54,37 @@ describe('social trading preview hydration', () => {
     const trader = hydrateTrader(base, [flatTrade], null, source, 'Performance request failed: unavailable')
     expect(trader.sourceId).toBe('source')
     expect(trader.copyEligible).toBe(true)
-    expect(trader.closedTrades).toBe(1)
+    expect(trader.closedTrades).toBeNull()
+    expect(trader.winRate).toBeNull()
+    expect(trader.historyComplete).toBe(false)
     expect(trader.performanceError).toMatch(/Performance request failed/)
   })
 
   it('distinguishes a failed history request from genuine empty history', () => {
     const failed = hydrateTrader(base, null, performance, source, 'Trade-history request failed')
-    const empty = hydrateTrader(base, [], { ...performance, closedTradeCount: 0 }, source)
+    const empty = hydrateTrader(base, [], { ...performance, performanceStatus: 'no_history', openTradeCount: 0, closedTradeCount: 0 }, source)
     expect(failed.historyAvailable).toBe(false)
+    expect(failed.closedTrades).toBeNull()
     expect(empty.historyAvailable).toBe(true)
+    expect(empty.historyComplete).toBe(true)
     expect(empty.closedTrades).toBe(0)
+    expect(empty.openTradeCount).toBe(0)
+  })
+
+  it('does not mix incomplete or duplicate history with complete totals', () => {
+    const incomplete = hydrateTrader(base, [flatTrade], { ...performance, performanceStatus: 'incomplete', closedTradeCount: 2 }, source)
+    const duplicate = hydrateTrader(base, [flatTrade, { ...flatTrade }], performance, source)
+    expect(incomplete.closedPerformance).toHaveLength(1)
+    expect(incomplete.closedTrades).toBeNull()
+    expect(incomplete.winRate).toBeNull()
+    expect(incomplete.historyComplete).toBe(false)
+    expect(duplicate.closedTrades).toBeNull()
+    expect(duplicate.historyComplete).toBe(false)
+  })
+
+  it('preserves verified zero and positive live copier counts', () => {
+    expect(hydrateTrader(base, [flatTrade], performance, source, null, [source], 0).liveCopiers).toBe(0)
+    expect(hydrateTrader(base, [flatTrade], performance, source, null, [source], 3).liveCopiers).toBe(3)
   })
 
   it('recognizes server-authorized synthetic traders and permits the persisted simulated flow', () => {

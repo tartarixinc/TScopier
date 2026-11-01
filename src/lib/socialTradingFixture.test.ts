@@ -18,7 +18,7 @@ const trader: SocialTrader = {
 describe('approved Social Trading performance presentation', () => {
   it('derives monthly and calendar P/L from the same closed trades', () => {
     const stats = socialTraderStats(trader)
-    expect(stats.monthly.at(-1)).toEqual({ label: 'Sep', profit: 100 })
+    expect(stats.monthly.at(-1)).toEqual({ label: 'Sep', profit: 100, state: 'verified' })
     expect(stats.calendar[1]).toEqual({ day: 2, profit: 120, trades: 1 })
     expect(stats.calendar[2]).toEqual({ day: 3, profit: -20, trades: 1 })
     expect(stats.profitableTrades).toBe(1)
@@ -42,6 +42,24 @@ describe('approved Social Trading performance presentation', () => {
     expect(stats.shortTrades).toBeNull()
     expect(stats.profitableTrades).toBeNull()
     expect(stats.losingTrades).toBeNull()
+    expect(stats.monthly.every(month => month.profit == null && month.state === 'unavailable')).toBe(true)
+  })
+
+  it('does not present partial trade history as complete profile metrics', () => {
+    const stats = socialTraderStats({ ...trader, historyComplete: false })
+    expect(stats.profitableTrades).toBeNull()
+    expect(stats.losingTrades).toBeNull()
+    expect(stats.bestTradeProfit).toBeNull()
+    expect(stats.worstTradeProfit).toBeNull()
+    expect(stats.profitFactor).toBeNull()
+    expect(stats.monthly.at(-1)).toEqual({ label: 'Sep', profit: 100, state: 'incomplete' })
+    expect(stats.monthly.slice(0, -1).every(month => month.profit == null && month.state === 'incomplete')).toBe(true)
+  })
+
+  it('uses zero only for a genuinely covered complete month with no activity', () => {
+    const stats = socialTraderStats({ ...trader, performancePeriodStartedAt: '2026-07-01T00:00:00.000Z', performancePeriodEndedAt: '2026-09-30T23:59:59.999Z' })
+    expect(stats.monthly.find(month => month.label === 'Aug')).toEqual({ label: 'Aug', profit: 0, state: 'no_activity' })
+    expect(stats.monthly.find(month => month.label === 'Jun')).toEqual({ label: 'Jun', profit: null, state: 'unavailable' })
   })
 
   it('preserves genuine breakeven trades as available zero values', () => {

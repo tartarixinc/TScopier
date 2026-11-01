@@ -35,6 +35,17 @@ describe('MTAPI live identity normalization', () => {
     assert.equal(result.ticket, 101)
     assert.equal(result.positionTicket, 303)
   })
+
+  it('does not normalize missing, malformed, or non-positive MT broker tickets', () => {
+    for (const ticket of [null, '', 'NaN', 'Infinity', '1.5', '0', '-1', 0, -1, NaN, Infinity, 1.5]) {
+      assert.equal(Number.isNaN(normalizeOrderResponse({ ticket }, { platform: 'MT5' }).ticket), true)
+    }
+  })
+
+  it('normalizes valid numeric and digit-string MT broker tickets', () => {
+    assert.equal(normalizeOrderResponse({ ticket: 123 }, { platform: 'MT4' }).ticket, 123)
+    assert.equal(normalizeOrderResponse({ ticket: '123' }, { platform: 'MT5' }).ticket, 123)
+  })
 })
 
 describe('broker live volume alias authority', () => {
