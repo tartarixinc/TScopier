@@ -76,6 +76,7 @@ export function ProviderPublicPerformance({
               <span className="block text-xs font-normal text-neutral-600 dark:text-neutral-400">Withdrawn {money(performance.withdrawals)}</span>
             ) : null}
           </Metric>
+          <Metric label="Max drawdown" tone={performance.maxDrawdown ? 'down' : undefined}>{percent(performance.maxDrawdown)}</Metric>
           <Metric label="Realized P/L" tone={toneFor(performance.realizedProfit)}>{money(performance.realizedProfit)}</Metric>
           <Metric label="Closed trades">{performance.closedCount == null ? DASH : performance.closedCount.toLocaleString()}</Metric>
           <Metric label="Open trades" tone={performance.openCount ? toneFor(openPnl) : undefined}>

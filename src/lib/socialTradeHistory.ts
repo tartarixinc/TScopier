@@ -109,7 +109,8 @@ export type SocialProviderPerformance = {
   winRate: number | null
   profitFactor: number | null
   returnPercentage: null
-  maximumDrawdown: null
+  /** Max drawdown (%) of the realized-balance curve; only set for the owner's own view. */
+  maximumDrawdown: number | null
   equityCurveAvailable: false
   isCopyEligible: boolean
   eligibilityReason: string

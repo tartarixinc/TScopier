@@ -120,6 +120,8 @@ export type ProviderPublicPerformance = {
   /** 'broker_history' = summed from the broker; 'starting_balance' = the balance saved when the account was linked. */
   depositSource: 'broker_history' | 'starting_balance' | null
   cashflowSyncedAt: string | null
+  /** Max drawdown (%) of the realized-balance curve; null unless the history is complete. */
+  maxDrawdown: number | null
 }
 
 export type ProviderPublicTrade = {
@@ -156,6 +158,7 @@ type PerformanceRow = {
   withdrawals: number | string | null
   deposit_source: string | null
   cashflow_synced_at: string | null
+  max_drawdown: number | string | null
 }
 
 type TradeRow = {
@@ -205,6 +208,7 @@ export function mapProviderPublicPerformance(row: PerformanceRow): ProviderPubli
     withdrawals: num(row.withdrawals),
     depositSource: row.deposit_source === 'broker_history' || row.deposit_source === 'starting_balance' ? row.deposit_source : null,
     cashflowSyncedAt: row.cashflow_synced_at,
+    maxDrawdown: num(row.max_drawdown),
   }
 }
 

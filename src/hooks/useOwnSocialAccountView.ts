@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext'
 import { useBrokerAccounts } from '../context/BrokerAccountsContext'
 import { isVerifiedSocialBrokerTicket, normalizeSocialBrokerTicket, resolveSocialAccountMode, socialBrokerDisplayLabel } from '../lib/socialAccount'
 import { formatAccountLeverage } from '../lib/providerApplication'
+import { computeMaxDrawdownPct } from '../lib/maxDrawdown'
 import { supabase } from '../lib/supabase'
 import { hydrateTrader } from './useSocialTradingPreview'
 import type { SocialProviderPerformance, SocialTradeHistoryItem } from '../lib/socialTradeHistory'
@@ -129,7 +130,13 @@ export function useOwnSocialAccountView(base: SocialTrader | undefined, accountI
           winRate: closed.length ? (positive.length / closed.length) * 100 : null,
           profitFactor: grossLoss > 0 ? grossProfit / grossLoss : null,
           returnPercentage: null,
-          maximumDrawdown: null,
+          // Realized-balance drawdown from the performance baseline; only for a complete history.
+          maximumDrawdown: historyComplete
+            ? computeMaxDrawdownPct(
+              account.performance_baseline_balance,
+              closed.map(item => ({ closedAt: item.closedAt, profit: item.realizedProfit })),
+            )
+            : null,
           equityCurveAvailable: false,
           isCopyEligible: false,
           eligibilityReason: 'owner_view',
