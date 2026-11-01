@@ -110,6 +110,9 @@ export interface SocialTrader {
   /** Demo-only source balance used to illustrate proportional sizing. */
   previewBalance: number | null
   accountEquity?: number | null
+  /** Total deposited into the account (broker history, else the saved starting balance). */
+  accountDeposits?: number | null
+  accountWithdrawals?: number | null
   sourceId?: string | null
   sourceLabel?: string | null
   sourceProvider?: string | null
@@ -445,8 +448,12 @@ export function socialTraderStats(trader: SocialTrader): SocialTraderStats {
     profitableTrades,
     losingTrades,
     equity: trader.accountEquity ?? null,
-    deposit: null,
-    openPosition: null,
+    deposit: trader.accountDeposits ?? null,
+    // Floating P/L of open trades = equity - balance from the account snapshot (open trades store no profit).
+    openPosition: trader.accountEquity != null && trader.previewBalance != null
+      && Number.isFinite(trader.accountEquity) && Number.isFinite(trader.previewBalance)
+      ? Math.round((trader.accountEquity - trader.previewBalance) * 100) / 100
+      : null,
     bestTradeProfit: completeHistory ? best?.profit ?? null : null,
     bestTradeAt: completeHistory ? best?.closedAt ?? null : null,
     worstTradeProfit: completeHistory ? worst?.profit ?? null : null,

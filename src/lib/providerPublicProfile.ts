@@ -115,6 +115,11 @@ export type ProviderPublicPerformance = {
   periodStart: string | null
   periodEnd: string | null
   monthly: ProviderPublicMonth[]
+  deposits: number | null
+  withdrawals: number | null
+  /** 'broker_history' = summed from the broker; 'starting_balance' = the balance saved when the account was linked. */
+  depositSource: 'broker_history' | 'starting_balance' | null
+  cashflowSyncedAt: string | null
 }
 
 export type ProviderPublicTrade = {
@@ -147,6 +152,10 @@ type PerformanceRow = {
   period_start: string | null
   period_end: string | null
   monthly: unknown
+  deposits: number | string | null
+  withdrawals: number | string | null
+  deposit_source: string | null
+  cashflow_synced_at: string | null
 }
 
 type TradeRow = {
@@ -192,6 +201,10 @@ export function mapProviderPublicPerformance(row: PerformanceRow): ProviderPubli
     periodStart: row.period_start,
     periodEnd: row.period_end,
     monthly: parseMonthly(row.monthly),
+    deposits: num(row.deposits),
+    withdrawals: num(row.withdrawals),
+    depositSource: row.deposit_source === 'broker_history' || row.deposit_source === 'starting_balance' ? row.deposit_source : null,
+    cashflowSyncedAt: row.cashflow_synced_at,
   }
 }
 

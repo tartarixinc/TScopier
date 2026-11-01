@@ -109,3 +109,19 @@ test('public RPCs return no metrics or trades unless the provider shares trade h
   assert.match(history, /least\(coalesce\(p_limit, 100\), 250\)/)
   assert.doesNotMatch(publicPerf, /email|account_login|broker_account_id,\s*t\./)
 })
+
+const cashflow = read('_provider_cashflow_totals.sql')
+
+test('deposit/withdrawal totals are server-written only and exposed through the share-gated public RPC', () => {
+  assert.match(cashflow, /add column if not exists total_deposits numeric/)
+  // Clients can update their own broker row, so a trigger must preserve the server-derived columns.
+  assert.match(cashflow, /broker_accounts_protect_cashflow_totals/)
+  assert.match(cashflow, /in \('authenticated', 'anon'\)/)
+  assert.match(cashflow, /new\.total_deposits := old\.total_deposits/)
+  assert.match(cashflow, /grant select \(total_deposits, total_withdrawals, cashflow_synced_at\) on public\.broker_accounts to authenticated/)
+  assert.doesNotMatch(cashflow, /grant update/)
+  // Public output sits behind the same share gate and falls back to the saved starting balance.
+  assert.match(cashflow, /not coalesce\(v_src\.shared, false\)/)
+  assert.match(cashflow, /coalesce\(v_cash\.total_deposits, v_cash\.performance_baseline_balance\)/)
+  assert.match(cashflow, /grant execute on function public\.get_provider_public_performance\(text\) to anon, authenticated/)
+})

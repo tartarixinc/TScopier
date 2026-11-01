@@ -197,7 +197,8 @@ test("the public provider page reads only the slug-gated public RPCs and carries
   assert.match(publicLib, /rpc\('get_provider_public_performance'/);
   assert.match(publicLib, /rpc\('get_provider_public_trade_history'/);
   assert.doesNotMatch(publicLib + publicPage, /get_social_provider_performance|get_social_source_trade_history|get_social_trade_history\b/);
-  assert.match(publicPage, /stashPostAuthRedirect\(providerCopyLandingPath/);
+  assert.match(publicPage, /stashPostAuthRedirect\(landing\)/);
+  assert.match(publicPage, /providerCopyLandingPath\(profile\.profileUserId\)/);
   assert.match(publicPage, /Sign up to copy/);
   assert.match(page, /profileParams\.get\('copy'\) === '1'/);
   assert.match(page, /consumePostAuthRedirect\(\)/);
@@ -212,4 +213,14 @@ test("the marketing host serves /p/:slug and hands auth off to the app with a ne
     const auth = readFileSync(new URL(`../pages/auth/${file}.tsx`, import.meta.url), "utf8");
     assert.match(auth, /capturePostAuthRedirectFromUrl\(/);
   }
+});
+
+test("deposits come from server-written account totals, never from browser-supplied values", () => {
+  const edge = readFileSync(new URL("../../supabase/functions/mtapi-broker/index.ts", import.meta.url), "utf8");
+  assert.match(edge, /fetchCashflowTotals\(/);
+  assert.match(edge, /cashflowSyncDue\(/);
+  const ownView = readFileSync(new URL("../hooks/useOwnSocialAccountView.ts", import.meta.url), "utf8");
+  assert.match(ownView, /account\.total_deposits \?\? account\.performance_baseline_balance/);
+  const select = readFileSync(new URL("../lib/brokerAccountSelect.ts", import.meta.url), "utf8");
+  assert.match(select, /'total_deposits'/);
 });

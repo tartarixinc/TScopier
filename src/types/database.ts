@@ -590,6 +590,12 @@ export interface BrokerAccount {
   performance_baseline_balance?: number | null
   /** UTC time when `performance_baseline_balance` was first captured. */
   performance_baseline_captured_at?: string | null
+  /** Sum of all deposits from the broker's balance-operation history (server-written). */
+  total_deposits?: number | null
+  /** Sum of all withdrawals (positive magnitude) from the same history (server-written). */
+  total_withdrawals?: number | null
+  /** When the deposit/withdrawal totals were last pulled from the broker. */
+  cashflow_synced_at?: string | null
   /** Wall time when the broker was last activated (connect / reconnect). */
   last_activated_at?: string | null
   /** Balance at the start of `day_start_balance_on` (local calendar day). */

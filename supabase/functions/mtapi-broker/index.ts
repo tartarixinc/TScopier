@@ -23,6 +23,7 @@ import {
   BROKER_FULL_HISTORY_FROM_DATE,
   fetchFxsocketBrokerTrades,
 } from "../_shared/fxsocketTrades.ts"
+import { CASHFLOW_SYNC_INTERVAL_MS, cashflowSyncDue, fetchCashflowTotals } from "../_shared/cashflowTotals.ts"
 import type { MtHistoryProfile } from "../_shared/mtTradeFields.ts"
 import { effectiveAccountSummaryBalance } from "../_shared/effectiveBrokerBalance.ts"
 import { resolvePerformanceBaselineBalance } from "../_shared/performanceBaseline.ts"
@@ -545,10 +546,51 @@ Deno.serve(async (req: Request) => {
           .single()
         if (updErr) throw new Error(updErr.message)
 
+        // Deposits/withdrawals come from the broker's full balance-operation history. It is heavy,
+        // so it is re-pulled at most every few hours and never blocks the summary refresh.
+        let accountOut = updated as Record<string, unknown>
+        const cashRow = row as unknown as Record<string, unknown>
+        if (cashflowSyncDue(cashRow.cashflow_synced_at as string | null | undefined)) {
+          const nowMs = Date.now()
+          let cashPatch: Record<string, unknown>
+          try {
+            const totals = await fetchCashflowTotals(
+              mtapi,
+              {
+                id: String(cashRow.id),
+                label: String(cashRow.label ?? ""),
+                broker_name: (cashRow.broker_name as string | null | undefined) ?? null,
+                fxsocket_account_id: String(cashRow.mtapi_session_id),
+                platform: cashRow.platform as string | null | undefined,
+              },
+              formatMtDt(new Date(nowMs)),
+            )
+            cashPatch = totals
+              ? {
+                total_deposits: totals.deposits,
+                total_withdrawals: totals.withdrawals,
+                cashflow_synced_at: new Date(nowMs).toISOString(),
+              }
+              : { cashflow_synced_at: new Date(nowMs).toISOString() }
+          } catch (cashErr) {
+            console.warn(`[mtapi-broker] cash-flow sync failed: ${cashErr instanceof Error ? cashErr.message : String(cashErr)}`)
+            // Retry in ~15 minutes instead of on every poll.
+            cashPatch = { cashflow_synced_at: new Date(nowMs - CASHFLOW_SYNC_INTERVAL_MS + 15 * 60_000).toISOString() }
+          }
+          const { data: withCash } = await supabase
+            .from("broker_accounts")
+            .update(cashPatch)
+            .eq("id", accountRowId)
+            .eq("user_id", userId)
+            .select("*")
+            .single()
+          if (withCash) accountOut = withCash as Record<string, unknown>
+        }
+
         return Response.json(
           {
             ok: true,
-            account: stripSecrets(updated as Record<string, unknown>),
+            account: stripSecrets(accountOut),
             summary,
             pending: false,
           },

@@ -28,10 +28,13 @@ export function ProviderPublicPerformance({
   performance,
   trades,
   tradesError,
+  openPnl = null,
 }: {
   performance: Performance
   trades: ProviderPublicTrade[]
   tradesError: string | null
+  /** Floating P/L of open trades (account equity minus balance), when known. */
+  openPnl?: number | null
 }) {
   const [now] = useState(() => Date.now())
   const currency = performance.currency
@@ -67,9 +70,20 @@ export function ProviderPublicPerformance({
         <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <Metric label="Win rate">{percent(performance.winRate)}</Metric>
           <Metric label="Profit factor">{performance.profitFactor == null ? DASH : performance.profitFactor.toFixed(2)}</Metric>
+          <Metric label={performance.depositSource === 'broker_history' ? 'Total deposits' : 'Starting deposit'}>
+            {money(performance.deposits)}
+            {performance.withdrawals != null && performance.withdrawals > 0 ? (
+              <span className="block text-xs font-normal text-neutral-600 dark:text-neutral-400">Withdrawn {money(performance.withdrawals)}</span>
+            ) : null}
+          </Metric>
           <Metric label="Realized P/L" tone={toneFor(performance.realizedProfit)}>{money(performance.realizedProfit)}</Metric>
           <Metric label="Closed trades">{performance.closedCount == null ? DASH : performance.closedCount.toLocaleString()}</Metric>
-          <Metric label="Open trades">{performance.openCount == null ? DASH : performance.openCount.toLocaleString()}</Metric>
+          <Metric label="Open trades" tone={performance.openCount ? toneFor(openPnl) : undefined}>
+            {performance.openCount == null ? DASH : performance.openCount.toLocaleString()}
+            {performance.openCount ? (
+              <span className="block text-xs font-normal text-neutral-600 dark:text-neutral-400">Open P/L {money(openPnl)}</span>
+            ) : null}
+          </Metric>
           <Metric label="History period">
             <span className="text-sm">{performance.periodStart && performance.periodEnd ? `${when(performance.periodStart)} – ${when(performance.periodEnd)}` : DASH}</span>
           </Metric>
@@ -189,7 +203,10 @@ export function ProviderPublicPerformance({
 
       {openTrades.length > 0 && (
         <section className="rounded-2xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900" aria-label="Open positions">
-          <h2 className="border-b border-neutral-100 px-4 py-3 text-sm font-semibold dark:border-neutral-800">Open positions ({openTrades.length})</h2>
+          <h2 className="flex items-baseline justify-between gap-2 border-b border-neutral-100 px-4 py-3 text-sm font-semibold dark:border-neutral-800">
+            <span>Open positions ({openTrades.length})</span>
+            <span className={`text-xs font-medium ${openPnl == null || openPnl === 0 ? 'text-neutral-600 dark:text-neutral-400' : openPnl > 0 ? 'text-green-600 dark:text-teal-300' : 'text-red-600 dark:text-red-400'}`}>Open P/L {money(openPnl)}</span>
+          </h2>
           <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
             {openTrades.map(trade => (
               <li key={trade.tradeId} className="flex items-center justify-between gap-3 px-4 py-2 text-sm">

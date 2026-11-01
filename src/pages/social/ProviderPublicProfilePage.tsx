@@ -84,6 +84,9 @@ export function ProviderPublicProfilePage() {
   const price = profile?.monthlyCopyPriceCents == null ? null : normalizeCopyPriceCents(profile.monthlyCopyPriceCents)
   const freshness = snapshotFreshness(profile?.snapshotAt)
   const icon = profile?.platform ? platformIconSrc(profile.platform) : null
+  const openPnl = profile?.equity != null && profile.balance != null
+    ? Math.round((profile.equity - profile.balance) * 100) / 100
+    : null
   const landing = profile ? providerCopyLandingPath(profile.profileUserId) : null
   // Same-origin hint for the app host; the `next` param carries it across origins (marketing -> app).
   const rememberLanding = () => { if (landing) stashPostAuthRedirect(landing) }
@@ -163,7 +166,7 @@ export function ProviderPublicProfilePage() {
             {!publicData ? (
               <p className="py-6 text-center text-sm text-neutral-600 dark:text-neutral-400">Loading performance…</p>
             ) : publicData.performance?.shared ? (
-              <ProviderPublicPerformance performance={publicData.performance} trades={publicData.trades} tradesError={publicData.tradesError} />
+              <ProviderPublicPerformance performance={publicData.performance} trades={publicData.trades} tradesError={publicData.tradesError} openPnl={openPnl} />
             ) : (
               <section className="rounded-2xl border border-neutral-200 bg-white p-5 text-center text-sm text-neutral-700 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300">
                 {publicData.error ?? 'This provider has not made their trading history public.'}
