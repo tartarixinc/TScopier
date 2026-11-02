@@ -112,8 +112,8 @@ export function buildCampaignEmailHtml(args: {
             <td style="padding:8px 32px 32px 32px;text-align:center;">
               <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
                 <tr>
-                  <td style="border-radius:10px;background-color:${BRAND.teal};box-shadow:0 2px 8px rgba(13,148,136,0.35);">
-                    <a href="${escapeHtml(args.primaryCta.url)}" target="_blank" style="display:inline-block;padding:14px 36px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:10px;">
+                  <td style="border-radius:10px;background-color:${BRAND.teal};box-shadow:0 2px 8px rgba(74,222,128,0.35);">
+                    <a href="${escapeHtml(args.primaryCta.url)}" target="_blank" style="display:inline-block;padding:14px 36px;font-size:15px;font-weight:600;color:#052e16;text-decoration:none;border-radius:10px;">
                       ${escapeHtml(args.primaryCta.label)}
                     </a>
                   </td>

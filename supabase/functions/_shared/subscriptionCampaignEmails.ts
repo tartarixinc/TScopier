@@ -25,7 +25,7 @@ export const SUBSCRIPTION_CAMPAIGN_SUBJECTS: Record<
 };
 
 export const UNSUBSCRIBE_RECOVERY_SUBJECT =
-  "Confirm your TScopier email unsubscribe";
+  "Confirm your UniCopier email unsubscribe";
 
 export function getEmailUnsubscribeUrl(
   appUrl: string,
@@ -177,12 +177,12 @@ export function buildUnsubscribeRecoveryEmail(
     appUrl,
     logoUrl,
     preheader:
-      "Confirm unsubscribing this address from TScopier campaign emails.",
+      "Confirm unsubscribing this address from UniCopier campaign emails.",
     eyebrow: "Unsubscribe request",
     title: "Confirm your unsubscribe",
     greeting: name,
     bodyHtml: `
-      <p style="margin:0 0 16px 0;">We received a request to stop sending TScopier campaign and subscription-reminder emails to this address.</p>
+      <p style="margin:0 0 16px 0;">We received a request to stop sending UniCopier campaign and subscription-reminder emails to this address.</p>
       <p style="margin:0;">Select <strong style="color:#0f172a;">Confirm unsubscribe</strong> below to finish. The button opens a fresh confirmation page — the link in your previous email was no longer valid, so this message replaces it.</p>
     `,
     primaryCta: {
