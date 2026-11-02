@@ -207,3 +207,54 @@ Deno.test("verified server clock requires explicit unit, sign, and no-DST policy
     "DST policy has not been explicitly verified",
   )
 })
+
+Deno.test("per-platform timezone unit overrides the global unit (MT4 minutes, MT5 hours)", async () => {
+  const answers: Record<string, number> = { MT4: 180, MT5: 3 }
+  const client = {
+    serverTimezone: async (_id: string, platform?: string | null) =>
+      answers[String(platform ?? "MT5")] ?? 0,
+  } as unknown as MtapiClient
+  const values: Record<string, string> = {
+    MTAPI_HISTORY_TIMEZONE_VERIFIED: "true",
+    MTAPI_HISTORY_TIMESTAMP_MODE: "server",
+    MTAPI_SERVER_TIMEZONE_UNIT_MT4: "minutes",
+    MTAPI_SERVER_TIMEZONE_UNIT_MT5: "hours",
+    MTAPI_SERVER_TIMEZONE_SIGN: "server_minus_utc",
+    MTAPI_SERVER_TIMEZONE_DST: "none",
+  }
+  const resolver = createMtapiClockResolver(client, { get: (name) => values[name] })
+  assertEquals(await resolver("redacted", "MT4"), {
+    timestampMode: "server",
+    utcOffsetSeconds: 10_800,
+  })
+  assertEquals(await resolver("redacted", "MT5"), {
+    timestampMode: "server",
+    utcOffsetSeconds: 10_800,
+  })
+})
+
+Deno.test("observed DST policy is accepted and an unknown policy still fails closed", async () => {
+  const client = {
+    serverTimezone: async () => 3,
+  } as unknown as MtapiClient
+  const values: Record<string, string> = {
+    MTAPI_HISTORY_TIMEZONE_VERIFIED: "true",
+    MTAPI_HISTORY_TIMESTAMP_MODE: "server",
+    MTAPI_SERVER_TIMEZONE_UNIT: "hours",
+    MTAPI_SERVER_TIMEZONE_SIGN: "server_minus_utc",
+    MTAPI_SERVER_TIMEZONE_DST: "observed",
+  }
+  const resolver = createMtapiClockResolver(client, { get: (name) => values[name] })
+  assertEquals(await resolver("redacted", "MT5"), {
+    timestampMode: "server",
+    utcOffsetSeconds: 10_800,
+  })
+
+  values.MTAPI_SERVER_TIMEZONE_DST = "maybe"
+  const strictResolver = createMtapiClockResolver(client, { get: (name) => values[name] })
+  await assertRejects(
+    () => strictResolver("redacted", "MT5"),
+    Error,
+    "DST policy has not been explicitly verified",
+  )
+})

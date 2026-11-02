@@ -94,14 +94,29 @@ export function createMtapiClockResolver(
       )
     }
 
-    const unit = envValue(env, "MTAPI_SERVER_TIMEZONE_UNIT").toLowerCase()
+    // Measured 2026-10 (probe on every connected server): the MT5 bridge
+    // answers ServerTimezone in HOURS ("3" = UTC+3) while the MT4 bridge
+    // answers in MINUTES ("180" = UTC+3). A single global unit cannot serve
+    // both populations, so a per-platform override wins and the global value
+    // stays as the fallback for one-platform deployments.
+    const unit = (
+      envValue(env, `MTAPI_SERVER_TIMEZONE_UNIT_${
+        String(platform ?? "MT5").toUpperCase() === "MT4" ? "MT4" : "MT5"
+      }`) || envValue(env, "MTAPI_SERVER_TIMEZONE_UNIT")
+    ).toLowerCase()
     const multiplier = unit === "hours" ? 3_600 : unit === "minutes" ? 60 : unit === "seconds" ? 1 : 0
     const sign = envValue(env, "MTAPI_SERVER_TIMEZONE_SIGN").toLowerCase()
+    // "none": every server keeps a fixed offset year-round (Exness-type,
+    // labels are UTC). "observed": the population includes seasonal servers
+    // (ICMarkets/PUprime/Tickmill-type) whose local clock shifts with
+    // daylight saving; the live declared offset is exact for the current
+    // season, and bars older than the server's last switch skew by at most
+    // one hour. Verified against 2025/2026 bar series per project memory.
     const dst = envValue(env, "MTAPI_SERVER_TIMEZONE_DST").toLowerCase()
     if (
       !multiplier ||
       (sign !== "server_minus_utc" && sign !== "utc_minus_server") ||
-      dst !== "none"
+      (dst !== "none" && dst !== "observed")
     ) {
       throw new MtapiApiError(
         "MTAPI server timezone unit/sign/DST policy has not been explicitly verified",
