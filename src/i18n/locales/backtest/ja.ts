@@ -108,6 +108,7 @@ export const backtestJa: BacktestBundleTranslations = {
       noData: 'データなし',
       skipped: 'スキップ',
       open: '継続中',
+      dataMismatch: 'データ不一致',
     },
     banners: {
       allTpHit: '全TP達成',

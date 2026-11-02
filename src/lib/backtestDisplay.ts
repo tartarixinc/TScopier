@@ -22,6 +22,7 @@ const DEFAULT_DISPLAY_LABELS: BacktestDisplayLabels = {
     noData: 'No data',
     skipped: 'Skipped',
     open: 'Open',
+    dataMismatch: 'Data mismatch',
   },
   banners: {
     allTpHit: 'All TPs Hit',
@@ -99,6 +100,7 @@ export const BACKTEST_OUTCOME_SHORT: Record<string, string> = {
   no_data: 'No data',
   skipped: 'Skipped',
   open: 'Open',
+  market_data_mismatch: 'Data mismatch',
 }
 
 export function displayOutcomeLabel(
@@ -125,6 +127,7 @@ export function displayOutcomeLabel(
     no_data: labels.noData,
     skipped: labels.skipped,
     open: labels.open,
+    market_data_mismatch: labels.dataMismatch,
   }
   return map[outcome] ?? BACKTEST_OUTCOME_SHORT[outcome] ?? outcome
 }
@@ -260,7 +263,7 @@ export function outcomeBannerTone(
   outcome: string,
   pips: number | null,
 ): 'success' | 'danger' | 'warning' | 'neutral' {
-  if (outcome === 'no_data' || outcome === 'skipped' || outcome === 'open') return 'neutral'
+  if (outcome === 'no_data' || outcome === 'skipped' || outcome === 'open' || outcome === 'market_data_mismatch') return 'neutral'
   if (outcome === 'sl_before_tp') return 'danger'
   if (outcome === 'tp1_then_sl' || outcome === 'tp_then_be') return 'warning'
   if (outcome === 'all_tp_hit' || outcome === 'breakeven') return 'success'
@@ -410,7 +413,7 @@ export function outcomeTone(
   outcome: string,
   pips: number | null,
 ): 'good' | 'bad' | 'neutral' {
-  if (outcome === 'skipped' || outcome === 'no_data' || outcome === 'open') return 'neutral'
+  if (outcome === 'skipped' || outcome === 'no_data' || outcome === 'open' || outcome === 'market_data_mismatch') return 'neutral'
   if (pips != null) {
     if (pips > 0) return 'good'
     if (pips < 0) return 'bad'

@@ -36,6 +36,9 @@ export function getPipMultiplierForSymbol(userSymbol: string): number {
     const base = pair.slice(0, 3)
     const quote = pair.slice(3, 6)
     if (base === 'XAU' || base === 'XAG' || base === 'XPT' || base === 'XPD') return metalPipMultiplier(base)
+    // Crypto pairs are 2-decimal instruments (BTCUSD pip = 0.01), matching
+    // classifySymbol — the old 6-letter shortcut wrongly gave them forex pips.
+    if (classifySymbol(userSymbol) === 'crypto') return 100
     if (quote === 'JPY') return 100
     return 10_000
   }

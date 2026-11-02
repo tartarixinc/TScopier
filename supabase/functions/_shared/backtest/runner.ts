@@ -260,9 +260,9 @@ export async function executeBacktestRun(
     }
   }
 
-  const noDataCount = results.filter((r) => r.outcome === "no_data").length
+  const noDataCount = results.filter((r) => r.outcome === "no_data" || r.outcome === "market_data_mismatch").length
   const progressMsg = noDataCount > 0
-    ? `Complete · ${noDataCount} signal(s) had no market data${fetchFailures > 0 ? " (some symbol fetches failed)" : ""}`
+    ? `Complete · ${noDataCount} signal(s) had no usable market data${fetchFailures > 0 ? " (some symbol fetches failed)" : ""}`
     : `Complete · ${providerLabel} ${apiCalls} request(s) via ${brokerCtx.brokerLabel}`
 
   await supabase.from("backtest_runs").update({

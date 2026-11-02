@@ -155,37 +155,58 @@ export function canonicalBacktestSymbol(raw: string): string {
   return BACKTEST_SYMBOL_CANONICAL[n] ?? n
 }
 
-function matchBrokerSymbolCandidates(
-  targets: string[],
+/**
+ * After a base/target prefix matches, only an allowed quote-currency fragment
+ * (USD/USDT/USDC) plus known broker suffix tokens may follow. Anything else —
+ * e.g. "AUD" in `BTCAUDm` — is a different instrument and must never be
+ * resolved for a USD-quoted signal (2026-11-01: BTCAUDm was picked for BTCUSD
+ * on an Exness suffix server and the whole backtest simulated BTC in AUD).
+ */
+const ALLOWED_QUOTE_FRAGMENTS = ["USDT", "USDC", "USD"]
+// Superset of worker/src/tradeExecutor/brokerSymbolCache.ts BROKER_SYMBOL_SUFFIXES
+// (M/RAW/PRO/R/I/C/S/X/A/CASH) plus common broker decorations. Single letters
+// keep old accept-anything behavior for decorated names without reopening the
+// cross-currency hole (AUD/CNH/EUR never start with an allowed fragment).
+const BROKER_SUFFIX_TOKENS = [
+  "CASH", "MINI", "MICRO", "ECN", "RAW", "STD", "PRO", "STP", "CENT",
+  "247", "SD", "TM", "M", "R", "T", "X", "E", "F", "I", "P", "S", "C", "A",
+]
+
+function brokerSymbolRemainderAllowed(remainder: string): boolean {
+  let rest = remainder
+  while (rest.length > 0) {
+    const quote = ALLOWED_QUOTE_FRAGMENTS.find((q) => rest.startsWith(q))
+    if (quote) {
+      rest = rest.slice(quote.length)
+      continue
+    }
+    const suffix = BROKER_SUFFIX_TOKENS.find((s) => rest.startsWith(s))
+    if (suffix) {
+      rest = rest.slice(suffix.length)
+      continue
+    }
+    return false
+  }
+  return true
+}
+
+/** Shortest-first prefix match on the given targets, keeping only quote-safe extensions. */
+function matchBrokerSymbolPrefix(
+  prefixTargets: string[],
   brokerSymbols: string[],
 ): string | null {
-  const targetSet = new Set(targets.filter(Boolean))
-  if (targetSet.size === 0) return null
-
-  for (const sym of brokerSymbols) {
-    if (targetSet.has(normalizeBacktestSymbol(sym))) return sym
-  }
-
-  // Prefer shortest exact-prefix match (XAUUSD before XAUUSD.pro)
-  const prefixMatches = brokerSymbols
+  const prefixes = [...new Set(prefixTargets.filter(Boolean))]
+  if (prefixes.length === 0) return null
+  const matches = brokerSymbols
     .filter((sym) => {
       const norm = normalizeBacktestSymbol(sym)
-      for (const t of targetSet) {
-        if (norm.startsWith(t)) return true
-      }
-      return false
+      return prefixes.some((t) => {
+        if (!norm.startsWith(t)) return false
+        return brokerSymbolRemainderAllowed(norm.slice(t.length))
+      })
     })
     .sort((a, b) => a.length - b.length)
-  if (prefixMatches.length > 0) return prefixMatches[0]!
-
-  for (const sym of brokerSymbols) {
-    const norm = normalizeBacktestSymbol(sym)
-    for (const t of targetSet) {
-      if (t.startsWith(norm) || norm.startsWith(t)) return sym
-    }
-  }
-
-  return null
+  return matches[0] ?? null
 }
 
 /** Match a normalized symbol to an exact broker Market Watch name (handles suffixes + GOLD/XAU aliases). */
@@ -199,14 +220,42 @@ export function resolveBrokerSymbol(normalized: string, brokerSymbols: string[])
     if (canonical === canon) targets.add(alias)
   }
 
-  // Direct / prefix / alias match on the raw names first.
-  const direct = matchBrokerSymbolCandidates([...targets], brokerSymbols)
-  if (direct) return direct
+  // Exact match on any target/alias — always safe (aliases never extend prefix matching).
+  for (const sym of brokerSymbols) {
+    if (targets.has(normalizeBacktestSymbol(sym))) return sym
+  }
+
+  // Prefix match on the canonical id (BTCUSD → BTCUSDm / BTCUSDTm, never BTCAUDm).
+  const canonMatch = matchBrokerSymbolPrefix([canon], brokerSymbols)
+  if (canonMatch) return canonMatch
+
+  // Prefix match on the raw target and its aliases (GOLD → GOLD.m, XAU →
+  // XAU.r). The quote-safe grammar still applies, so the BTC alias can never
+  // reach BTCAUDm / BTCCNHm — only USD-style extensions and broker suffixes.
+  const targetMatch = matchBrokerSymbolPrefix([...targets], brokerSymbols)
+  if (targetMatch) return targetMatch
 
   // Broker lists GOLD while signal is XAUUSD — match on canonical equality.
   for (const sym of brokerSymbols) {
     if (canonicalBacktestSymbol(sym) === canon) return sym
   }
+
+  // Broker lists a shorter root than the signal (BTC listed for a BTCUSD
+  // signal). Restricted to the canonical/target pair and the longest root
+  // wins, so raw aliases cannot reintroduce the BTCAUDm bug and a stray
+  // two-letter fragment ("BT") never beats a real root.
+  let shorterRoot: string | null = null
+  for (const sym of brokerSymbols) {
+    const norm = normalizeBacktestSymbol(sym)
+    for (const t of [target, canon]) {
+      if (t.length > norm.length && t.startsWith(norm)) {
+        if (!shorterRoot || norm.length > normalizeBacktestSymbol(shorterRoot).length) {
+          shorterRoot = sym
+        }
+      }
+    }
+  }
+  if (shorterRoot) return shorterRoot
 
   return null
 }
