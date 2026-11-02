@@ -17,8 +17,9 @@
  *                             (clock resolver + bars) to verify the gate state.
  *
  * Auth: bearer must equal ALERT_EVALUATOR_SERVICE_KEY or
- * SUPABASE_SERVICE_ROLE_KEY (never the public anon key). Never returns session
- * ids or credentials.
+ * SUPABASE_SERVICE_ROLE_KEY (never the public anon key). Session ids are used
+ * server-side only and never echoed; the map action additionally scrubs them
+ * from bridge error text. No credentials are returned.
  */
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2"
@@ -387,6 +388,7 @@ async function probeLive(supabase: SupabaseClient): Promise<Response> {
     .select("id, label, platform, mtapi_status, mtapi_session_id")
     .eq("is_active", true)
     .eq("provider", "mtapi")
+    .eq("mtapi_status", "connected")
     .not("mtapi_session_id", "is", null)
     .neq("mtapi_session_id", "")
     .limit(8)
@@ -448,7 +450,7 @@ async function probeLive(supabase: SupabaseClient): Promise<Response> {
 
         // EU DST switch: Sunday 2026-10-25 01:00 UTC (CEST -> CET fall-back).
         const dstSymbol = String(out.liveSymbol ?? crypto[0] ?? "")
-        if (dstSymbol) {
+        if (dstSymbol && !expired()) {
           try {
             const rows = account.platform === "MT4"
               ? await mtapi.quoteHistory(account.mtapi_session_id, {
@@ -505,11 +507,13 @@ async function probeDeep(supabase: SupabaseClient): Promise<Response> {
   const wanted = (data ?? []) as unknown as ProbeAccount[]
   const mtapi = new MtapiClient({ env: Deno.env, timeoutMs: 15_000 })
   const results: Record<string, unknown>[] = []
+  const expired = actionDeadline(150)
 
   // Deep-probe only servers whose declared timezone is non-zero — those are
   // the only ones where UTC and server-local readings differ.
   const selected: ProbeAccount[] = []
   for (const account of wanted) {
+    if (expired()) break
     try {
       const tz = timezonePrimitive(await mtapi.serverTimezone(account.mtapi_session_id, account.platform))
       if (String(tz ?? "0") !== "0" && !selected.some((s) => s.id === account.id)) {
@@ -519,9 +523,13 @@ async function probeDeep(supabase: SupabaseClient): Promise<Response> {
       /* checked per-account below anyway */
     }
   }
-  if (selected.length === 0 && wanted.length > 0) selected.push(wanted[0]!)
+  if (selected.length === 0 && wanted.length > 0 && !expired()) selected.push(wanted[0]!)
 
   for (const account of selected) {
+    if (expired()) {
+      results.push({ label: account.label, skipped: "150s budget exhausted — not probed" })
+      continue
+    }
     const sessionId = account.mtapi_session_id
     const out: Record<string, unknown> = {
       label: account.label,
@@ -540,10 +548,9 @@ async function probeDeep(supabase: SupabaseClient): Promise<Response> {
       ].filter((s, i, arr) => arr.indexOf(s) === i)
 
       const attempts: Record<string, unknown>[] = []
-      const expired = actionDeadline(100)
       for (const symbol of ordered.slice(0, 14)) {
         if (expired()) {
-          attempts.push({ deadline: "100s budget exhausted — remaining candidates skipped" })
+          attempts.push({ symbol: null, deadline: "action budget exhausted — remaining candidates skipped" })
           break
         }
         const attempt: Record<string, unknown> = { symbol }
@@ -575,7 +582,7 @@ async function probeDeep(supabase: SupabaseClient): Promise<Response> {
           attempt.liveError = errorText(err)
         }
 
-        if (!out.dstBars) {
+        if (!out.dstBars && !expired()) {
           try {
             const rows = account.platform === "MT4"
               ? await mtapi.quoteHistory(sessionId, {
@@ -618,6 +625,7 @@ async function probeDeep(supabase: SupabaseClient): Promise<Response> {
 
       // Quote tick: any absolute-time field (epoch) to anchor against bar strings.
       for (const symbol of ["XAUUSD", out.freshSymbol, ordered[0]]) {
+        if (expired()) break
         if (!symbol || out.quote) continue
         try {
           const quote = await mtapi.getQuote(sessionId, String(symbol), account.platform)
@@ -628,7 +636,7 @@ async function probeDeep(supabase: SupabaseClient): Promise<Response> {
       }
 
       // Time-ish fields in account details (names + values of time keys only).
-      try {
+      if (!expired()) try {
         const details = await mtapi.accountDetails(sessionId, account.platform)
         const timeish: Record<string, unknown> = {}
         for (const [k, v] of Object.entries(details)) {
@@ -863,7 +871,7 @@ async function probeMap(
             errors[`btc:${symbol}`] = errText(err)
           }
         }
-        if (!out.bars && gold) {
+        if (!out.bars && gold && !expired()) {
           try {
             const bars = await fetchBars(gold)
             out.instrument = gold
