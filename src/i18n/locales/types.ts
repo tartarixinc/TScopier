@@ -1182,7 +1182,6 @@ export interface SocialTradingPageTranslations {
   tabPerformance: string
   tabTrading: string
   tabPortfolio: string
-  aum: string
   leverage: string
   joined: string
   rank: string

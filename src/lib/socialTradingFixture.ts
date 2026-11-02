@@ -1,5 +1,6 @@
 import type { AccountGrowthSeries, TradeVolumeDay } from './dashboardCharts'
 import type { SocialCopySource } from './socialCopy'
+import { floatingOpenPnl } from './providerApplication'
 
 export type SocialTradeSide = 'buy' | 'sell'
 
@@ -110,6 +111,9 @@ export interface SocialTrader {
   /** Demo-only source balance used to illustrate proportional sizing. */
   previewBalance: number | null
   accountEquity?: number | null
+  /** Total deposited into the account (broker history, else the saved starting balance). */
+  accountDeposits?: number | null
+  accountWithdrawals?: number | null
   sourceId?: string | null
   sourceLabel?: string | null
   sourceProvider?: string | null
@@ -130,6 +134,14 @@ export interface SocialTrader {
   liveCopiers?: number | null
   syntheticDemo?: boolean
   socialLinks?: Record<string, string>
+  /** Public share slug (/p/{slug}) and provider review state. */
+  slug?: string | null
+  providerStatus?: 'none' | 'pending' | 'approved' | 'rejected' | 'suspended'
+  /** Server-side snapshot of the published source account (see refresh_social_source_snapshot). */
+  accountKind?: 'demo' | 'live' | 'prop' | 'unknown' | null
+  accountPlatform?: string | null
+  accountCurrency?: string | null
+  accountSnapshotAt?: string | null
   profile: SocialProfileMeta
   openTrades: SocialOpenTrade[]
   closedPerformance: SocialClosedTrade[]
@@ -437,8 +449,14 @@ export function socialTraderStats(trader: SocialTrader): SocialTraderStats {
     profitableTrades,
     losingTrades,
     equity: trader.accountEquity ?? null,
-    deposit: null,
-    openPosition: null,
+    deposit: trader.accountDeposits ?? null,
+    // Floating P/L of open trades = equity - balance from the account snapshot (open trades store no profit).
+    openPosition: floatingOpenPnl({
+      equity: trader.accountEquity,
+      balance: trader.previewBalance,
+      openCount: trader.openTradeCount ?? trader.openTrades.length,
+      snapshotAt: trader.accountSnapshotAt,
+    }),
     bestTradeProfit: completeHistory ? best?.profit ?? null : null,
     bestTradeAt: completeHistory ? best?.closedAt ?? null : null,
     worstTradeProfit: completeHistory ? worst?.profit ?? null : null,

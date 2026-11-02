@@ -674,15 +674,15 @@ export function ConnectTradingAccountModal({
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 {mtFormHidden ? null : (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setBulkUploadOpen(true)}
-                    disabled={saving}
-                  >
-                    {cf.uploadAccountsButton}
-                  </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setBulkUploadOpen(true)}
+                  disabled={saving}
+                >
+                  {cf.uploadAccountsButton}
+                </Button>
                 )}
                 <button
                   type="button"
@@ -751,25 +751,25 @@ export function ConnectTradingAccountModal({
                   />
                   <div className="space-y-1.5">
                     <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{cf.binanceEnvironmentLabel}</p>
-                    <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                       {(['live', 'demo'] as const).map(env => (
-                        <button
+                    <button
                           key={env}
-                          type="button"
+                      type="button"
                           aria-pressed={binanceEnv === env}
                           onClick={() => setBinanceEnv(env)}
-                          className={clsx(
+                      className={clsx(
                             'rounded-xl border px-3 py-2 text-left text-sm transition-colors',
                             binanceEnv === env
-                              ? 'border-green-400 bg-teal-50 text-teal-900 dark:border-green-400 dark:bg-teal-950/40 dark:text-teal-100'
-                              : 'border-neutral-200/65 bg-white text-neutral-900 hover:border-neutral-300 dark:border-neutral-800/55 dark:bg-neutral-900 dark:text-neutral-50 dark:hover:border-neutral-700',
-                          )}
-                        >
+                          ? 'border-green-400 bg-teal-50 text-teal-900 dark:border-green-400 dark:bg-teal-950/40 dark:text-teal-100'
+                          : 'border-neutral-200/65 bg-white text-neutral-900 hover:border-neutral-300 dark:border-neutral-800/55 dark:bg-neutral-900 dark:text-neutral-50 dark:hover:border-neutral-700',
+                      )}
+                    >
                           {env === 'live' ? cf.binanceLive : cf.binanceDemo}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
                   <BinanceSettingsFields
                     value={binanceDraft}
                     onChange={setBinanceDraft}
@@ -1198,21 +1198,21 @@ export function ConnectTradingAccountModal({
 
               {mtFormHidden ? null : (
                 <>
-                  <div className="flex flex-wrap gap-2">
-                    <Button type="button" variant="secondary" size="sm" onClick={addRow} disabled={saving}>
-                      <Plus className="mr-1.5 h-4 w-4" />
-                      {cf.addMoreButton}
-                    </Button>
-                  </div>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="secondary" size="sm" onClick={addRow} disabled={saving}>
+                  <Plus className="mr-1.5 h-4 w-4" />
+                  {cf.addMoreButton}
+                </Button>
+              </div>
 
-                  <div className="flex gap-2 pt-2">
-                    <Button type="submit" loading={saving} size="sm" disabled={validCount === 0}>
-                      {submitLabel}
-                    </Button>
-                    <Button type="button" variant="ghost" size="sm" onClick={handleClose} disabled={saving}>
-                      {t.common.cancel}
-                    </Button>
-                  </div>
+              <div className="flex gap-2 pt-2">
+                <Button type="submit" loading={saving} size="sm" disabled={validCount === 0}>
+                  {submitLabel}
+                </Button>
+                <Button type="button" variant="ghost" size="sm" onClick={handleClose} disabled={saving}>
+                  {t.common.cancel}
+                </Button>
+              </div>
                 </>
               )}
             </form>

@@ -16,6 +16,10 @@ export type TradeNotificationHeadline =
   | 'social_copy_activated'
   | 'social_copy_stopped'
   | 'social_copy_suspended'
+  | 'provider_application_approved'
+  | 'provider_application_rejected'
+  | 'provider_suspended'
+  | 'provider_reinstated'
 
 export type TradeExecutionLogRow = ChannelWorkerLogRow & {
   id: string
@@ -540,6 +544,10 @@ export function formatHolisticNotification(
     case 'social_copy_activated':
     case 'social_copy_stopped':
     case 'social_copy_suspended':
+    case 'provider_application_approved':
+    case 'provider_application_rejected':
+    case 'provider_suspended':
+    case 'provider_reinstated':
       throw new Error('Persistent social notifications must be formatted from their stored row')
   }
 

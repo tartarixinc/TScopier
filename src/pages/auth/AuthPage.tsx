@@ -20,6 +20,7 @@ import {
 } from '../../lib/emailVerification'
 import { loadUserProfile } from '../../lib/userProfile'
 import { capturePendingPlanFromUrl, postAuthAppPath } from '../../lib/pendingPlanSelection'
+import { capturePostAuthRedirectFromUrl } from '../../lib/postAuthRedirect'
 import { TurnstileWidget, type TurnstileWidgetHandle } from '../../components/auth/TurnstileWidget'
 import { isTurnstileEnabled, isTurnstileMisconfigured } from '../../lib/turnstile'
 
@@ -69,6 +70,7 @@ export function AuthPage() {
     const stored = fromUrl ?? loadStoredReferralCode()
     setStoredReferralCode(stored)
     capturePendingPlanFromUrl(window.location.search)
+    capturePostAuthRedirectFromUrl(window.location.search)
   }, [])
 
   const handleGoogleSignIn = async () => {

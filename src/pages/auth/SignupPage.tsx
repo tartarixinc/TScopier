@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { capturePostAuthRedirectFromUrl } from '../../lib/postAuthRedirect'
 import clsx from 'clsx'
 import { AlertCircle, Check, Circle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
@@ -126,6 +127,7 @@ export function SignupPage() {
     const stored = fromUrl ?? loadStoredReferralCode()
     if (stored) setReferralCode(stored)
     capturePendingPlanFromUrl(location.search)
+    capturePostAuthRedirectFromUrl(location.search)
   }, [location.search])
 
   const handleGoogleSignIn = async () => {

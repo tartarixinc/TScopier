@@ -266,9 +266,9 @@ export function CopyTraderModal({
             <p className="mt-0.5 text-sm text-neutral-900 dark:text-neutral-50">{c.subtitle}</p>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-900 dark:text-neutral-50">
               <span>@{trader.username}</span>
-              <span>{copy.roi} <strong className="font-semibold text-neutral-900 dark:text-neutral-50">{trader.roi == null ? 'Unavailable' : trader.roi.toFixed(1) + '%'}</strong></span>
-              <span>{copy.maxDrawdown} <strong className="font-semibold text-neutral-900 dark:text-neutral-50">{trader.maxDrawdown == null ? 'Unavailable' : trader.maxDrawdown.toFixed(1) + '%'}</strong></span>
-              <span>{copy.winRate} <strong className="font-semibold text-neutral-900 dark:text-neutral-50">{trader.winRate == null ? 'Unavailable' : trader.winRate.toFixed(1) + '%'}</strong></span>
+              <span>{copy.roi} <strong className="font-semibold text-neutral-900 dark:text-neutral-50">{trader.roi == null ? '—' : trader.roi.toFixed(1) + '%'}</strong></span>
+              <span>{copy.maxDrawdown} <strong className="font-semibold text-neutral-900 dark:text-neutral-50">{trader.maxDrawdown == null ? '—' : trader.maxDrawdown.toFixed(1) + '%'}</strong></span>
+              <span>{copy.winRate} <strong className="font-semibold text-neutral-900 dark:text-neutral-50">{trader.winRate == null ? '—' : trader.winRate.toFixed(1) + '%'}</strong></span>
             </div>
           </div>
           <button
@@ -453,7 +453,7 @@ export function CopyTraderModal({
                           {previewTrade.side.toUpperCase()}
                         </span>
                       </p>
-                      <p className={clsx('text-xs font-semibold', previewTrade.side === 'buy' ? 'text-green-500 dark:text-teal-300' : 'text-red-600 dark:text-red-400')}>{c.traderSize}: {previewTrade.previewLot == null ? 'Unavailable' : previewTrade.previewLot.toFixed(2)}</p>
+                      <p className={clsx('text-xs font-semibold', previewTrade.side === 'buy' ? 'text-green-500 dark:text-teal-300' : 'text-red-600 dark:text-red-400')}>{c.traderSize}: {previewTrade.previewLot == null ? '—' : previewTrade.previewLot.toFixed(2)}</p>
                     </div>
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-900 dark:text-neutral-50">
                       <span>{c.stopLoss} {previewTrade.previewStopLoss ?? 'N/A'}</span>

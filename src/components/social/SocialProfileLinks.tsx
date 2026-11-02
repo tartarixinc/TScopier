@@ -21,6 +21,9 @@ export function SocialBrandIcon({ platform }: { platform: SocialProfilePlatform 
       <circle cx="17.45" cy="6.65" r="1.15" fill="#fff" />
     </BrandSvg>
   )
+  if (platform === 'telegram') return (
+    <BrandSvg><circle cx="12" cy="12" r="10" fill="#229ED9" /><path fill="#fff" d="m17.9 7.2-2.3 9.8c-.2.7-.6.8-1.2.5l-3.3-2.4-1.6 1.5c-.2.2-.3.3-.7.3l.2-3.4 6.1-5.5c.3-.2-.1-.4-.4-.2L7.2 12.5 4 11.5c-.7-.2-.7-.7.2-1l12.4-4.8c.6-.2 1.1.1.9 1.5Z" /></BrandSvg>
+  )
   if (platform === 'linkedin') return (
     <BrandSvg><rect x="2" y="2" width="20" height="20" rx="2.5" fill="#0A66C2" /><circle cx="7.1" cy="8" r="1.35" fill="#fff" /><path fill="#fff" d="M5.9 10.1h2.4v7.7H5.9v-7.7Zm3.9 0h2.3v1.05h.03c.33-.62 1.12-1.28 2.3-1.28 2.46 0 2.92 1.62 2.92 3.73v4.2h-2.4v-3.72c0-.89-.02-2.03-1.24-2.03-1.24 0-1.43.97-1.43 1.96v3.79H9.8v-7.7Z" /></BrandSvg>
   )

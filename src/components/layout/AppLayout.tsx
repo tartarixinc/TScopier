@@ -24,6 +24,7 @@ import { interpolate } from '../../i18n/interpolate'
 import { useHasHighImpactNewsToday } from '../../hooks/useHasHighImpactNewsToday'
 import { useNeedsWelcome } from '../../hooks/useNeedsWelcome'
 import { CopierLogToasts } from '../dashboard/CopierLogToasts'
+import { consumePostAuthRedirect } from '../../lib/postAuthRedirect'
 
 type NavItem = {
   to: string
@@ -172,7 +173,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
   useEffect(() => {
     if (!checkoutSyncPending) return
     if (location.pathname !== '/pricing') return
-    navigate('/dashboard', { replace: true })
+    navigate(consumePostAuthRedirect() ?? '/dashboard', { replace: true })
   }, [checkoutSyncPending, location.pathname, navigate])
 
   useEffect(() => {

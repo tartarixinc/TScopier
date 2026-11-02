@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
 import { useSocialFollow } from '../../hooks/useSocialFollow'
+import { providerEntryLabel, useProviderStatus } from '../../hooks/useProviderStatus'
 import { resolveAccountLogin } from '../../lib/brokerFromServer'
 import {
   fetchOwnSocialCopySources,
@@ -33,6 +34,7 @@ export function SocialTradingSettings() {
   const userId = user?.id ?? null
   const { brokers, loading: accountsLoading, loadError, refreshBrokers } = useBrokerAccounts()
   const social = useSocialFollow()
+  const provider = useProviderStatus()
   const [sources, setSources] = useState<OwnSocialCopySource[]>([])
   const [detailedSources, setDetailedSources] = useState<SocialCopySource[]>([])
   const [sourcesLoading, setSourcesLoading] = useState(true)
@@ -104,7 +106,10 @@ export function SocialTradingSettings() {
   }
 
   const profile = social.currentProfile
-  const publicPath = user?.id ? `/social-trading/${user.id}` : '/social-trading'
+  const isApprovedProvider = provider.status === 'approved'
+  const publicPath = isApprovedProvider && profile?.slug
+    ? `/p/${profile.slug}`
+    : user?.id ? `/social-trading/${user.id}` : '/social-trading'
 
   return (
     <div className="space-y-4">
@@ -118,8 +123,14 @@ export function SocialTradingSettings() {
         <div className="space-y-4 p-5 sm:p-6">
           {social.loading ? <p className="text-sm text-neutral-600 dark:text-neutral-300">Loading provider profile…</p> : !profile ? (
             <div>
-              <p className="text-sm text-neutral-700 dark:text-neutral-200">You have not published a Social Trading provider profile.</p>
-              <Button className="mt-3" size="sm" disabled={social.pendingKeys.has('register')} onClick={() => void social.register()}>Create provider profile</Button>
+              <p className="text-sm text-neutral-700 dark:text-neutral-200">
+                {provider.status === 'pending'
+                  ? 'Your provider application is under review.'
+                  : 'You have not published a Social Trading provider profile. Apply to become a provider — an administrator reviews every application.'}
+              </p>
+              <Link className="mt-3 inline-flex items-center rounded-lg bg-green-400 px-3 py-1.5 text-sm font-medium text-neutral-950 hover:bg-green-500" to="/social-trading/provider">
+                {providerEntryLabel(provider.status)}
+              </Link>
             </div>
           ) : (
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -132,6 +143,12 @@ export function SocialTradingSettings() {
                 <Link className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-green-600 hover:text-teal-700 dark:text-teal-300" to={publicPath}>
                   View public profile <ExternalLink className="h-3.5 w-3.5" aria-hidden />
                 </Link>
+                {!isApprovedProvider && !provider.loading ? (
+                  <p className="mt-2 text-xs text-neutral-600 dark:text-neutral-300">
+                    Sharing an account for copying requires an approved provider application.{' '}
+                    <Link className="font-medium text-green-600 dark:text-teal-300" to="/social-trading/provider">{providerEntryLabel(provider.status)}</Link>
+                  </p>
+                ) : null}
               </div>
               <label className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
                 Who can follow
@@ -200,7 +217,7 @@ export function SocialTradingSettings() {
                     <span>Share for Copying</span>
                     <Toggle
                       checked={shared}
-                      disabled={!profile || pendingBrokerId === account.id || (!shared && !isSocialDestinationEligible(account))}
+                      disabled={!profile || !isApprovedProvider || pendingBrokerId === account.id || (!shared && !isSocialDestinationEligible(account))}
                       onChange={checked => void changeSharing(account.id, checked)}
                     />
                   </label>

@@ -2,7 +2,9 @@ import type { TradeNotification } from './tradeNotifications'
 
 export type SocialNotificationRow = {
   id: string
-  event_type: 'social_follow_accepted' | 'social_copy_activated' | 'social_copy_stopped' | 'social_copy_suspended'
+  event_type:
+    | 'social_follow_accepted' | 'social_copy_activated' | 'social_copy_stopped' | 'social_copy_suspended'
+    | 'provider_application_approved' | 'provider_application_rejected' | 'provider_suspended' | 'provider_reinstated'
   title: string
   body: string
   action_url: string | null

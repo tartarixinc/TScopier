@@ -26,6 +26,7 @@ import {
 import { hasTrialExpired as subscriptionHasTrialExpired } from '../lib/subscriptionCta'
 import { clearPendingPlanSelection } from '../lib/pendingPlanSelection'
 import { confirmCheckoutSession } from '../lib/confirmCheckout'
+import { consumePostAuthRedirect } from '../lib/postAuthRedirect'
 
 export interface Subscription {
   id: string
@@ -305,7 +306,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     if (!checkoutSyncPending) return
     if (window.location.pathname !== '/pricing') return
-    navigate('/dashboard', { replace: true })
+    navigate(consumePostAuthRedirect() ?? '/dashboard', { replace: true })
   }, [checkoutSyncPending, navigate])
 
   // One-shot self-heal: paid users with a missing/incomplete local row (e.g. staging

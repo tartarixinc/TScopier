@@ -620,7 +620,6 @@ broker: {
     tabPerformance: 'Performance',
     tabTrading: 'Trading',
     tabPortfolio: 'Portfolio',
-    aum: 'AUM',
     leverage: 'Leverage',
     joined: 'Joined',
     rank: 'Rank',
