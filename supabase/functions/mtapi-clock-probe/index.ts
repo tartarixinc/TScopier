@@ -1,17 +1,24 @@
 /**
- * TEMPORARY staging-only probe for the MTAPI history clock acceptance gate.
+ * mtapi-clock-probe — kept staging diagnostic for broker clock onboarding.
  *
  * Read-only. Answers: are MTAPI bar timestamps UTC or server-local, what is the
- * declared server timezone, and does the daily bar boundary observe DST?
+ * declared server timezone, and does the clock shift with daylight saving?
+ * Run it whenever a new broker server family appears, before trusting backtest
+ * history on it (see docs/scratchpad-backtest-mtapi-timezone-2026-10-31.md).
  *
  * Actions:
  *   POST {action:"clock"}   — ServerTimezone / AccountDetails / symbols flags /
- *                             recent H1 bars vs now / D1 bars across 2026-10-25.
+ *                             recent H1 bars vs now / D1 bars across a DST switch.
+ *   POST {action:"live"}    — weekend-crypto anchor vs real UTC + DST window.
+ *   POST {action:"deep"}    — non-zero-offset servers: quote tick epoch check.
+ *   POST {action:"xtalk"}   — gold cross-feed between two servers (offline).
+ *   POST {action:"map"}     — per-server H1 series (optional from/to/accounts).
  *   POST {action:"history"} — run the real MtapiHistoricalMarketData path
  *                             (clock resolver + bars) to verify the gate state.
  *
- * Never returns session ids or credentials. Deletes this function from staging
- * after acceptance.
+ * Auth: bearer must equal ALERT_EVALUATOR_SERVICE_KEY or
+ * SUPABASE_SERVICE_ROLE_KEY (never the public anon key). Never returns session
+ * ids or credentials.
  */
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2"
@@ -19,6 +26,7 @@ import { MtapiClient } from "../_shared/mtapiClient.ts"
 import {
   createMtapiClockResolver,
   MtapiHistoricalMarketData,
+  parseMtapiTimestamp,
 } from "../_shared/backtest/mtapiMarketData.ts"
 
 const HOUR_MS = 3_600_000
@@ -101,6 +109,12 @@ function iso(ms: number): string {
   return new Date(ms).toISOString()
 }
 
+/** Per-account time budget so a slow bridge cannot blow the platform timeout. */
+function actionDeadline(seconds: number): () => boolean {
+  const end = Date.now() + seconds * 1_000
+  return () => Date.now() > end
+}
+
 interface ProbeAccount {
   id: string
   label: string
@@ -161,8 +175,13 @@ async function probeAccount(
   }
   out.candidateSymbols = picked
   const historyErrors: Record<string, string> = {}
+  const expired = actionDeadline(90)
 
   for (const probeSymbol of picked.slice(0, 3)) {
+    if (expired()) {
+      historyErrors.deadline = "90s budget exhausted — remaining candidates skipped"
+      break
+    }
     const recentFrom = iso(nowMs - 48 * HOUR_MS)
     const recentTo = iso(nowMs + 6 * HOUR_MS)
     if (!out.recentH1) {
@@ -234,9 +253,10 @@ async function probeClock(supabase: SupabaseClient): Promise<Response> {
     .select("id, label, platform, mtapi_status, mtapi_session_id")
     .eq("is_active", true)
     .eq("provider", "mtapi")
+    .eq("mtapi_status", "connected")
     .not("mtapi_session_id", "is", null)
     .neq("mtapi_session_id", "")
-    .order("mtapi_status", { ascending: false })
+    .order("created_at", { ascending: false })
     .limit(6)
   if (error) return jsonResponse({ error: error.message }, 500)
 
@@ -244,7 +264,7 @@ async function probeClock(supabase: SupabaseClient): Promise<Response> {
     .filter((row) => String(row.mtapi_session_id ?? "").trim().length > 0)
     .slice(0, 6)
 
-  const mtapi = new MtapiClient({ env: Deno.env })
+  const mtapi = new MtapiClient({ env: Deno.env, timeoutMs: 15_000 })
   const results = await Promise.all(
     accounts.map(async (account) => {
       try {
@@ -289,9 +309,14 @@ async function probeHistory(supabase: SupabaseClient): Promise<Response> {
   if (error) return jsonResponse({ error: error.message }, 500)
 
   const nowMs = Date.now()
-  const mtapi = new MtapiClient({ env: Deno.env })
+  const mtapi = new MtapiClient({ env: Deno.env, timeoutMs: 15_000 })
   const results: Record<string, unknown>[] = []
+  const expired = actionDeadline(150)
   for (const row of (data ?? []) as unknown as ProbeAccount[]) {
+    if (expired()) {
+      results.push({ skipped: "150s budget exhausted — remaining accounts not probed" })
+      break
+    }
     const sessionId = String(row.mtapi_session_id ?? "").trim()
     if (!sessionId) continue
     const source = new MtapiHistoricalMarketData(
@@ -371,7 +396,7 @@ async function probeLive(supabase: SupabaseClient): Promise<Response> {
     .filter((row) => String(row.mtapi_session_id ?? "").trim().length > 0)
     .slice(0, 6)
 
-  const mtapi = new MtapiClient({ env: Deno.env })
+  const mtapi = new MtapiClient({ env: Deno.env, timeoutMs: 15_000 })
   const results = await Promise.all(
     accounts.map(async (account) => {
       const out: Record<string, unknown> = {
@@ -388,8 +413,13 @@ async function probeLive(supabase: SupabaseClient): Promise<Response> {
         out.cryptoSample = crypto.slice(0, 40)
 
         const errors: Record<string, string> = {}
+        const expired = actionDeadline(90)
         for (const symbol of crypto.slice(0, 6)) {
           if (out.liveBars) break
+          if (expired()) {
+            errors.deadline = "90s budget exhausted — remaining candidates skipped"
+            break
+          }
           try {
             const rows = account.platform === "MT4"
               ? await mtapi.quoteHistory(account.mtapi_session_id, {
@@ -473,7 +503,7 @@ async function probeDeep(supabase: SupabaseClient): Promise<Response> {
   if (error) return jsonResponse({ error: error.message }, 500)
 
   const wanted = (data ?? []) as unknown as ProbeAccount[]
-  const mtapi = new MtapiClient({ env: Deno.env })
+  const mtapi = new MtapiClient({ env: Deno.env, timeoutMs: 15_000 })
   const results: Record<string, unknown>[] = []
 
   // Deep-probe only servers whose declared timezone is non-zero — those are
@@ -510,7 +540,12 @@ async function probeDeep(supabase: SupabaseClient): Promise<Response> {
       ].filter((s, i, arr) => arr.indexOf(s) === i)
 
       const attempts: Record<string, unknown>[] = []
+      const expired = actionDeadline(100)
       for (const symbol of ordered.slice(0, 14)) {
+        if (expired()) {
+          attempts.push({ deadline: "100s budget exhausted — remaining candidates skipped" })
+          break
+        }
         const attempt: Record<string, unknown> = { symbol }
         try {
           const rows = account.platform === "MT4"
@@ -614,13 +649,7 @@ async function probeDeep(supabase: SupabaseClient): Promise<Response> {
 }
 
 function parseNaiveMs(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return Math.abs(value) < 100_000_000_000 ? value * 1000 : value
-  }
-  const text = String(value ?? "").trim()
-  if (!text) return null
-  const parsed = Date.parse(/[zZ]|[+-]\d{2}:?\d{2}$/.test(text) ? text : text.replace(/\s+/, "T") + "Z")
-  return Number.isFinite(parsed) ? parsed : null
+  return parseMtapiTimestamp(value, { timestampMode: "utc", utcOffsetSeconds: 0 })
 }
 
 /**
@@ -649,7 +678,7 @@ async function probeXtalk(supabase: SupabaseClient): Promise<Response> {
   const control = pick((row) => row.label === "MT5 • 476205482")
     ?? wanted.find((row) => row.id !== target?.id)
 
-  const mtapi = new MtapiClient({ env: Deno.env })
+  const mtapi = new MtapiClient({ env: Deno.env, timeoutMs: 15_000 })
 
   const gold = async (account: ProbeAccount): Promise<Record<string, unknown> | null> => {
     if (!account) return null
@@ -687,13 +716,20 @@ async function probeXtalk(supabase: SupabaseClient): Promise<Response> {
       const symbol = symbols.find((s) => s.toUpperCase() === "XAUUSD")
         ?? symbols.find((s) => s.toUpperCase().startsWith("XAUUSD"))
       if (!symbol) return null
-      const rows = await mtapi.priceHistory(account.mtapi_session_id, {
-        symbol,
-        from: "2026-10-30T19:00:00Z",
-        to: "2026-10-30T19:59:59Z",
-        timeFrame: 60,
-        timeoutSeconds: 60,
-      }, account.platform)
+      const rows = account.platform === "MT4"
+        ? await mtapi.quoteHistory(account.mtapi_session_id, {
+          symbol,
+          timeframe: "H1",
+          from: "2026-10-30T19:59:59",
+          count: 2,
+        }, account.platform)
+        : await mtapi.priceHistory(account.mtapi_session_id, {
+          symbol,
+          from: "2026-10-30T19:00:00Z",
+          to: "2026-10-30T19:59:59Z",
+          timeFrame: 60,
+          timeoutSeconds: 60,
+        }, account.platform)
       return {
         label: account.label,
         symbol,
@@ -704,9 +740,13 @@ async function probeXtalk(supabase: SupabaseClient): Promise<Response> {
     }
   }
 
+  const goldSafe = (account: ProbeAccount | undefined | null): Promise<Record<string, unknown> | null> =>
+    account
+      ? gold(account).catch((err) => ({ label: account.label, error: errorText(err) }))
+      : Promise.resolve(null)
   const [targetGold, controlGold, targetNarrow, controlNarrow] = await Promise.all([
-    target ? gold(target) : Promise.resolve(null),
-    control ? gold(control) : Promise.resolve(null),
+    goldSafe(target),
+    goldSafe(control),
     target ? narrow(target) : Promise.resolve(null),
     control ? narrow(control) : Promise.resolve(null),
   ])
@@ -754,7 +794,7 @@ async function probeMap(
   }
   accounts = accounts.filter((row) => String(row.mtapi_session_id ?? "").trim().length > 0)
 
-  const mtapi = new MtapiClient({ env: Deno.env })
+  const mtapi = new MtapiClient({ env: Deno.env, timeoutMs: 15_000 })
   const results = await Promise.all(
     accounts.map(async (account) => {
       const out: Record<string, unknown> = {
@@ -762,10 +802,13 @@ async function probeMap(
         platform: account.platform,
       }
       const sessionId = account.mtapi_session_id
+      // Session ids in this action come from the request body — scrub them
+      // from any bridge error text before the response leaves the function.
+      const errText = (err: unknown) => errorText(err).split(sessionId).join("[SESSION]")
       try {
         out.declaredTz = timezonePrimitive(await mtapi.serverTimezone(sessionId, account.platform))
       } catch (err) {
-        out.declaredTzError = errorText(err)
+        out.declaredTzError = errText(err)
       }
       try {
         const symbols = await mtapi.symbols(sessionId, account.platform)
@@ -802,7 +845,12 @@ async function probeMap(
         }
 
         const errors: Record<string, string> = {}
+        const expired = actionDeadline(90)
         for (const symbol of btc.slice(0, 4)) {
+          if (expired()) {
+            errors.deadline = "90s budget exhausted — remaining candidates skipped"
+            break
+          }
           try {
             const bars = await fetchBars(symbol)
             if (bars.length >= 24) {
@@ -812,7 +860,7 @@ async function probeMap(
             }
             errors[btc.length ? `btc:${symbol}` : symbol] = `only ${bars.length} bars`
           } catch (err) {
-            errors[`btc:${symbol}`] = errorText(err)
+            errors[`btc:${symbol}`] = errText(err)
           }
         }
         if (!out.bars && gold) {
@@ -822,13 +870,13 @@ async function probeMap(
             out.bars = bars
             out.goldOnly = true
           } catch (err) {
-            errors[`gold:${gold}`] = errorText(err)
+            errors[`gold:${gold}`] = errText(err)
           }
         }
         if (Object.keys(errors).length > 0) out.errors = errors
         if (!out.bars) out.noBars = true
       } catch (err) {
-        out.fatal = errorText(err)
+        out.fatal = errText(err)
       }
       return out
     }),
@@ -840,13 +888,14 @@ async function probeMap(
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return jsonResponse({ error: "POST only" }, 405)
 
-  const bearer = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "")
-  const apikey = req.headers.get("apikey") ?? ""
+  const bearer = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim()
+  const apikey = (req.headers.get("apikey") ?? "").trim()
+  // Never accept SUPABASE_ANON_KEY here: it is public (shipped to browsers),
+  // so it would leave this diagnostic open to anyone with the site bundle.
   const allowed = new Set(
     [
       envString("ALERT_EVALUATOR_SERVICE_KEY"),
       envString("SUPABASE_SERVICE_ROLE_KEY"),
-      envString("SUPABASE_ANON_KEY"),
     ].filter(Boolean),
   )
   if (!allowed.has(bearer) && !allowed.has(apikey)) {

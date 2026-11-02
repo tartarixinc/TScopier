@@ -55,9 +55,9 @@ Real MTAPI history is fail-closed until deployment acceptance sets:
 
 - `MTAPI_HISTORY_TIMEZONE_VERIFIED=true`
 - `MTAPI_HISTORY_TIMESTAMP_MODE=utc` when bar timestamps are verified UTC; or `server` when they are verified broker-local.
-- For `server` mode only: `MTAPI_SERVER_TIMEZONE_UNIT=hours|minutes|seconds`, `MTAPI_SERVER_TIMEZONE_SIGN=server_minus_utc|utc_minus_server`, and `MTAPI_SERVER_TIMEZONE_DST=none`. If broker-local history observes DST, the fixed-offset adapter remains fail-closed.
+- For `server` mode only: `MTAPI_SERVER_TIMEZONE_UNIT_MT4=minutes` and `MTAPI_SERVER_TIMEZONE_UNIT_MT5=hours` (measured 2026-10-31: the MT5 bridge answers ServerTimezone in hours, the MT4 bridge in minutes; the global `MTAPI_SERVER_TIMEZONE_UNIT` remains as fallback), `MTAPI_SERVER_TIMEZONE_SIGN=server_minus_utc|utc_minus_server`, and `MTAPI_SERVER_TIMEZONE_DST=none|observed`. `none` claims every server keeps a fixed offset year-round; `observed` is the honest value for populations that include DST-seasonal servers (live offset applied; bars older than a server's last switch skew by at most one hour). An unknown DST value remains fail-closed.
 
-The authenticated read-only acceptance must compare one known `/PriceHistory` or `/QuoteHistory` candle with terminal/broker time and verify unit, sign, DST behavior, and whether returned bar timestamps are UTC or server-local. No session identifiers or credentials may be logged.
+**Acceptance completed 2026-10-31/11-02** (see `docs/scratchpad-backtest-mtapi-timezone-2026-10-31.md` and the `mtapi-clock-probe` staging diagnostic): every connected server on staging and prod was measured against independent market clocks across the 2025 and 2026 EU/US DST switches — Exness-type servers are UTC and never shift; ICMarkets/PUprime/Tickmill-type servers are server-local on the US DST calendar; one staging server is server-local on the EU DST calendar. Staging and prod secrets are set; the probe's `history` action verifies the real code path (last-bar skew ≈ 0). When a new broker server family appears, re-run `mtapi-clock-probe` before trusting backtest history on it. No session identifiers or credentials may be logged.
 
 ### Infrastructure and remaining migration scope
 

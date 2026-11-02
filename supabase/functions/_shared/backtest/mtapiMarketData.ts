@@ -112,6 +112,9 @@ export function createMtapiClockResolver(
     // daylight saving; the live declared offset is exact for the current
     // season, and bars older than the server's last switch skew by at most
     // one hour. Verified against 2025/2026 bar series per project memory.
+    // Both values attest the same runtime behavior — the live offset is
+    // always applied to every bar; the value records which attestation is
+    // honest for this deployment.
     const dst = envValue(env, "MTAPI_SERVER_TIMEZONE_DST").toLowerCase()
     if (
       !multiplier ||
