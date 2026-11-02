@@ -35,6 +35,9 @@ export function getPipMultiplierForSymbol(userSymbol: string): number {
     const base = pair.slice(0, 3)
     const quote = pair.slice(3, 6)
     if (base === "XAU" || base === "XAG" || base === "XPT" || base === "XPD") return metalPipMultiplier(base)
+    // Crypto pairs are 2-decimal instruments (BTCUSD pip = 0.01), matching
+    // classifySymbol — the old 6-letter shortcut wrongly gave them forex pips.
+    if (classifySymbol(userSymbol) === "crypto") return 100
     if (quote === "JPY") return 100
     return 10_000
   }
@@ -95,7 +98,7 @@ export function computePipsFromSignalOutcome(input: {
 }): number | null {
   const { symbol, direction, entry, sl, tpLevels, outcome, tpsHit } = input
   if (!(entry > 0)) return null
-  if (outcome === "skipped" || outcome === "no_data" || outcome === "open") return null
+  if (outcome === "skipped" || outcome === "no_data" || outcome === "open" || outcome === "market_data_mismatch") return null
 
   const mult = getPipMultiplierForSymbol(symbol)
   const sortedTPs = sortTpPrices(direction, tpLevels)

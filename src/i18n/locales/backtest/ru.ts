@@ -108,6 +108,7 @@ export const backtestRu: BacktestBundleTranslations = {
       noData: 'Нет данных',
       skipped: 'Пропущено',
       open: 'Открыто',
+      dataMismatch: 'Рассогласование данных',
     },
     banners: {
       allTpHit: 'Все TP достигнуты',

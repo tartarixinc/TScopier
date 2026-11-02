@@ -1951,6 +1951,7 @@ export interface BacktestOutcomeLabels {
   noData: string
   skipped: string
   open: string
+  dataMismatch: string
 }
 
 export interface BacktestTranslations {
