@@ -1331,6 +1331,7 @@ export const es: Translations = {
       noData: 'Sin datos',
       skipped: 'Omitida',
       open: 'Abierta',
+      dataMismatch: 'Datos no coincidentes',
     },
     banners: {
       allTpHit: 'Todos los TP alcanzados',

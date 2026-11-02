@@ -358,7 +358,7 @@ Sidebar with these sections:
 | lot_size | numeric | |
 | pnl | numeric | |
 | pnl_r | numeric | Risk-multiple |
-| outcome | text | 'sl_before_tp', 'tp1_then_sl', 'tp_then_be', 'all_tp_hit', 'breakeven', 'no_data', 'skipped', 'open' |
+| outcome | text | 'sl_before_tp', 'tp1_then_sl', 'tp_then_be', 'all_tp_hit', 'breakeven', 'no_data', 'skipped', 'open', 'market_data_mismatch' |
 | tps_hit | integer | |
 | max_favorable_excursion | numeric | |
 | max_adverse_excursion | numeric | |

@@ -25,6 +25,8 @@ const OUTCOME_DETAIL: Record<string, string> = {
   no_data: 'No market data for this window',
   skipped: 'Signal skipped (missing SL/TP or invalid)',
   open: 'Still open at end of data',
+  market_data_mismatch:
+    'Market price disagrees with every level the signal carries — wrong instrument resolved or no usable data',
 }
 
 interface MonthGroup {

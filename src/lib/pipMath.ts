@@ -72,6 +72,17 @@ export function classifySymbol(symbol: string): SymbolClass {
   for (const p of METAL_PREFIXES) {
     if (s.startsWith(p)) return 'metal'
   }
+  // FX shape before the crypto-token loop: USDCAD, USDCHF, USDTRY, USDCNH…
+  // start or end with a CRYPTO_TOKENS entry (USDC/USDT) and would otherwise be
+  // misclassified as crypto (100× pip error).
+  if (s.length === 6 && /^[A-Z]{6}$/.test(s)) {
+    const base = s.slice(0, 3)
+    const quote = s.slice(3, 6)
+    if (FX_CURRENCY_CODES.has(base) && FX_CURRENCY_CODES.has(quote)) {
+      return base === 'JPY' || quote === 'JPY' ? 'fx_jpy' : 'fx_major'
+    }
+  }
+
   for (const tok of CRYPTO_TOKENS) {
     if (s.startsWith(tok) || s.endsWith(tok)) return 'crypto'
   }
@@ -80,14 +91,6 @@ export function classifySymbol(symbol: string): SymbolClass {
   }
   for (const root of INDEX_ROOTS) {
     if (s.includes(root)) return 'index'
-  }
-
-  if (s.length === 6 && /^[A-Z]{6}$/.test(s)) {
-    const base = s.slice(0, 3)
-    const quote = s.slice(3, 6)
-    if (FX_CURRENCY_CODES.has(base) && FX_CURRENCY_CODES.has(quote)) {
-      return base === 'JPY' || quote === 'JPY' ? 'fx_jpy' : 'fx_major'
-    }
   }
 
   return 'other'

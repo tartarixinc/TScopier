@@ -1378,6 +1378,7 @@ broker: {
       noData: 'No data',
       skipped: 'Skipped',
       open: 'Open',
+      dataMismatch: 'Data mismatch',
     },
     banners: {
       allTpHit: 'All TPs Hit',

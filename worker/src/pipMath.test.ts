@@ -34,6 +34,17 @@ test('classifySymbol: crypto', () => {
   assert.equal(classifySymbol('SOLUSD'), 'crypto')
 })
 
+test('classifySymbol: FX pairs that start/end with USDC/USDT stay forex', () => {
+  // CRYPTO_TOKENS contains USDC/USDT; the FX shape check must win, otherwise
+  // these pairs take the 100× crypto pip on live management math.
+  assert.equal(classifySymbol('USDCAD'), 'fx_major')
+  assert.equal(classifySymbol('USDCHF'), 'fx_major')
+  assert.equal(classifySymbol('USDTRY'), 'fx_major')
+  assert.equal(classifySymbol('USDCNH'), 'fx_major')
+  assert.equal(classifySymbol('USDCZK'), 'fx_major')
+  assert.equal(classifySymbol('USDCADm'), 'fx_major')
+})
+
 test('classifySymbol: indices', () => {
   assert.equal(classifySymbol('US30'), 'index')
   assert.equal(classifySymbol('NAS100'), 'index')

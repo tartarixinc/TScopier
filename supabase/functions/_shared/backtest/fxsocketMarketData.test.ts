@@ -44,6 +44,35 @@ Deno.test("normalizeBacktestSymbol strips punctuation", () => {
   assertEquals(normalizeBacktestSymbol(" eurusd "), "EURUSD")
 })
 
+Deno.test("resolveBrokerSymbol never resolves a cross-currency quote variant", () => {
+  // 2026-11-01: BTCAUDm was picked for a BTCUSD signal on an Exness suffix
+  // server and the whole backtest simulated BTC in AUD.
+  const symbols = ["BTCUSDTm", "BTCUSDm", "BTCAUDm", "BTCCNHm", "EURUSDm"]
+  assertEquals(resolveBrokerSymbol("BTCUSD", symbols), "BTCUSDm")
+  assertEquals(resolveBrokerSymbol("BTCUSD", ["BTCAUDm", "BTCCNHm"]), null)
+  assertEquals(resolveBrokerSymbol("BTC", ["BTCAUDm", "BTCCNHm"]), null)
+  assertEquals(resolveBrokerSymbol("BTCUSD", ["BTCAUDm", "BTCUSDTm"]), "BTCUSDTm")
+  assertEquals(resolveBrokerSymbol("EURUSD", ["EURUSDm", "EURJPYm"]), "EURUSDm")
+})
+
+Deno.test("resolveBrokerSymbol accepts broker suffix tokens after a target", () => {
+  assertEquals(resolveBrokerSymbol("BTCUSD", ["BTCUSD.pro"]), "BTCUSD.pro")
+  assertEquals(resolveBrokerSymbol("BTCUSD", ["BTCUSDCASH"]), "BTCUSDCASH")
+  assertEquals(resolveBrokerSymbol("XAUUSD", ["XAUUSDm"]), "XAUUSDm")
+  assertEquals(resolveBrokerSymbol("BTCUSD", ["BTCUSDM"]), "BTCUSDM")
+  // Vocabulary from worker/src/tradeExecutor/brokerSymbolCache.ts decorations.
+  assertEquals(resolveBrokerSymbol("EURUSD", ["EURUSD.S"]), "EURUSD.S")
+  assertEquals(resolveBrokerSymbol("EURUSD", ["EURUSDC"]), "EURUSDC")
+  assertEquals(resolveBrokerSymbol("XAUUSD", ["XAUUSD.STP"]), "XAUUSD.STP")
+  assertEquals(resolveBrokerSymbol("GOLD", ["GOLD.cent"]), "GOLD.cent")
+})
+
+Deno.test("resolveBrokerSymbol shorter-root fallback prefers the longest root", () => {
+  assertEquals(resolveBrokerSymbol("BTCUSD", ["BT", "BTC"]), "BTC")
+  assertEquals(resolveBrokerSymbol("BTCUSD", ["BTC"]), "BTC")
+  assertEquals(resolveBrokerSymbol("BTCUSD", ["BT"]), "BT")
+})
+
 Deno.test("parsePriceHistoryResponse parses FXsocket docs fixture", () => {
   const bars = parsePriceHistoryResponse([{
     time: "2026-06-11T08:00:00Z",

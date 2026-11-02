@@ -108,6 +108,7 @@ export const backtestSv: BacktestBundleTranslations = {
       noData: 'Ingen data',
       skipped: 'Hoppad över',
       open: 'Öppen',
+      dataMismatch: 'Data stämmer inte',
     },
     banners: {
       allTpHit: 'Alla TP träffade',

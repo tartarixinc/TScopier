@@ -108,6 +108,7 @@ export const backtestNl: BacktestBundleTranslations = {
       noData: 'Geen data',
       skipped: 'Overgeslagen',
       open: 'Open',
+      dataMismatch: 'Datamismatch',
     },
     banners: {
       allTpHit: 'Alle TP geraakt',
