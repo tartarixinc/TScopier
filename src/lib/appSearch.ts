@@ -27,6 +27,10 @@ export function buildAppSearchPages(t: Translations): AppSearchPageDef[] {
   return [
     { path: '/dashboard', title: t.nav.items.dashboard, sectionLabel: t.nav.sections.general, subtitle: t.dashboard.title, keywords: ['home', 'overview'] },
     { path: '/brokers', title: t.nav.items.brokers, sectionLabel: t.nav.sections.general, subtitle: p.accountConfiguration.description, keywords: ['broker', 'mt5', 'fxsocket', 'account', 'copier'] },
+    { path: '/mirror-trading', title: t.nav.items.mirrorTrading, sectionLabel: t.nav.sections.general, keywords: ['mirror', 'master', 'slave', 'copy', 'account'] },
+    { path: '/social-trading', title: t.nav.items.socialTrading, sectionLabel: t.nav.sections.general, keywords: ['social', 'follow', 'followers', 'trader', 'performance'] },
+    // Configurations menu hidden for now.
+    // { path: '/configurations', title: t.nav.items.configuration, sectionLabel: t.nav.sections.general, subtitle: t.configurationsPage.searchDescription, keywords: ['configuration', 'settings', 'channel', 'lot', 'risk'] },
     { path: '/account-trades', title: t.nav.items.trades, sectionLabel: t.nav.sections.general, keywords: ['positions', 'orders', 'history', 'trades'] },
     { path: '/settings', title: t.nav.settings, sectionLabel: t.nav.sections.general, subtitle: p.settings.description, keywords: ['profile', 'password', 'timezone'] },
     { path: '/channels', title: t.nav.items.channels, sectionLabel: t.nav.sections.signals, subtitle: p.copierEngine.description, keywords: ['telegram', 'signals'] },
@@ -34,7 +38,7 @@ export function buildAppSearchPages(t: Translations): AppSearchPageDef[] {
     { path: '/copier-logs', title: t.nav.items.copierLogs, sectionLabel: t.nav.sections.signals, keywords: ['logs', 'executed', 'skipped'] },
     { path: '/reported-trades', title: t.nav.items.reportedTrades, sectionLabel: t.nav.sections.signals, keywords: ['reports', 'reported', 'issues'] },
     { path: '/updates', title: t.nav.items.updates, sectionLabel: t.nav.sections.help, keywords: ['updates', 'changelog', 'new', 'features', 'fixes'] },
-    { path: '/activities', title: t.management.title, sectionLabel: t.nav.sections.general, subtitle: t.management.subtitle, keywords: ['retry', 'breakeven', 'copier engine', 'activities', 'failed', 'trade'] },
+    { path: '/activities', title: t.management.title, sectionLabel: t.nav.sections.general, subtitle: t.management.subtitle, keywords: ['retry', 'breakeven', 'copier process', 'activities', 'failed', 'trade'] },
     { path: '/manage-signals', title: t.nav.items.signalHistory, sectionLabel: t.nav.sections.signals, subtitle: p.signalHistory.description, keywords: ['parsed', 'messages', 'signals', 'buy', 'sell', 'manage'] },
     { path: '/performance', title: t.nav.items.performance, sectionLabel: t.nav.sections.signals, subtitle: p.performance.description, keywords: ['roi', 'win rate', 'stats'] },
     { path: '/market-news', title: t.nav.items.marketNews, sectionLabel: t.nav.sections.tradingTools, subtitle: p.marketNews.description, keywords: ['news', 'forex'] },
@@ -43,6 +47,7 @@ export function buildAppSearchPages(t: Translations): AppSearchPageDef[] {
     { path: '/feature-request', title: t.nav.items.featureRequest, sectionLabel: t.nav.sections.feedback, subtitle: p.featureRequest.description },
     { path: '/partner-with-us', title: t.nav.items.partnerWithUs, sectionLabel: t.nav.sections.growth, subtitle: p.partnerWithUs.description },
     { path: '/affiliate-program', title: t.nav.userMenu.affiliateProgram, sectionLabel: t.nav.sections.membership, subtitle: p.affiliateProgram.description },
+    { path: '/wallet', title: t.nav.userMenu.wallet, sectionLabel: t.nav.sections.membership, subtitle: p.wallet.description, keywords: ['wallet', 'balance', 'payments'] },
     { path: '/billing', title: t.nav.userMenu.subscriptionBilling, sectionLabel: t.nav.sections.membership, subtitle: p.billing.description },
     { path: '/subscriptions', title: t.nav.items.subscriptions, sectionLabel: t.nav.sections.membership, subtitle: p.subscriptions.description },
     { path: '/portfolio', title: p.portfolio.title, sectionLabel: t.nav.sections.general, subtitle: p.portfolio.description },

@@ -133,7 +133,7 @@ const MGMT_SWEEP_MAX_REDISPATCHES = Math.max(
 
 export class TradeExecutor {
   private sweepLoop: MonitorLoopHandle | null = null
-  /** Cancels TScopier broker pendings past `pending_expiry_hours` (1–24) when env enabled. */
+  /** Cancels UniCopier broker pendings past `pending_expiry_hours` (1–24) when env enabled. */
   private brokerPendingSweepTimer: NodeJS.Timeout | null = null
   /**
    * Per-ticket retry governor for pending cancels. A pending the broker refuses
@@ -331,14 +331,21 @@ export class TradeExecutor {
   private async loadBrokers() {
     const brokersQ = await applyShardToQuery(
       this.supabase,
-      this.supabase.from('broker_accounts').select('*').or('mtapi_session_id.neq.,fxsocket_account_id.neq.,metaapi_account_id.neq.'),
+      this.supabase.from('broker_accounts').select('*').or('mtapi_session_id.neq.,fxsocket_account_id.neq.,metaapi_account_id.neq.,ctrader_account_id.neq.,binance_account_id.neq.,bybit_account_id.neq.,kucoin_account_id.neq.,dxtrade_account_id.neq.,tradelocker_account_id.neq.,matchtrader_account_id.neq.'),
     )
     if (!brokersQ) {
       this.brokersByUser.clear()
       this.brokersById.clear()
       return
     }
-    const { data, error } = await brokersQ
+    let { data, error } = await brokersQ
+    if (error && /ctrader_account_id|binance_account_id|bybit_account_id|kucoin_account_id|dxtrade_account_id|tradelocker_account_id|matchtrader_account_id/i.test(error.message)) {
+      const retry = await applyShardToQuery(
+        this.supabase,
+        this.supabase.from('broker_accounts').select('*').or('mtapi_session_id.neq.,fxsocket_account_id.neq.,metaapi_account_id.neq.'),
+      )
+      if (retry) ({ data, error } = await retry)
+    }
     if (error) {
       console.error('[tradeExecutor] loadBrokers failed:', error.message)
       return

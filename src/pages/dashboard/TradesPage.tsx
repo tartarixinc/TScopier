@@ -44,7 +44,7 @@ export function TradesPage() {
   const { user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const { pending } = useHumanReview()
-  const { trades, loading, refreshing, error, lastSyncedAt, refresh } = useTradesData(user?.id)
+  const { trades, loading, refreshing, error, refresh } = useTradesData(user?.id)
   const [filter, setFilter] = useState<Filter>('all')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<PageSizeOption>(10)
@@ -123,30 +123,19 @@ export function TradesPage() {
     <PageShell maxWidth="lg" spacing="none" className="space-y-6">
       <PageHeader
         title={t.trades.title}
-        subtitle={(
-          <>
-            {t.trades.subtitle}
-            {lastSyncedAt && (
-              <span className="text-neutral-400">
-                {' '}
-                · {interpolate(t.common.synced, { time: formatRelative(lastSyncedAt) })}
-              </span>
-            )}
-          </>
-        )}
         actions={(
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
           <button
             type="button"
             onClick={() => { void refresh(); void refreshManualOverrideWarnings() }}
             disabled={refreshing || showInitialSkeleton}
-            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-sm rounded-md font-medium border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 disabled:opacity-50 w-full sm:w-auto"
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-sm rounded-md font-medium border border-neutral-200/65 dark:border-neutral-800/55 text-neutral-900 dark:text-neutral-50 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 disabled:opacity-50 w-full sm:w-auto"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
             {t.trades.refresh}
           </button>
           <div className="-mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto w-full sm:w-auto">
-            <div className="inline-flex bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg p-0.5 gap-0.5">
+            <div className="inline-flex bg-white dark:bg-neutral-900 border border-neutral-200/65 dark:border-neutral-800/55 rounded-lg p-0.5 gap-0.5">
               {filters.map(f => (
                 <button
                   key={f.value}
@@ -158,12 +147,12 @@ export function TradesPage() {
                   }}
                   className={`shrink-0 px-3 py-2 text-sm rounded-md font-medium transition-colors whitespace-nowrap ${
                     filter === f.value
-                      ? 'bg-teal-600 text-white'
-                      : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:bg-neutral-800'
+                      ? 'bg-green-400 text-neutral-950'
+                      : 'text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 dark:bg-neutral-800'
                   }`}
                 >
                 {f.label}
-                <span className={`ml-1.5 text-xs ${filter === f.value ? 'text-teal-100' : 'text-neutral-400'}`}>{f.count}</span>
+                <span className={`ml-1.5 text-xs ${filter === f.value ? 'text-teal-100' : 'text-neutral-900 dark:text-neutral-50'}`}>{f.count}</span>
               </button>
               ))}
             </div>
@@ -185,12 +174,12 @@ export function TradesPage() {
               {[...Array(4)].map((_, i) => (
                 <div key={i} className="px-4 py-4 space-y-3">
                   <div className="flex justify-between gap-3">
-                    <div className="h-5 w-24 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
-                    <div className="h-5 w-16 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
+                    <div className="h-5 w-24 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
+                    <div className="h-5 w-16 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     {[...Array(4)].map((__, j) => (
-                      <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
+                      <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
                     ))}
                   </div>
                 </div>
@@ -200,7 +189,7 @@ export function TradesPage() {
               {[...Array(5)].map((_, i) => (
                 <div key={i} className="px-6 py-4 flex gap-4">
                   {[...Array(9)].map((__, j) => (
-                    <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse flex-1" />
+                    <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse flex-1" />
                   ))}
                 </div>
               ))}
@@ -208,9 +197,9 @@ export function TradesPage() {
           </>
         ) : visibleTrades.length === 0 ? (
           <div className="px-4 sm:px-6 py-12 sm:py-16 text-center">
-            <ArrowUpRight className="w-10 h-10 mx-auto mb-3 text-neutral-200" />
-            <p className="text-sm text-neutral-400 font-medium">{t.trades.emptyTitle}</p>
-            <p className="text-xs text-neutral-300 mt-1">
+            <ArrowUpRight className="w-10 h-10 mx-auto mb-3 text-neutral-900 dark:text-neutral-50" />
+            <p className="text-sm text-neutral-900 dark:text-neutral-50 font-medium">{t.trades.emptyTitle}</p>
+            <p className="text-xs text-neutral-900 dark:text-neutral-50 mt-1">
               {filter === 'open'
                 ? t.trades.emptySubtitleOpen
                 : filter === 'closed'
@@ -233,9 +222,9 @@ export function TradesPage() {
               ))}
             </div>
             <div className="hidden md:block overflow-x-auto">
-              <table className="w-full min-w-[52rem]">
+              <table className="w-full min-w-208">
                 <thead>
-                  <tr className="border-b border-neutral-100 dark:border-neutral-800 text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
+                  <tr className="border-b border-neutral-100 dark:border-neutral-800 text-xs font-medium text-neutral-900 dark:text-neutral-50 uppercase tracking-wide">
                     <th className="px-4 py-3 text-center">Symbol</th>
                     <th className="px-2 py-3 text-center">Direction</th>
                     <th className="px-2 py-3 text-center">Broker</th>
@@ -326,12 +315,12 @@ function TradesPagination({
   return (
     <div className="flex flex-col gap-3 px-3 sm:px-4 py-3 border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <label className="inline-flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
-          <span className="font-medium text-neutral-700 dark:text-neutral-300">Show</span>
+        <label className="inline-flex items-center gap-2 text-sm text-neutral-900 dark:text-neutral-50">
+          <span className="font-medium text-neutral-900 dark:text-neutral-50">Show</span>
           <select
             value={pageSize}
             onChange={e => onPageSizeChange(Number(e.target.value) as PageSizeOption)}
-            className="h-8 min-w-[4.5rem] rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-2 text-sm text-neutral-900 dark:text-neutral-50 tabular-nums focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+            className="h-8 min-w-18 rounded-md border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 px-2 text-sm text-neutral-900 dark:text-neutral-50 tabular-nums focus:outline-hidden focus:ring-2 focus:ring-green-400 focus:border-transparent"
             aria-label="Results per page"
           >
             {PAGE_SIZE_OPTIONS.map(n => (
@@ -340,9 +329,9 @@ function TradesPagination({
           </select>
           <span>results</span>
         </label>
-        <p className="text-xs text-neutral-500 dark:text-neutral-400 tabular-nums">
-          Showing <span className="font-medium text-neutral-700 dark:text-neutral-300">{rangeStart}–{rangeEnd}</span> of{' '}
-          <span className="font-medium text-neutral-700 dark:text-neutral-300">{total}</span>
+        <p className="text-xs text-neutral-900 dark:text-neutral-50 tabular-nums">
+          Showing <span className="font-medium text-neutral-900 dark:text-neutral-50">{rangeStart}–{rangeEnd}</span> of{' '}
+          <span className="font-medium text-neutral-900 dark:text-neutral-50">{total}</span>
         </p>
       </div>
       {totalPages > 1 && (
@@ -351,7 +340,7 @@ function TradesPagination({
             type="button"
             onClick={() => onPageChange(page - 1)}
             disabled={page <= 1}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-white dark:bg-neutral-900 disabled:opacity-40 disabled:pointer-events-none"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200/65 dark:border-neutral-800/55 text-neutral-900 dark:text-neutral-50 hover:bg-white dark:bg-neutral-900 disabled:opacity-40 disabled:pointer-events-none"
             aria-label="Previous page"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -361,7 +350,7 @@ function TradesPagination({
             {pageNumbers[0]! > 1 && (
               <>
                 <PageButton n={1} active={page === 1} onClick={() => onPageChange(1)} />
-                {pageNumbers[0]! > 2 && <span className="px-1 text-neutral-400 text-sm">…</span>}
+                {pageNumbers[0]! > 2 && <span className="px-1 text-neutral-900 dark:text-neutral-50 text-sm">…</span>}
               </>
             )}
             {pageNumbers.map(n => (
@@ -370,7 +359,7 @@ function TradesPagination({
             {pageNumbers[pageNumbers.length - 1]! < totalPages && (
               <>
                 {pageNumbers[pageNumbers.length - 1]! < totalPages - 1 && (
-                  <span className="px-1 text-neutral-400 text-sm">…</span>
+                  <span className="px-1 text-neutral-900 dark:text-neutral-50 text-sm">…</span>
                 )}
                 <PageButton n={totalPages} active={page === totalPages} onClick={() => onPageChange(totalPages)} />
               </>
@@ -380,7 +369,7 @@ function TradesPagination({
             type="button"
             onClick={() => onPageChange(page + 1)}
             disabled={page >= totalPages}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-white dark:bg-neutral-900 disabled:opacity-40 disabled:pointer-events-none"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200/65 dark:border-neutral-800/55 text-neutral-900 dark:text-neutral-50 hover:bg-white dark:bg-neutral-900 disabled:opacity-40 disabled:pointer-events-none"
             aria-label="Next page"
           >
             <span className="hidden sm:inline">Next</span>
@@ -399,10 +388,10 @@ function PageButton({ n, active, onClick }: { n: number; active: boolean; onClic
       type="button"
       onClick={onClick}
       aria-current={active ? 'page' : undefined}
-      className={`min-w-[2rem] px-2 py-1.5 text-sm rounded-md font-medium tabular-nums transition-colors ${
+      className={`min-w-8 px-2 py-1.5 text-sm rounded-md font-medium tabular-nums transition-colors ${
         active
-          ? 'bg-teal-600 text-white'
-          : 'text-neutral-600 dark:text-neutral-400 hover:bg-white dark:bg-neutral-900 border border-transparent hover:border-neutral-200 dark:border-neutral-800'
+          ? 'bg-green-400 text-neutral-950'
+          : 'text-neutral-900 dark:text-neutral-50 hover:bg-white dark:bg-neutral-900 border border-transparent hover:border-neutral-200/65 dark:border-neutral-800/55'
       }`}
     >
       {n}
@@ -428,14 +417,14 @@ function TradeCard({ trade, warning, onSelect }: { trade: MtTrade; warning: Manu
           <p className="text-base font-semibold text-neutral-900 dark:text-neutral-50 truncate">
             {trade.symbol || '—'}
           </p>
-          <p className="text-[11px] text-neutral-400 tabular-nums mt-0.5">#{trade.ticket}</p>
+          <p className="text-[11px] text-neutral-900 dark:text-neutral-50 tabular-nums mt-0.5">#{trade.ticket}</p>
         </div>
         <div className="flex flex-col items-end gap-1.5 shrink-0">
           <Badge variant={status.variant} size="sm">{statusLabel}</Badge>
           <span className={`text-sm font-semibold tabular-nums ${
-            profit === null ? 'text-neutral-400' :
+            profit === null ? 'text-neutral-900 dark:text-neutral-50' :
             profit > 0 ? 'text-success-600' :
-            profit < 0 ? lossTextClass : 'text-neutral-500 dark:text-neutral-400'
+            profit < 0 ? lossTextClass : 'text-neutral-900 dark:text-neutral-50'
           }`}>
             {profit === null ? '—' : `${profit > 0 ? '+' : ''}${profit.toFixed(2)}`}
           </span>
@@ -443,7 +432,7 @@ function TradeCard({ trade, warning, onSelect }: { trade: MtTrade; warning: Manu
       </div>
 
       <div className={`inline-flex items-center gap-1 text-sm font-medium mb-3 ${
-        isBuy ? 'text-success-600' : isSell ? 'text-error-600' : 'text-neutral-500 dark:text-neutral-400'
+        isBuy ? 'text-success-600' : isSell ? 'text-error-600' : 'text-neutral-900 dark:text-neutral-50'
       }`}>
         {isBuy ? <ArrowUpRight className="w-3.5 h-3.5" /> : isSell ? <ArrowDownRight className="w-3.5 h-3.5" /> : <Minus className="w-3.5 h-3.5" />}
         {directionLabel}
@@ -455,33 +444,33 @@ function TradeCard({ trade, warning, onSelect }: { trade: MtTrade; warning: Manu
 
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
         <div>
-          <dt className="text-neutral-400 uppercase tracking-wide">{tr.colBroker}</dt>
-          <dd className="text-neutral-700 dark:text-neutral-300 truncate mt-0.5" title={broker}>{broker}</dd>
+          <dt className="text-neutral-900 dark:text-neutral-50 uppercase tracking-wide">{tr.colBroker}</dt>
+          <dd className="text-neutral-900 dark:text-neutral-50 truncate mt-0.5" title={broker}>{broker}</dd>
         </div>
         <div>
-          <dt className="text-neutral-400 uppercase tracking-wide">{tr.colLots}</dt>
-          <dd className="text-neutral-700 dark:text-neutral-300 tabular-nums mt-0.5">
+          <dt className="text-neutral-900 dark:text-neutral-50 uppercase tracking-wide">{tr.colLots}</dt>
+          <dd className="text-neutral-900 dark:text-neutral-50 tabular-nums mt-0.5">
             {formatTradeLots(trade.lot_size)}
           </dd>
         </div>
         <div>
-          <dt className="text-neutral-400 uppercase tracking-wide">{tr.colEntry}</dt>
-          <dd className="text-neutral-700 dark:text-neutral-300 tabular-nums mt-0.5">{formatTradePrice(trade.entry_price)}</dd>
+          <dt className="text-neutral-900 dark:text-neutral-50 uppercase tracking-wide">{tr.colEntry}</dt>
+          <dd className="text-neutral-900 dark:text-neutral-50 tabular-nums mt-0.5">{formatTradePrice(trade.entry_price)}</dd>
         </div>
         <div>
-          <dt className="text-neutral-400 uppercase tracking-wide">{tr.colTime}</dt>
-          <dd className="text-neutral-600 dark:text-neutral-400 mt-0.5">{timeLabel}</dd>
+          <dt className="text-neutral-900 dark:text-neutral-50 uppercase tracking-wide">{tr.colTime}</dt>
+          <dd className="text-neutral-900 dark:text-neutral-50 mt-0.5">{timeLabel}</dd>
         </div>
         <div>
-          <dt className="text-neutral-400 uppercase tracking-wide">{tr.colSl}</dt>
-          <dd className="text-neutral-700 dark:text-neutral-300 tabular-nums mt-0.5">{formatTradePrice(trade.sl)}</dd>
+          <dt className="text-neutral-900 dark:text-neutral-50 uppercase tracking-wide">{tr.colSl}</dt>
+          <dd className="text-neutral-900 dark:text-neutral-50 tabular-nums mt-0.5">{formatTradePrice(trade.sl)}</dd>
         </div>
         <div>
-          <dt className="text-neutral-400 uppercase tracking-wide">{tr.colTp}</dt>
-          <dd className="text-neutral-700 dark:text-neutral-300 tabular-nums mt-0.5">{formatTradePrice(trade.tp)}</dd>
+          <dt className="text-neutral-900 dark:text-neutral-50 uppercase tracking-wide">{tr.colTp}</dt>
+          <dd className="text-neutral-900 dark:text-neutral-50 tabular-nums mt-0.5">{formatTradePrice(trade.tp)}</dd>
         </div>
       </dl>
-      <p className="mt-3 flex items-center justify-end gap-1 text-xs font-medium text-teal-600 dark:text-teal-400 opacity-0 group-hover:opacity-100 transition-opacity">
+      <p className="mt-3 flex items-center justify-end gap-1 text-xs font-medium text-green-400 dark:text-green-400 opacity-0 group-hover:opacity-100 transition-opacity">
         {tr.viewDetails}
         <ChevronRightIcon className="w-3.5 h-3.5" />
       </p>
@@ -512,25 +501,25 @@ function TradeRow({ trade, warning, onSelect }: { trade: MtTrade; warning: Manua
     >
       <td className="px-4 py-3.5 text-sm font-semibold text-neutral-900 dark:text-neutral-50 text-center">
         <div>{trade.symbol || '—'}</div>
-        <div className="text-[10px] text-neutral-400 font-normal tabular-nums mt-0.5">#{trade.ticket}</div>
+        <div className="text-[10px] text-neutral-900 dark:text-neutral-50 font-normal tabular-nums mt-0.5">#{trade.ticket}</div>
       </td>
       <td className={`px-2 py-3.5 text-sm font-medium text-center ${
-        isBuy ? 'text-success-600' : isSell ? 'text-error-600' : 'text-neutral-500 dark:text-neutral-400'
+        isBuy ? 'text-success-600' : isSell ? 'text-error-600' : 'text-neutral-900 dark:text-neutral-50'
       }`}>
         <span className="inline-flex items-center justify-center gap-1 w-full">
           {isBuy ? <ArrowUpRight className="w-3.5 h-3.5" /> : isSell ? <ArrowDownRight className="w-3.5 h-3.5" /> : <Minus className="w-3.5 h-3.5" />}
           {directionLabel}
         </span>
       </td>
-      <td className="px-2 py-3.5 text-xs text-neutral-600 dark:text-neutral-400 text-center truncate" title={broker}>{broker}</td>
-      <td className="px-2 py-3.5 text-sm text-neutral-700 dark:text-neutral-300 text-center tabular-nums">{formatTradePrice(trade.entry_price)}</td>
-      <td className="px-2 py-3.5 text-sm text-neutral-700 dark:text-neutral-300 text-center tabular-nums">{formatTradePrice(trade.sl)}</td>
-      <td className="px-2 py-3.5 text-sm text-neutral-700 dark:text-neutral-300 text-center tabular-nums">{formatTradePrice(trade.tp)}</td>
-      <td className="px-2 py-3.5 text-sm text-neutral-700 dark:text-neutral-300 text-center tabular-nums">{formatTradeLots(trade.lot_size)}</td>
+      <td className="px-2 py-3.5 text-xs text-neutral-900 dark:text-neutral-50 text-center truncate" title={broker}>{broker}</td>
+      <td className="px-2 py-3.5 text-sm text-neutral-900 dark:text-neutral-50 text-center tabular-nums">{formatTradePrice(trade.entry_price)}</td>
+      <td className="px-2 py-3.5 text-sm text-neutral-900 dark:text-neutral-50 text-center tabular-nums">{formatTradePrice(trade.sl)}</td>
+      <td className="px-2 py-3.5 text-sm text-neutral-900 dark:text-neutral-50 text-center tabular-nums">{formatTradePrice(trade.tp)}</td>
+      <td className="px-2 py-3.5 text-sm text-neutral-900 dark:text-neutral-50 text-center tabular-nums">{formatTradeLots(trade.lot_size)}</td>
       <td className={`px-2 py-3.5 text-sm font-medium text-center tabular-nums ${
-        profit === null ? 'text-neutral-400' :
+        profit === null ? 'text-neutral-900 dark:text-neutral-50' :
         profit > 0 ? 'text-success-600' :
-        profit < 0 ? lossTextClass : 'text-neutral-500 dark:text-neutral-400'
+        profit < 0 ? lossTextClass : 'text-neutral-900 dark:text-neutral-50'
       }`}>
         {profit === null ? '—' : (
           <span className="inline-flex items-center justify-center gap-1 w-full">
@@ -539,7 +528,7 @@ function TradeRow({ trade, warning, onSelect }: { trade: MtTrade; warning: Manua
           </span>
         )}
       </td>
-      <td className="px-2 py-3.5 text-xs text-neutral-500 dark:text-neutral-400 whitespace-nowrap text-center">
+      <td className="px-2 py-3.5 text-xs text-neutral-900 dark:text-neutral-50 whitespace-nowrap text-center">
         {timeLabel}
       </td>
       <td className="px-4 py-3.5 text-center">
@@ -548,20 +537,10 @@ function TradeRow({ trade, warning, onSelect }: { trade: MtTrade; warning: Manua
             <Badge variant={status.variant} size="sm">{statusLabel}</Badge>
             {warning ? <ManualBrokerOverrideWarningBadge /> : null}
           </span>
-          <ChevronRightIcon className="w-3.5 h-3.5 text-neutral-300 opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden />
+          <ChevronRightIcon className="w-3.5 h-3.5 text-neutral-900 dark:text-neutral-50 opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden />
         </span>
       </td>
     </tr>
   )
 }
 
-function formatRelative(ts: number): string {
-  const diff = Math.max(0, Date.now() - ts)
-  const sec = Math.floor(diff / 1000)
-  if (sec < 5) return 'just now'
-  if (sec < 60) return `${sec}s ago`
-  const min = Math.floor(sec / 60)
-  if (min < 60) return `${min}m ago`
-  const hr = Math.floor(min / 60)
-  return `${hr}h ago`
-}

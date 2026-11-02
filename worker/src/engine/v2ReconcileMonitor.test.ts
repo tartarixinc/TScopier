@@ -434,7 +434,7 @@ describe('V2ReconcileMonitor manual broker override notifications', () => {
     assert.equal(out.fetchCalls.length, 0)
   })
 
-  it('does not emit for a TScopier target change while DB is not yet at the desired target', async () => {
+  it('does not emit for a UniCopier target change while DB is not yet at the desired target', async () => {
     const out = await runV2Reconcile({
       legs: [leg({ id: 'trade-1', metaapi_order_id: '100', sl: 4065, tp: 4089 })],
       snapshot: [open(100, { stopLoss: 4065, takeProfit: 4089 })],

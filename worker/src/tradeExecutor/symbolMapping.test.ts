@@ -173,3 +173,35 @@ test('resolveBrokerSymbolFromInventory: Deriv synthetic behavior remains special
   const inv = inventory(['Volatility 75 Index', 'US100'])
   assert.equal(resolveBrokerSymbolFromInventory(noopCtx, inv, 'R_75'), 'Volatility 75 Index')
 })
+
+test('resolveBrokerSymbolFromInventory: decorated master symbol resolves to the plain destination name', () => {
+  const inv = inventory(['EURUSD', 'XAUUSD', 'BTCUSD', 'US30'])
+  assert.equal(resolveBrokerSymbolFromInventory(noopCtx, inv, 'XAUUSDm'), 'XAUUSD')
+  assert.equal(resolveBrokerSymbolFromInventory(noopCtx, inv, 'EURUSDm'), 'EURUSD')
+  assert.equal(resolveBrokerSymbolFromInventory(noopCtx, inv, 'BTCUSDm'), 'BTCUSD')
+  assert.equal(resolveBrokerSymbolFromInventory(noopCtx, inv, 'US30M'), 'US30')
+})
+
+test('resolveBrokerSymbolFromInventory: an existing decorated symbol wins over stripping', () => {
+  const inv = inventory(['XAUUSD', 'XAUUSDm'])
+  assert.equal(resolveBrokerSymbolFromInventory(noopCtx, inv, 'XAUUSDm'), 'XAUUSDm')
+  assert.equal(resolveBrokerSymbolFromInventory(noopCtx, inv, 'XAUUSD'), 'XAUUSD')
+})
+
+test('resolveBrokerSymbolFromInventory: decorated gold still resolves through the metal alias to GOLD', () => {
+  assert.equal(resolveBrokerSymbolFromInventory(noopCtx, inventory(['GOLD']), 'XAUUSDm'), 'GOLD')
+})
+
+test('resolveBrokerSymbolFromInventory: dot-decorated source strips to the bare base', () => {
+  assert.equal(resolveBrokerSymbolFromInventory(noopCtx, inventory(['EURUSD']), 'EURUSD.R'), 'EURUSD')
+})
+
+test('resolveBrokerSymbolFromInventory: userDecorated never strips or guesses', () => {
+  const inv = inventory(['XAUUSD'])
+  assert.equal(resolveBrokerSymbolFromInventory(noopCtx, inv, 'XAUUSDm', { userDecorated: true }), 'XAUUSDm')
+})
+
+test('resolveBrokerSymbolFromInventory: no usable match returns the request unchanged', () => {
+  const inv = inventory(['EURUSD'])
+  assert.equal(resolveBrokerSymbolFromInventory(noopCtx, inv, 'XAUUSDm'), 'XAUUSDm')
+})

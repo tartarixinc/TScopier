@@ -26,6 +26,7 @@ import {
 import { hasTrialExpired as subscriptionHasTrialExpired } from '../lib/subscriptionCta'
 import { clearPendingPlanSelection } from '../lib/pendingPlanSelection'
 import { confirmCheckoutSession } from '../lib/confirmCheckout'
+import { consumePostAuthRedirect } from '../lib/postAuthRedirect'
 
 export interface Subscription {
   id: string
@@ -181,7 +182,8 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
           .from('telegram_channels')
           .select('id', { count: 'exact', head: true })
           .eq('user_id', userId)
-          .eq('is_active', true),
+          .eq('is_active', true)
+          .neq('source_kind', 'tradingview'),
         supabase
           .from('backtest_runs')
           .select('id', { count: 'exact', head: true })
@@ -304,7 +306,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     if (!checkoutSyncPending) return
     if (window.location.pathname !== '/pricing') return
-    navigate('/dashboard', { replace: true })
+    navigate(consumePostAuthRedirect() ?? '/dashboard', { replace: true })
   }, [checkoutSyncPending, navigate])
 
   // One-shot self-heal: paid users with a missing/incomplete local row (e.g. staging

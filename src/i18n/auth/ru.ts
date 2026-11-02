@@ -14,10 +14,10 @@ export const authRu: AuthTranslations = {
     captchaRequired: 'Пройдите проверку безопасности, прежде чем продолжить.',
   },
   login: {
-    heading: 'Вход в TScopier',
+    heading: 'Вход в UniCopier',
     noAccount: 'Нет аккаунта?',
     signUpLink: 'Зарегистрироваться',
-    footerPrompt: 'Впервые в TScopier?',
+    footerPrompt: 'Впервые в UniCopier?',
     footerLink: 'Создать бесплатный аккаунт',
     email: 'Эл. почта',
     emailPlaceholder: 'you@example.com',
@@ -42,7 +42,7 @@ export const authRu: AuthTranslations = {
   },
   resetPassword: {
     heading: 'Новый пароль',
-    subtitle: 'Выберите надёжный пароль для аккаунта TScopier.',
+    subtitle: 'Выберите надёжный пароль для аккаунта UniCopier.',
     verifyingHeading: 'Проверка ссылки для сброса…',
     verifyingSubtitle: 'Подождите, мы безопасно проверяем вашу ссылку.',
     securityNote: 'После обновления вы выйдете на всех устройствах. Войдите снова с новым паролем.',
@@ -102,14 +102,14 @@ export const authRu: AuthTranslations = {
     backToLogin: 'Вернуться ко входу',
   },
   welcome: {
-    title: 'Добро пожаловать в TScopier',
+    title: 'Добро пожаловать в UniCopier',
     subtitle: 'Ваш аккаунт готов. Подключите Telegram и начните копировать сигналы на своего брокера.',
     steps: [
       'Подключите Telegram и выберите каналы сигналов',
       'Привяжите брокерский счёт MT4/MT5',
       'Автоматически копируйте сделки с вашими настройками риска',
     ],
-    startUsing: 'Начать пользоваться TScopier',
+    startUsing: 'Начать пользоваться UniCopier',
     exploreDashboard: 'Сначала посмотреть панель',
     errorFallback: 'Не удалось продолжить. Попробуйте ещё раз.',
   },

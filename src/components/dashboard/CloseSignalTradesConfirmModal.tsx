@@ -87,7 +87,7 @@ export function CloseSignalTradesConfirmModal({
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center p-4 sm:p-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+      className="fixed inset-0 z-80 flex items-end sm:items-center justify-center p-4 sm:p-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
       onMouseDown={onOverlayMouseDown}
       onClick={onOverlayClick}
     >
@@ -97,7 +97,7 @@ export function CloseSignalTradesConfirmModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="close-signal-trades-confirm-title"
-        className="relative w-full max-w-md rounded-2xl bg-white dark:bg-neutral-900 shadow-2xl border border-neutral-200 dark:border-neutral-800 animate-modal-in overflow-hidden"
+        className="relative w-full max-w-md rounded-2xl bg-white dark:bg-neutral-900 shadow-2xl border border-neutral-200/65 dark:border-neutral-800/55 animate-modal-in overflow-hidden"
       >
         <div className="px-5 pt-5 pb-4">
           <div className="flex items-start gap-3">
@@ -111,16 +111,16 @@ export function CloseSignalTradesConfirmModal({
               >
                 {title}
               </h2>
-              <p className="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed">
+              <p className="mt-1.5 text-sm text-neutral-900 dark:text-neutral-50 leading-relaxed">
                 {body}
               </p>
             </div>
           </div>
 
-          <div className="mt-4 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-800/40 divide-y divide-neutral-200/80 dark:divide-neutral-700/80">
+          <div className="mt-4 rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50/80 dark:bg-neutral-800/40 divide-y divide-neutral-200/80 dark:divide-neutral-700/80">
             {detailRows.map(row => (
               <div key={row.label} className="flex items-center justify-between gap-3 px-3.5 py-2.5">
-                <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{row.label}</span>
+                <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50">{row.label}</span>
                 <span
                   className={clsx(
                     'text-sm font-semibold tabular-nums text-right truncate max-w-[60%]',
@@ -133,7 +133,7 @@ export function CloseSignalTradesConfirmModal({
             ))}
           </div>
 
-          <p className="mt-3 text-xs text-neutral-400 dark:text-neutral-500 leading-relaxed">
+          <p className="mt-3 text-xs text-neutral-900 dark:text-neutral-50 leading-relaxed">
             {bs.closeConfirmWarning}
           </p>
         </div>
@@ -145,7 +145,7 @@ export function CloseSignalTradesConfirmModal({
             size="sm"
             disabled={confirming}
             onClick={onCancel}
-            className="sm:min-w-[7rem]"
+            className="sm:min-w-28"
           >
             {t.common.cancel}
           </Button>
@@ -155,7 +155,7 @@ export function CloseSignalTradesConfirmModal({
             size="sm"
             loading={confirming}
             onClick={onConfirm}
-            className="sm:min-w-[7rem]"
+            className="sm:min-w-28"
           >
             {confirming ? bs.closing : bs.closeConfirmAction}
           </Button>

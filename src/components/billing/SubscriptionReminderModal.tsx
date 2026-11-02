@@ -82,7 +82,7 @@ export function SubscriptionReminderModal() {
   const modal = (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center p-4 sm:p-6"
+      className="fixed inset-0 z-80 flex items-end sm:items-center justify-center p-4 sm:p-6"
       onMouseDown={onOverlayMouseDown}
       onClick={onOverlayClick}
     >
@@ -92,12 +92,12 @@ export function SubscriptionReminderModal() {
         role="dialog"
         aria-modal="true"
         aria-labelledby="sub-reminder-title"
-        className="relative w-full max-w-md rounded-2xl border border-neutral-200 bg-white shadow-2xl dark:border-neutral-800 dark:bg-neutral-900 animate-modal-in overflow-hidden"
+        className="relative w-full max-w-md rounded-2xl border border-neutral-200/65 bg-white shadow-2xl dark:border-neutral-800/55 dark:bg-neutral-900 animate-modal-in overflow-hidden"
       >
         <button
           type="button"
           onClick={close}
-          className="absolute right-3 top-3 rounded-lg p-1.5 text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 dark:hover:text-neutral-200 dark:hover:bg-neutral-800 transition-colors"
+          className="absolute right-3 top-3 rounded-lg p-1.5 text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 hover:bg-neutral-100 dark:hover:text-neutral-50 dark:hover:bg-neutral-800 transition-colors"
           aria-label="Close"
         >
           <X className="h-5 w-5" />
@@ -114,7 +114,7 @@ export function SubscriptionReminderModal() {
           >
             No active subscription
           </h2>
-          <p className="mt-3 text-sm text-neutral-500 dark:text-neutral-400">
+          <p className="mt-3 text-sm text-neutral-900 dark:text-neutral-50">
             Copying signals requires an active subscription.
           </p>
 

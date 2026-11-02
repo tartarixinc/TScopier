@@ -80,13 +80,13 @@ export function OpenPnlAccountsModal({
         aria-label={bs.close}
         onClick={onClose}
       />
-      <div className="relative w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-2xl">
+      <div className="relative w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 shadow-2xl">
         <div className="sticky top-0 z-10 flex items-start justify-between gap-3 px-5 py-4 border-b border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900">
           <div className="min-w-0">
             <h2 id="open-pnl-accounts-title" className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">
               {d.openPnlModalTitle}
             </h2>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+            <p className="text-xs text-neutral-900 dark:text-neutral-50 mt-0.5">
               {interpolate(d.openPnlModalSubtitle, {
                 count: String(accountCount),
                 pnl: formatSignedMoney(totalOpenPnl),
@@ -111,7 +111,7 @@ export function OpenPnlAccountsModal({
             ) : null}
             <button
               type="button"
-              className="p-2 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+              className="p-2 rounded-lg text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
               aria-label={bs.close}
               onClick={onClose}
             >
@@ -122,25 +122,25 @@ export function OpenPnlAccountsModal({
 
         <div className="px-5 py-4 space-y-4">
           {groups.length === 0 ? (
-            <p className="text-sm text-neutral-400 dark:text-neutral-500">{d.openPnlModalEmpty}</p>
+            <p className="text-sm text-neutral-900 dark:text-neutral-50">{d.openPnlModalEmpty}</p>
           ) : (
             groups.map(group => (
               <section
                 key={group.brokerId}
-                className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-4"
+                className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 p-4"
               >
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 truncate">
                       {group.accountLabel}
                     </p>
-                    <p className="text-xs text-primary-600 font-medium uppercase tabular-nums">{group.platformLine}</p>
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 truncate">{group.brokerLabel}</p>
+                    <p className="text-xs text-green-400 font-medium uppercase tabular-nums">{group.platformLine}</p>
+                    <p className="text-xs text-neutral-900 dark:text-neutral-50 mt-0.5 truncate">{group.brokerLabel}</p>
                   </div>
                   <div className="text-right shrink-0">
                     {group.brokerOpenPnl != null ? (
                       <>
-                        <p className="text-[10px] uppercase tracking-wide text-neutral-400">{bs.openPnl}</p>
+                        <p className="text-[10px] uppercase tracking-wide text-neutral-900 dark:text-neutral-50">{bs.openPnl}</p>
                         <p className={clsx('text-sm font-semibold tabular-nums', pnlColor(group.brokerOpenPnl))}>
                           {formatSignedMoney(group.brokerOpenPnl)}
                         </p>
@@ -204,7 +204,7 @@ export function OpenPnlAccountsModal({
       {toastMessage ? (
         <div
           role="status"
-          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] max-w-md px-4 py-3 rounded-xl bg-neutral-900 text-white text-sm shadow-lg dark:bg-neutral-100 dark:text-neutral-900"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-60 max-w-md px-4 py-3 rounded-xl bg-neutral-900 text-white text-sm shadow-lg dark:bg-neutral-100 dark:text-neutral-900"
         >
           {toastMessage}
         </div>

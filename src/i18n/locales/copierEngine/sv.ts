@@ -3,6 +3,10 @@ import type { CopierEngineBundleTranslations } from './types'
 export const copierEngineSv: CopierEngineBundleTranslations = {
   copierEnginePage: {
     connectTelegram: 'Anslut Telegram',
+    newSignalSource: 'Ny signalkälla',
+    chooseSignalSource: 'Välj en signalkälla',
+    noSignalSourcesTitle: 'Inga signalkällor ännu',
+    noSignalSourcesBody: 'Lägg till en signalkälla för att börja kopiera.',
     telegramNotConnectedTitle: 'Telegram är inte anslutet.',
     telegramNotConnectedBody: 'Anslut Telegram här för att ladda och hantera din kanallista.',
     tgConnectHeroTitle: 'Koppla ditt Telegram-konto',
@@ -23,7 +27,7 @@ export const copierEngineSv: CopierEngineBundleTranslations = {
     tgConnectHowItWorks2: 'Ange koden som skickades i Telegram-appen',
     tgConnectHowItWorks3: 'Välj signalkanaler att övervaka och kopiera',
     tgConnectPhoneWarning:
-      'TScopier får inte åtkomst till eller läser dina meddelanden. När du ansluter Telegram ger du appen endast åtkomst till kanaler du är medlem i.',
+      'UniCopier får inte åtkomst till eller läser dina meddelanden. När du ansluter Telegram ger du appen endast åtkomst till kanaler du är medlem i.',
     tgConnectMethodTitle: 'Choose how to sign in',
     tgConnectMethodSubtitle: 'Use your phone number or scan a QR code with the Telegram app on your phone.',
     tgConnectMethodPhone: 'Phone number',
@@ -59,7 +63,7 @@ export const copierEngineSv: CopierEngineBundleTranslations = {
     failedSendCode: 'Det gick inte att skicka kod',
     verificationFailed: 'Verifiering misslyckades',
     telegramAlreadyLinked:
-      'Detta Telegram-konto är redan länkat till ett annat TScopier-konto. Logga in på det kontot eller kontakta support.',
+      'Detta Telegram-konto är redan länkat till ett annat UniCopier-konto. Logga in på det kontot eller kontakta support.',
     failedLoadTgChannels: 'Det gick inte att ladda Telegram-kanaler',
     telegramSessionExpired: 'Din Telegram-session har gått ut. Anslut igen — dina konfigurerade kanaler behålls.',
     telegramConnectionBusy: 'Telegram is reconnecting after a backtest or another task. Wait 30 seconds, then press Refresh — or use Reconnect Telegram.',

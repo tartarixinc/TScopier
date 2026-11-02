@@ -4,7 +4,7 @@ export const testimonialsFr: Testimonial[] = [
   {
     headline: 'Expérience au top',
     quote:
-      'Expérience au top ! TScopier fonctionne parfaitement — rapide, fiable et très simple à configurer. Ce qui m\'a le plus marqué, c\'est le range trading : il m\'aide à gérer mon fournisseur de signaux en range.',
+      'Expérience au top ! UniCopier fonctionne parfaitement — rapide, fiable et très simple à configurer. Ce qui m\'a le plus marqué, c\'est le range trading : il m\'aide à gérer mon fournisseur de signaux en range.',
     author: 'Marcus T.',
     role: 'Trader à temps partiel',
   },
@@ -25,7 +25,7 @@ export const testimonialsFr: Testimonial[] = [
   {
     headline: 'Les signaux range enfin bien gérés',
     quote:
-      'Mon ancien copieur ratait les entrées en range. TScopier répartit les legs et les TP comme le canal les envoie. Une vraie différence sur mon canal gold.',
+      'Mon ancien copieur ratait les entrées en range. UniCopier répartit les legs et les TP comme le canal les envoie. Une vraie différence sur mon canal gold.',
     author: 'Elena R.',
     role: 'Trader XAUUSD',
   },
@@ -53,7 +53,7 @@ export const testimonialsFr: Testimonial[] = [
   {
     headline: 'Fini les galères VPS',
     quote:
-      'J\'en avais marre des EA qui plantaient sur un VPS cheap chaque week-end. TScopier tourne dans le cloud — je me connecte et tout tourne encore. Quel soulagement.',
+      'J\'en avais marre des EA qui plantaient sur un VPS cheap chaque week-end. UniCopier tourne dans le cloud — je me connecte et tout tourne encore. Quel soulagement.',
     author: 'Nina K.',
     role: 'Ex-utilisatrice VPS',
   },

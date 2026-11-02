@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Plus, Radio, Trash2, Settings } from 'lucide-react'
+import clsx from 'clsx'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
@@ -30,6 +31,7 @@ export function ChannelsPage() {
   const [newChannel, setNewChannel] = useState({ channel_id: '', channel_username: '', display_name: '' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [source, setSource] = useState<'telegram' | 'discord' | 'tradingview'>('telegram')
 
   useEffect(() => {
     if (!user) return
@@ -125,16 +127,38 @@ export function ChannelsPage() {
     <PageShell maxWidth="lg" spacing="none" className="space-y-6">
       <PageHeader
         title={ch.title}
-        subtitle={ch.subtitle}
-        actions={(
+        actions={source === 'telegram' ? (
           <Button onClick={() => setShowAdd(true)} size="sm">
             <Plus className="w-3.5 h-3.5" />
             {ch.addChannel}
           </Button>
-        )}
+        ) : null}
       />
 
-      {showAdd && (
+      <nav className="flex gap-6 overflow-x-auto border-b border-neutral-200 dark:border-neutral-800" aria-label={ch.title}>
+        <SourceTab active={source === 'telegram'} onClick={() => setSource('telegram')}>
+          {ch.tabTelegram}
+        </SourceTab>
+        <SourceTab active={source === 'discord'} onClick={() => setSource('discord')}>
+          {ch.tabDiscord}
+          <Badge variant="neutral" size="sm">{ch.comingSoon}</Badge>
+        </SourceTab>
+        <SourceTab active={source === 'tradingview'} onClick={() => setSource('tradingview')}>
+          {ch.tabTradingView}
+          <Badge variant="neutral" size="sm">{ch.comingSoon}</Badge>
+        </SourceTab>
+      </nav>
+
+      {source !== 'telegram' ? (
+        <Card>
+          <div className="py-10 text-center">
+            <Badge variant="neutral">{ch.comingSoon}</Badge>
+            <p className="mt-3 text-sm text-neutral-900 dark:text-neutral-50">{ch.comingSoonBody}</p>
+          </div>
+        </Card>
+      ) : null}
+
+      {source === 'telegram' && showAdd && (
         <Card className="mb-4">
           <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 mb-4">{ch.addFormTitle}</h2>
           {error && <Alert className="mb-3">{error}</Alert>}
@@ -169,21 +193,21 @@ export function ChannelsPage() {
         </Card>
       )}
 
-      {loading ? (
+      {source === 'telegram' && loading ? (
         <div className="space-y-3">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-16 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 animate-pulse" />
+            <div key={i} className="h-16 bg-white dark:bg-neutral-950 rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 animate-pulse" />
           ))}
         </div>
-      ) : channels.length === 0 ? (
+      ) : source === 'telegram' && channels.length === 0 ? (
         <Card>
           <div className="text-center py-8">
-            <Radio className="w-10 h-10 mx-auto mb-3 text-neutral-200" />
-            <p className="text-neutral-500 dark:text-neutral-400 text-sm font-medium">{ch.emptyTitle}</p>
-            <p className="text-neutral-400 text-xs mt-1">{ch.emptySubtitle}</p>
+            <Radio className="w-10 h-10 mx-auto mb-3 text-neutral-900 dark:text-neutral-50" />
+            <p className="text-neutral-900 dark:text-neutral-50 text-sm font-medium">{ch.emptyTitle}</p>
+            <p className="text-neutral-900 dark:text-neutral-50 text-xs mt-1">{ch.emptySubtitle}</p>
           </div>
         </Card>
-      ) : (
+      ) : source === 'telegram' ? (
         <div className="space-y-2">
           {channels.map(channel => (
             <ChannelCard
@@ -197,8 +221,33 @@ export function ChannelsPage() {
             />
           ))}
         </div>
-      )}
+      ) : null}
     </PageShell>
+  )
+}
+
+function SourceTab({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={clsx(
+        '-mb-px inline-flex shrink-0 items-center gap-2 border-b-2 pb-3 text-sm font-medium',
+        active
+          ? 'border-neutral-900 text-neutral-900 dark:border-neutral-50 dark:text-neutral-50'
+          : 'border-transparent text-neutral-900 hover:text-neutral-900 dark:text-neutral-50 dark:hover:text-neutral-50',
+      )}
+    >
+      {children}
+    </button>
   )
 }
 
@@ -225,8 +274,8 @@ function ChannelCard({
   return (
     <Card padding="none">
       <div className="px-4 py-3.5 flex items-center gap-3">
-        <div className="w-9 h-9 bg-primary-50 rounded-lg flex items-center justify-center flex-shrink-0">
-          <Radio className="w-4 h-4 text-primary-600" />
+        <div className="w-9 h-9 bg-primary-50 rounded-lg flex items-center justify-center shrink-0">
+          <Radio className="w-4 h-4 text-green-400" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -234,22 +283,22 @@ function ChannelCard({
             {!channel.is_active && <Badge variant="neutral" size="sm">{ch.statusPaused}</Badge>}
           </div>
           {channel.channel_username && (
-            <p className="text-xs text-neutral-400">@{channel.channel_username}</p>
+            <p className="text-xs text-neutral-900 dark:text-neutral-50">@{channel.channel_username}</p>
           )}
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           <Toggle checked={channel.is_active} onChange={onToggle} />
           <button
             type="button"
             onClick={onEditToggle}
-            className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:bg-neutral-800 transition-colors"
+            className="p-1.5 rounded-lg text-neutral-900 hover:text-neutral-900 dark:hover:text-neutral-50 dark:text-neutral-50 hover:bg-neutral-100 dark:bg-neutral-800 transition-colors"
           >
             <Settings className="w-4 h-4" />
           </button>
           <button
             type="button"
             onClick={onDelete}
-            className="p-1.5 rounded-lg text-neutral-400 hover:text-error-600 hover:bg-error-50 transition-colors"
+            className="p-1.5 rounded-lg text-neutral-900 dark:text-neutral-50 hover:text-error-600 hover:bg-error-50 transition-colors"
           >
             <Trash2 className="w-4 h-4" />
           </button>
@@ -258,7 +307,7 @@ function ChannelCard({
 
       {isEditing && (
         <div className="px-4 pb-4 border-t border-neutral-100 dark:border-neutral-800 pt-3">
-          <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-3">{ch.overridesTitle}</p>
+          <p className="text-xs font-medium text-neutral-900 dark:text-neutral-50 mb-3">{ch.overridesTitle}</p>
           <div className="grid grid-cols-2 gap-3">
             <Input
               label={ch.lotSizeOverride}

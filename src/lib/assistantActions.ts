@@ -76,7 +76,7 @@ export function runPendingClientActions(
           const path = String(action.args?.path ?? '/copier-engine')
           if (NAV_ALLOWLIST.has(path)) handlers.navigate(path)
           else handlers.navigate('/copier-engine')
-          notes.push('Opened Copier Engine for Telegram link')
+          notes.push('Opened Copier Process for Telegram link')
         }
         break
       }

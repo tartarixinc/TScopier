@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
-import { ArrowUpRight, Check, CircleCheck, Layers, Loader2, Pencil, RotateCcw, TriangleAlert, X } from 'lucide-react'
+import { ArrowUpRight, Check, CircleCheck, Copy, Layers, Loader2, Pencil, RotateCcw, TriangleAlert, UserPlus, X } from 'lucide-react'
 import { useNotifications } from '../../context/NotificationsContext'
 import { useLocale, useT } from '../../context/LocaleContext'
 import { formatRelative } from '../../lib/formatRelative'
@@ -13,7 +13,7 @@ interface NotificationDropdownProps {
   onClose: () => void
 }
 
-const HEADLINE_ICON_CLASS = 'text-neutral-700 bg-neutral-100 dark:text-neutral-300 dark:bg-neutral-800'
+const HEADLINE_ICON_CLASS = 'text-neutral-900 bg-neutral-100 dark:text-neutral-50 dark:bg-neutral-800'
 const REVIEW_ICON_CLASS = 'text-amber-600 bg-amber-100 dark:text-amber-400 dark:bg-amber-950/60'
 
 function headlineMeta(headline: TradeNotificationHeadline): {
@@ -33,6 +33,19 @@ function headlineMeta(headline: TradeNotificationHeadline): {
       return { icon: TriangleAlert, className: REVIEW_ICON_CLASS }
     case 'manual_override_reverted':
       return { icon: RotateCcw, className: REVIEW_ICON_CLASS }
+    case 'social_follow_accepted':
+      return { icon: UserPlus, className: HEADLINE_ICON_CLASS }
+    case 'social_copy_activated':
+      return { icon: Copy, className: HEADLINE_ICON_CLASS }
+    case 'social_copy_stopped':
+      return { icon: Check, className: HEADLINE_ICON_CLASS }
+    case 'social_copy_suspended':
+    case 'provider_application_rejected':
+    case 'provider_suspended':
+      return { icon: TriangleAlert, className: REVIEW_ICON_CLASS }
+    case 'provider_application_approved':
+    case 'provider_reinstated':
+      return { icon: CircleCheck, className: HEADLINE_ICON_CLASS }
   }
 }
 
@@ -78,7 +91,7 @@ export function NotificationDropdown({ open, onClose }: NotificationDropdownProp
       role="menu"
       aria-label={nn.title}
       className={clsx(
-        'absolute end-0 top-full z-50 mt-1 w-[min(22rem,calc(100vw-1.5rem))] rounded-xl border border-neutral-200 bg-white shadow-lg',
+        'absolute inset-e-0 top-full z-50 mt-1 w-[min(22rem,calc(100vw-1.5rem))] rounded-xl border border-neutral-200 bg-white shadow-lg',
         'before:absolute before:-top-1 before:inset-x-0 before:h-1 before:content-[""]',
         'dark:border-neutral-700 dark:bg-neutral-900',
       )}
@@ -88,7 +101,7 @@ export function NotificationDropdown({ open, onClose }: NotificationDropdownProp
         <button
           type="button"
           onClick={onClose}
-          className="rounded-lg p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+          className="rounded-lg p-1 text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-neutral-50"
           aria-label={nn.close}
         >
           <X className="h-4 w-4" />
@@ -97,20 +110,20 @@ export function NotificationDropdown({ open, onClose }: NotificationDropdownProp
 
       <div className="max-h-80 overflow-y-auto overscroll-y-contain">
         {loading && items.length === 0 ? (
-          <div className="flex items-center justify-center gap-2 px-4 py-10 text-sm text-neutral-500 dark:text-neutral-400">
+          <div className="flex items-center justify-center gap-2 px-4 py-10 text-sm text-neutral-900 dark:text-neutral-50">
             <Loader2 className="h-4 w-4 animate-spin" />
             {nn.loading}
           </div>
         ) : items.length === 0 ? (
           <div className="px-4 py-10 text-center">
-            <CircleCheck className="mx-auto h-8 w-8 text-neutral-300 dark:text-neutral-600" />
-            <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">{nn.empty}</p>
+            <CircleCheck className="mx-auto h-8 w-8 text-neutral-900 dark:text-neutral-50" />
+            <p className="mt-2 text-sm text-neutral-900 dark:text-neutral-50">{nn.empty}</p>
           </div>
         ) : (
           <div>
             {dayGroups.map(group => (
               <section key={group.dayKey} aria-label={group.label}>
-                <p className="sticky top-0 z-10 border-b border-neutral-100 bg-neutral-50/95 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-500 backdrop-blur-sm dark:border-neutral-800 dark:bg-neutral-900/95 dark:text-neutral-400">
+                <p className="sticky top-0 z-10 border-b border-neutral-100 bg-neutral-50/95 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-900 backdrop-blur-xs dark:border-neutral-800 dark:bg-neutral-900/95 dark:text-neutral-50">
                   {group.label}
                 </p>
                 <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
@@ -136,26 +149,26 @@ export function NotificationDropdown({ open, onClose }: NotificationDropdownProp
                         </span>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-start justify-between gap-2">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-700 dark:text-neutral-200">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
                               {item.title}
                               {item.symbol ? (
-                                <span className="ms-1.5 font-mono normal-case tracking-normal text-neutral-500 dark:text-neutral-400">
+                                <span className="ms-1.5  normal-case tracking-normal text-neutral-900 dark:text-neutral-50">
                                   {item.symbol}
                                 </span>
                               ) : null}
                             </p>
                             <time
-                              className="shrink-0 text-[11px] tabular-nums text-neutral-400 dark:text-neutral-500"
+                              className="shrink-0 text-[11px] tabular-nums text-neutral-900 dark:text-neutral-50"
                               dateTime={item.createdAt}
                             >
                               {formatRelative(Date.parse(item.createdAt))}
                             </time>
                           </div>
-                          <p className="mt-1 text-sm leading-snug text-neutral-600 dark:text-neutral-300">
+                          <p className="mt-1 text-sm leading-snug text-neutral-900 dark:text-neutral-50">
                             {item.body}
                           </p>
                           {item.actionUrl && item.actionLabel ? (
-                            <span className="mt-2 inline-flex text-xs font-semibold text-teal-700 dark:text-teal-300">
+                            <span className="mt-2 inline-flex text-xs font-semibold text-green-500 dark:text-teal-300">
                               {item.actionLabel}
                             </span>
                           ) : null}
@@ -192,14 +205,14 @@ export function NotificationDropdown({ open, onClose }: NotificationDropdownProp
           onClick={() => {
             markAllRead()
           }}
-          className="text-xs font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
+          className="text-xs font-medium text-green-400 hover:text-green-500 dark:text-green-400 dark:hover:text-teal-300"
         >
           {nn.markAllRead}
         </button>
         <Link
           to="/account-trades"
           onClick={onClose}
-          className="text-xs font-medium text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
+          className="text-xs font-medium text-neutral-900 hover:text-neutral-900 dark:text-neutral-50 dark:hover:text-neutral-100"
         >
           {nn.viewTrades}
         </Link>

@@ -27,7 +27,7 @@ export const tradeNotificationsAr: TradeNotificationsTranslations = {
     tradesClosedGeneric: 'أُغلقت {count} صفقة على {broker} من {channel}.',
     tradesClosedSingle: 'أُغلقت صفقة على {broker} من {channel}.',
     reviewRequired: 'إشارة من {channel} بانتظار موافقتك.',
-    manualOverrideReverted: 'TScopier detected a manual SL/TP change made directly on your broker account and restored the signal managed values. To change SL or TP for a copied signal, use Manage Signal in TScopier.',
+    manualOverrideReverted: 'UniCopier detected a manual SL/TP change made directly on your broker account and restored the signal managed values. To change SL or TP for a copied signal, use Manage Signal in UniCopier.',
   },
   sides: {
     buy: 'شراء',

@@ -14,10 +14,10 @@ export const authNl: AuthTranslations = {
     captchaRequired: 'Voltooi de beveiligingscontrole voordat je doorgaat.',
   },
   login: {
-    heading: 'Inloggen bij TScopier',
+    heading: 'Inloggen bij UniCopier',
     noAccount: 'Nog geen account?',
     signUpLink: 'Registreren',
-    footerPrompt: 'Nieuw bij TScopier?',
+    footerPrompt: 'Nieuw bij UniCopier?',
     footerLink: 'Maak een gratis account',
     email: 'E-mail',
     emailPlaceholder: 'jij@voorbeeld.nl',
@@ -42,7 +42,7 @@ export const authNl: AuthTranslations = {
   },
   resetPassword: {
     heading: 'Nieuw wachtwoord instellen',
-    subtitle: 'Kies een sterk wachtwoord voor je TScopier-account.',
+    subtitle: 'Kies een sterk wachtwoord voor je UniCopier-account.',
     verifyingHeading: 'Resetlink verifiëren…',
     verifyingSubtitle: 'Even geduld terwijl we je link veilig valideren.',
     securityNote: 'Na het bijwerken word je overal uitgelogd. Log opnieuw in met je nieuwe wachtwoord.',
@@ -102,14 +102,14 @@ export const authNl: AuthTranslations = {
     backToLogin: 'Terug naar inloggen',
   },
   welcome: {
-    title: 'Welkom bij TScopier',
+    title: 'Welkom bij UniCopier',
     subtitle: 'Je account is klaar. Koppel Telegram en begin signalen naar je broker te kopiëren.',
     steps: [
       'Koppel Telegram en kies signaalkanalen',
       'Koppel je MT4/MT5-brokeraccount',
       'Kopieer trades automatisch met je risicointstellingen',
     ],
-    startUsing: 'Begin met TScopier',
+    startUsing: 'Begin met UniCopier',
     exploreDashboard: 'Verken eerst het dashboard',
     errorFallback: 'Kon niet doorgaan. Probeer het opnieuw.',
   },

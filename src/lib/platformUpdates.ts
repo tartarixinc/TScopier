@@ -24,7 +24,7 @@ export const PLATFORM_UPDATES: PlatformUpdate[] = [
     date: '2026-09-15',
     title: 'Platform Updates page',
     description:
-      'You can now see what changed in TScopier without leaving the app. Check the Updates section in the sidebar for recent features, fixes, and improvements.',
+      'You can now see what changed in UniCopier without leaving the app. Check the Updates section in the sidebar for recent features, fixes, and improvements.',
     type: 'feature',
   },
 ]

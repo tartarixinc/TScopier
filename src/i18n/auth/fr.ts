@@ -14,10 +14,10 @@ export const authFr: AuthTranslations = {
     captchaRequired: 'Veuillez terminer la vérification de sécurité avant de continuer.',
   },
   login: {
-    heading: 'Connectez-vous a TScopier',
+    heading: 'Connectez-vous a UniCopier',
     noAccount: "Vous n'avez pas de compte ?",
     signUpLink: "S'inscrire",
-    footerPrompt: 'Nouveau sur TScopier ?',
+    footerPrompt: 'Nouveau sur UniCopier ?',
     footerLink: 'Créer un compte gratuit',
     email: 'E-mail',
     emailPlaceholder: 'vous@exemple.com',
@@ -43,7 +43,7 @@ export const authFr: AuthTranslations = {
   },
   resetPassword: {
     heading: 'Définir un nouveau mot de passe',
-    subtitle: 'Choisissez un mot de passe robuste pour votre compte TScopier.',
+    subtitle: 'Choisissez un mot de passe robuste pour votre compte UniCopier.',
     verifyingHeading: 'Vérification de votre lien…',
     verifyingSubtitle: 'Veuillez patienter pendant la validation sécurisée de votre lien.',
     securityNote: 'Après la mise à jour, vous serez déconnecté partout. Reconnectez-vous avec votre nouveau mot de passe.',
@@ -104,14 +104,14 @@ export const authFr: AuthTranslations = {
     confirmLinkExpired: 'Ce lien de confirmation a expiré ou a déjà été utilisé. Connectez-vous ou demandez un nouvel e-mail.',
   },
   welcome: {
-    title: 'Bienvenue sur TScopier',
+    title: 'Bienvenue sur UniCopier',
     subtitle: 'Votre compte est prêt. Connectez Telegram et commencez à copier des signaux vers votre broker.',
     steps: [
       'Connectez Telegram et choisissez vos canaux de signaux',
       'Liez votre compte MT4/MT5',
       'Copiez les trades automatiquement avec vos paramètres de risque',
     ],
-    startUsing: 'Commencer à utiliser TScopier',
+    startUsing: 'Commencer à utiliser UniCopier',
     exploreDashboard: 'Explorer le tableau de bord d\'abord',
     errorFallback: 'Impossible de continuer. Veuillez réessayer.',
   },

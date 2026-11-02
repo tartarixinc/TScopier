@@ -5,6 +5,7 @@ import { NotificationsProvider } from '../../context/NotificationsContext'
 import { HumanReviewProvider } from '../../context/HumanReviewContext'
 import { AddTradingAccountProvider } from '../../context/AddTradingAccountContext'
 import { PendingBrokerConnectionSync } from '../broker/PendingBrokerConnectionSync'
+import { ProviderSourceSync } from '../broker/ProviderSourceSync'
 import { BrokerTerminalHealthSync } from '../broker/BrokerTerminalHealthSync'
 import { AppLayout } from './AppLayout'
 import { LiveChatProvider } from '../../context/LiveChatContext'
@@ -158,6 +159,7 @@ export function AppShell() {
   return (
     <BrokerAccountsProvider enabled={!deferAppBootstrap}>
       {!deferAppBootstrap ? <PendingBrokerConnectionSync /> : null}
+      {!deferAppBootstrap ? <ProviderSourceSync /> : null}
       {!deferAppBootstrap ? <BrokerTerminalHealthSync /> : null}
       <NotificationsProvider enabled={!deferAppBootstrap}>
         <HumanReviewProvider enabled={!deferAppBootstrap}>

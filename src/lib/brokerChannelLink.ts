@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { BrokerAccount, Json, ManualSettings, TelegramChannel } from '../types/database'
-import { BROKER_ACCOUNT_CLIENT_SELECT } from './brokerAccountSelect'
+import { selectBrokerAccountColumns } from './brokerAccountSelect'
 import {
   buildDefaultChannelTradingConfig,
   channelManualSettingsComplete,
@@ -94,17 +94,19 @@ export async function connectChannelToBroker(
     filters[normalizedChannelId] = { ...(options?.defaultChannelFilters ?? DEFAULT_CHANNEL_FILTERS) }
   }
 
-  const { data, error } = await supabase
-    .from('broker_accounts')
-    .update({
-      signal_channel_ids: nextIds,
-      enforce_signal_channel_filter: true,
-      channel_message_filters: filters,
-    })
-    .eq('id', broker.id)
-    .eq('user_id', userId)
-    .select(BROKER_ACCOUNT_CLIENT_SELECT)
-    .single()
+  const { data, error } = await selectBrokerAccountColumns(columns =>
+    supabase
+      .from('broker_accounts')
+      .update({
+        signal_channel_ids: nextIds,
+        enforce_signal_channel_filter: true,
+        channel_message_filters: filters,
+      })
+      .eq('id', broker.id)
+      .eq('user_id', userId)
+      .select(columns)
+      .single(),
+  )
 
   if (error) return { broker: null, error: error.message }
   return { broker: data as unknown as BrokerAccount, error: null }
@@ -150,17 +152,19 @@ export async function disconnectChannelFromBroker(
   const filters = normalizeChannelMessageFiltersMap(broker.channel_message_filters)
   delete filters[channelId]
 
-  const { data, error } = await supabase
-    .from('broker_accounts')
-    .update({
-      signal_channel_ids: nextIds,
-      enforce_signal_channel_filter: nextIds.length > 0,
-      channel_message_filters: filters,
-    })
-    .eq('id', broker.id)
-    .eq('user_id', userId)
-    .select(BROKER_ACCOUNT_CLIENT_SELECT)
-    .single()
+  const { data, error } = await selectBrokerAccountColumns(columns =>
+    supabase
+      .from('broker_accounts')
+      .update({
+        signal_channel_ids: nextIds,
+        enforce_signal_channel_filter: nextIds.length > 0,
+        channel_message_filters: filters,
+      })
+      .eq('id', broker.id)
+      .eq('user_id', userId)
+      .select(columns)
+      .single(),
+  )
 
   if (error) return { broker: null, error: error.message }
   return { broker: data as unknown as BrokerAccount, error: null }
@@ -191,16 +195,18 @@ export async function pruneStaleBrokerChannelIds(
       delete filters[removedId]
     }
 
-    const { data, error } = await supabase
-      .from('broker_accounts')
-      .update({
-        signal_channel_ids: validIds,
-        channel_message_filters: filters,
-      })
-      .eq('id', broker.id)
-      .eq('user_id', userId)
-      .select(BROKER_ACCOUNT_CLIENT_SELECT)
-      .single()
+    const { data, error } = await selectBrokerAccountColumns(columns =>
+      supabase
+        .from('broker_accounts')
+        .update({
+          signal_channel_ids: validIds,
+          channel_message_filters: filters,
+        })
+        .eq('id', broker.id)
+        .eq('user_id', userId)
+        .select(columns)
+        .single(),
+    )
 
     if (!error && data) {
       result = result.map(b => (b.id === broker.id ? (data as unknown as BrokerAccount) : b))

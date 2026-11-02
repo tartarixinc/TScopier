@@ -97,7 +97,7 @@ export function CopierPauseToggle({ className }: CopierPauseToggleProps) {
   const confirmModal = confirmOpen ? (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4 sm:p-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+      className="fixed inset-0 z-60 flex items-end sm:items-center justify-center p-4 sm:p-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
       onMouseDown={onOverlayMouseDown}
       onClick={onOverlayClick}
     >
@@ -107,11 +107,11 @@ export function CopierPauseToggle({ className }: CopierPauseToggleProps) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="copier-pause-confirm-title"
-        className="relative w-full max-w-md rounded-2xl bg-white dark:bg-neutral-900 shadow-2xl border border-neutral-200 dark:border-neutral-800 animate-modal-in overflow-hidden"
+        className="relative w-full max-w-md rounded-2xl bg-white dark:bg-neutral-900 shadow-2xl border border-neutral-200/65 dark:border-neutral-800/55 animate-modal-in overflow-hidden"
       >
         <div className="px-5 pt-5 pb-4">
           <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-50">
               <Pause className="h-5 w-5" aria-hidden />
             </div>
             <div className="min-w-0 flex-1">
@@ -121,7 +121,7 @@ export function CopierPauseToggle({ className }: CopierPauseToggleProps) {
               >
                 {cp.confirmTitle}
               </h2>
-              <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed">
+              <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-50 leading-relaxed">
                 {cp.confirmBody}
               </p>
             </div>
@@ -135,7 +135,7 @@ export function CopierPauseToggle({ className }: CopierPauseToggleProps) {
             size="sm"
             disabled={saving}
             onClick={() => setConfirmOpen(false)}
-            className="sm:min-w-[7rem]"
+            className="sm:min-w-28"
           >
             {t.common.cancel}
           </Button>
@@ -144,7 +144,7 @@ export function CopierPauseToggle({ className }: CopierPauseToggleProps) {
             size="sm"
             loading={saving}
             onClick={() => void confirmPause()}
-            className="sm:min-w-[7rem]"
+            className="sm:min-w-28"
           >
             {cp.pauseLabel}
           </Button>
@@ -174,8 +174,8 @@ export function CopierPauseToggle({ className }: CopierPauseToggleProps) {
           lockedStopped
             ? clsx('cursor-not-allowed', lossIconWrapClass, lossTextClass)
             : showStopped
-              ? 'text-teal-700 bg-teal-50 hover:bg-teal-100 dark:text-teal-300 dark:bg-teal-950/40 dark:hover:bg-teal-950/60'
-              : 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:text-neutral-50 dark:hover:bg-neutral-800',
+              ? 'text-green-500 bg-teal-50 hover:bg-teal-100 dark:text-teal-300 dark:bg-teal-950/40 dark:hover:bg-teal-950/60'
+              : 'text-neutral-900 hover:text-neutral-900 hover:bg-neutral-100 dark:text-neutral-50 dark:hover:text-neutral-50 dark:hover:bg-neutral-800',
           className,
         )}
       >
@@ -184,7 +184,7 @@ export function CopierPauseToggle({ className }: CopierPauseToggleProps) {
             {lockedStopped ? (
               <CopierStoppedIndicator />
             ) : (
-              <Play className="h-4 w-4 shrink-0 sm:h-[1.125rem] sm:w-[1.125rem]" aria-hidden />
+              <Play className="h-4 w-4 shrink-0 sm:h-4.5 sm:w-4.5" aria-hidden />
             )}
             <span className="hidden whitespace-nowrap lg:inline">{stoppedLabel}</span>
           </>
@@ -194,7 +194,7 @@ export function CopierPauseToggle({ className }: CopierPauseToggleProps) {
               <CopierActiveIndicator />
             </span>
             <Pause
-              className="hidden h-4 w-4 shrink-0 group-hover:block sm:h-[1.125rem] sm:w-[1.125rem]"
+              className="hidden h-4 w-4 shrink-0 group-hover:block sm:h-4.5 sm:w-4.5"
               aria-hidden
             />
             <span className="hidden whitespace-nowrap lg:inline lg:group-hover:hidden">{cp.statusRunning}</span>

@@ -6,6 +6,17 @@ describe('tradingPlatform', () => {
   it('normalizeTradingPlatform defaults to MT5', () => {
     assert.equal(normalizeTradingPlatform(''), 'MT5')
     assert.equal(normalizeTradingPlatform('mt4'), 'MT4')
+    assert.equal(normalizeTradingPlatform('ctrader'), 'cTrader')
+    assert.equal(normalizeTradingPlatform('binance'), 'Binance')
+    assert.equal(normalizeTradingPlatform('bybit'), 'Bybit')
+    assert.equal(normalizeTradingPlatform('kucoin'), 'KuCoin')
+    assert.equal(normalizeTradingPlatform('dxtrade'), 'DXtrade')
+    assert.equal(normalizeTradingPlatform('tradelocker'), 'TradeLocker')
+    assert.equal(normalizeTradingPlatform('TradeLocker'), 'TradeLocker')
+    assert.equal(normalizeTradingPlatform('matchtrader'), 'MatchTrader')
+    assert.equal(normalizeTradingPlatform('Match-Trader'), 'MatchTrader')
+    assert.equal(normalizeTradingPlatform('KuCoin'), 'KuCoin')
+    assert.equal(normalizeTradingPlatform('cTrader'), 'cTrader')
   })
 
   it('inferServerPlatform reads common server suffixes', () => {

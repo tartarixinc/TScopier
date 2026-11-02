@@ -22,11 +22,46 @@ export function brokerSessionId(row: {
   mtapi_session_id?: string | null
   fxsocket_account_id?: string | null
   metaapi_account_id?: string | null
+  ctrader_account_id?: string | null
+  binance_account_id?: string | null
+  bybit_account_id?: string | null
+  kucoin_account_id?: string | null
+  dxtrade_account_id?: string | null
+  tradelocker_account_id?: string | null
+  matchtrader_account_id?: string | null
 }): string {
   const provider = row.provider == null || row.provider === '' ? 'fxsocket' : row.provider
   if (provider === 'mtapi') {
     const mtapi = String(row.mtapi_session_id ?? '').trim()
     return mtapi && !mtapi.includes('|') ? mtapi : ''
+  }
+  if (provider === 'ctrader') {
+    const ctrader = String(row.ctrader_account_id ?? '').trim()
+    return ctrader && !ctrader.includes('|') ? ctrader : ''
+  }
+  if (provider === 'binance') {
+    const binance = String(row.binance_account_id ?? '').trim()
+    return binance && !binance.includes('|') ? binance : ''
+  }
+  if (provider === 'bybit') {
+    const bybit = String(row.bybit_account_id ?? '').trim()
+    return bybit && !bybit.includes('|') ? bybit : ''
+  }
+  if (provider === 'kucoin') {
+    const kucoin = String(row.kucoin_account_id ?? '').trim()
+    return kucoin && !kucoin.includes('|') ? kucoin : ''
+  }
+  if (provider === 'dxtrade') {
+    const dxtrade = String(row.dxtrade_account_id ?? '').trim()
+    return dxtrade && !dxtrade.includes('|') ? dxtrade : ''
+  }
+  if (provider === 'tradelocker') {
+    const tradelocker = String(row.tradelocker_account_id ?? '').trim()
+    return tradelocker && !tradelocker.includes('|') ? tradelocker : ''
+  }
+  if (provider === 'matchtrader') {
+    const matchtrader = String(row.matchtrader_account_id ?? '').trim()
+    return matchtrader && !matchtrader.includes('|') ? matchtrader : ''
   }
   if (provider !== 'fxsocket') return ''
   const fx = String(row.fxsocket_account_id ?? '').trim()
@@ -36,6 +71,17 @@ export function brokerSessionId(row: {
   return ''
 }
 
+/**
+ * True when a select failed only because the database predates one of the
+ * per-provider session columns (or the DXtrade mode flag), so a narrower
+ * column list should be retried. Shared with the copy engines through
+ * `copyShared/copyHelpers`, which re-exports it (it cannot live there: that
+ * module already imports this one, so importing back would be a cycle).
+ */
+export function missingProviderIdColumn(message: string | null | undefined): boolean {
+  return /ctrader_account_id|binance_account_id|bybit_account_id|kucoin_account_id|dxtrade_account_id|tradelocker_account_id|matchtrader_account_id|dxtrade_is_position_based/i.test(String(message ?? ''))
+}
+
 export async function loadPlatformByFxsocketId(
   supabase: SupabaseClient,
   sessionIds: string[],
@@ -43,17 +89,35 @@ export async function loadPlatformByFxsocketId(
   const out: PlatformByFxsocketId = new Map()
   const ids = [...new Set(sessionIds.filter(id => id && !id.includes('|')))]
   if (!ids.length) return out
-  const { data, error } = await supabase
+  const base = 'id,mtapi_session_id,fxsocket_account_id,metaapi_account_id,platform,provider,writer_epoch,provider_transition_state'
+  const idList = ids.join(',')
+  const withCtrader = await supabase
     .from('broker_accounts')
-    .select('id,mtapi_session_id,fxsocket_account_id,metaapi_account_id,platform,provider,writer_epoch,provider_transition_state')
-    .or(`mtapi_session_id.in.(${ids.join(',')}),fxsocket_account_id.in.(${ids.join(',')}),metaapi_account_id.in.(${ids.join(',')})`)
+    .select(`${base},ctrader_account_id,binance_account_id,bybit_account_id,kucoin_account_id,dxtrade_account_id,tradelocker_account_id,matchtrader_account_id`)
+    .or(`mtapi_session_id.in.(${idList}),fxsocket_account_id.in.(${idList}),metaapi_account_id.in.(${idList}),ctrader_account_id.in.(${idList}),binance_account_id.in.(${idList}),bybit_account_id.in.(${idList}),kucoin_account_id.in.(${idList}),dxtrade_account_id.in.(${idList}),tradelocker_account_id.in.(${idList}),matchtrader_account_id.in.(${idList})`)
+  const { data, error } = withCtrader.error && missingProviderIdColumn(withCtrader.error.message)
+    ? await supabase
+      .from('broker_accounts')
+      .select(base)
+      .or(`mtapi_session_id.in.(${idList}),fxsocket_account_id.in.(${idList}),metaapi_account_id.in.(${idList})`)
+    : withCtrader
   if (error) {
     console.warn(`[fxApi] broker platform lookup failed: ${error.message}`)
     return out
   }
   for (const row of data ?? []) {
     const id = brokerSessionId(row as {
-      provider?: string; mtapi_session_id?: string; fxsocket_account_id?: string; metaapi_account_id?: string
+      provider?: string
+      mtapi_session_id?: string
+      fxsocket_account_id?: string
+      metaapi_account_id?: string
+      ctrader_account_id?: string
+      binance_account_id?: string
+      bybit_account_id?: string
+      kucoin_account_id?: string
+      dxtrade_account_id?: string
+      tradelocker_account_id?: string
+      matchtrader_account_id?: string
     })
     if (!id) continue
     out.set(id, {
@@ -81,10 +145,14 @@ export async function loadBrokerApiByAccountId(
   const out: BrokerApiByAccountId = new Map()
   const ids = [...new Set(brokerAccountIds.map(id => String(id ?? '').trim()).filter(Boolean))]
   if (!ids.length) return out
-  const { data, error } = await supabase
+  const base = 'id,mtapi_session_id,fxsocket_account_id,metaapi_account_id,platform,provider,writer_epoch,provider_transition_state,manual_settings,account_login'
+  const withCtrader = await supabase
     .from('broker_accounts')
-    .select('id,mtapi_session_id,fxsocket_account_id,metaapi_account_id,platform,provider,writer_epoch,provider_transition_state,manual_settings,account_login')
+    .select(`${base},ctrader_account_id,binance_account_id,bybit_account_id,kucoin_account_id,dxtrade_account_id,tradelocker_account_id,matchtrader_account_id`)
     .in('id', ids)
+  const { data, error } = withCtrader.error && missingProviderIdColumn(withCtrader.error.message)
+    ? await supabase.from('broker_accounts').select(base).in('id', ids)
+    : withCtrader
   if (error) {
     console.warn('[brokerApi] broker authority lookup failed: ' + error.message)
     return out

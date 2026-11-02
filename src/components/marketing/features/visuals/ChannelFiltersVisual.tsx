@@ -16,31 +16,31 @@ function FilterCategoryCard({
   ignoreLabel: string
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-lg border border-neutral-200 bg-white px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900">
+    <div className="flex items-center justify-between gap-4 rounded-lg border border-neutral-200/65 bg-white px-4 py-3 dark:border-neutral-800/55 dark:bg-neutral-900">
       <div className="min-w-0">
-        <p className="text-sm text-neutral-800 dark:text-neutral-100">{label}</p>
-        <p className="mt-0.5 text-[11px] text-neutral-500 dark:text-neutral-400">{example}</p>
+        <p className="text-sm text-neutral-900 dark:text-neutral-100">{label}</p>
+        <p className="mt-0.5 text-[11px] text-neutral-900 dark:text-neutral-50">{example}</p>
       </div>
       <div
-        className="inline-flex shrink-0 items-center rounded-md border border-neutral-200 bg-neutral-50 p-0.5 dark:border-neutral-800 dark:bg-neutral-800/50"
+        className="inline-flex shrink-0 items-center rounded-md border border-neutral-200/65 bg-neutral-50 p-0.5 dark:border-neutral-800/55 dark:bg-neutral-800/50"
         aria-hidden
       >
         <span
           className={clsx(
-            'rounded px-2.5 py-1 text-xs',
+            'rounded-sm px-2.5 py-1 text-xs',
             decision === 'allow'
-              ? 'bg-white text-neutral-900 shadow-sm dark:bg-neutral-900 dark:text-neutral-50'
-              : 'text-neutral-500 dark:text-neutral-400',
+              ? 'bg-white text-neutral-900 shadow-xs dark:bg-neutral-900 dark:text-neutral-50'
+              : 'text-neutral-900 dark:text-neutral-50',
           )}
         >
           {allowLabel}
         </span>
         <span
           className={clsx(
-            'rounded px-2.5 py-1 text-xs',
+            'rounded-sm px-2.5 py-1 text-xs',
             decision === 'ignore'
-              ? 'bg-amber-50 text-amber-700 shadow-sm'
-              : 'text-neutral-500 dark:text-neutral-400',
+              ? 'bg-amber-50 text-amber-700 shadow-xs'
+              : 'text-neutral-900 dark:text-neutral-50',
           )}
         >
           {ignoreLabel}

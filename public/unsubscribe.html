@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="supabase-anon-key" content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN4a3Bjb3ZieWFmaWN2dGtwc2RvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5ODY2MDgsImV4cCI6MjA5MzU2MjYwOH0.TPoI1CDwyA8MFuBnbGH757flhCgGCUS1mR8ejEhOtoU">
-  <title>Email Preferences - TScopier</title>
+  <title>Email Preferences - UniCopier</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       min-height: 100vh;
       background: #0f1b1a;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      font-family: 'SF Pro', 'SF Pro Text', 'SF Pro Display', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
       -webkit-font-smoothing: antialiased;
       display: flex;
       flex-direction: column;
@@ -42,13 +42,13 @@
       text-align: center; margin-bottom: 8px; line-height: 1.3;
     }
     .subtitle {
-      font-size: 14px; color: #64748b; text-align: center;
+      font-size: 14px; color: #0f172a; text-align: center;
       line-height: 1.6; margin-bottom: 24px;
     }
     .reason-group { margin-bottom: 24px; }
     .reason-label {
       display: block; font-size: 13px; font-weight: 600;
-      color: #334155; margin-bottom: 8px;
+      color: #0f172a; margin-bottom: 8px;
     }
     .reason-option {
       display: flex; align-items: center; padding: 10px 12px;
@@ -56,9 +56,9 @@
       margin-bottom: 6px; cursor: pointer;
       transition: border-color 0.15s, background 0.15s;
     }
-    .reason-option:hover { border-color: #0d9488; background: #f0fdfa; }
+    .reason-option:hover { border-color: #4ade80; background: #f0fdf4; }
     .reason-option input { margin-right: 10px; }
-    .reason-option span { font-size: 13px; color: #334155; }
+    .reason-option span { font-size: 13px; color: #0f172a; }
     .btn {
       display: block; width: 100%; padding: 12px 24px;
       font-size: 14px; font-weight: 600; border: none; border-radius: 8px;
@@ -67,7 +67,7 @@
     .btn:disabled { opacity: 0.6; cursor: not-allowed; }
     .btn-primary { background: #0f172a; color: #fff; }
     .btn-primary:hover:not(:disabled) { background: #1e293b; }
-    .btn-ghost { background: transparent; color: #64748b; margin-top: 12px; }
+    .btn-ghost { background: transparent; color: #0f172a; margin-top: 12px; }
     .btn-ghost:hover { color: #0f172a; }
     .recovery-group { margin-top: 20px; text-align: left; }
     .recovery-label {
@@ -82,10 +82,10 @@
     .recovery-input:focus { outline: none; border-color: #0d9488; }
     .recovery-status { font-size: 12px; color: #64748b; margin-top: 8px; text-align: center; }
     .divider { height: 1px; background: #e2e8f0; margin: 24px 0; }
-    .note { font-size: 12px; color: #94a3b8; text-align: center; line-height: 1.5; }
-    .note a { color: #94a3b8; text-decoration: underline; }
+    .note { font-size: 12px; color: #0f172a; text-align: center; line-height: 1.5; }
+    .note a { color: #0f172a; text-decoration: underline; }
     .footer {
-      margin-top: 32px; font-size: 11px; color: #64748b;
+      margin-top: 32px; font-size: 11px; color: #0f172a;
       text-align: center; line-height: 1.5;
     }
     .hidden { display: none !important; }
@@ -93,7 +93,7 @@
 </head>
 <body>
   <div class="logo">
-    <img src="https://sso.tscopier.ai/storage/v1/object/public/email-assets/tscopierlogo-dark.png" alt="TScopier" />
+    <img src="/unicopier_light.png" alt="UniCopier" />
   </div>
 
   <div id="view-loading" class="card">
@@ -109,12 +109,12 @@
       </svg>
     </div>
     <h1>Unsubscribe from emails?</h1>
-    <p class="subtitle">You'll stop receiving subscription reminders and campaign emails from TScopier. Transactional emails (password resets, security alerts) will still be delivered.</p>
+    <p class="subtitle">You'll stop receiving subscription reminders and campaign emails from UniCopier. Transactional emails (password resets, security alerts) will still be delivered.</p>
     <div class="reason-group">
       <span class="reason-label">Help us improve (optional)</span>
       <label class="reason-option"><input type="radio" name="reason" value="too_frequent" /><span>Too many emails</span></label>
       <label class="reason-option"><input type="radio" name="reason" value="not_relevant" /><span>Not relevant to me</span></label>
-      <label class="reason-option"><input type="radio" name="reason" value="no_longer_use" /><span>I no longer use TScopier</span></label>
+      <label class="reason-option"><input type="radio" name="reason" value="no_longer_use" /><span>I no longer use UniCopier</span></label>
       <label class="reason-option"><input type="radio" name="reason" value="other" /><span>Other reason</span></label>
     </div>
     <button id="btn-unsub" type="button" class="btn btn-primary">Unsubscribe me</button>
@@ -128,7 +128,7 @@
       </svg>
     </div>
     <h1 id="success-title">You've been unsubscribed</h1>
-    <p class="subtitle" id="success-sub">You won't receive any more campaign emails from TScopier.</p>
+    <p class="subtitle" id="success-sub">You won't receive any more campaign emails from UniCopier.</p>
     <div class="divider"></div>
     <p class="note">Changed your mind? You can re-enable emails anytime from your <a href="https://app.tscopier.ai/settings">account settings</a>.</p>
   </div>
@@ -158,7 +158,7 @@
       </svg>
     </div>
     <h1>Check your inbox</h1>
-    <p class="subtitle">If that address receives TScopier emails, a fresh unsubscribe link is on its way. Open it and confirm to finish.</p>
+    <p class="subtitle">If that address receives UniCopier emails, a fresh unsubscribe link is on its way. Open it and confirm to finish.</p>
   </div>
 
   <div class="footer">Tartarix Inc. &middot; 131 Continental Dr, Suite 305, Newark, DE 19713 US</div>
@@ -189,7 +189,7 @@
         if (statusParam === 'already') {
           document.getElementById('success-title').textContent = 'Already unsubscribed'
           document.getElementById('success-sub').textContent =
-            "You're already unsubscribed from TScopier campaign emails. No further action is needed."
+            "You're already unsubscribed from UniCopier campaign emails. No further action is needed."
         }
         show('view-success')
         return
@@ -231,7 +231,7 @@
           if (res.d.already_unsubscribed) {
             document.getElementById('success-title').textContent = 'Already unsubscribed'
             document.getElementById('success-sub').textContent =
-              "You're already unsubscribed from TScopier campaign emails. No further action is needed."
+              "You're already unsubscribed from UniCopier campaign emails. No further action is needed."
             show('view-success')
             return
           }
@@ -284,7 +284,7 @@
         var statusEl = document.getElementById('recovery-status')
         var email = (document.getElementById('recovery-email').value || '').trim()
         if (!email || email.indexOf('@') === -1) {
-          statusEl.textContent = 'Enter the email address that receives the TScopier emails.'
+          statusEl.textContent = 'Enter the email address that receives the UniCopier emails.'
           return
         }
         btn.disabled = true
