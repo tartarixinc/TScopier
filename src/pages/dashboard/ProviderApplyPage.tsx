@@ -49,7 +49,7 @@ const TERMS = [
   'My balance, equity, account type and platform are shown publicly on my provider profile.',
   'My closed-trade performance is published and cannot be edited by me.',
   'An administrator reviews my application and may suspend my profile at any time.',
-  'Followers copy at their own risk; TScopier does not guarantee any results.',
+  'Followers copy at their own risk; UniCopier does not guarantee any results.',
 ]
 
 function Stepper({ step, onJump, maxStep }: { step: ProviderStep; onJump: (s: ProviderStep) => void; maxStep: ProviderStep }) {
@@ -247,7 +247,7 @@ function PricingStep({
       <div>
         <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">Set your price</h2>
         <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-          The price is displayed on your profile. Billing between you and your followers is not handled by TScopier yet.
+          The price is displayed on your profile. Billing between you and your followers is not handled by UniCopier yet.
         </p>
       </div>
       <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Pricing">

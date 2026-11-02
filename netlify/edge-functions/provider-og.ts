@@ -63,14 +63,14 @@ export default async function handler(request: Request, context: Context): Promi
     const facts = [provider.account_kind ? provider.account_kind.toUpperCase() : null, provider.platform, price]
       .filter(Boolean)
       .join(' · ')
-    const title = `${provider.display_name} — Copy trading on TScopier`
-    const description = (provider.bio?.trim() || `Follow and copy ${provider.display_name} on TScopier.`).slice(0, 200)
+    const title = `${provider.display_name} — Copy trading on UniCopier`
+    const description = (provider.bio?.trim() || `Follow and copy ${provider.display_name} on UniCopier.`).slice(0, 200)
       + (facts ? ` (${facts})` : '')
     const canonical = `${url.origin}/p/${slug}`
 
     const tags = [
       `<meta property="og:type" content="profile">`,
-      `<meta property="og:site_name" content="TScopier">`,
+      `<meta property="og:site_name" content="UniCopier">`,
       `<meta property="og:title" content="${escapeHtml(title)}">`,
       `<meta property="og:description" content="${escapeHtml(description)}">`,
       `<meta property="og:url" content="${escapeHtml(canonical)}">`,
