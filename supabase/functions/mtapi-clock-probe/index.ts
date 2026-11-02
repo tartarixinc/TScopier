@@ -13,6 +13,7 @@
  *   POST {action:"deep"}    — non-zero-offset servers: quote tick epoch check.
  *   POST {action:"xtalk"}   — gold cross-feed between two servers (offline).
  *   POST {action:"map"}     — per-server H1 series (optional from/to/accounts).
+ *   POST {action:"pairs"}   — many currency pairs through matcher+resolver+bars.
  *   POST {action:"history"} — run the real MtapiHistoricalMarketData path
  *                             (clock resolver + bars) to verify the gate state.
  *
@@ -29,6 +30,10 @@ import {
   MtapiHistoricalMarketData,
   parseMtapiTimestamp,
 } from "../_shared/backtest/mtapiMarketData.ts"
+import {
+  normalizeBacktestSymbol,
+  resolveBrokerSymbol,
+} from "../_shared/backtest/fxsocketMarketData.ts"
 
 const HOUR_MS = 3_600_000
 const DAY_MS = 86_400_000
@@ -893,6 +898,110 @@ async function probeMap(
   return jsonResponse({ nowUtcMs: nowMs, nowUtc: iso(nowMs), accounts: results })
 }
 
+const DEFAULT_PAIRS = [
+  "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF",
+  "NZDUSD", "XAUUSD", "XAGUSD", "BTCUSD", "ETHUSD", "GBPJPY",
+]
+
+/**
+ * action=pairs — many currency pairs through the REAL backtest path:
+ * the shared signal-symbol matcher (resolveBrokerSymbol), the verified clock
+ * resolver, and MtapiHistoricalMarketData — on every connected account.
+ * Per pair: resolved broker symbol (shows suffix mapping), bar count, and
+ * last-bar skew vs the current UTC hour (server mode applies the live offset,
+ * so a correct pipeline reads ≈ 0; a missing current-hour bar reads -60).
+ */
+async function probePairs(
+  supabase: SupabaseClient,
+  wanted: string[],
+): Promise<Response> {
+  const nowMs = Date.now()
+  const currentHourMs = nowMs - (nowMs % 3_600_000)
+  const { data, error } = await supabase
+    .from("broker_accounts")
+    .select("id, label, platform, mtapi_status, mtapi_session_id")
+    .eq("is_active", true)
+    .eq("provider", "mtapi")
+    .eq("mtapi_status", "connected")
+    .not("mtapi_session_id", "is", null)
+    .neq("mtapi_session_id", "")
+    .order("created_at", { ascending: false })
+    .limit(8)
+  if (error) return jsonResponse({ error: error.message }, 500)
+
+  const accounts = ((data ?? []) as unknown as ProbeAccount[])
+    .filter((row) => String(row.mtapi_session_id ?? "").trim().length > 0)
+    .slice(0, 8)
+
+  const mtapi = new MtapiClient({ env: Deno.env, timeoutMs: 15_000 })
+  const expired = actionDeadline(150)
+
+  const results = await Promise.all(
+    accounts.map(async (account) => {
+      const sessionId = account.mtapi_session_id
+      const errText = (err: unknown) => errorText(err).split(sessionId).join("[SESSION]")
+      const pairs: Record<string, unknown> = {}
+      const out: Record<string, unknown> = {
+        label: account.label,
+        platform: account.platform,
+        pairs,
+      }
+      try {
+        const source = new MtapiHistoricalMarketData(
+          mtapi,
+          createMtapiClockResolver(mtapi, Deno.env),
+        )
+        const brokerSymbols = await source.symbols(sessionId, account.platform)
+        out.symbolCount = brokerSymbols.length
+        for (const pair of wanted) {
+          if (expired()) {
+            pairs[pair] = { skipped: "action budget exhausted" }
+            break
+          }
+          const entry: Record<string, unknown> = {}
+          try {
+            const resolved = resolveBrokerSymbol(normalizeBacktestSymbol(pair), brokerSymbols)
+            if (!resolved) {
+              entry.resolved = null
+              entry.note = "not offered on this broker"
+              pairs[pair] = entry
+              continue
+            }
+            entry.resolved = resolved
+            const bars = await source.historicalBars({
+              sessionId,
+              platform: account.platform,
+              symbol: resolved,
+              timeframe: "1h",
+              fromMs: nowMs - 48 * HOUR_MS,
+              toMs: nowMs,
+            })
+            entry.bars = bars.data.length
+            entry.requests = bars.requestCount
+            const last = bars.data.at(-1)
+            entry.lastBarUtc = last ? iso(last.ts) : null
+            entry.lastSkewMin = last ? Math.round((last.ts - currentHourMs) / 60_000) : null
+          } catch (err) {
+            entry.error = errText(err)
+          }
+          pairs[pair] = entry
+        }
+      } catch (err) {
+        out.fatal = errText(err)
+      }
+      return out
+    }),
+  )
+
+  return jsonResponse({
+    nowUtcMs: nowMs,
+    nowUtc: iso(nowMs),
+    currentHourUtc: iso(currentHourMs),
+    requested: wanted,
+    accounts: results,
+  })
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return jsonResponse({ error: "POST only" }, 405)
 
@@ -923,6 +1032,14 @@ Deno.serve(async (req: Request) => {
     if (action === "live") return await probeLive(supabase)
     if (action === "deep") return await probeDeep(supabase)
     if (action === "xtalk") return await probeXtalk(supabase)
+    if (action === "pairs") {
+      const raw: unknown[] = Array.isArray(body.symbols) ? body.symbols : []
+      const wanted = raw
+        .map((s: unknown) => String(s ?? "").trim().toUpperCase())
+        .filter((s: string) => /^[A-Z0-9]{3,14}$/.test(s))
+        .slice(0, 20)
+      return await probePairs(supabase, wanted.length > 0 ? wanted : DEFAULT_PAIRS)
+    }
     if (action === "map") {
       const raw = Array.isArray(body.accounts) ? body.accounts : []
       const explicit = raw.map((row: Record<string, unknown>) => ({
