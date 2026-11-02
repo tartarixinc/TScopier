@@ -220,20 +220,35 @@ export function resolveBrokerSymbol(normalized: string, brokerSymbols: string[])
     if (canonical === canon) targets.add(alias)
   }
 
-  // Exact match on any target/alias — always safe (aliases never extend prefix matching).
-  for (const sym of brokerSymbols) {
-    if (targets.has(normalizeBacktestSymbol(sym))) return sym
+  // 1. Exact match on the raw target or its canonical name — preferred over
+  //    aliases. Brokers often list both (XAUUSD and GOLD) and the list order
+  //    is arbitrary; usable history usually lives on the canonical name
+  //    (2026-11-02: GOLD won the exact pass on a server whose GOLD symbol has
+  //    no history while XAUUSD does — gold backtests came back no-data).
+  for (const preferred of [...new Set([target, canon])]) {
+    for (const sym of brokerSymbols) {
+      if (normalizeBacktestSymbol(sym) === preferred) return sym
+    }
   }
 
-  // Prefix match on the canonical id (BTCUSD → BTCUSDm / BTCUSDTm, never BTCAUDm).
+  // 2. Prefix match on the canonical id (BTCUSD → BTCUSDm / BTCUSDTm, never BTCAUDm).
   const canonMatch = matchBrokerSymbolPrefix([canon], brokerSymbols)
   if (canonMatch) return canonMatch
 
-  // Prefix match on the raw target and its aliases (GOLD → GOLD.m, XAU →
-  // XAU.r). The quote-safe grammar still applies, so the BTC alias can never
-  // reach BTCAUDm / BTCCNHm — only USD-style extensions and broker suffixes.
+  // 3. Prefix match on the raw target and its aliases (GOLD → GOLD.m, BTC →
+  //    BTCC). The quote-safe grammar still applies, so the BTC alias can never
+  //    reach BTCAUDm / BTCCNHm — only USD-style extensions and broker suffixes.
+  //    Runs before alias-exact so a data-bearing decorated alias (BTCC) beats
+  //    a bare history-less alias (BTC) on brokers that list both.
   const targetMatch = matchBrokerSymbolPrefix([...targets], brokerSymbols)
   if (targetMatch) return targetMatch
+
+  // 4. Exact alias fallback — an alias with an exact name is always reachable
+  //    through the prefix pass above (empty remainder is grammar-valid); this
+  //    pass stays as an explicit safety net if the grammar ever tightens.
+  for (const sym of brokerSymbols) {
+    if (targets.has(normalizeBacktestSymbol(sym))) return sym
+  }
 
   // Broker lists GOLD while signal is XAUUSD — match on canonical equality.
   for (const sym of brokerSymbols) {

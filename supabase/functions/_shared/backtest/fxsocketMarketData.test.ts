@@ -39,6 +39,20 @@ Deno.test("resolveBrokerSymbol maps GOLD / XAU aliases to XAUUSD", () => {
   assertEquals(resolveBrokerSymbol("XAUUSD", ["GOLD.m", "EURUSD"]), "GOLD.m")
 })
 
+Deno.test("resolveBrokerSymbol prefers canonical names over aliases regardless of broker list order", () => {
+  // 2026-11-02: on a server listing both, GOLD appeared first in the Symbols
+  // list and its GOLD symbol has no history while XAUUSD does — gold backtests
+  // resolved to a data-less alias. Canonical must win in either order.
+  assertEquals(resolveBrokerSymbol("XAUUSD", ["GOLD", "XAUUSD"]), "XAUUSD")
+  assertEquals(resolveBrokerSymbol("XAUUSD", ["XAUUSD", "GOLD"]), "XAUUSD")
+  assertEquals(resolveBrokerSymbol("XAUUSD", ["GOLD", "XAUUSDm"]), "XAUUSDm")
+  assertEquals(resolveBrokerSymbol("BTCUSD", ["BTC", "BTCUSDm"]), "BTCUSDm")
+  // Decorated canonical beats a bare alias; bare canonical beats a decorated alias.
+  assertEquals(resolveBrokerSymbol("BTCUSD", ["BTCUSDm", "BTC"]), "BTCUSDm")
+  // Alias still resolves when no canonical-shaped name exists.
+  assertEquals(resolveBrokerSymbol("XAUUSD", ["GOLD", "EURUSD"]), "GOLD")
+})
+
 Deno.test("normalizeBacktestSymbol strips punctuation", () => {
   assertEquals(normalizeBacktestSymbol("XAU/USD"), "XAUUSD")
   assertEquals(normalizeBacktestSymbol(" eurusd "), "EURUSD")
