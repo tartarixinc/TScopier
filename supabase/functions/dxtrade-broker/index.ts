@@ -180,7 +180,7 @@ Deno.serve(async (req: Request) => {
         chosen = accounts[0]
       }
       if (chosen.isPositionBased !== true) {
-        return bad(400, "This DXtrade account is net-based. TScopier needs a position-based (hedging) account so each trade keeps its own stop loss and take profit.")
+        return bad(400, "This DXtrade account is net-based. UniCopier needs a position-based (hedging) account so each trade keeps its own stop loss and take profit.")
       }
       if (chosen.status && chosen.status !== "FULL_TRADING") {
         return bad(400, `This DXtrade account is ${chosen.status.toLowerCase().replace(/_/g, " ")} and cannot open trades.`)

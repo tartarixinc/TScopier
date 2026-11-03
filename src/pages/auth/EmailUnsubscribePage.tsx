@@ -323,7 +323,7 @@ export function EmailUnsubscribePage() {
             </div>
             <h1 className="mb-2 text-center text-xl font-bold text-slate-900 dark:text-neutral-50">Check your inbox</h1>
             <p className="text-center text-sm leading-relaxed text-slate-500">
-              If that address receives Unicopier emails, a fresh unsubscribe link is on its way.
+              If that address receives UniCopier emails, a fresh unsubscribe link is on its way.
               Open it and confirm to finish.
             </p>
           </>

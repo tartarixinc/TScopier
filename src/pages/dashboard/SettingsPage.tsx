@@ -387,7 +387,7 @@ export function SettingsPage() {
                 </div>
                 <div className="sm:col-span-2 border-t border-neutral-100 pt-4 dark:border-neutral-800">
                   <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Social profiles</h3>
-                  <p className="mt-1 text-xs text-neutral-900 dark:text-neutral-50">Public HTTPS profile links only. TSCopier never requests access to your external accounts.</p>
+                  <p className="mt-1 text-xs text-neutral-900 dark:text-neutral-50">Public HTTPS profile links only. UniCopier never requests access to your external accounts.</p>
                 </div>
                 {SOCIAL_PROFILE_PLATFORMS.map(platform => (
                   <Input
