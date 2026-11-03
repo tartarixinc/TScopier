@@ -52,7 +52,9 @@ type Waiter = {
   types: number[]
   resolve: (payload: Record<string, unknown>) => void
   reject: (error: Error) => void
-  timer: number
+  // ReturnType keeps this correct under both runtimes: Deno's setTimeout
+  // returns number, Node-typed environments return Timeout.
+  timer: ReturnType<typeof setTimeout>
 }
 
 type SpotListener = (payloadType: number, payload: Record<string, unknown>) => void
@@ -323,7 +325,7 @@ export async function listCtraderAccounts(app: CtraderApp, accessToken: string):
   const { socket, session } = await openSession("demo", app)
   try {
     const payload = await session.request(ACCOUNTS_REQ, { accessToken }, [ACCOUNTS_RES])
-    return asArray(payload.ctidTraderAccount).map(row => {
+    return asArray(payload.ctidTraderAccount).map((row): CtraderTradingAccount => {
       const live = row.isLive === true
       const login = finite(row.traderLogin)
       return {
@@ -735,8 +737,8 @@ export async function ctraderAccountTrades(args: {
           tp: absolutePrice(position.takeProfit),
           close_price: null,
           profit: floatingProfit(position, spots.get(finite(trade.symbolId) ?? -1)),
-          swap: moneyAmount(position.swap, 2),
-          commission: moneyAmount(position.commission, 2),
+          swap: moneyAmount(position.swap, 2) ?? null,
+          commission: moneyAmount(position.commission, 2) ?? null,
           comment: trade.comment == null ? null : String(trade.comment),
           magic: null,
           opened_at: isoTime(trade.openTimestamp ?? position.utcLastUpdateTimestamp),
@@ -787,9 +789,9 @@ export async function ctraderAccountTrades(args: {
           sl: null,
           tp: null,
           close_price: absolutePrice(deal.executionPrice),
-          profit: moneyAmount(close.grossProfit ?? close.profit, 2),
-          swap: moneyAmount(close.swap, 2),
-          commission: moneyAmount(close.commission, 2),
+          profit: moneyAmount(close.grossProfit ?? close.profit, 2) ?? null,
+          swap: moneyAmount(close.swap, 2) ?? null,
+          commission: moneyAmount(close.commission, 2) ?? null,
           comment: comment || null,
           magic: null,
           opened_at: isoTime(close.offsetTimestamp ?? close.entryTimestamp),
@@ -804,4 +806,69 @@ export async function ctraderAccountTrades(args: {
   } finally {
     socket.close()
   }
+}
+
+/**
+ * True when a closed cTrader row has a ticket but is missing stop levels —
+ * the exact rows the stored-stops join can repair. Shared by the enrichment
+ * caller (to avoid a pointless query) and the joiner itself, so the two
+ * cannot drift apart.
+ */
+export function needsStopEnrichment(
+  row: Pick<CtraderTradeRow, "status" | "ticket" | "sl" | "tp">,
+): boolean {
+  return row.status === "closed" && row.ticket > 0 && (row.sl == null || row.tp == null)
+}
+
+/**
+ * Join stored stop levels onto closed cTrader rows, in place.
+ *
+ * Closed rows are built from deal records, which carry no SL/TP — a deal
+ * records the fill, not the protection the position held while it was open —
+ * so the reader hardcodes `sl: null, tp: null` for them and the Trades page
+ * displayed "—" on every closed Spotware trade (2026-11-03), even though the
+ * broker positions had been protected the whole time (proven by the mirror
+ * mappings, which record the stops read back from the live position).
+ *
+ * The stops live on the stored `trades` row (written by the executor at send
+ * time), keyed by broker account + ticket. Only null gaps are filled: open
+ * rows keep their broker-sourced values, an existing value is never
+ * overwritten, and a stored 0 or null stop counts as "no stop". Returns the
+ * number of rows enriched.
+ */
+export function applyStoredStopLevels(
+  rows: CtraderTradeRow[],
+  stored: Array<{ broker_account_id: string; metaapi_order_id: string | null; sl: unknown; tp: unknown }>,
+): number {
+  const parseStop = (value: unknown): number | null => {
+    if (value == null || value === "") return null
+    const n = Number(value)
+    return Number.isFinite(n) && n > 0 ? n : null
+  }
+  const stopsByBrokerTicket = new Map<string, { sl: number | null; tp: number | null }>()
+  for (const row of stored) {
+    const ticket = String(row.metaapi_order_id ?? "").trim()
+    if (!ticket || !row.broker_account_id) continue
+    stopsByBrokerTicket.set(`${row.broker_account_id}:${ticket}`, {
+      sl: parseStop(row.sl),
+      tp: parseStop(row.tp),
+    })
+  }
+  let enriched = 0
+  for (const row of rows) {
+    if (!needsStopEnrichment(row)) continue
+    const stops = stopsByBrokerTicket.get(`${row.broker_id}:${row.ticket}`)
+    if (!stops) continue
+    let touched = false
+    if (row.sl == null && stops.sl != null) {
+      row.sl = stops.sl
+      touched = true
+    }
+    if (row.tp == null && stops.tp != null) {
+      row.tp = stops.tp
+      touched = true
+    }
+    if (touched) enriched += 1
+  }
+  return enriched
 }
