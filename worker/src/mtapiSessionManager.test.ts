@@ -770,3 +770,47 @@ test('a permanent rejection still moves the account to error straight away', asy
   assert.equal(stored?.connection_error, 'MTAPI connect failed: invalid login or password')
   assert.equal(stored?.connection_status, 'error')
 })
+
+test('health sweep parks an account whose stored credentials are rejected, so it stops claiming "connected"', async () => {
+  process.env.MTAPI_BASE_URL = 'https://mtapi.test'
+  process.env.MTAPI_SESSION_HEALTH_GAP_MS = '0'
+  const rows = sweepRows(2)
+  const updates: Array<Record<string, unknown>> = []
+  const filters: Array<[string, unknown]> = []
+  const query = {
+    select() { return this },
+    eq(column: string, value: unknown) { filters.push([column, value]); return this },
+    is() { return this },
+    not() { return this },
+    update(patch: Record<string, unknown>) { updates.push(patch); return this },
+    then(resolve: (value: unknown) => unknown) {
+      return Promise.resolve({ data: rows, error: null }).then(resolve)
+    },
+  }
+  const supabase = { from: () => query } as unknown as SupabaseClient
+  const provider = {
+    setRecoveryHandler() {},
+    seedPlatformCache() {},
+    async ensureConnected(id: string) {
+      // broker-0: bridge says the login is wrong; broker-1: bridge merely times out.
+      if (id === 'token-0') throw new MtapiApiError('rejected', 201, 'INVALID_ACCOUNT')
+      throw new MtapiApiError('slow', 504, 'HTTP_504')
+    },
+    async disconnectOrphans() {},
+  } as unknown as MtapiProvider
+
+  const manager = new MtapiSessionManager(supabase, provider)
+  await manager.start()
+  await waitFor(() => updates.length >= 1).catch(() => undefined)
+  manager.stop()
+
+  assert.equal(updates.length, 1, 'only the rejected-credentials account is parked')
+  assert.deepEqual(updates[0], {
+    mtapi_session_id: null,
+    mtapi_status: 'error',
+    connection_status: 'error',
+    connection_error: 'MTAPI connect failed: invalid login or password',
+  })
+  assert.ok(filters.some(([c, v]) => c === 'id' && v === 'broker-0'))
+  assert.ok(filters.some(([c, v]) => c === 'mtapi_session_id' && v === 'token-0'))
+})

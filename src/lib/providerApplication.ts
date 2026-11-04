@@ -148,6 +148,11 @@ export async function updateProviderProfile(client: SupabaseClient, draft: Provi
   if (error) throw rpcError(error, 'Unable to update your provider profile.')
 }
 
+export async function closeProviderProfile(client: SupabaseClient): Promise<void> {
+  const { error } = await client.rpc('close_provider_profile')
+  if (error) throw rpcError(error, 'Unable to close your provider profile.')
+}
+
 // ---------------------------------------------------------------------------
 // Account eligibility (mirrors public.provider_account_ineligibility)
 // ---------------------------------------------------------------------------

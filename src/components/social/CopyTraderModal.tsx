@@ -22,8 +22,6 @@ import { supabase } from '../../lib/supabase'
 import { isSocialDestinationEligible, maskBrokerAccountIdentifier, resolveSocialAccountMode } from '../../lib/socialAccount'
 import { eligibilityDiagnosticForReason } from '../../lib/socialEligibility'
 import { AccountModeBadge } from './AccountModeBadge'
-import { SocialEligibilityDiagnostics } from './SocialEligibilityDiagnostics'
-
 const MULTIPLIERS = [0.25, 0.5, 0.75, 1, 1.5, 2] as const
 
 function AccountLogo({ platform }: { platform: string }) {
@@ -77,7 +75,6 @@ export function CopyTraderModal({
   const { brokers, loading } = useBrokerAccounts()
   const { formatMoney } = useFormatMoney()
   const [selectedBrokerId, setSelectedBrokerId] = useState('')
-  const [selectedSourceId, setSelectedSourceId] = useState('')
   const [riskMode, setRiskMode] = useState<SocialCopyRiskMode>(() => trader.syntheticDemo ? 'fixed_lot' : 'proportional')
   const [fixedLot, setFixedLot] = useState(0.1)
   const [multiplier, setMultiplier] = useState(0.75)
@@ -115,9 +112,13 @@ export function CopyTraderModal({
     isSynthetic: trader.syntheticDemo === true,
   }] : []
   const selectedBroker = destinations.find(broker => broker.id === selectedBrokerId) ?? null
-  const selectedSource = sources.find(source => source.sourceId === selectedSourceId) ?? null
-  const selectedSourceUsesLoadedPerformance = selectedSource?.sourceId === trader.sourceId
-  const previewTrade = selectedSourceUsesLoadedPerformance ? trader.openTrades[0] ?? null : null
+  // Always use the provider's registered copy account — no source picker in this modal.
+  const selectedSource = (
+    sources.find(source => source.isCopyEligible && source.sourceId === trader.sourceId)
+    ?? sources.find(source => source.isCopyEligible)
+    ?? null
+  )
+  const previewTrade = selectedSource?.sourceId === trader.sourceId ? trader.openTrades[0] ?? null : null
   const isSyntheticSimulation = selectedSource?.isSynthetic === true
   const destinationMode = selectedBroker ? resolveSocialAccountMode(selectedBroker) : 'unknown'
   const destinationBalance = selectedBroker ? resolveBrokerTotalBalance(selectedBroker) : null
@@ -284,32 +285,9 @@ export function CopyTraderModal({
         <div className="overflow-y-auto px-5 py-4 sm:px-6">
           <div className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
             <div className="space-y-4">
-              <section aria-labelledby="copy-source-heading">
-                <h3 id="copy-source-heading" className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Provider source account</h3>
-                <select
-                  value={selectedSourceId}
-                  onChange={event => setSelectedSourceId(event.target.value)}
-                  className="mt-2 block w-full rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50"
-                >
-                  <option value="" disabled>Select an eligible source account</option>
-                  {sources.map(source => (
-                    <option key={source.sourceId} value={source.sourceId} disabled={!source.isCopyEligible}>
-                      {source.label} / {source.platform} / {source.accountHint} / {source.accountMode.toUpperCase()} / {source.isCopyEligible ? 'Eligible' : 'Unavailable'}
-                    </option>
-                  ))}
-                </select>
-                {!selectedSource ? <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">Select an eligible provider source. No account is selected automatically.</p> : (
-                  <div className="mt-2 space-y-2">
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-600 dark:text-neutral-300">
-                      <AccountModeBadge mode={selectedSource.accountMode} />
-                      <span>{selectedSource.label}</span>
-                      <span>{selectedSource.accountHint}</span>
-                    </div>
-                    <SocialEligibilityDiagnostics diagnostics={selectedSource.eligibilityDiagnostics} />
-                  </div>
-                )}
-              </section>
-
+              {!selectedSource ? (
+                <Alert variant="warning">This provider has no eligible copy account available right now.</Alert>
+              ) : null}
               <section aria-labelledby="copy-destination-heading">
                 <h3 id="copy-destination-heading" className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{c.destinationAccount}</h3>
                 {loading ? (

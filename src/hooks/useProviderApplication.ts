@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import {
+  closeProviderProfile,
   emptyProviderDraft,
   fetchMyProviderApplication,
   saveProviderDraft,
@@ -134,8 +135,24 @@ export function useProviderApplication() {
     }
   }, [load])
 
+  const closeProfile = useCallback(async () => {
+    setSubmitting(true)
+    setSaveError(null)
+    try {
+      await closeProviderProfile(supabase)
+      dirtyRef.current = false
+      setSaveState('idle')
+      // Caller navigates away; do not reload into the apply wizard on this page.
+    } catch (cause) {
+      setSaveError(message(cause, 'Unable to close your provider profile.'))
+      throw cause
+    } finally {
+      setSubmitting(false)
+    }
+  }, [])
+
   return {
     application, draft, setDraft, loading, loadError, reload: load,
-    editable, saveState, saveError, flush, submit, submitting, updateApproved,
+    editable, saveState, saveError, flush, submit, submitting, updateApproved, closeProfile,
   }
 }
