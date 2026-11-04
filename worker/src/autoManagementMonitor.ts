@@ -12,7 +12,7 @@ import {
   type AutoBeMode,
   type AutoBeType,
 } from './autoManagement'
-import { isUnresolvableFailure } from './failureClassification'
+import { isLivePositionAbsentReason, isUnresolvableFailure } from './failureClassification'
 import { pipCalculator, pipValueForLots } from './pipCalculator'
 import { signalPipPrice } from './signalPip'
 import {
@@ -565,6 +565,40 @@ export class AutoManagementMonitor {
         openedOrders: brokerOrders ?? undefined,
       })
       if (resolution.status !== 'resolved') {
+        // The row's own position is not in the live snapshot (its stored
+        // ticket matched nothing; identical siblings are why attribute
+        // matching refuses). There is nothing to modify and a retry cannot
+        // change the snapshot — defer to reconciliation, which confirms
+        // closure with two snapshots + closed-history proof before closing
+        // the row. Recording this as a failed modification produced
+        // customer-facing "could not move stop loss" entries for positions
+        // that had already exited (2026-11-03, Luis, star fx trade legs).
+        if (isLivePositionAbsentReason(resolution.reason)) {
+          this.failureClassByTrade.set(trade.id, 'unresolvable')
+          console.warn(
+            `[autoManagementMonitor] position not in live snapshot trade=${trade.id}`
+            + ` ticket=${ticketNum} (${resolution.reason}) — deferring to reconciliation`,
+          )
+          const deferNow = Date.now()
+          if (deferNow >= (this.failureLogCooldownUntil.get(trade.id) ?? 0)) {
+            this.failureLogCooldownUntil.set(trade.id, deferNow + FAILURE_LOG_THROTTLE_MS)
+            await writeExecutionLog(this.supabase, {
+              user_id: trade.user_id,
+              signal_id: trade.signal_id,
+              broker_account_id: trade.broker_account_id,
+              action: 'auto_be',
+              status: 'skipped',
+              request_payload: { ticket: ticketNum, symbol: trade.symbol, mode },
+              response_payload: {
+                identity: { status: resolution.status, reason: resolution.reason },
+              },
+              error_message:
+                `position not in live snapshot (${resolution.reason})`
+                + ' — nothing to modify; awaiting reconciliation closure',
+            })
+          }
+          return false
+        }
         throw new Error(`automatic management reconciliation required: ${resolution.reason}`)
       }
       const effectiveTicket = resolution.ticket

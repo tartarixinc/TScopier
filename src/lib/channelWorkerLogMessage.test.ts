@@ -864,3 +864,31 @@ test('channelWorkerLogMessage: keeps the generic plan-fallback wording for other
   assert.ok(message)
   assert.match(message!, /Adjusted the order plan for XAUUSD/)
 })
+
+test('channelWorkerLogMessage: auto_be skipped shows neutral skipped phrasing, not the failure sentence', () => {
+  const message = channelWorkerLogMessage(
+    {
+      action: 'auto_be',
+      status: 'skipped',
+      request_payload: { ticket: 2056709464, symbol: 'XAUUSD' },
+      response_payload: null,
+      error_message:
+        'position not in live snapshot (attributes match multiple live positions)'
+        + ' — nothing to modify; awaiting reconciliation closure',
+      signals: {
+        channel_id: 'ch-1',
+        // Production shape: auto_be rows carry the ENTRY signal (buy/sell),
+        // which routes past the generic mgmt_* branch into the auto_be one.
+        parsed_data: { action: 'buy', symbol: 'XAUUSD' },
+        status: 'executed',
+      },
+    },
+    channelWorkerEn,
+    { 'ch-1': 'star fx trade' },
+  )
+  assert.ok(message)
+  // The customer-facing sentence from the 2026-11-03 incident must not appear.
+  assert.doesNotMatch(message!, /could not move stop loss/i)
+  // The neutral skipped sentence for the specific instrument.
+  assert.match(message!, /Skipped the XAUUSD update/i)
+})
