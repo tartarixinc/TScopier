@@ -12,7 +12,7 @@ type PlatformTile = {
   name: string
   logo: string
   asset: AssetClass
-  /** Set when a connection flow exists. Tiles without one render as coming soon. */
+  /** Set when the user may start this platform's connection flow from this picker. Tiles without one render as coming soon. */
   platform?: TradingPlatform
 }
 
@@ -20,12 +20,14 @@ const PLATFORM_TILES: readonly PlatformTile[] = [
   { id: 'mt5', name: 'MT5', logo: '/MT5.png', asset: 'forex', platform: 'MT5' },
   { id: 'mt4', name: 'MT4', logo: '/MT4.png', asset: 'forex', platform: 'MT4' },
   { id: 'ctrader', name: 'cTrader', logo: '/cTrader.png', asset: 'forex', platform: 'cTrader' },
-  { id: 'binance', name: 'Binance USD-M', logo: '/Binance.png', asset: 'crypto', platform: 'Binance' },
-  { id: 'bybit', name: 'Bybit Linear', logo: '/Bybit.png', asset: 'crypto', platform: 'Bybit' },
-  { id: 'kucoin', name: 'KuCoin Futures', logo: '/Kucoin.png', asset: 'crypto', platform: 'KuCoin' },
-  { id: 'dxtrade', name: 'DX-Trade', logo: '/DX-trade.png', asset: 'forex', platform: 'DXtrade' },
-  { id: 'tradelocker', name: 'TradeLocker', logo: '/Trade_locker.png', asset: 'forex', platform: 'TradeLocker' },
-  { id: 'matchtrader', name: 'MatchTrader', logo: '/Match-Trader.png', asset: 'forex', platform: 'MatchTrader' },
+  // Only MT5/MT4/cTrader have a connection flow users may start today; the rest
+  // render disabled with the "Coming Soon" badge (tile.platform unset).
+  { id: 'binance', name: 'Binance USD-M', logo: '/Binance.png', asset: 'crypto' },
+  { id: 'bybit', name: 'Bybit Linear', logo: '/Bybit.png', asset: 'crypto' },
+  { id: 'kucoin', name: 'KuCoin Futures', logo: '/Kucoin.png', asset: 'crypto' },
+  { id: 'dxtrade', name: 'DX-Trade', logo: '/DX-trade.png', asset: 'forex' },
+  { id: 'tradelocker', name: 'TradeLocker', logo: '/Trade_locker.png', asset: 'forex' },
+  { id: 'matchtrader', name: 'MatchTrader', logo: '/Match-Trader.png', asset: 'forex' },
   { id: 'tradovate', name: 'Tradovate', logo: '/Tradovate.png', asset: 'futures' },
 ]
 
