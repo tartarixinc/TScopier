@@ -72,6 +72,9 @@ export function classifyBrokerConnectError(
   if (!message) return 'unknown'
   if (/throttl|rate limit|too many requests|expected available in/i.test(message)) return 'rate_limited'
   if (INVESTOR.test(combined)) return 'investor_password'
+  // The bridge's catch-all "invalid login or password" (worker text for INVALID_ACCOUNT). The login and
+  // server are stored, so the thing a customer can actually fix is the password.
+  if (/invalid login or password/i.test(message)) return 'wrong_password'
   if (WRONG_PASSWORD.test(combined)) return 'wrong_password'
   if (isMtBridgeGlitchMessage(message)) return 'session_expired'
   if (WRONG_LOGIN.test(combined)) return 'wrong_login'

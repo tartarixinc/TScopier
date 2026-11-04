@@ -93,7 +93,7 @@ export async function fetchProviderPublicProfile(client: SupabaseClient, slug: s
 }
 
 // ---------------------------------------------------------------------------
-// Public performance + trade history (anon-readable, gated by share_trade_history)
+// Public performance + trade history (anon-readable; approved providers are always shared)
 // ---------------------------------------------------------------------------
 
 export type ProviderPublicMonth = { month: string; profit: number; trades: number }

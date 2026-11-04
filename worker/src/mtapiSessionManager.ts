@@ -349,7 +349,34 @@ export class MtapiSessionManager {
       const detail = mtapiFailureDetail(code)
       console.warn('[mtapiSession] health recovery failed broker=' + row.id + ' code=' + code
         + (detail ? ' detail=' + detail : ''))
+      if (code === 'INVALID_ACCOUNT') await this.parkRejectedCredentials(row, sessionId, code)
     }
+  }
+
+  /**
+   * The bridge session is gone AND the stored login/password was rejected on
+   * reconnect (typically an expired demo account or a changed password). Left
+   * alone the row keeps claiming `connected` with a dead session id, which makes
+   * every live trades read fail and shows customers a broker-outage banner that
+   * no retry can clear. Park it as `error` with a plain-English reason so the UI
+   * asks for a reconnect. Guarded by the session id so a concurrent successful
+   * recovery is never overwritten. Only INVALID_ACCOUNT lands here; transient
+   * bridge failures must keep their session (see TRANSIENT_PROVISION_CODES).
+   */
+  private async parkRejectedCredentials(row: MtapiSessionRow, sessionId: string, code: string): Promise<void> {
+    const { error } = await this.supabase
+      .from('broker_accounts')
+      .update({
+        mtapi_session_id: null,
+        mtapi_status: 'error',
+        connection_status: 'error',
+        connection_error: 'MTAPI connect failed: ' + mtapiFailureSummary(code),
+      })
+      .eq('id', row.id)
+      .eq('provider', 'mtapi')
+      .eq('mtapi_session_id', sessionId)
+    if (error) console.warn('[mtapiSession] could not park rejected credentials broker=' + row.id)
+    else console.warn('[mtapiSession] parked broker=' + row.id + ' reason=credentials_rejected')
   }
 
   private async sweep(rows?: MtapiSessionRow[]): Promise<void> {

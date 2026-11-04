@@ -5,6 +5,7 @@ import type { FxsocketStreamSubscribeFrame } from './fxsocketStreamTypes'
 import { classifyBrokerConnectError } from './brokerConnectError'
 import { resolveProvider } from './brokerLink'
 import { isBrokerDownDemo } from './demoOutage'
+import { friendlyBrokerDeleteError } from './brokerDeleteError'
 import { reportLiveFeedFailure } from './liveFeedStatus'
 
 const FXSOCKET_EDGE_TIMEOUT_MS = 120_000
@@ -527,10 +528,15 @@ export const fxsocketBroker = {
   },
 
   delete(accountId: string, provider?: BrokerEdgeProvider): Promise<void> {
-    return call({
+    return call<void>({
       body: { action: 'delete', account_id: accountId },
       edgeFn: brokerEdgeFn(provider),
       expect: () => undefined,
+    }).catch((cause: unknown) => {
+      // A blocked delete arrives as a raw database constraint error; say what to do instead.
+      if (!(cause instanceof Error)) throw cause
+      const friendly = friendlyBrokerDeleteError(cause.message)
+      throw friendly === cause.message ? cause : new Error(friendly)
     })
   },
 
