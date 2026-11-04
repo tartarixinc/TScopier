@@ -40,7 +40,7 @@ function UpdateCard({ update, t }: { update: PlatformUpdate; t: ReturnType<typeo
           <h3 className="mt-1.5 text-sm font-semibold text-neutral-900 dark:text-neutral-100">
             {update.title}
           </h3>
-          <p className="mt-1 text-sm leading-relaxed text-neutral-900 dark:text-neutral-50">
+          <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-neutral-900 dark:text-neutral-50">
             {update.description}
           </p>
         </div>
