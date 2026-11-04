@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { CheckCircle2, Clock, Plus, XCircle } from 'lucide-react'
 import clsx from 'clsx'
 import { PageHeader } from '../../components/layout/PageHeader'
@@ -12,6 +12,7 @@ import { Button } from '../../components/ui/Button'
 import { useAuth } from '../../context/AuthContext'
 import { useAddTradingAccount } from '../../context/AddTradingAccountContext'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
+import { useConfirm } from '../../context/ConfirmDialogContext'
 import { useUserProfile } from '../../context/UserProfileContext'
 import { useProviderApplication } from '../../hooks/useProviderApplication'
 import { useOwnTradeHistorySharing } from '../../hooks/useOwnTradeHistorySharing'
@@ -397,14 +398,16 @@ function ReviewStep({
 }
 
 function StatusScreen({
-  status, rejectionReason, slug, name, onEdit, children,
+  status, rejectionReason, slug, name, onEdit, onCloseProfile, closing, closeError,
 }: {
   status: 'pending' | 'approved' | 'rejected' | 'suspended'
   rejectionReason: string | null
   slug: string | null
   name: string
   onEdit?: () => void
-  children?: ReactNode
+  onCloseProfile?: () => void
+  closing?: boolean
+  closeError?: string | null
 }) {
   const content = {
     pending: { icon: Clock, tone: 'text-amber-600', title: 'Application under review', body: 'An administrator is reviewing your application. You will get a notification as soon as it is decided.' },
@@ -427,7 +430,18 @@ function StatusScreen({
         </div>
       </div>
       {status === 'approved' && slug && <ProviderShareCard slug={slug} name={name} shareTradeHistory={sharing} manageHref={userId ? `/social-trading/${userId}` : undefined} />}
-      {children}
+      {status === 'approved' && onCloseProfile ? (
+        <div className="rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
+          <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Close provider profile</h3>
+          <p className="mt-1 text-sm text-neutral-700 dark:text-neutral-300">
+            Remove yourself from the Providers directory. Copying stops, your public profile goes offline, and you can apply again later.
+          </p>
+          {closeError ? <Alert className="mt-3" variant="error">{closeError}</Alert> : null}
+          <Button className="mt-3" size="sm" variant="danger" loading={closing} onClick={onCloseProfile}>
+            Close provider profile
+          </Button>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -436,6 +450,8 @@ export function ProviderApplyPage() {
   const app = useProviderApplication()
   const { brokers } = useBrokerAccounts()
   const { profile } = useUserProfile()
+  const confirm = useConfirm()
+  const navigate = useNavigate()
   const [step, setStep] = useState<ProviderStep>(1)
   const [accepted, setAccepted] = useState(false)
   const [stepError, setStepError] = useState<string | null>(null)
@@ -445,6 +461,20 @@ export function ProviderApplyPage() {
   const account = brokers.find(item => item.id === app.draft.brokerAccountId) ?? null
   const displayName = profile.display_name?.trim() || profile.username?.trim() || 'Provider'
   const status = app.application?.status ?? null
+
+  const requestCloseProfile = () => {
+    void confirm({
+      title: 'Close provider profile?',
+      body: 'You will leave the Providers directory. People copying you will stop receiving new trades, and your public profile will go offline. You can apply again later.',
+      confirmLabel: 'Close provider profile',
+      tone: 'danger',
+      busyLabel: 'Closing…',
+      onConfirm: async () => {
+        await app.closeProfile()
+        navigate('/social-trading', { replace: true })
+      },
+    })
+  }
 
   const goNext = async () => {
     const problem = validateProviderStep(step, app.draft, account)
@@ -497,6 +527,9 @@ export function ProviderApplyPage() {
         slug={app.application?.slug ?? null}
         name={displayName}
         onEdit={status === 'approved' ? () => setEditingApproved(true) : status === 'rejected' ? () => { setForceWizard(true); setStep(1) } : undefined}
+        onCloseProfile={status === 'approved' ? requestCloseProfile : undefined}
+        closing={status === 'approved' ? app.submitting : false}
+        closeError={status === 'approved' ? app.saveError : null}
       />
     )
   } else {
@@ -534,7 +567,7 @@ export function ProviderApplyPage() {
   return (
     <PageShell maxWidth="xl">
       <PageHeader
-        title="Become a provider"
+        title={status === 'approved' ? 'Manage provider' : 'Become a provider'}
         actions={<Link to="/social-trading" className="text-sm font-medium text-green-700 hover:underline dark:text-green-400">Back to Social Trading</Link>}
       />
       <div className="mt-6 max-w-4xl">{body}</div>
