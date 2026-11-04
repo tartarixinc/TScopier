@@ -414,7 +414,14 @@ export class CtraderProvider implements BrokerProvider {
       { ctidTraderAccountId: accountNumber(id), symbolId: [info.symbolId] },
       [CTRADER_PAYLOAD.SPOT_EVENT],
       5_000,
-      payload => finite(payload.bid) != null && finite(payload.ask) != null,
+      // Spot events carry no clientMsgId, so the session matches them to this
+      // waiter by type + accept only. Every subscribed symbol on the account
+      // pushes spots on the same socket: without the symbolId guard the first
+      // event to arrive (e.g. BTCUSD on an account holding BTC) satisfies a
+      // bare bid/ask check and resolves the quote with the WRONG price. That
+      // fed ref_price=77288.04 into a GBPUSD partial-TP check (2026-11-03).
+      payload => finite(payload.bid) != null && finite(payload.ask) != null
+        && Number(payload.symbolId) === info.symbolId,
     )
     const bid = finite(spot.bid)
     const ask = finite(spot.ask)
