@@ -25,6 +25,7 @@ import { useHasHighImpactNewsToday } from '../../hooks/useHasHighImpactNewsToday
 import { useNeedsWelcome } from '../../hooks/useNeedsWelcome'
 import { CopierLogToasts } from '../dashboard/CopierLogToasts'
 import { consumePostAuthRedirect } from '../../lib/postAuthRedirect'
+import { buildFlags } from '../../lib/featureFlags'
 
 type NavItem = {
   to: string
@@ -117,7 +118,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
           { to: '/dashboard', label: t.nav.items.dashboard },
           { to: '/brokers', label: t.nav.items.brokers },
           { to: '/mirror-trading', label: t.nav.items.mirrorTrading },
-          { to: '/social-trading', label: t.nav.items.socialTrading },
+          ...(buildFlags.hideSocialTrading ? [] : [{ to: '/social-trading', label: t.nav.items.socialTrading }]),
           // Configurations menu hidden for now.
           // { to: '/configurations', label: t.nav.items.configuration },
           { to: '/account-trades', label: t.nav.items.trades, showOpenTradesIndicator: true },

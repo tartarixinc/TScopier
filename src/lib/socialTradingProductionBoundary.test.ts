@@ -206,7 +206,9 @@ test("the public provider page reads only the slug-gated public RPCs and carries
 
 test("the marketing host serves /p/:slug and hands auth off to the app with a next path", () => {
   const marketing = readFileSync(new URL("../MarketingApp.tsx", import.meta.url), "utf8");
-  assert.match(marketing, /path="\/p\/:slug" element=\{<ProviderPublicProfilePage \/>\}/);
+  assert.match(marketing, /path="\/p\/:slug"/);
+  assert.match(marketing, /buildFlags\.hideSocialTrading/);
+  assert.match(marketing, /<ProviderPublicProfilePage \/>/);
   const publicPage = readFileSync(new URL("../pages/social/ProviderPublicProfilePage.tsx", import.meta.url), "utf8");
   assert.match(publicPage, /withQuery\(appUrl\(path\), \{ next: landing \}\)/);
   for (const file of ["AuthPage", "SignupPage"]) {
