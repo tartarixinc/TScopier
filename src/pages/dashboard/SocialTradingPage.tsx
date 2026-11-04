@@ -319,10 +319,7 @@ export function SocialTradingPage() {
                             <CopyActionButton
                               disabled={!canOpenCopyTrader(trader)}
                               disabledReason={copyTraderUnavailableReason(trader) ?? undefined}
-                              copyLabel={copyTraderActionLabel(trader.monthlyCopyPriceCents, formatMoney, {
-                                free: copy.copySetup.action,
-                                paid: copy.copyForAmount,
-                              })}
+                              copyLabel="Copy"
                               onOpenSetup={() => setSetupTrader(trader)}
                             />
                           )}
@@ -463,7 +460,9 @@ function CopyActionButton({
     >
       {copyLabel}
     </Button>
-    <p className={'max-w-64 text-right text-xs leading-4 text-neutral-500'} role={'status'}>{disabledReason}</p>
+    {disabledReason ? (
+      <p className={'max-w-64 text-right text-xs leading-4 text-neutral-500'} role={'status'}>{disabledReason}</p>
+    ) : null}
     </div>
   )
 }

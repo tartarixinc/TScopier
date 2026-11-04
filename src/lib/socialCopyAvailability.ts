@@ -23,6 +23,8 @@ export function canOpenCopyTrader(trader: SocialTrader): boolean {
 
 export function copyTraderUnavailableReason(trader: SocialTrader): string | null {
   if (canOpenCopyTrader(trader)) return null
+  // Preview traders start with empty sources before hydration — do not flash source_missing.
+  if (trader.performanceStatusReason === 'not_loaded') return null
   if (!trader.sourceId && !trader.sources?.length) return trader.performanceError ?? ELIGIBILITY_REASONS.source_missing
   if (trader.syntheticDemo) return trader.sources?.[0]?.eligibilityReason === 'synthetic_preview_disabled'
     ? 'Synthetic participation is disabled for this environment.'

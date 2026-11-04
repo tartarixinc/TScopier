@@ -37,6 +37,14 @@ test('copy setup uses the provider registered source without a source picker', (
   assert.match(modal, /disabled=\{disabled\}/)
 })
 
+test('copy setup paywall unlocks Start copying after subscribe for paid providers only', () => {
+  assert.match(modal, /subscribeSocialCopyIntent/)
+  assert.match(modal, /confirmPaywallSubscribe/)
+  assert.match(modal, /showPaywall \?/)
+  assert.match(modal, /c\.startCopying/)
+  assert.match(modal, /setPaywallCleared\(true\)/)
+})
+
 test('multi-account sharing preserves authorization and pauses subscriptions on revocation', () => {
   assert.match(migration, /drop index if exists public\.social_copy_sources_one_published_per_trader_idx/)
   assert.match(migration, /b\.id = p_broker_account_id and b\.user_id = v_actor/)

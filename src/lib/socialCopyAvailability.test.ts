@@ -36,4 +36,19 @@ describe('copy trader availability', () => {
     expect(canOpenCopyTrader(trader)).toBe(false)
     expect(copyTraderUnavailableReason(trader)).toBe('The trader history is incomplete.')
   })
+
+  it('does not flash source_missing while trader sources are still loading', () => {
+    expect(baseTrader).toBeDefined()
+    const trader = {
+      ...baseTrader!,
+      sourceId: null,
+      sources: [],
+      copyEligible: false,
+      copyEligibilityReason: 'source_missing',
+      performanceStatusReason: 'not_loaded',
+      performanceError: null,
+    }
+    expect(canOpenCopyTrader(trader)).toBe(false)
+    expect(copyTraderUnavailableReason(trader)).toBeNull()
+  })
 })

@@ -1276,6 +1276,10 @@ export interface SocialTradingPageTranslations {
     successBody: string
     done: string
     close: string
+    paywallTitle: string
+    paywallBody: string
+    paywallSubscribe: string
+    paywallPendingNote: string
   }
 }
 

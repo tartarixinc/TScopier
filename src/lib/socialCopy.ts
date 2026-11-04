@@ -191,6 +191,15 @@ export async function createSocialCopySubscription(client: SupabaseClient, input
   return String(data)
 }
 
+/** Records a pending wallet ledger row for a paid provider copy (UI paywall). No charge yet. */
+export async function subscribeSocialCopyIntent(client: SupabaseClient, providerUserId: string): Promise<string> {
+  const { data, error } = await client.rpc('subscribe_social_copy_intent', {
+    p_provider_user_id: providerUserId,
+  })
+  if (error) throw failure(error)
+  return String(data)
+}
+
 export async function changeSocialCopySubscription(client: SupabaseClient, id: string, action: 'pause' | 'resume' | 'stop' | 'emergency_stop'): Promise<void> {
   const { error } = await client.rpc('set_social_copy_subscription_status', { p_subscription_id: id, p_action: action })
   if (error) throw failure(error)

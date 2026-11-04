@@ -10,6 +10,7 @@ import {
   fetchSocialTraderLiveCopierCount,
   publishSocialCopySource,
   setSocialCopySourceStatus,
+  subscribeSocialCopyIntent,
 } from './socialCopy'
 import { eligibilityDiagnosticForReason } from './socialEligibility'
 
@@ -108,4 +109,24 @@ test('surfaces backend failures instead of swallowing them', async () => {
     }),
     /private follow required/,
   )
+})
+
+test('records paid-provider copy intent through subscribe_social_copy_intent', async () => {
+  const calls: Array<{ name: string; args: Record<string, unknown> }> = []
+  const client = {
+    rpc: async (name: string, args: Record<string, unknown>) => {
+      calls.push({ name, args })
+      return { data: 'ledger-id', error: null }
+    },
+  } as unknown as SupabaseClient
+  assert.equal(await subscribeSocialCopyIntent(client, 'provider-user'), 'ledger-id')
+  assert.deepEqual(calls[0], {
+    name: 'subscribe_social_copy_intent',
+    args: { p_provider_user_id: 'provider-user' },
+  })
+})
+
+test('surfaces subscribe intent failures instead of unlocking locally', async () => {
+  const client = { rpc: async () => ({ data: null, error: { message: 'This provider is free to copy' } }) } as unknown as SupabaseClient
+  await assert.rejects(subscribeSocialCopyIntent(client, 'provider-user'), /This provider is free to copy/)
 })
