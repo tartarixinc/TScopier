@@ -214,8 +214,7 @@ export function TraderReviews({ traderUserId, traderName, isSelf, averageRating,
       className={clsx('inline-flex items-center rounded-lg text-sm hover:bg-neutral-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400 disabled:cursor-not-allowed disabled:opacity-70 dark:hover:bg-neutral-800', compact ? 'py-0.5' : 'gap-2 px-2 py-1')}
       aria-label={isSelf ? `Read your reviews (rating ${summary.average?.toFixed(1) ?? 'none'})` : `${ownReview ? 'Edit rating for' : 'Rate'} ${traderName}`}>
       <Stars rating={summary.average ?? 0} label={summary.average == null ? 'Not rated' : `${summary.average.toFixed(1)} out of 5`} />
-      {!compact ? <><span>{summary.average == null ? 'No ratings' : summary.average.toFixed(1)} ({summary.count})</span>
-      <span className="font-medium text-teal-700 dark:text-teal-300">{opening ? 'Loading reviews…' : isSelf ? 'Read reviews' : ownReview ? 'Edit review' : 'Rate trader'}</span></> : null}
+      {!compact ? <span>{opening ? 'Loading…' : summary.average == null ? 'No ratings' : `${summary.average.toFixed(1)} (${summary.count})`}</span> : null}
     </button>
   )
 

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { BarChart3, ChevronRight, LineChart, Share2, Wallet, X } from 'lucide-react'
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import clsx from 'clsx'
 import { AccountGrowthChart } from '../../components/dashboard/AccountGrowthChart'
 import { PageHeader } from '../../components/layout/PageHeader'
@@ -32,10 +32,9 @@ import { chartThemeColors, chartTooltipProps } from '../../lib/chartTheme'
 import { AccountKindBadge } from '../../components/social/AccountKindBadge'
 import { platformIconSrc } from '../../lib/activityRoute'
 import { formatAccountAmount, normalizeAccountKind } from '../../lib/providerApplication'
-import { copyPriceOfferLabel } from '../../lib/socialCopyPrice'
+import { copyPriceOfferLabel, normalizeCopyPriceCents } from '../../lib/socialCopyPrice'
 import { canOpenCopyTrader, copyTraderUnavailableReason } from '../../lib/socialCopyAvailability'
 import { consumePostAuthRedirect } from '../../lib/postAuthRedirect'
-import { OwnAccountSelector } from '../../components/social/OwnAccountSelector'
 import { useDefaultOwnSourceAccount } from '../../hooks/useDefaultOwnSourceAccount'
 
 import { resolveUserAvatarUrl } from '../../lib/userAvatar'
@@ -49,6 +48,16 @@ import {
 } from '../../lib/socialTradingFixture'
 
 type SortKey = 'roi' | 'winRate' | 'followers' | 'rating'
+
+function copyTraderActionLabel(
+  cents: number | null | undefined,
+  formatMoney: (dollars: number) => string,
+  labels: { free: string; paid: string },
+): string {
+  const price = cents == null ? 0 : normalizeCopyPriceCents(cents)
+  if (price <= 0) return labels.free
+  return interpolate(labels.paid, { amount: formatMoney(price / 100) })
+}
 type DirectoryView = 'all' | 'followers' | 'following'
 
 function useOwnAvatarUrl(): string | null {
@@ -173,7 +182,6 @@ export function SocialTradingPage() {
     free: copy.priceFree,
     paid: copy.pricePerMonth,
   })
-
   return (
     <>
     <PageShell maxWidth="xl">
@@ -279,7 +287,7 @@ export function SocialTradingPage() {
                             <p className="truncate font-medium text-neutral-900 dark:text-neutral-50">{name}</p>{trader.syntheticDemo ? <span className="ms-2 rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">Synthetic demo</span> : null}
                             {/* The row is a link; keep rating clicks and key presses (and the modal's, which bubble through the portal) from navigating. */}
                             <div onClick={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}>
-                              <TraderReviews traderUserId={trader.id} traderName={trader.displayName} isSelf={trader.isYou} averageRating={trader.rating} reviewCount={trader.ratingCount} />
+                              <TraderReviews traderUserId={trader.id} traderName={trader.displayName} isSelf={trader.isYou} averageRating={trader.rating} reviewCount={trader.ratingCount} compact />
                             </div>
                             <p className="truncate text-xs text-neutral-900 dark:text-neutral-50">
                               #{rank} · {traderAccess === 'open' ? copy.open : copy.private}
@@ -311,7 +319,10 @@ export function SocialTradingPage() {
                             <CopyActionButton
                               disabled={!canOpenCopyTrader(trader)}
                               disabledReason={copyTraderUnavailableReason(trader) ?? undefined}
-                              copyLabel={copy.copySetup.action}
+                              copyLabel={copyTraderActionLabel(trader.monthlyCopyPriceCents, formatMoney, {
+                                free: copy.copySetup.action,
+                                paid: copy.copyForAmount,
+                              })}
                               onOpenSetup={() => setSetupTrader(trader)}
                             />
                           )}
@@ -477,10 +488,8 @@ export function SocialTraderActivityPage() {
   const { traderId } = useParams()
   const social = useSocialTradingPreview()
   const directoryTrader = traderId ? social.traders.find(item => item.id === traderId) : undefined
-  const [pickedOwnAccountId, setSelectedOwnAccountId] = useState('')
-  // Default the "You" page to the published source account so its data shows without picking one first.
-  const defaultOwnAccountId = useDefaultOwnSourceAccount(Boolean(directoryTrader?.isYou))
-  const selectedOwnAccountId = pickedOwnAccountId || defaultOwnAccountId
+  // The "You" page uses the published source account; no account picker on this page.
+  const selectedOwnAccountId = useDefaultOwnSourceAccount(Boolean(directoryTrader?.isYou))
   const ownAccountView = useOwnSocialAccountView(directoryTrader, selectedOwnAccountId)
   const { timezone: ownTimezone } = useUserProfile()
   const rawTrader = ownAccountView.trader
@@ -596,7 +605,10 @@ export function SocialTraderActivityPage() {
               <CopyActionButton
                 disabled={!canOpenCopyTrader(trader)}
                 disabledReason={copyTraderUnavailableReason(trader) ?? undefined}
-                copyLabel={copy.copySetup.action}
+                copyLabel={copyTraderActionLabel(trader.monthlyCopyPriceCents, formatMoney, {
+                  free: copy.copySetup.action,
+                  paid: copy.copyForAmount,
+                })}
                 onOpenSetup={() => setCopyModalOpen(true)}
               />
             )}
@@ -605,14 +617,6 @@ export function SocialTraderActivityPage() {
       </div>
       {shareOpen && ownProvider.slug ? (
         <ShareProfileModal slug={ownProvider.slug} name={trader.displayName} manageHref={`/social-trading/${trader.id}`} onClose={() => setShareOpen(false)} />
-      ) : null}
-      {trader.isYou ? (
-        <OwnAccountSelector
-          selectedAccountId={selectedOwnAccountId}
-          onChange={setSelectedOwnAccountId}
-          loading={ownAccountView.loading}
-          error={ownAccountView.error}
-        />
       ) : null}
       {trader.isYou && access === 'private' ? (
         <Card padding="none" className="overflow-hidden">
@@ -784,7 +788,14 @@ function MonthlyProfitChart({ title, data }: { title: string; data: SocialTrader
             <XAxis dataKey="label" tick={{ fontSize: 11, fill: colors.tick }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 11, fill: colors.tick }} axisLine={false} tickLine={false} tickFormatter={value => formatAxisMoney(Number(value))} width={48} />
             <Tooltip {...chartTooltipProps(colors)} formatter={(value, _name, item) => { const month = item.payload as SocialTraderStats['monthly'][number]; return value == null || month.profit == null ? ['—', 'Performance'] : [formatAxisMoney(Number(value)), month.state === 'no_activity' ? 'Verified no activity' : month.state === 'incomplete' ? 'Partial P/L' : 'P/L'] }} />
-            <Bar dataKey="profit" fill="#4ade80" radius={[4, 4, 0, 0]} maxBarSize={36} />
+            <Bar dataKey="profit" radius={[4, 4, 0, 0]} maxBarSize={36}>
+              {data.map(month => (
+                <Cell
+                  key={month.label}
+                  fill={month.profit == null ? 'transparent' : month.profit >= 0 ? '#4ade80' : '#ef4444'}
+                />
+              ))}
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>}
