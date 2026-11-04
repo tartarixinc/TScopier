@@ -23,6 +23,25 @@ test('brokerSessionUuid falls back to legacy metaapi_account_id', () => {
   )
 })
 
+test('brokerSessionUuid accepts a numeric cTrader account id', () => {
+  assert.equal(
+    brokerSessionUuid({
+      provider: 'ctrader',
+      ctrader_account_id: '4242',
+      metaapi_account_id: '',
+    }),
+    '4242',
+  )
+  assert.equal(
+    brokerHasLinkedSession({
+      provider: 'ctrader',
+      ctrader_account_id: '4242',
+      metaapi_account_id: '',
+    }),
+    true,
+  )
+})
+
 test('brokerHasLinkedSession is false when both session ids are missing', () => {
   assert.equal(
     brokerHasLinkedSession({ fxsocket_account_id: '', metaapi_account_id: '' }),

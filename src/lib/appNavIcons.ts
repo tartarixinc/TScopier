@@ -1,5 +1,6 @@
 import {
   Activity,
+  ArrowLeftRight,
   BookOpen,
   CalendarDays,
   ChartNoAxesCombined,
@@ -17,10 +18,13 @@ import {
   Radio,
   Repeat,
   Settings,
+  Settings2,
   Share2,
   SlidersHorizontal,
+  Wallet,
   Sparkles,
   TrendingUp,
+  Users,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -28,6 +32,9 @@ import {
 export const APP_ROUTE_ICONS: Record<string, LucideIcon> = {
   '/dashboard': LayoutDashboard,
   '/brokers': Landmark,
+  '/mirror-trading': ArrowLeftRight,
+  '/social-trading': Users,
+  '/configurations': Settings2,
   '/account-trades': ChartNoAxesCombined,
   '/activities': Activity,
   '/settings': Settings,
@@ -44,6 +51,7 @@ export const APP_ROUTE_ICONS: Record<string, LucideIcon> = {
   '/feature-request': Lightbulb,
   '/partner-with-us': Handshake,
   '/affiliate-program': Share2,
+  '/wallet': Wallet,
   '/billing': CreditCard,
   '/subscriptions': Repeat,
   '/updates': Sparkles,

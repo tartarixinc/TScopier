@@ -16,8 +16,8 @@ export function ThemeToggle({ className }: ThemeToggleProps) {
       onClick={toggleTheme}
       className={clsx(
         'p-2 rounded-lg transition-colors',
-        'text-neutral-500 hover:text-neutral-800 hover:bg-neutral-100',
-        'dark:text-neutral-400 dark:hover:text-neutral-100 dark:hover:bg-neutral-800',
+        'text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50 hover:bg-neutral-100',
+        'dark:text-neutral-50 dark:hover:text-neutral-100 dark:hover:bg-neutral-800',
         className,
       )}
       aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}

@@ -10,6 +10,7 @@ Telegram allows **exactly one** active connection per `telegram_sessions` auth k
 | `trade-entry-shard-*` | **1** per shard index | Add trade shards (`WORKER_SHARD_ID` + matching `TRADE_WORKER_SHARD_URLS` on listener) |
 | `trade-mgmt-shard-*` | **1** per shard index | Same hash partition as trade entry |
 | `backtest-worker` | 0–2 | Bursty history sync only |
+| `discord-gateway` (`WORKER_ROLE=discord_listener`) | **1** | None — one gateway per bot token; shard settings must stay 1/0 |
 | Monolith (`WORKER_ROLE=all`) | **1** | Early commercial only |
 
 ## Railway services (recommended split)

@@ -51,6 +51,7 @@ import { captureDeferredBusinessFailure } from '../observability/deferredBusines
 import { collapseIdenticalImmediateLegs } from './collapseIdenticalImmediateLegs'
 import { authorityFromBrokerRow, withBrokerWriteAuthority } from '../brokerWriteAuthority'
 import { writeExecutionLog } from '../observability/executionLog'
+import { normalizeBrokerTradeTicket } from '../brokerTradeTicket'
 export { collapseIdenticalImmediateLegs }
 
 /** Normalized broker fill shape shared by the v1 client and the v2 fxClient. */
@@ -178,7 +179,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
   // v2 entries fire PROTECTED-at-send through the strict fxClient (bounded timeout,
   // strict retcode, no blind 3x retries) instead of the old client. One pre-burst
   // OpenedOrders snapshot powers ambiguous-send adoption so retries never duplicate.
-  // MTAPI brokers must never take the FxClient path (FxSocket-only) — isV2 forces v1 for provider=mtapi.
+  // MTAPI and cTrader must never take the FxClient path (FxSocket-only) — isV2 forces v1 for those providers.
   const useV2 = isV2({ brokerAccountId: broker.id, userId: signal.user_id, provider: broker.provider })
   const v2Platform = toMtPlatform(broker.platform)
   const v2Snapshot: FxOpenOrder[] = useV2
@@ -652,12 +653,13 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
           brokerTp: openTp,
         }),
     })
+    const tradeTicket = normalizeBrokerTradeTicket(broker.provider, result.ticket)
     const tradeRowPayload = {
       user_id: signal.user_id,
       signal_id: signal.id,
       telegram_channel_id: signal.channel_id,
       broker_account_id: broker.id,
-      metaapi_order_id: result.ticket != null ? String(result.ticket) : null,
+      metaapi_order_id: tradeTicket,
       symbol: sendArgs.symbol,
       direction: isBuy ? 'buy' : 'sell',
       entry_price: entryPx,
@@ -682,7 +684,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
 
     const persistPostFillDb = async (tradeRowId: string | null) => {
       const isMarketFill = sendArgs.operation === 'Buy' || sendArgs.operation === 'Sell'
-      if (tradeRowId && isMarketFill && result.ticket != null) {
+      if (tradeRowId && isMarketFill && tradeTicket != null) {
         // Record the broker position identity while the fill is fresh. Only a
         // certain resolution is written; the helper stays silent otherwise.
         await captureBrokerPositionIdentity({
@@ -690,7 +692,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
           tradeRowId,
           trade: {
             id: tradeRowId,
-            metaapi_order_id: String(result.ticket),
+            metaapi_order_id: tradeTicket,
             symbol: sendArgs.symbol,
             direction: isBuy ? 'buy' : 'sell',
             lot_size: result.lots ?? sendArgs.volume,

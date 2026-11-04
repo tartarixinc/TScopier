@@ -11,7 +11,7 @@ export const logsRu: LogsBundleTranslations = {
     filterPending: 'В ожидании',
     colStatus: 'Статус',
     colReason: 'Причина',
-    colChannel: 'Канал',
+    colChannel: 'Источник',
     colSymbol: 'Символ',
     colMessage: 'Сообщение',
     colType: 'Тип',

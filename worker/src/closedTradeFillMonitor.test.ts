@@ -1,6 +1,9 @@
 import { describe, it, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { apiForBrokerRow, SkipWarnLedger } from './closedTradeFillMonitor'
+import { COPY_BROKER_COLUMNS, LEGACY_COPY_BROKER_COLUMNS } from './copyShared/copyHelpers'
+import { brokerSessionId } from './mtApiByAccount'
 import {
   resetProviderResolverForTests,
   setFxsocketProviderForTests,
@@ -142,6 +145,71 @@ describe('SkipWarnLedger bound', () => {
       ledger.shouldWarn('b1', 'reason-0'),
       true,
       'after the wrap the oldest reason may warn again — bounded, not leaky',
+    )
+  })
+})
+
+// Regression (incident 2026-11-03): the monitor's private broker select
+// omitted `ctrader_account_id`, so brokerSessionId() resolved an empty
+// session for every cTrader broker, the whole account was skipped each tick,
+// and closed cTrader rows could never be backfilled (profit stayed null while
+// MetaTrader rows from the same signal filled within minutes). The select now
+// uses the shared COPY_BROKER_COLUMNS — the same list the mirror and social
+// monitors load — so the reader and the select cannot drift apart again.
+describe('broker select column coverage', () => {
+  const SESSION_ID_COLUMNS = [
+    'mtapi_session_id',
+    'fxsocket_account_id',
+    'metaapi_account_id',
+    'ctrader_account_id',
+    'binance_account_id',
+    'bybit_account_id',
+    'kucoin_account_id',
+    'dxtrade_account_id',
+    'tradelocker_account_id',
+    'matchtrader_account_id',
+  ]
+
+  it('COPY_BROKER_COLUMNS carries every column brokerSessionId consults', () => {
+    const columns = new Set(COPY_BROKER_COLUMNS.split(','))
+    for (const column of SESSION_ID_COLUMNS) {
+      assert.ok(columns.has(column), `shared select is missing ${column}`)
+    }
+    assert.ok(columns.has('platform'), 'shared select is missing platform')
+    assert.ok(columns.has('writer_epoch'), 'shared select is missing writer_epoch')
+    assert.ok(columns.has('provider_transition_state'), 'shared select is missing provider_transition_state')
+  })
+
+  it('LEGACY_COPY_BROKER_COLUMNS carries the pre-fan-out providers too', () => {
+    const columns = new Set(LEGACY_COPY_BROKER_COLUMNS.split(','))
+    for (const column of ['mtapi_session_id', 'fxsocket_account_id', 'metaapi_account_id', 'ctrader_account_id']) {
+      assert.ok(columns.has(column), `legacy select is missing ${column}`)
+    }
+  })
+
+  it('a row holding only its provider column resolves the session id that the select must deliver', () => {
+    assert.equal(brokerSessionId({ provider: 'ctrader', ctrader_account_id: '49341285' }), '49341285')
+    assert.equal(brokerSessionId({ provider: 'mtapi', mtapi_session_id: 'aaaa-bbbb' }), 'aaaa-bbbb')
+    assert.equal(
+      brokerSessionId({ provider: 'ctrader', mtapi_session_id: 'set', fxsocket_account_id: 'set' }),
+      '',
+      'without the ctrader column the row resolves to an empty session — the incident',
+    )
+  })
+
+  it('the monitor loads brokers through the shared list, with the legacy fallback', () => {
+    const source = readFileSync('src/closedTradeFillMonitor.ts', 'utf8')
+    assert.ok(
+      source.includes('readBrokers(COPY_BROKER_COLUMNS)'),
+      'broker load must use the shared COPY_BROKER_COLUMNS',
+    )
+    assert.ok(
+      source.includes('missingProviderIdColumn'),
+      'a database without the provider columns must fall back to the legacy list',
+    )
+    assert.ok(
+      !source.includes(".select('id,provider,mtapi_session_id"),
+      'a private column list must not come back',
     )
   })
 })

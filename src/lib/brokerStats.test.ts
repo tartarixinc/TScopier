@@ -383,7 +383,7 @@ test('findActiveAttributedSignalTrades uses swap/commission when profit is null'
   assert.equal(active[0]?.pnl, -2)
 })
 
-test('computeBrokerProfitByChannel attributes open legs via TScopier comment slug', () => {
+test('computeBrokerProfitByChannel attributes open legs via UniCopier comment slug', () => {
   const channelId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
   const maps = buildPerformanceChannelLinkMaps([], [], [], [])
   maps.channelNames[channelId] = 'Test Signal Channel'

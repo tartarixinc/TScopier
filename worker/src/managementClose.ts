@@ -54,8 +54,8 @@ export async function closeWithVerification(
   const slippageStep = opts.slippageEscalation ?? 50
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-  let effectiveTicket = ticket
-  let before: unknown[] = []
+  let effectiveTicket: number
+  let before: unknown[]
   try {
     before = await api.openedOrders(uuid)
     const resolved = resolveCanonicalOpenPosition({
@@ -72,8 +72,9 @@ export async function closeWithVerification(
       }
     }
     effectiveTicket = resolved.ticket
-  } catch {
-    return { confirmed: false, reason: 'close pre-readback failed', attempts: 0, ticket, reconciliationRequired: true }
+  } catch (error) {
+    const cause = error instanceof Error ? error.message.trim().slice(0, 160) : ''
+    return { confirmed: false, reason: cause ? `close pre-readback failed: ${cause}` : 'close pre-readback failed', attempts: 0, ticket, reconciliationRequired: true }
   }
 
     const slippage = 20 + (attempt - 1) * slippageStep
@@ -119,6 +120,11 @@ export async function closeWithVerification(
       }
     }
     if (after.length === 0) {
+      // cTrader reconcile is authoritative: closing the only position leaves an
+      // empty book. An empty FxSocket snapshot is still not proof of closure.
+      if (result.state === 'position_closed') {
+        return { confirmed: true, attempts: attempt, ticket: effectiveTicket }
+      }
       // A persistently empty readback. If the account held exactly one position —
       // the one we just resolved and closed — empty is the expected result of a
       // successful close, so confirm it instead of bouncing to reconciliation.

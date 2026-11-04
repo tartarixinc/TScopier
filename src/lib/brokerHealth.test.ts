@@ -45,6 +45,18 @@ describe('brokerTerminalHealthPhase', () => {
     assert.equal(brokerTerminalHealthPhase(broker({ fxsocket_status: 'connecting' })), 'checking')
   })
 
+  it('does not stay in checking once the terminal is healthy', () => {
+    assert.equal(
+      brokerTerminalHealthPhase(broker({
+        connection_status: 'pending',
+        fxsocket_status: 'connecting',
+        terminal_connected: true,
+        trade_allowed: true,
+      })),
+      'healthy',
+    )
+  })
+
   it('returns healthy when terminal is connected and trading allowed', () => {
     assert.equal(
       brokerTerminalHealthPhase(broker({ terminal_connected: true, trade_allowed: true })),

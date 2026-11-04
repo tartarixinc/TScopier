@@ -2,27 +2,55 @@ import { testimonialsAr } from '../../testimonials/ar'
 import type { LandingTranslations } from './types'
 
 export const landingAr: LandingTranslations = {
+  promo: {
+    regionLabel: 'عرض ترويجي',
+    days: 'أيام',
+    hours: 'ساعات',
+    minutes: 'دقائق',
+    seconds: 'ثوانٍ',
+    endsIn: 'ينتهي العرض خلال',
+    couponLabel: 'رمز القسيمة',
+    copyCoupon: 'نسخ رمز القسيمة',
+    copied: 'تم النسخ',
+    dismiss: 'إغلاق العرض',
+  },
   nav: {
     product: 'المنتج',
     features: 'الميزات',
     pricing: 'الأسعار',
     faq: 'الأسئلة الشائعة',
     docs: 'التوثيق',
+    forTraders: 'للمتداولين',
+    forProviders: 'لمزودي الإشارات',
     signIn: 'تسجيل الدخول',
     getStarted: 'إنشاء حساب',
     dashboard: 'لوحة التحكم',
     menuOpen: 'فتح القائمة',
     menuClose: 'إغلاق القائمة',
+    productMenu: {
+      heading: 'المنتجات',
+      signalCopier: { title: 'ناسخ الإشارات', description: 'انسخ إشارات Telegram وWhatsApp وDiscord وTradingView مباشرةً إلى وسيطك.' },
+      socialTrading: { title: 'التداول الاجتماعي', description: 'تصفّح أفضل المتداولين حسب العائد ونسبة الربح ثم انسخهم مجانًا أو باشتراك شهري.' },
+      accountMirroring: { title: 'محاكاة الحسابات', description: 'انسخ صفقات الحساب الرئيسي إلى حساباتك الأخرى في الوقت الفعلي.' },
+      featuredTitle: 'يعمل مع أكثر من 8 منصات',
+      featuredBody: 'MT4 وMT5 وcTrader وBinance وBybit وKuCoin. بدون VPS.',
+      socialPanel: { title: 'انسخ متداولين مُثبتين', body: 'قارن الأداء وتابع المتداولين الذين تثق بهم.' },
+      mirrorPanel: { title: 'حساب رئيسي، حسابات عديدة', body: 'اربط حسابًا رئيسيًا وستتبع كل الحسابات التابعة صفقاته تلقائيًا.' },
+      labels: { roi: 'العائد', winRate: 'نسبة الربح', following: 'تتابعه', copyTrader: 'انسخ المتداول', master: 'رئيسي', slave: 'تابع' },
+      exploreFeatures: 'استعرض كل الميزات',
+      viewPricing: 'عرض الأسعار',
+    },
   },
   hero: {
-    headline: 'إشارات Telegram. تُنسخ تلقائيًا.',
+    headline: 'منصة النسخ رقم 1 لكل متداول فوركس وعملات رقمية',
+    headlinePhrases: [],
     subheadline:
-      'TScopier منصة شاملة لنسخ إشارات Telegram تربط Telegram وتنسخ إشارات التداول مباشرة إلى MT4/MT5 — بلا إعدادات معقدة، بلا EA، وبلا VPS.',
-    socialProof: 'مصنف رقم 1 كناسخ إشارات Telegram سحابي',
-    primaryCta: 'ابدأ تجربتك المجانية لمدة 5 أيام',
-    secondaryCta: 'تسجيل الدخول',
+      'أتمت تداولاتك من Telegram أو WhatsApp أو Discord أو TradingView أو حساب رئيسي إلى أكثر من 8 منصات وساطة في أقل من 50 مللي ثانية. بدون VPS.',
+    socialProof: 'أصبح TScopier.ai الآن UniCopier',
+    primaryCta: 'اختر خطتك',
+    secondaryCta: 'شاهد كيف يعمل',
     imageAlt:
-      'لوحة تحكم TScopier تعرض الرصيد والربح اليومي ونتائج التداول ومخططات نمو الحساب',
+      'لوحة تحكم UniCopier تعرض الرصيد والربح اليومي ونتائج التداول ومخططات نمو الحساب',
     previewUrl: 'app.tscopier.ai/dashboard',
     dashboard: {
       headlineStats: [
@@ -102,6 +130,34 @@ export const landingAr: LandingTranslations = {
       ],
     },
   },
+  integrations: {
+    eyebrow: 'التكاملات',
+    title: 'يعمل مع المنصات الرائدة',
+  },
+  supportedPlatforms: {
+    title: 'منصات الإشارات والتداول المدعومة',
+  },
+  completePicture: {
+    eyebrow: 'الصورة الكاملة',
+    title: 'مصمم لمتداولي النسخ الجادين.',
+    description: 'كل ما تحتاجه لنسخ الإشارات بموثوقية، من أول رسالة حتى الإغلاق النهائي.',
+    cards: [
+      { title: 'مصادر إشارات متعددة', description: 'انسخ الصفقات من مصدر الإشارات الذي يستخدمه مزوّدك بالفعل.' },
+      { title: 'يدعم أكثر من 8 منصات', description: 'يدعم UniCopier كل المنصات الشائعة من الفوركس إلى العملات الرقمية.' },
+      { title: 'تكامل سلس مع TradingView', description: 'ابنِ استراتيجياتك في TradingView واربطها بـ UniCopier عبر Webhook.' },
+      { title: 'ذكاء اصطناعي مدمج', description: 'ذكاؤنا الاصطناعي لا يكتفي بالاقتراح، بل ينفذ إجراءات فعلية ويساعدك في الإعداد ويحلل صفقاتك ويحسّن تجربة نسخ التداول لديك.' },
+    ],
+  },
+  showcase: {
+    eyebrow: 'UniCopier',
+    title: 'صُمم لتقليل تعقيد التداول الحديث ودعم قرارات أذكى',
+    cta: 'اعرف المزيد',
+    cards: [
+      { headline: 'اربط كل حساباتك وحدد قواعدك مرة واحدة.', description: 'اربط حسابات MT4 وMT5 وcTrader وBinance وBybit وKuCoin، ثم اختر حجم اللوت والمخاطرة والأهداف ومصادر الإشارات لكل حساب.' },
+      { headline: 'انسخ الصفقات فورًا من الحساب الرئيسي إلى الحسابات التابعة.', description: 'اختر حسابًا رئيسيًا ودع حساباتك الأخرى تتبعه بلوتات ثابتة أو مضاعفات أو حجم مبني على الرصيد، مع خيارات للحماية.' },
+      { headline: 'تابع أفضل المتداولين وانسخهم ببضع نقرات.', description: 'قارن العائد ونسبة الربح والتقييمات، ثم انسخ المزوّدين مجانًا أو باشتراك شهري، أو شارك أداءك الخاص.' },
+    ],
+  },
   whyChoose: {
     statsCaption: 'يستخدمه متداولون من أشهر مزوّدي إشارات Telegram',
     stats: [
@@ -112,13 +168,13 @@ export const landingAr: LandingTranslations = {
     ],
     eyebrow: 'النسخ الأذكى يبدأ بأدوات أذكى',
     title:
-      'صُمّم كل ميزة في TScopier لتمنحك التحكم والشفافية ونتائج قابلة للقياس.',
+      'أخيرًا، ناسخ إشارات يعمل مع جميع أنواع الإشارات',
     cards: [
       {
         label: 'سرعة التنفيذ',
-        metric: '<150ms',
+        metric: '<50ms',
         metricVariant: 'teal',
-        description: 'زمن استجابة أقل من 150 مللي ثانية من تحليل الإشارة إلى إرسال الوسيط في مسارنا السحابي.',
+        description: 'زمن استجابة أقل من 50 مللي ثانية من تحليل الإشارة إلى إرسال الوسيط في مسارنا السحابي.',
         layout: 'tall',
         icon: 'zap',
       },
@@ -198,6 +254,16 @@ export const landingAr: LandingTranslations = {
       },
     ],
   },
+  providers: {
+    eyebrow: 'لمزوّدي الإشارات',
+    title: 'بِع خدمة إشاراتك مع UniCopier.',
+    description: 'حدّد سعرك، وابنِ مجتمعك، ودع متداولين آخرين ينسخون صفقاتك مقابل اشتراك شهري. تحتفظ بـ 100% من الأرباح.',
+    points: [
+      { title: 'حدّد سعرك', description: 'اطلب اشتراكًا شهريًا أو اعرض النسخ مجانًا.' },
+      { title: 'ابنِ مجتمعك', description: 'اجمع متداولين ينسخونك تلقائيًا.' },
+      { title: 'احتفظ بـ 100%', description: 'كل ما يدفعه لك من ينسخونك هو لك.' },
+    ],
+  },
   features: {
     eyebrow: 'ميزات المنصة',
     title: 'مبني للنسخ الجاد للإشارات',
@@ -208,14 +274,14 @@ export const landingAr: LandingTranslations = {
         eyebrow: 'ناسخ الإشارات',
         title: 'انسخ إشارات Telegram إلى MT4 وMT5 بدقة',
         description:
-          'عكس القنوات الموثوقة على حسابات الوسيط الخاصة بك. يحلل TScopier الدخولات والأرباح والنطاقات وتعليمات الإدارة، ثم ينفّذها بقواعد اللوت وتقسيم الصفقات المتعددة وطبقات النطاق على كل حساب متصل.',
+          'عكس القنوات الموثوقة على حسابات الوسيط الخاصة بك. يحلل UniCopier الدخولات والأرباح والنطاقات وتعليمات الإدارة، ثم ينفّذها بقواعد اللوت وتقسيم الصفقات المتعددة وطبقات النطاق على كل حساب متصل.',
         visual: 'copier',
       },
       {
         eyebrow: 'إشارات متعددة اللغات',
         title: 'يدعم الإشارات بلغات متعددة',
         description:
-          'انسخ القنوات التي تنشر بالإنجليزية والإسبانية والفرنسية والروسية والبولندية واليابانية وغيرها. يتعرّف TScopier على الشراء/البيع وSL وTP وعبارات الإدارة بكل لغة، مع تعلّم لكل قناة لصياغة المزوّد الدقيقة.',
+          'انسخ القنوات التي تنشر بالإنجليزية والإسبانية والفرنسية والروسية والبولندية واليابانية وغيرها. يتعرّف UniCopier على الشراء/البيع وSL وTP وعبارات الإدارة بكل لغة، مع تعلّم لكل قناة لصياغة المزوّد الدقيقة.',
         visual: 'multilingual',
       },
       {
@@ -229,7 +295,7 @@ export const landingAr: LandingTranslations = {
         eyebrow: 'تعديلات الرسائل',
         title: 'تعديل الإشارة من الرسائل المحرّرة',
         description:
-          'عندما يحرّر المزوّد رسالة Telegram لتغيير مستويات وقف الخسارة أو جني الأرباح، يلتقط TScopier تلك النسخة ويحدّث سلة الصفقات المفتوحة لدى الوسيط — بلا دخولات جديدة، فقط مزامنة SL/TP في كل مرحلة.',
+          'عندما يحرّر المزوّد رسالة Telegram لتغيير مستويات وقف الخسارة أو جني الأرباح، يلتقط UniCopier تلك النسخة ويحدّث سلة الصفقات المفتوحة لدى الوسيط — بلا دخولات جديدة، فقط مزامنة SL/TP في كل مرحلة.',
         visual: 'signalEdit',
       },
       {
@@ -259,7 +325,7 @@ export const landingAr: LandingTranslations = {
         telegramLabel: 'قناة الإشارات',
         channelName: 'إشارات الذهب المحترفة',
         channelMeta: '3 إشارات جديدة · الآن',
-        hubLabel: 'TScopier',
+        hubLabel: 'UniCopier',
         mt4Label: 'حساب MT4',
         mt4Meta: 'نسخ · قواعد 0.10 لوت',
         mt5Label: 'حساب MT5',
@@ -555,20 +621,20 @@ export const landingAr: LandingTranslations = {
   faq: {
     eyebrow: 'الأسئلة الشائعة',
     title: 'الأسئلة المتكررة',
-    subtitle: 'إجابات سريعة حول الإعداد والنسخ وما يميّز TScopier.',
+    subtitle: 'إجابات سريعة حول الإعداد والنسخ وما يميّز UniCopier.',
     items: [
       {
         question: 'هل أحتاج لتنزيل EA أو تشغيل VPS؟',
         answer:
-          'لا. TScopier سحابي بالكامل. تسجّل الدخول من المتصفح، تربط Telegram وحسابات MT4/MT5، ويعمل الناسخ على بنيتنا التحتية — بلا تثبيت Expert Advisor ولا VPS يحتاج صيانة.',
+          'لا. UniCopier سحابي بالكامل. تسجّل الدخول من المتصفح، تربط Telegram وحسابات MT4/MT5، ويعمل الناسخ على بنيتنا التحتية — بلا تثبيت Expert Advisor ولا VPS يحتاج صيانة.',
       },
       {
-        question: 'هل يعمل TScopier مع شركات التمويل التي تحظر EA؟',
+        question: 'هل يعمل UniCopier مع شركات التمويل التي تحظر EA؟',
         answer:
-          'نعم. يعمل TScopier بالكامل في السحابة — لا يُثبَّت شيء على منصة MT4/MT5. يمكنك نسخ الإشارات إلى أي حساب شركة تمويل، سواء سُمح بـ Expert Advisors أم لا.',
+          'نعم. يعمل UniCopier بالكامل في السحابة — لا يُثبَّت شيء على منصة MT4/MT5. يمكنك نسخ الإشارات إلى أي حساب شركة تمويل، سواء سُمح بـ Expert Advisors أم لا.',
       },
       {
-        question: 'ما المنصات التي يدعمها TScopier؟',
+        question: 'ما المنصات التي يدعمها UniCopier؟',
         answer:
           'تربط قنوات إشارات Telegram وتنسخها إلى حسابات MetaTrader 4 وMetaTrader 5. اربط عدة وسطاء ووجّه كل قناة إلى الحسابات المختارة.',
       },
@@ -583,9 +649,9 @@ export const landingAr: LandingTranslations = {
           'يمكنك ربط حتى 100 اتصال MT4/MT5 لكل مستخدم حسب خطتك. يمكن ربط كل قناة Telegram بحساب وسيط واحد أو أكثر من صفحة القنوات.',
       },
       {
-        question: 'هل يقرأ TScopier رسائلي الخاصة على Telegram؟',
+        question: 'هل يقرأ UniCopier رسائلي الخاصة على Telegram؟',
         answer:
-          'لا يقرأ TScopier محادثاتك الشخصية. ربط Telegram يمنح الوصول فقط للقنوات والمجموعات التي أنت عضو فيها، ليستقبل الناسخ رسائل الإشارات من المصادر التي أضفتها.',
+          'لا يقرأ UniCopier محادثاتك الشخصية. ربط Telegram يمنح الوصول فقط للقنوات والمجموعات التي أنت عضو فيها، ليستقبل الناسخ رسائل الإشارات من المصادر التي أضفتها.',
       },
       {
         question: 'هل يمكنني اختبار قناة قبل البث الحي؟',
@@ -595,7 +661,7 @@ export const landingAr: LandingTranslations = {
       {
         question: 'هل تدعمون صفقات النطاق والتدرج وإشارات الإدارة؟',
         answer:
-          'نعم. يدعم TScopier الدخولات الفردية والنطاقية وتقسيم اللوت على TP متعددة وتدرج النطاق وإغلاق الدخولات الأسوأ وحركات التعادل والأرباح الجزئية وتعليمات إدارة أخرى — مع فلاتر سماح/تجاهل لكل قناة.',
+          'نعم. يدعم UniCopier الدخولات الفردية والنطاقية وتقسيم اللوت على TP متعددة وتدرج النطاق وإغلاق الدخولات الأسوأ وحركات التعادل والأرباح الجزئية وتعليمات إدارة أخرى — مع فلاتر سماح/تجاهل لكل قناة.',
       },
       {
         question: 'ماذا يشمل الأساسي والمتقدم؟',
@@ -611,10 +677,10 @@ export const landingAr: LandingTranslations = {
   },
   comparison: {
     eyebrow: 'لماذا ينتقل المستثمرون',
-    title: 'ارفع مستواك مع TScopier',
+    title: 'ارفع مستواك مع UniCopier',
     subtitle: 'نساخ Telegram التقليديون مقابل منصة سحابية مبنية للسرعة والشفافية والتوسع.',
     otherLabel: 'نساخ آخرون',
-    tscopierLabel: 'TScopier',
+    tscopierLabel: 'UniCopier',
     cta: 'ابدأ تجربتك المجانية لمدة 5 أيام',
     rows: [
       {
@@ -855,6 +921,6 @@ export const landingAr: LandingTranslations = {
     platforms: 'يعمل مع',
     copyright: '© {year} Tartarix Inc. جميع الحقوق محفوظة.',
     disclaimer:
-      'التداول ينطوي على مخاطر. TScopier أداة نسخ وليس نصيحة مالية.',
+      'التداول ينطوي على مخاطر. UniCopier أداة نسخ وليس نصيحة مالية.',
   },
 }

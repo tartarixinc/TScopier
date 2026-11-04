@@ -2,27 +2,55 @@ import { testimonialsEs } from '../../testimonials/es'
 import type { LandingTranslations } from './types'
 
 export const landingEs: LandingTranslations = {
+  promo: {
+    regionLabel: 'Promoción',
+    days: 'Días',
+    hours: 'Horas',
+    minutes: 'Min',
+    seconds: 'Seg',
+    endsIn: 'La oferta termina en',
+    couponLabel: 'Código de cupón',
+    copyCoupon: 'Copiar código de cupón',
+    copied: 'Copiado',
+    dismiss: 'Cerrar promoción',
+  },
   nav: {
     product: 'Producto',
     features: 'Funciones',
     pricing: 'Precios',
     faq: 'FAQ',
     docs: 'Docs',
+    forTraders: 'Para traders',
+    forProviders: 'Para proveedores',
     signIn: 'Iniciar sesión',
     getStarted: 'Registrarse',
     dashboard: 'Panel',
     menuOpen: 'Abrir menú',
     menuClose: 'Cerrar menú',
+    productMenu: {
+      heading: 'Productos',
+      signalCopier: { title: 'Copiador de señales', description: 'Copia señales de Telegram, WhatsApp, Discord y TradingView directamente a tu bróker.' },
+      socialTrading: { title: 'Trading social', description: 'Explora a los mejores traders por ROI y tasa de acierto y cópialos gratis o por una cuota mensual.' },
+      accountMirroring: { title: 'Replicación de cuentas', description: 'Replica en tiempo real las operaciones de una cuenta maestra en tus otras cuentas.' },
+      featuredTitle: 'Compatible con más de 8 plataformas',
+      featuredBody: 'MT4, MT5, cTrader, Binance, Bybit y KuCoin. Sin VPS.',
+      socialPanel: { title: 'Copia a traders con historial', body: 'Compara el rendimiento y sigue a los traders en los que confías.' },
+      mirrorPanel: { title: 'Una maestra, muchas cuentas', body: 'Conecta una cuenta maestra y cada cuenta esclava sigue sus operaciones automáticamente.' },
+      labels: { roi: 'ROI', winRate: 'Tasa de acierto', following: 'Siguiendo', copyTrader: 'Copiar trader', master: 'Maestra', slave: 'Esclava' },
+      exploreFeatures: 'Ver todas las funciones',
+      viewPricing: 'Ver precios',
+    },
   },
   hero: {
-    headline: 'Señales de Telegram. Copiadas automáticamente.',
+    headline: 'La plataforma de copiado n.º 1 para todo trader de Forex y cripto',
+    headlinePhrases: [],
     subheadline:
-      'TScopier es una plataforma todo en uno para copiar señales de Telegram que conecta tu Telegram y copia señales de trading directamente a MT4/MT5 — sin configuraciones complicadas, sin EA ni VPS.',
-    socialProof: 'Clasificado #1 copiador de señales Telegram en la nube',
-    primaryCta: 'Empieza tu prueba gratuita de 5 días',
-    secondaryCta: 'Iniciar sesión',
+      'Automatiza tus operaciones desde Telegram, WhatsApp, Discord, TradingView o una cuenta maestra a más de 8 plataformas de bróker en menos de 50 ms. Sin VPS.',
+    socialProof: 'TScopier.ai ahora es UniCopier',
+    primaryCta: 'Elige tu plan',
+    secondaryCta: 'Ver cómo funciona',
     imageAlt:
-      'Panel de TScopier con saldo, beneficio diario, resultados de operaciones y gráficos de crecimiento',
+      'Panel de UniCopier con saldo, beneficio diario, resultados de operaciones y gráficos de crecimiento',
     previewUrl: 'app.tscopier.ai/dashboard',
     dashboard: {
       headlineStats: [
@@ -102,6 +130,34 @@ export const landingEs: LandingTranslations = {
       ],
     },
   },
+  integrations: {
+    eyebrow: 'Integraciones',
+    title: 'Compatible con las principales plataformas',
+  },
+  supportedPlatforms: {
+    title: 'Plataformas de señales y trading compatibles',
+  },
+  completePicture: {
+    eyebrow: 'La visión completa',
+    title: 'Hecho para copiadores de trading serios.',
+    description: 'Todo lo que necesitas para copiar señales con fiabilidad, desde el primer mensaje hasta el cierre final.',
+    cards: [
+      { title: 'Múltiples fuentes de señales', description: 'Copia operaciones desde la fuente de señales que tu proveedor ya utiliza.' },
+      { title: 'Compatible con más de 8 plataformas', description: 'UniCopier admite todas las plataformas populares, del Forex a las criptomonedas.' },
+      { title: 'Integración fluida con TradingView', description: 'Crea tus estrategias en TradingView y conéctalas a UniCopier mediante webhook.' },
+      { title: 'IA incluida', description: 'Nuestra IA no solo sugiere: ejecuta acciones reales, te ayuda con la configuración, analiza tus operaciones y mejora tu experiencia de copy trading.' },
+    ],
+  },
+  showcase: {
+    eyebrow: 'UniCopier',
+    title: 'Creado para reducir la complejidad del trading moderno y apoyar mejores decisiones',
+    cta: 'Más información',
+    cards: [
+      { headline: 'Conecta todas tus cuentas y define tus reglas una sola vez.', description: 'Vincula tus cuentas de MT4, MT5, cTrader, Binance, Bybit y KuCoin y elige tamaño de lote, riesgo, objetivos y fuentes de señales para cada una.' },
+      { headline: 'Replica al instante las operaciones de la cuenta maestra en las esclavas.', description: 'Elige una cuenta maestra y deja que tus otras cuentas la sigan con lotes fijos, multiplicadores o tamaño según el saldo, además de opciones de protección.' },
+      { headline: 'Sigue a los mejores traders y cópialos en unos clics.', description: 'Compara ROI, tasa de acierto y valoraciones, y copia a los proveedores gratis o por una cuota mensual, o comparte tu propio rendimiento.' },
+    ],
+  },
   whyChoose: {
     statsCaption: 'Utilizado por traders de los proveedores de señales de Telegram más populares',
     stats: [
@@ -112,13 +168,13 @@ export const landingEs: LandingTranslations = {
     ],
     eyebrow: 'La copia inteligente empieza con herramientas inteligentes',
     title:
-      'Cada función de TScopier está pensada para darte control, claridad y resultados medibles.',
+      'Por fin, un copiador de señales que funciona con todos los tipos de señal',
     cards: [
       {
         label: 'Velocidad de ejecución',
-        metric: '<150ms',
+        metric: '<50ms',
         metricVariant: 'teal',
-        description: 'Latencia inferior a 150 ms desde el parseo de la señal hasta el broker.',
+        description: 'Latencia inferior a 50 ms desde el parseo de la señal hasta el broker.',
         layout: 'tall',
         icon: 'zap',
       },
@@ -198,6 +254,16 @@ export const landingEs: LandingTranslations = {
       },
     ],
   },
+  providers: {
+    eyebrow: 'Para proveedores de señales',
+    title: 'Vende tu servicio de señales con UniCopier.',
+    description: 'Fija tu propio precio, crea tu comunidad y deja que otros traders copien tus operaciones por una cuota mensual. Te quedas con el 100% de las ganancias.',
+    points: [
+      { title: 'Fija tu precio', description: 'Cobra una cuota mensual u ofrece la copia gratis.' },
+      { title: 'Crea tu comunidad', description: 'Reúne a traders que te copian de forma automática.' },
+      { title: 'Quédate con el 100%', description: 'Todo lo que te pagan tus copiadores es tuyo.' },
+    ],
+  },
   features: {
     eyebrow: 'Funciones de la plataforma',
     title: 'Hecho para copiar señales en serio',
@@ -208,14 +274,14 @@ export const landingEs: LandingTranslations = {
         eyebrow: 'Copiador de señales',
         title: 'Copia señales de Telegram a MT4 y MT5 con precisión',
         description:
-          'Refleja canales de confianza en tus cuentas de broker. TScopier analiza entradas, TPs, capas de rango e instrucciones de gestión, y ejecuta con tus reglas de lote, multi-trade y capas en cada cuenta conectada.',
+          'Refleja canales de confianza en tus cuentas de broker. UniCopier analiza entradas, TPs, capas de rango e instrucciones de gestión, y ejecuta con tus reglas de lote, multi-trade y capas en cada cuenta conectada.',
         visual: 'copier',
       },
       {
         eyebrow: 'Señales multilingües',
         title: 'Compatible con señales en varios idiomas',
         description:
-          'Copia canales que publican en inglés, español, francés, ruso, polaco, japonés y más. TScopier reconoce compra/venta, SL, TP y frases de gestión en cada idioma, además del entrenamiento por canal para el vocabulario exacto de tu proveedor.',
+          'Copia canales que publican en inglés, español, francés, ruso, polaco, japonés y más. UniCopier reconoce compra/venta, SL, TP y frases de gestión en cada idioma, además del entrenamiento por canal para el vocabulario exacto de tu proveedor.',
         visual: 'multilingual',
       },
       {
@@ -229,7 +295,7 @@ export const landingEs: LandingTranslations = {
         eyebrow: 'Ediciones de mensaje',
         title: 'Modificación de señal desde mensajes editados',
         description:
-          'Cuando un proveedor edita un mensaje de Telegram para cambiar el stop loss o los take-profits, TScopier detecta la revisión y actualiza tu cesta abierta en el broker — sin nuevas entradas, solo SL/TP sincronizados en cada pierna.',
+          'Cuando un proveedor edita un mensaje de Telegram para cambiar el stop loss o los take-profits, UniCopier detecta la revisión y actualiza tu cesta abierta en el broker — sin nuevas entradas, solo SL/TP sincronizados en cada pierna.',
         visual: 'signalEdit',
       },
       {
@@ -259,7 +325,7 @@ export const landingEs: LandingTranslations = {
         telegramLabel: 'Canal de señales',
         channelName: 'Gold Signals Pro',
         channelMeta: '3 señales nuevas · ahora',
-        hubLabel: 'TScopier',
+        hubLabel: 'UniCopier',
         mt4Label: 'Cuenta MT4',
         mt4Meta: 'Copiando · reglas 0.10 lot',
         mt5Label: 'Cuenta MT5',
@@ -555,20 +621,20 @@ export const landingEs: LandingTranslations = {
   faq: {
     eyebrow: 'Preguntas frecuentes',
     title: 'Preguntas frecuentes',
-    subtitle: 'Respuestas rápidas sobre configuración, copia y qué hace diferente a TScopier.',
+    subtitle: 'Respuestas rápidas sobre configuración, copia y qué hace diferente a UniCopier.',
     items: [
       {
         question: '¿Necesito descargar un EA o un VPS?',
         answer:
-          'No. TScopier es 100 % en la nube. Inicias sesión en el navegador, conectas Telegram y tus cuentas MT4/MT5, y el copiador corre en nuestra infraestructura—sin EA ni VPS que mantener.',
+          'No. UniCopier es 100 % en la nube. Inicias sesión en el navegador, conectas Telegram y tus cuentas MT4/MT5, y el copiador corre en nuestra infraestructura—sin EA ni VPS que mantener.',
       },
       {
-        question: '¿TScopier funciona con firmas prop que prohíben los EA?',
+        question: '¿UniCopier funciona con firmas prop que prohíben los EA?',
         answer:
-          'Sí. TScopier funciona íntegramente en la nube: no se instala nada en tu terminal MT4/MT5. Puedes copiar señales en cualquier cuenta de firma prop, permitan o no los Asesores Expertos.',
+          'Sí. UniCopier funciona íntegramente en la nube: no se instala nada en tu terminal MT4/MT5. Puedes copiar señales en cualquier cuenta de firma prop, permitan o no los Asesores Expertos.',
       },
       {
-        question: '¿Qué plataformas admite TScopier?',
+        question: '¿Qué plataformas admite UniCopier?',
         answer:
           'Conectas canales de señales de Telegram y copias a cuentas MetaTrader 4 y 5. Enlaza varios brokers y dirige cada canal a las cuentas que elijas.',
       },
@@ -583,9 +649,9 @@ export const landingEs: LandingTranslations = {
           'Puedes vincular hasta 100 conexiones MT4/MT5 por usuario, según tu plan. Cada canal de Telegram puede conectarse a una o más cuentas desde la página de Canales.',
       },
       {
-        question: '¿TScopier lee mis mensajes privados de Telegram?',
+        question: '¿UniCopier lee mis mensajes privados de Telegram?',
         answer:
-          'TScopier no lee tus chats personales. Conectar Telegram solo da acceso a canales y grupos de los que eres miembro para recibir señales de las fuentes que añades.',
+          'UniCopier no lee tus chats personales. Conectar Telegram solo da acceso a canales y grupos de los que eres miembro para recibir señales de las fuentes que añades.',
       },
       {
         question: '¿Puedo probar un canal antes de ir en vivo?',
@@ -595,7 +661,7 @@ export const landingEs: LandingTranslations = {
       {
         question: '¿Admitís rangos, capas y señales de gestión?',
         answer:
-          'Sí. TScopier gestiona entradas single y range, reparto de lotes en varios TPs, layering, cierre de entradas peores, break-even, beneficios parciales y más, con filtros permitir/ignorar por canal.',
+          'Sí. UniCopier gestiona entradas single y range, reparto de lotes en varios TPs, layering, cierre de entradas peores, break-even, beneficios parciales y más, con filtros permitir/ignorar por canal.',
       },
       {
         question: '¿Qué incluye Basic frente a Advanced?',
@@ -611,11 +677,11 @@ export const landingEs: LandingTranslations = {
   },
   comparison: {
     eyebrow: 'Por qué cambian de copiador',
-    title: 'Sube de nivel con TScopier',
+    title: 'Sube de nivel con UniCopier',
     subtitle:
       'Copiadores típicos de Telegram frente a una plataforma en la nube pensada para velocidad, claridad y escala.',
     otherLabel: 'Otros copiadores',
-    tscopierLabel: 'TScopier',
+    tscopierLabel: 'UniCopier',
     cta: 'Empieza tu prueba gratuita de 5 días',
     rows: [
       {
@@ -857,6 +923,6 @@ export const landingEs: LandingTranslations = {
     platforms: 'Compatible con',
     copyright: '© {year} Tartarix Inc. Todos los derechos reservados.',
     disclaimer:
-      'Operar implica riesgo. TScopier es una herramienta de copia — no asesoramiento financiero.',
+      'Operar implica riesgo. UniCopier es una herramienta de copia — no asesoramiento financiero.',
   },
 }

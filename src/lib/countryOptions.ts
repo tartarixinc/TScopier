@@ -52,3 +52,13 @@ export const COUNTRY_OPTIONS: SelectOption[] = buildCountryOptions()
 export function findCountryLabel(value: string): string {
   return COUNTRY_OPTIONS.find(o => o.value === value)?.label ?? value
 }
+
+export function countryDisplayName(code: string, locale = 'en'): string {
+  const normalized = code.trim().toUpperCase()
+  if (!/^[A-Z]{2}$/.test(normalized)) return code
+  try {
+    return new Intl.DisplayNames([locale], { type: 'region' }).of(normalized) ?? normalized
+  } catch {
+    return normalized
+  }
+}

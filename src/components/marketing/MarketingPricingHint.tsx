@@ -9,11 +9,11 @@ export function MarketingPricingHint({ basic, advanced, className }: MarketingPr
     <p
       className={
         className ??
-        'mt-3 text-center text-[0.625rem] leading-relaxed text-neutral-500 dark:text-neutral-400'
+        'mt-3 text-center text-[0.625rem] leading-relaxed text-neutral-900 dark:text-neutral-50'
       }
     >
       {basic}
-      <span className="mx-2 text-neutral-300 dark:text-neutral-600" aria-hidden>
+      <span className="mx-2 text-neutral-900 dark:text-neutral-50" aria-hidden>
         ·
       </span>
       {advanced}

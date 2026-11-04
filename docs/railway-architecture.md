@@ -10,7 +10,8 @@ All services run from the **same Docker image** (`worker/Dockerfile`). The `WORK
 Railway Project: TScopier
 ├── Listener     (WORKER_ROLE=listener)
 ├── Worker       (WORKER_ROLE=trade)
-└── Backtest     (WORKER_ROLE=backtest)
+├── Backtest     (WORKER_ROLE=backtest)
+└── Discord      (WORKER_ROLE=discord_listener, 1 replica, no healthcheck)  ← planned, see docs/discord-setup.md
 ```
 
 ### 1. Listener

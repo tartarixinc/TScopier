@@ -1,44 +1,54 @@
 import { useCallback, useEffect, useState } from 'react'
+import { selectBrokerAccountColumns } from '../lib/brokerAccountSelect'
 import { fetchTradesAcrossProviders } from '../lib/fxsocketBroker'
 import { supabase } from '../lib/supabase'
-import { hasOpenTradesInCache } from '../lib/tradesSessionCache'
+import { openTradeCountInCache } from '../lib/tradesSessionCache'
+import { filterMtTradesSinceConnect } from '../lib/tradesSinceConnect'
+import type { BrokerAccount } from '../types/database'
 import { whenRealtimeReady } from '../lib/whenRealtimeReady'
 
 const REFRESH_MS = 60_000
 const REALTIME_DEBOUNCE_MS = 450
 
-async function fetchHasOpenFromBroker(): Promise<boolean> {
-  // MTAPI only: FxSocket is phased out, so this must not fan out to the dead
-  // FxSocket edge (its 404 otherwise looks like a live-feed outage and raises
-  // the "trouble reaching your broker" banner).
+// Broker truth for the sidebar count. Unmarked accounts resolve to MTAPI inside
+// fetchTradesAcrossProviders, so this never fans out to the dead FxSocket edge
+// (its 404 otherwise looks like a live-feed outage and raises the "trouble
+// reaching your broker" banner), while declared cTrader accounts are queried.
+async function fetchOpenTradeCount(userId: string): Promise<number> {
+  const brokerRes = await selectBrokerAccountColumns(columns =>
+    supabase.from('broker_accounts').select(columns).eq('user_id', userId),
+  )
+  if (brokerRes.error) throw brokerRes.error
+  const accounts = (brokerRes.data ?? []) as unknown as BrokerAccount[]
   const res = await fetchTradesAcrossProviders({
     scope: 'open',
     historyProfile: 'trades',
-    limit: 1,
-    providers: ['mtapi'],
+    accounts,
   })
-  return (res.trades ?? []).some(t => t.status === 'open')
+  return filterMtTradesSinceConnect(res.trades ?? [], accounts)
+    .filter(trade => trade.status === 'open')
+    .length
 }
 
-/** Sidebar indicator — broker truth (same source as Account Trades page), not stale DB rows. */
-export function useHasOpenTrades(userId: string | undefined): boolean {
-  const [hasOpen, setHasOpen] = useState(false)
+/** Sidebar count — broker truth (same source as the Trades page), not stale DB rows. */
+export function useOpenTradeCount(userId: string | undefined): number {
+  const [openCount, setOpenCount] = useState(0)
 
   const refresh = useCallback(async () => {
     if (!userId) {
-      setHasOpen(false)
+      setOpenCount(0)
       return
     }
 
-    const cached = hasOpenTradesInCache(userId)
-    if (cached != null) setHasOpen(cached)
+    const cached = openTradeCountInCache(userId)
+    if (cached != null) setOpenCount(cached)
 
     try {
-      setHasOpen(await fetchHasOpenFromBroker())
+      setOpenCount(await fetchOpenTradeCount(userId))
     } catch (e) {
       console.warn('[openTrades] broker check failed', e instanceof Error ? e.message : e)
-      if (cached != null) setHasOpen(cached)
-      else setHasOpen(false)
+      if (cached != null) setOpenCount(cached)
+      else setOpenCount(0)
     }
   }, [userId])
 
@@ -86,5 +96,5 @@ export function useHasOpenTrades(userId: string | undefined): boolean {
     }
   }, [userId, refresh])
 
-  return hasOpen
+  return openCount
 }

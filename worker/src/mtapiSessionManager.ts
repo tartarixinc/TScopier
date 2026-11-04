@@ -3,6 +3,7 @@ import { decryptMtPassword } from './brokerCredentialsCrypto'
 import type { MtPlatform } from './fxsocketClient'
 import { getMtapiProvider, MtapiApiError, type MtapiProvider } from './mtapiProvider'
 import { authorityFromBrokerRow, withBrokerWriteAuthority } from './brokerWriteAuthority'
+import { brokerAccountModeForPlatform } from './copyShared/brokerAccountMode'
 import { BridgeHealthTracker } from './observability/bridgeHealthTracker'
 import { BridgeProbe } from './observability/bridgeProbe'
 import { captureCriticalHealthIssue, hashHealthResourceId } from './observability/criticalHealth'
@@ -299,6 +300,8 @@ export class MtapiSessionManager {
     if (summary.type != null) {
       patch.linked_account_type = summary.type === 0 || summary.type === 1 ? 'Demo' : 'Live'
     }
+    const marginMode = brokerAccountModeForPlatform(row.platform, { method: summary.method })
+    if (marginMode !== 'unknown') patch.margin_mode = marginMode
     if (row.performance_baseline_balance == null && summary.balance != null) {
       patch.performance_baseline_balance = summary.balance
       patch.performance_baseline_captured_at = now

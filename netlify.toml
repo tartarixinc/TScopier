@@ -2,11 +2,8 @@
   command = "npm run build"
   publish = "dist"
 
-# Public Turnstile site key (safe in client). Ensures prod/staging builds never
-# ship with an empty key if the Netlify UI env var was forgotten — that caused
-# "Signup protection is misconfigured" on app.tscopier.ai.
-[build.environment]
-  VITE_TURNSTILE_SITE_KEY = "0x4AAAAAAENwYkTwFMwfAUdc"
+# Configure VITE_TURNSTILE_SITE_KEY in the Netlify UI for prod/staging builds.
+# Production auth flows fail closed when the build-time variable is missing.
 
 # Hashed assets — long cache (immutable filenames)
 [[headers]]

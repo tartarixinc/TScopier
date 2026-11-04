@@ -3,6 +3,7 @@ import type { User } from '@supabase/supabase-js'
 export type UserInitialsSource = {
   first_name?: string | null
   last_name?: string | null
+  avatar_url?: string | null
 }
 
 export function userInitials(
@@ -31,8 +32,13 @@ function avatarFromRecord(record: Record<string, unknown> | undefined): string |
   )
 }
 
-/** OAuth providers (e.g. Google) store profile photos in auth user metadata. */
-export function resolveUserAvatarUrl(user: User | null | undefined): string | null {
+/** Uploaded profile photo wins. Otherwise use the photo from the sign-in provider. */
+export function resolveUserAvatarUrl(
+  user: User | null | undefined,
+  profile?: UserInitialsSource | null,
+): string | null {
+  const fromProfile = pickAvatarUrl(profile?.avatar_url)
+  if (fromProfile) return fromProfile
   if (!user) return null
 
   const fromMeta = avatarFromRecord(user.user_metadata as Record<string, unknown> | undefined)

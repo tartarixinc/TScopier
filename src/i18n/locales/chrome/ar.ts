@@ -15,10 +15,12 @@ export const chromeAr: AppChromeTranslations = {
     items: {
       dashboard: 'لوحة التحكم',
       configuration: 'الإعدادات',
-      brokers: 'الوسطاء',
+      brokers: 'إعداد التداول',
+      mirrorTrading: 'الحساب المرآة',
+      socialTrading: 'التداول الاجتماعي',
       trades: 'الصفقات',
       management: 'النشاط',
-      channels: 'القنوات',
+      channels: 'مصدر الإشارات',
       popularChannels: 'القنوات الشائعة',
       backtest: 'الاختبار التاريخي',
       copierLogs: 'سجلات الناسخ',
@@ -42,6 +44,7 @@ export const chromeAr: AppChromeTranslations = {
     expandSidebar: 'توسيع الشريط الجانبي',
     collapseSidebar: 'طي الشريط الجانبي',
     openTradesActive: 'صفقات مفتوحة نشطة',
+    openTradesCount: '{count} مفتوحة',
     highImpactNewsToday: 'أخبار عالية التأثير اليوم',
     planFree: 'مجاني',
     settings: 'الإعدادات',
@@ -62,6 +65,7 @@ export const chromeAr: AppChromeTranslations = {
       setupBroker: 'اربط وسيطًا',
       setupTelegram: 'اربط Telegram',
       setupChannels: 'أضف قناة',
+      setupSource: 'اربط مصدر إشارة',
       bannerAction: 'الانتقال إلى الإعداد',
       bannerText: 'لبدء النسخ، يرجى {items}.',
       bannerLastSep: ' و ',
@@ -85,6 +89,7 @@ export const chromeAr: AppChromeTranslations = {
       profileSettings: 'الملف الشخصي والإعدادات',
       subscriptionBilling: 'الاشتراك والفوترة',
       affiliateProgram: 'برنامج الإحالة',
+      wallet: 'المحفظة',
       rateUs: 'قيّمنا',
       signOut: 'تسجيل الخروج',
     },
@@ -102,7 +107,7 @@ export const chromeAr: AppChromeTranslations = {
     },
     updatesPage: {
       title: 'Updates',
-      subtitle: 'Recent changes, fixes, and improvements to TScopier.',
+      subtitle: 'Recent changes, fixes, and improvements to UniCopier.',
       empty: 'No updates yet. Check back soon.',
       typeFeature: 'Feature',
       typeFix: 'Fix',
@@ -110,7 +115,7 @@ export const chromeAr: AppChromeTranslations = {
     },
 
     assistant: {
-      title: 'TScopier Assistant',
+      title: 'UniCopier Assistant',
       subtitle: 'Ask questions or get help taking action',
       ariaLabel: 'Open AI assistant',
       close: 'Close assistant',
@@ -119,12 +124,12 @@ export const chromeAr: AppChromeTranslations = {
       newChat: 'New chat',
       historyEmpty: 'No past conversations yet.',
       deleteChat: 'Delete conversation',
-      placeholder: 'Ask anything about TScopier…',
+      placeholder: 'Ask anything about UniCopier…',
       send: 'Send',
       thinking: 'Thinking…',
       confirm: 'Confirm',
       cancel: 'Cancel',
-      welcomeTitle: 'I can help you set up and run TScopier.',
+      welcomeTitle: 'I can help you set up and run UniCopier.',
       suggestions: [
         'Is my Telegram linked?',
         'Pause the copier',
@@ -154,11 +159,11 @@ export const chromeAr: AppChromeTranslations = {
         twoFaPlaceholder: 'Cloud password',
         submitPassword: 'Continue',
         restart: 'Start over',
-        openQrInstead: 'Prefer QR code? Open Copier Engine',
+        openQrInstead: 'Prefer QR code? Open Copier Process',
         invalidPhone: 'Enter a valid phone number with country code (e.g. +1…).',
         codeSent: 'Great — a code has been sent to Telegram. Enter it in the secure field below to continue.',
         twoFaNeeded: 'Telegram needs your two-step verification password. Enter it in the secure field below.',
-        linkedSuccess: 'Telegram is linked. You can add channels next on Copier Engine.',
+        linkedSuccess: 'Telegram is linked. You can add channels next on Copier Process.',
         useSecureCodeField: 'Enter the code in the secure field above — don’t send it in chat.',
         sessionExpired: 'Login session expired. Request a new verification code.',
         composerPhoneHint: 'Type your number here or use the field above…',
@@ -249,7 +254,7 @@ export const chromeAr: AppChromeTranslations = {
   },
   pages: {
     accountConfiguration: {
-      title: 'الوسطاء',
+      title: 'إعداد التداول',
       description: 'اربط حسابات MetaTrader واضبط كيفية نسخ الإشارات لكل حساب.',
     },
     brokers: {
@@ -258,7 +263,7 @@ export const chromeAr: AppChromeTranslations = {
     },
     contactSupport: {
       title: 'اتصل بالدعم',
-      description: 'يساعدك فريق TScopier في الحساب وإعدادات النسخ والمشكلات التقنية.',
+      description: 'يساعدك فريق UniCopier في الحساب وإعدادات النسخ والمشكلات التقنية.',
     },
     riskDisclaimer: {
       title: 'إخلاء مسؤولية المخاطر',
@@ -266,7 +271,7 @@ export const chromeAr: AppChromeTranslations = {
     },
     termsOfService: {
       title: 'شروط الخدمة',
-      description: 'الشروط التي تحكم استخدامك لـ TScopier.',
+      description: 'الشروط التي تحكم استخدامك لـ UniCopier.',
     },
     privacyPolicy: {
       title: 'سياسة الخصوصية',
@@ -274,7 +279,7 @@ export const chromeAr: AppChromeTranslations = {
     },
     cookiePolicy: {
       title: 'سياسة ملفات تعريف الارتباط',
-      description: 'كيف نستخدم ملفات تعريف الارتباط والتقنيات المماثلة في TScopier.',
+      description: 'كيف نستخدم ملفات تعريف الارتباط والتقنيات المماثلة في UniCopier.',
     },
     featureRequest: {
       title: 'طلب ميزة',
@@ -287,6 +292,10 @@ export const chromeAr: AppChromeTranslations = {
     affiliateProgram: {
       title: 'برنامج الإحالة',
       description: 'ادعُ متداولين واكسب 10% إحالة مدى الحياة على كل تجديد اشتراك مدفوع.',
+    },
+    wallet: {
+      title: 'المحفظة',
+      description: 'اعرض رصيد اشتراك النسخ وسجل المدفوعات.',
     },
     billing: {
       title: 'الفوترة',
@@ -321,7 +330,7 @@ export const chromeAr: AppChromeTranslations = {
       description: 'اعرض الإشارات المحللة المرتبطة بحسابك. صفِّ حسب القناة والفترة.',
     },
     copierEngine: {
-      title: 'القنوات',
+      title: 'مصدر الإشارات',
       description: 'أدر قنوات إشارات Telegram وإعدادات النسخ.',
     },
     settings: {

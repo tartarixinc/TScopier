@@ -91,12 +91,12 @@ export function AssistantTelegramLinkCard({
   return (
     <div
       className={clsx(
-        'animate-assistant-msg-in ms-[2.375rem] rounded-2xl border border-teal-200/80 bg-white p-3.5 shadow-sm',
+        'animate-assistant-msg-in ms-9.5 rounded-2xl border border-teal-200/80 bg-white p-3.5 shadow-xs',
         'dark:border-teal-900/50 dark:bg-neutral-900',
       )}
     >
       <p className="text-[13.5px] font-semibold text-neutral-900 dark:text-neutral-50">{title}</p>
-      <p className="mt-1 text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">{hint}</p>
+      <p className="mt-1 text-xs leading-relaxed text-neutral-900 dark:text-neutral-50">{hint}</p>
 
       {stage === 'phone' ? (
         <input
@@ -107,7 +107,7 @@ export function AssistantTelegramLinkCard({
           onChange={e => setPhoneDraft(e.target.value)}
           placeholder={copy.phonePlaceholder}
           disabled={busy}
-          className="mt-3 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm outline-none focus:border-teal-500 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+          className="mt-3 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm outline-hidden focus:border-green-400 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
           onKeyDown={e => {
             if (e.key === 'Enter') {
               e.preventDefault()
@@ -126,7 +126,7 @@ export function AssistantTelegramLinkCard({
           onChange={e => setCodeDraft(normalizeTelegramCodeInput(e.target.value))}
           placeholder={copy.codePlaceholder}
           disabled={busy}
-          className="mt-3 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm tracking-widest outline-none focus:border-teal-500 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+          className="mt-3 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm tracking-widest outline-hidden focus:border-green-400 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
           onKeyDown={e => {
             if (e.key === 'Enter') {
               e.preventDefault()
@@ -144,7 +144,7 @@ export function AssistantTelegramLinkCard({
           onChange={e => setPasswordDraft(e.target.value)}
           placeholder={copy.twoFaPlaceholder}
           disabled={busy}
-          className="mt-3 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm outline-none focus:border-teal-500 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+          className="mt-3 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm outline-hidden focus:border-green-400 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
           onKeyDown={e => {
             if (e.key === 'Enter') {
               e.preventDefault()
@@ -180,7 +180,7 @@ export function AssistantTelegramLinkCard({
       {stage === 'phone' && onOpenQr ? (
         <button
           type="button"
-          className="mt-2 text-xs text-teal-700 underline-offset-2 hover:underline dark:text-teal-300"
+          className="mt-2 text-xs text-green-500 underline-offset-2 hover:underline dark:text-teal-300"
           disabled={busy}
           onClick={onOpenQr}
         >

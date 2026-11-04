@@ -24,7 +24,7 @@ export function PricingSocialProofBanner({ message, variant = 'marketing' }: Pri
       )}
     >
       <div className="flex items-center justify-center gap-2.5 rounded-xl border border-teal-200 bg-teal-50/80 px-4 py-3 text-center text-sm font-medium text-teal-900 dark:border-teal-900/50 dark:bg-teal-950/40 dark:text-teal-100">
-        <Zap className="h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400" aria-hidden />
+        <Zap className="h-4 w-4 shrink-0 text-green-400 dark:text-green-400" aria-hidden />
         <span>{message}</span>
       </div>
     </div>

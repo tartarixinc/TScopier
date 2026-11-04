@@ -329,20 +329,53 @@ export interface LandingHeroDashboardCopy {
 }
 
 export interface LandingTranslations {
+  /** Promo banner above the marketing nav. The campaign copy itself comes from the database. */
+  promo: {
+    regionLabel: string
+    days: string
+    hours: string
+    minutes: string
+    seconds: string
+    endsIn: string
+    couponLabel: string
+    copyCoupon: string
+    copied: string
+    dismiss: string
+  }
   nav: {
     product: string
     features: string
     pricing: string
     faq: string
     docs: string
+    /** Audience switch next to the logo. */
+    forTraders: string
+    forProviders: string
     signIn: string
     getStarted: string
     dashboard: string
     menuOpen: string
     menuClose: string
+    /** Mega menu opened from the "Product" nav item. */
+    productMenu: {
+      heading: string
+      signalCopier: { title: string; description: string }
+      socialTrading: { title: string; description: string }
+      accountMirroring: { title: string; description: string }
+      featuredTitle: string
+      featuredBody: string
+      /** Right-hand detail panel for Social Trading (the Signal Copier panel uses featuredTitle/featuredBody). */
+      socialPanel: { title: string; body: string }
+      mirrorPanel: { title: string; body: string }
+      labels: { roi: string; winRate: string; following: string; copyTrader: string; master: string; slave: string }
+      exploreFeatures: string
+      viewPricing: string
+    }
   }
   hero: {
     headline: string
+    /** Rotating emphasis after the headline. When empty, the headline stands alone. */
+    headlinePhrases?: string[]
     subheadline: string
     socialProof: string
     primaryCta: string
@@ -351,12 +384,50 @@ export interface LandingTranslations {
     previewUrl: string
     dashboard: LandingHeroDashboardCopy
   }
+  integrations: {
+    eyebrow: string
+    title: string
+  }
+  supportedPlatforms: {
+    title: string
+  }
+  completePicture: {
+    eyebrow: string
+    title: string
+    description: string
+    cards: readonly [
+      { title: string; description: string },
+      { title: string; description: string },
+      { title: string; description: string },
+      { title: string; description: string },
+    ]
+  }
+  showcase: {
+    eyebrow: string
+    title: string
+    cta: string
+    cards: readonly [
+      { headline: string; description: string },
+      { headline: string; description: string },
+      { headline: string; description: string },
+    ]
+  }
   whyChoose: {
     statsCaption: string
     stats: LandingStatItem[]
     eyebrow: string
     title: string
     cards: LandingBentoCard[]
+  }
+  providers: {
+    eyebrow: string
+    title: string
+    description: string
+    points: readonly [
+      { title: string; description: string },
+      { title: string; description: string },
+      { title: string; description: string },
+    ]
   }
   features: {
     eyebrow: string

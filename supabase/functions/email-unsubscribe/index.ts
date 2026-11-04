@@ -25,7 +25,7 @@ const UNSUBSCRIBE_PAGE_URL = (
 ).replace(/\?.*$/, "");
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const RESEND_FROM =
-  Deno.env.get("RESEND_CAMPAIGN_FROM") || "TScopier <noreply@tscopier.com>";
+  Deno.env.get("RESEND_CAMPAIGN_FROM") || "UniCopier <noreply@tscopier.com>";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 

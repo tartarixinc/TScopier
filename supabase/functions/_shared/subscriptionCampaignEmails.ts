@@ -20,12 +20,12 @@ export const SUBSCRIPTION_CAMPAIGN_SUBJECTS: Record<
   string
 > = {
   no_subscription_nudge:
-    "Activate TScopier — start copying Telegram signals to your broker",
-  trial_expired: "Your TScopier trial ended — subscribe to resume copying",
+    "Activate UniCopier — start copying Telegram signals to your broker",
+  trial_expired: "Your UniCopier trial ended — subscribe to resume copying",
 };
 
 export const UNSUBSCRIBE_RECOVERY_SUBJECT =
-  "Confirm your TScopier email unsubscribe";
+  "Confirm your UniCopier email unsubscribe";
 
 export function getEmailUnsubscribeUrl(
   appUrl: string,
@@ -57,7 +57,7 @@ export function buildNoSubscriptionEmail(
     title: "Your copier is ready — activate a plan to go live",
     greeting: name,
     bodyHtml: `
-      <p style="margin:0 0 16px 0;">You created your TScopier account and finished onboarding, but <strong style="color:#0f172a;">live signal copying is still off</strong> because there is no active subscription on your account.</p>
+      <p style="margin:0 0 16px 0;">You created your UniCopier account and finished onboarding, but <strong style="color:#0f172a;">live signal copying is still off</strong> because there is no active subscription on your account.</p>
       <p style="margin:0 0 16px 0;">Without a plan, new Telegram signals from your channels are <strong style="color:#0f172a;">not sent to your broker</strong>. Your dashboard, broker links, and channel setup remain saved — you only need a subscription to turn execution back on.</p>
       <p style="margin:0;">Choose <strong>Advanced</strong> for the full copier (unlimited channels, range trading, unlimited backtests) with a <strong>5-day free trial</strong> for first-time subscribers, or <strong>Basic</strong> to get started with one account and essential copy features.</p>
     `,
@@ -127,7 +127,7 @@ export function buildTrialExpiredEmail(
       bodyHtml: `
         <ul style="margin:8px 0 0 0;padding-left:18px;">
           <li style="margin-bottom:6px;">New entry and management signals are <strong>not</strong> sent to your broker.</li>
-          <li style="margin-bottom:6px;">Open trades on your broker are <strong>not</strong> closed automatically by TScopier.</li>
+          <li style="margin-bottom:6px;">Open trades on your broker are <strong>not</strong> closed automatically by UniCopier.</li>
           <li style="margin-bottom:0;">You can still sign in, review settings, and subscribe when you're ready.</li>
         </ul>
       `,
@@ -141,7 +141,7 @@ export function buildTrialExpiredEmail(
       url: billingUrl,
     },
     closingHtml:
-      `Need help choosing a plan or updating payment details? Reply to this email or visit <strong>Billing</strong> in the app. We'd love to have you back copying with TScopier.`,
+      `Need help choosing a plan or updating payment details? Reply to this email or visit <strong>Billing</strong> in the app. We'd love to have you back copying with UniCopier.`,
     unsubscribeUrl,
   });
 }
@@ -177,12 +177,12 @@ export function buildUnsubscribeRecoveryEmail(
     appUrl,
     logoUrl,
     preheader:
-      "Confirm unsubscribing this address from TScopier campaign emails.",
+      "Confirm unsubscribing this address from UniCopier campaign emails.",
     eyebrow: "Unsubscribe request",
     title: "Confirm your unsubscribe",
     greeting: name,
     bodyHtml: `
-      <p style="margin:0 0 16px 0;">We received a request to stop sending TScopier campaign and subscription-reminder emails to this address.</p>
+      <p style="margin:0 0 16px 0;">We received a request to stop sending UniCopier campaign and subscription-reminder emails to this address.</p>
       <p style="margin:0;">Select <strong style="color:#0f172a;">Confirm unsubscribe</strong> below to finish. The button opens a fresh confirmation page — the link in your previous email was no longer valid, so this message replaces it.</p>
     `,
     primaryCta: {

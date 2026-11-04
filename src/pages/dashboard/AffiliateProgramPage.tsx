@@ -19,7 +19,7 @@ import { normalizeReferralCode, referralCodeLooksValid } from '../../lib/referra
 function StatCard({ title, value }: { title: string; value: string }) {
   return (
     <Card padding="md">
-      <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+      <p className="text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
         {title}
       </p>
       <p className="mt-2 text-2xl font-semibold text-neutral-900 dark:text-neutral-50">{value}</p>
@@ -147,7 +147,6 @@ export function AffiliateProgramPage() {
     <PageShell>
       <PageHeader
         title={at.title}
-        subtitle={at.subtitle}
         actions={(
           <Button variant="secondary" onClick={() => void refresh()} loading={loading}>
             {at.refresh}
@@ -167,9 +166,9 @@ export function AffiliateProgramPage() {
 
         <Card padding="lg" className="space-y-4">
           <div className="grid gap-4 lg:grid-cols-2">
-            <div className="rounded-xl border border-neutral-200 p-4 dark:border-neutral-800">
+            <div className="rounded-xl border border-neutral-200/65 p-4 dark:border-neutral-800/55">
               <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                <Wallet className="h-4 w-4 text-teal-600" />
+                <Wallet className="h-4 w-4 text-green-400" />
                 {at.yourReferralCode}
                 <button
                   type="button"
@@ -177,7 +176,7 @@ export function AffiliateProgramPage() {
                     setCustomCode(data?.profile.referral_code ?? '')
                     setIsEditingCode(prev => !prev)
                   }}
-                  className="inline-flex items-center justify-center rounded p-1 text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+                  className="inline-flex items-center justify-center rounded-sm p-1 text-neutral-900 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-50"
                   aria-label={at.editReferralCode}
                   title={at.editReferralCode}
                 >
@@ -211,7 +210,7 @@ export function AffiliateProgramPage() {
                       {at.cancelEditReferralCode}
                     </Button>
                   </div>
-                  <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">{at.customCodeHint}</p>
+                  <p className="mt-1 text-xs text-neutral-900 dark:text-neutral-50">{at.customCodeHint}</p>
                 </div>
               ) : (
                 <>
@@ -231,12 +230,12 @@ export function AffiliateProgramPage() {
               )}
             </div>
 
-            <div className="rounded-xl border border-neutral-200 p-4 dark:border-neutral-800">
+            <div className="rounded-xl border border-neutral-200/65 p-4 dark:border-neutral-800/55">
               <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                <Link2 className="h-4 w-4 text-teal-600" />
+                <Link2 className="h-4 w-4 text-green-400" />
                 {at.yourReferralLink}
               </div>
-              <p className="break-all text-sm text-neutral-700 dark:text-neutral-300">
+              <p className="break-all text-sm text-neutral-900 dark:text-neutral-50">
                 {data?.referral_link ?? '—'}
               </p>
               <Button
@@ -252,7 +251,7 @@ export function AffiliateProgramPage() {
 
           </div>
 
-          <div className="rounded-xl border border-neutral-200 p-4 dark:border-neutral-800">
+          <div className="rounded-xl border border-neutral-200/65 p-4 dark:border-neutral-800/55">
             <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-neutral-900 dark:text-neutral-100">
               {at.payoutWalletAddress}
               {hasSavedWalletAddress ? (
@@ -262,7 +261,7 @@ export function AffiliateProgramPage() {
                     setWalletAddress(savedWalletAddress)
                     setIsEditingWallet(prev => !prev)
                   }}
-                  className="inline-flex items-center justify-center rounded p-1 text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+                  className="inline-flex items-center justify-center rounded-sm p-1 text-neutral-900 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-50"
                   aria-label={at.editWalletAddress}
                   title={at.editWalletAddress}
                 >
@@ -296,26 +295,26 @@ export function AffiliateProgramPage() {
                     </Button>
                   ) : null}
                 </div>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400">{at.payoutWalletHint}</p>
+                <p className="text-xs text-neutral-900 dark:text-neutral-50">{at.payoutWalletHint}</p>
               </div>
             ) : (
               <>
                 <p className="text-base font-semibold tracking-wide text-neutral-900 dark:text-neutral-50">
                   {maskWalletAddress(savedWalletAddress)}
                 </p>
-                <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">{at.payoutWalletHint}</p>
+                <p className="mt-2 text-xs text-neutral-900 dark:text-neutral-50">{at.payoutWalletHint}</p>
               </>
             )}
           </div>
         </Card>
 
         <Card padding="none" className="overflow-hidden">
-          <div className="border-b border-neutral-200 px-5 py-4 dark:border-neutral-800">
+          <div className="border-b border-neutral-200/65 px-5 py-4 dark:border-neutral-800/55">
             <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">{at.referrals}</h2>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
-              <thead className="bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-500 dark:bg-neutral-900 dark:text-neutral-400">
+              <thead className="bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-900 dark:bg-neutral-900 dark:text-neutral-50">
                 <tr>
                   <th className="px-5 py-3">User</th>
                   <th className="px-5 py-3">{at.source}</th>
@@ -324,7 +323,7 @@ export function AffiliateProgramPage() {
               </thead>
               <tbody>
                 {(data?.referrals ?? []).slice(0, 20).map((row) => (
-                  <tr key={row.referred_user_id} className="border-t border-neutral-200 dark:border-neutral-800">
+                  <tr key={row.referred_user_id} className="border-t border-neutral-200/65 dark:border-neutral-800/55">
                     <td className="px-5 py-3">{row.referred_user_name}</td>
                     <td className="px-5 py-3">{row.attribution_source}</td>
                     <td className="px-5 py-3">{new Date(row.created_at).toLocaleDateString(locale)}</td>
@@ -332,7 +331,7 @@ export function AffiliateProgramPage() {
                 ))}
                 {(data?.referrals.length ?? 0) === 0 ? (
                   <tr>
-                    <td className="px-5 py-5 text-neutral-500 dark:text-neutral-400" colSpan={3}>
+                    <td className="px-5 py-5 text-neutral-900 dark:text-neutral-50" colSpan={3}>
                       {at.noReferrals}
                     </td>
                   </tr>
@@ -343,12 +342,12 @@ export function AffiliateProgramPage() {
         </Card>
 
         <Card padding="none" className="overflow-hidden">
-          <div className="border-b border-neutral-200 px-5 py-4 dark:border-neutral-800">
+          <div className="border-b border-neutral-200/65 px-5 py-4 dark:border-neutral-800/55">
             <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">{at.commissions}</h2>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
-              <thead className="bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-500 dark:bg-neutral-900 dark:text-neutral-400">
+              <thead className="bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-900 dark:bg-neutral-900 dark:text-neutral-50">
                 <tr>
                   <th className="px-5 py-3">{at.invoice}</th>
                   <th className="px-5 py-3">{at.gross}</th>
@@ -359,8 +358,8 @@ export function AffiliateProgramPage() {
               </thead>
               <tbody>
                 {(data?.commissions ?? []).slice(0, 30).map((row) => (
-                  <tr key={row.id} className="border-t border-neutral-200 dark:border-neutral-800">
-                    <td className="px-5 py-3 font-mono text-xs">{row.stripe_invoice_id}</td>
+                  <tr key={row.id} className="border-t border-neutral-200/65 dark:border-neutral-800/55">
+                    <td className="px-5 py-3  text-xs">{row.stripe_invoice_id}</td>
                     <td className="px-5 py-3">{centsToMoney(row.invoice_amount_cents, row.currency.toUpperCase(), locale)}</td>
                     <td className="px-5 py-3">
                       <span className="inline-flex items-center gap-1">
@@ -374,7 +373,7 @@ export function AffiliateProgramPage() {
                 ))}
                 {(data?.commissions.length ?? 0) === 0 ? (
                   <tr>
-                    <td className="px-5 py-5 text-neutral-500 dark:text-neutral-400" colSpan={5}>
+                    <td className="px-5 py-5 text-neutral-900 dark:text-neutral-50" colSpan={5}>
                       {at.noCommissions}
                     </td>
                   </tr>
@@ -387,7 +386,7 @@ export function AffiliateProgramPage() {
         <Card padding="lg">
           <div>
             <h3 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">{at.howItWorks}</h3>
-            <ul className="mt-2 space-y-1 text-sm text-neutral-600 dark:text-neutral-400">
+            <ul className="mt-2 space-y-1 text-sm text-neutral-900 dark:text-neutral-50">
               <li>{at.stepShare}</li>
               <li>{at.stepSubscribe}</li>
               <li>{at.stepEarn}</li>
@@ -397,7 +396,7 @@ export function AffiliateProgramPage() {
 
         <Card padding="lg">
           <h3 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">{at.policyTitle}</h3>
-          <ul className="mt-2 space-y-1 text-sm text-neutral-600 dark:text-neutral-400">
+          <ul className="mt-2 space-y-1 text-sm text-neutral-900 dark:text-neutral-50">
             <li>{at.policyLifetime}</li>
             <li>{at.policyFirstTouch}</li>
             <li>{at.policySelfReferral}</li>

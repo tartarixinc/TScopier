@@ -4,6 +4,11 @@ import { brokerSessionId } from './mtApiByAccount'
 import { apiForBrokerAccount, type ResolvedBrokerProvider } from './providerResolver'
 import { authorityFromBrokerRow } from './brokerWriteAuthority'
 import {
+  COPY_BROKER_COLUMNS,
+  LEGACY_COPY_BROKER_COLUMNS,
+  missingProviderIdColumn,
+} from './copyShared/copyHelpers'
+import {
   applyShardToQuery,
   hasWorkOnShard,
   monitorActiveIntervalMs,
@@ -31,6 +36,13 @@ type BrokerRow = {
   mtapi_session_id?: string | null
   fxsocket_account_id?: string | null
   metaapi_account_id?: string | null
+  ctrader_account_id?: string | null
+  binance_account_id?: string | null
+  bybit_account_id?: string | null
+  kucoin_account_id?: string | null
+  dxtrade_account_id?: string | null
+  tradelocker_account_id?: string | null
+  matchtrader_account_id?: string | null
   platform?: string | null
   writer_epoch?: number | null
   provider_transition_state?: string | null
@@ -268,16 +280,32 @@ export class ClosedTradeFillMonitor {
     }
 
     const brokerIds = [...byBroker.keys()]
-    const { data: brokers, error: brokerErr } = await this.supabase
-      .from('broker_accounts')
-      .select('id,provider,mtapi_session_id,fxsocket_account_id,metaapi_account_id,platform,writer_epoch,provider_transition_state')
-      .in('id', brokerIds)
+    // Shared column list (same as the mirror/social monitors): it carries
+    // every provider's session-id column that `brokerSessionId` consults. A
+    // private list here silently dropped `ctrader_account_id`, so every
+    // cTrader broker resolved to an empty session and was skipped every tick
+    // — closed cTrader rows could never be backfilled (incident 2026-11-03).
+    // The LEGACY fallback keeps the monitor running against a database that
+    // predates the later provider fan-out (binance/…/matchtrader); note both
+    // lists carry `ctrader_account_id`, so a database older than the cTrader
+    // migration itself fails the whole tick — no deployed database is that
+    // old (cTrader landed 2026-10-12).
+    const readBrokers = (columns: string) =>
+      this.supabase.from('broker_accounts').select(columns).in('id', brokerIds)
+    let brokerRead = await readBrokers(COPY_BROKER_COLUMNS)
+    if (brokerRead.error && missingProviderIdColumn(brokerRead.error.message)) {
+      brokerRead = await readBrokers(LEGACY_COPY_BROKER_COLUMNS)
+    }
+    const { data: brokers, error: brokerErr } = brokerRead
     if (brokerErr) {
       console.warn(`[closedTradeFillMonitor] broker load failed: ${brokerErr.message}`)
       return
     }
 
-    const brokerRows = (brokers ?? []) as BrokerRow[]
+    // The shared constant defeats supabase-js's column-list type inference
+    // (it yields GenericStringError, not a row) — same double-cast the
+    // mirror monitor applies for the same reason.
+    const brokerRows = (brokers ?? []) as unknown as BrokerRow[]
     const responded = new Set(brokerRows.map(b => b.id))
 
     let filled = 0
@@ -298,7 +326,8 @@ export class ClosedTradeFillMonitor {
           `[closedTradeFillMonitor] skip broker=${broker.id}: no usable session id`
             + ` (provider=${broker.provider || 'fxsocket'}`
             + ` mtapi_session_id=${broker.mtapi_session_id ? 'set' : 'empty'}`
-            + ` fxsocket_account_id=${broker.fxsocket_account_id ? 'set' : 'empty'})`,
+            + ` fxsocket_account_id=${broker.fxsocket_account_id ? 'set' : 'empty'}`
+            + ` ctrader_account_id=${broker.ctrader_account_id ? 'set' : 'empty'})`,
         )
         skipped += tradesForBroker.length
         continue

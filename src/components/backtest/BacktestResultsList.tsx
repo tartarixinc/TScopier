@@ -43,10 +43,10 @@ function PageButton({
       type="button"
       onClick={onClick}
       className={clsx(
-        'min-w-[2rem] h-8 px-2 text-sm rounded-md border tabular-nums transition-colors',
+        'min-w-8 h-8 px-2 text-sm rounded-md border tabular-nums transition-colors',
         active
-          ? 'border-teal-500 bg-teal-500 text-white'
-          : 'border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-white dark:hover:bg-neutral-900',
+          ? 'border-green-400 bg-green-400 text-neutral-950'
+          : 'border-neutral-200/65 dark:border-neutral-800/55 text-neutral-900 dark:text-neutral-50 hover:bg-white dark:hover:bg-neutral-900',
       )}
       aria-current={active ? 'page' : undefined}
     >
@@ -101,7 +101,7 @@ export function BacktestResultsList({ trades, onSelect }: BacktestResultsListPro
 
   if (rows.length === 0) {
     return (
-      <p className="text-sm text-neutral-500 py-12 text-center">
+      <p className="text-sm text-neutral-900 dark:text-neutral-50 py-12 text-center">
         No signal results for this run.
       </p>
     )
@@ -131,7 +131,7 @@ export function BacktestResultsList({ trades, onSelect }: BacktestResultsListPro
               >
                 <div
                   className={clsx(
-                    'w-1 self-stretch rounded-full shrink-0 min-h-[3rem]',
+                    'w-1 self-stretch rounded-full shrink-0 min-h-12',
                     backtestToneBarClass(tone),
                   )}
                 />
@@ -148,7 +148,7 @@ export function BacktestResultsList({ trades, onSelect }: BacktestResultsListPro
                         {isBuy ? 'Buy' : 'Sell'}
                       </span>
                     </p>
-                    <p className="text-xs text-neutral-500 mt-0.5 tabular-nums">
+                    <p className="text-xs text-neutral-900 dark:text-neutral-50 mt-0.5 tabular-nums">
                       {formatSignalTimestamp(trade.signal_at)}
                       <span className="mx-1.5">·</span>
                       {outcomeLabel}
@@ -159,11 +159,11 @@ export function BacktestResultsList({ trades, onSelect }: BacktestResultsListPro
                   >
                     {formatPipValue(pips)}
                   </p>
-                  <p className="text-xs text-neutral-500 tabular-nums sm:text-right">
+                  <p className="text-xs text-neutral-900 dark:text-neutral-50 tabular-nums sm:text-right">
                     {formatDurationMs(durationMs)}
                   </p>
                 </div>
-                <ChevronRight className="w-5 h-5 text-neutral-300 group-hover:text-teal-500 shrink-0 transition-colors" />
+                <ChevronRight className="w-5 h-5 text-neutral-900 dark:text-neutral-50 group-hover:text-green-400 shrink-0 transition-colors" />
               </button>
             </li>
           )
@@ -172,12 +172,12 @@ export function BacktestResultsList({ trades, onSelect }: BacktestResultsListPro
 
       <div className="flex flex-col gap-3 px-4 sm:px-5 py-3 border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-800/30 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <label className="inline-flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
-            <span className="font-medium text-neutral-700 dark:text-neutral-300">{t.common.show}</span>
+          <label className="inline-flex items-center gap-2 text-sm text-neutral-900 dark:text-neutral-50">
+            <span className="font-medium text-neutral-900 dark:text-neutral-50">{t.common.show}</span>
             <select
               value={pageSize}
               onChange={e => setPageSize(Number(e.target.value) as PageSizeOption)}
-              className="h-8 min-w-[4.5rem] rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="h-8 min-w-18 rounded-md border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 px-2 text-sm tabular-nums focus:outline-hidden focus:ring-2 focus:ring-green-400"
               aria-label={bt.resultsPerPage}
             >
               {PAGE_SIZE_OPTIONS.map(n => (
@@ -186,7 +186,7 @@ export function BacktestResultsList({ trades, onSelect }: BacktestResultsListPro
             </select>
             <span>{t.common.perPage}</span>
           </label>
-          <p className="text-xs text-neutral-500 tabular-nums">
+          <p className="text-xs text-neutral-900 dark:text-neutral-50 tabular-nums">
             {interpolate(t.common.showingRange, {
               start: String(rangeStart),
               end: String(rangeEnd),
@@ -200,7 +200,7 @@ export function BacktestResultsList({ trades, onSelect }: BacktestResultsListPro
               type="button"
               onClick={() => setPage(p => Math.max(1, p - 1))}
               disabled={page <= 1}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200 dark:border-neutral-800 disabled:opacity-40 disabled:pointer-events-none hover:bg-white dark:hover:bg-neutral-900"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200/65 dark:border-neutral-800/55 disabled:opacity-40 disabled:pointer-events-none hover:bg-white dark:hover:bg-neutral-900"
               aria-label={t.common.previous}
             >
               <ChevronLeft className="w-4 h-4" />
@@ -211,7 +211,7 @@ export function BacktestResultsList({ trades, onSelect }: BacktestResultsListPro
                 <>
                   <PageButton n={1} active={page === 1} onClick={() => setPage(1)} />
                   {pageNumbers[0]! > 2 ? (
-                    <span className="px-1 text-neutral-400 text-sm">…</span>
+                    <span className="px-1 text-neutral-900 dark:text-neutral-50 text-sm">…</span>
                   ) : null}
                 </>
               ) : null}
@@ -221,7 +221,7 @@ export function BacktestResultsList({ trades, onSelect }: BacktestResultsListPro
               {pageNumbers[pageNumbers.length - 1]! < totalPages ? (
                 <>
                   {pageNumbers[pageNumbers.length - 1]! < totalPages - 1 ? (
-                    <span className="px-1 text-neutral-400 text-sm">…</span>
+                    <span className="px-1 text-neutral-900 dark:text-neutral-50 text-sm">…</span>
                   ) : null}
                   <PageButton
                     n={totalPages}
@@ -235,7 +235,7 @@ export function BacktestResultsList({ trades, onSelect }: BacktestResultsListPro
               type="button"
               onClick={() => setPage(p => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200 dark:border-neutral-800 disabled:opacity-40 disabled:pointer-events-none hover:bg-white dark:hover:bg-neutral-900"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200/65 dark:border-neutral-800/55 disabled:opacity-40 disabled:pointer-events-none hover:bg-white dark:hover:bg-neutral-900"
               aria-label={t.common.next}
             >
               <span className="hidden sm:inline">{t.common.next}</span>

@@ -11,13 +11,13 @@ export function StepTelegramVisual() {
 
   return (
     <div className="flex h-full min-h-[220px] items-stretch p-3 sm:p-4">
-      <div className="flex w-full flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <div className="border-b border-neutral-100 bg-gradient-to-br from-[#229ED9]/12 via-sky-50/90 to-white px-4 py-3 dark:border-neutral-800 dark:from-[#229ED9]/20 dark:via-sky-950/30 dark:to-neutral-900">
+      <div className="flex w-full flex-col overflow-hidden rounded-xl border border-neutral-200/65 bg-white shadow-xs dark:border-neutral-800/55 dark:bg-neutral-900">
+        <div className="border-b border-neutral-100 bg-linear-to-br from-[#229ED9]/12 via-sky-50/90 to-white px-4 py-3 dark:border-neutral-800 dark:from-[#229ED9]/20 dark:via-sky-950/30 dark:to-neutral-900">
           <div className="flex items-center gap-2">
             <img src="/Telegram.svg" alt="" className="h-7 w-7 object-contain" aria-hidden />
             <div className="min-w-0">
               <p className="text-xs font-semibold text-neutral-900 dark:text-neutral-50">{ce.tgConnectHeroTitle}</p>
-              <p className="truncate text-[10px] text-neutral-500 dark:text-neutral-400">{ce.telegramConnectedHint}</p>
+              <p className="truncate text-[10px] text-neutral-900 dark:text-neutral-50">{ce.telegramConnectedHint}</p>
             </div>
           </div>
         </div>
@@ -33,12 +33,12 @@ export function StepTelegramVisual() {
                   <p className="truncate text-xs font-semibold text-neutral-900 dark:text-neutral-50">
                     {channel.name}
                   </p>
-                  <p className="text-[10px] text-neutral-500 dark:text-neutral-400">@{channel.username}</p>
+                  <p className="text-[10px] text-neutral-900 dark:text-neutral-50">@{channel.username}</p>
                 </div>
                 <Toggle checked={channel.active} onChange={() => {}} disabled />
               </div>
               <div className="space-y-1.5 border-t border-neutral-100 bg-neutral-50 px-3 py-2 dark:border-neutral-800 dark:bg-neutral-800/60 sm:px-4">
-                <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
                   {ce.connectedBrokers}
                 </p>
                 <div className="flex flex-wrap items-center gap-1">
@@ -50,7 +50,7 @@ export function StepTelegramVisual() {
                   <span
                     className={clsx(
                       'inline-flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200',
-                      'text-neutral-500 dark:border-neutral-700',
+                      'text-neutral-900 dark:text-neutral-50 dark:border-neutral-700',
                     )}
                     aria-hidden
                   >
