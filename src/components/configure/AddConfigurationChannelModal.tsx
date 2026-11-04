@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Plus, X } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
@@ -6,6 +6,7 @@ import { useSubscription } from '../../context/SubscriptionContext'
 import { useT } from '../../context/LocaleContext'
 import { interpolate } from '../../i18n/interpolate'
 import { prepareChannelSubscriptionUpsert } from '../../lib/signalChannelRegistry'
+import { buildFlags } from '../../lib/featureFlags'
 import { upsertTelegramChannel } from '../../lib/telegramChannelApi'
 import { supabase } from '../../lib/supabase'
 import { Alert } from '../ui/Alert'
@@ -26,6 +27,50 @@ function channelLabel(channel: ConfigurationChannelOption): string {
   const username = channel.channel_username?.trim()
   if (!username) return ''
   return username.startsWith('@') ? username : `@${username}`
+}
+
+/**
+ * One option in the source picker. Disabled options are greyed out and carry
+ * a "Coming soon" badge, so production can offer Telegram only until the
+ * other sources have workers of their own.
+ */
+function SourceOptionButton({
+  disabled,
+  label,
+  badge,
+  onClick,
+  icon,
+}: {
+  disabled: boolean
+  label: string
+  badge: string
+  onClick: () => void
+  icon: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      aria-label={disabled ? `${label} — ${badge}` : undefined}
+      onClick={onClick}
+      className={disabled
+        ? 'flex w-full items-center gap-3 rounded-xl border border-neutral-100 bg-neutral-50/60 px-4 py-3 text-start cursor-not-allowed dark:border-neutral-800/40 dark:bg-neutral-900/50'
+        : 'flex w-full items-center gap-3 rounded-xl border border-neutral-200 px-4 py-3 text-start hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900'}
+    >
+      <span className={disabled ? 'shrink-0 opacity-50 grayscale' : 'shrink-0'}>{icon}</span>
+      <span className={disabled
+        ? 'text-sm font-medium text-neutral-400 dark:text-neutral-500'
+        : 'text-sm font-medium text-neutral-900 dark:text-neutral-50'}
+      >
+        {label}
+      </span>
+      {disabled ? (
+        <span className="ml-auto rounded-full bg-neutral-200 px-2 py-0.5 text-[10px] font-medium text-neutral-700 dark:bg-neutral-700 dark:text-neutral-300">
+          {badge}
+        </span>
+      ) : null}
+    </button>
+  )
 }
 
 export interface ConfigurationBrokerOption {
@@ -68,6 +113,8 @@ export function AddConfigurationChannelModal({
   const tradingViewChannels = channels.filter(channel => channel.source_kind === 'tradingview')
   const discordChannels = channels.filter(channel => channel.source_kind === 'discord')
   const whatsappChannels = channels.filter(channel => channel.source_kind === 'whatsapp')
+  // Production builds offer Telegram only; the other sources wait for their workers.
+  const telegramOnly = buildFlags.telegramOnlySourcePicker
   const [showForm, setShowForm] = useState(false)
   const [draft, setDraft] = useState({ channel_id: '', channel_username: '', display_name: '' })
   const [saving, setSaving] = useState(false)
@@ -185,46 +232,45 @@ export function AddConfigurationChannelModal({
           {step === 'choose' ? (
             <div className="space-y-3">
               <p className="text-sm text-neutral-900 dark:text-neutral-50">{copy.sourceKindPrompt}</p>
-              <button
-                type="button"
-                className="flex w-full items-center gap-3 rounded-xl border border-neutral-200 px-4 py-3 text-start hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900"
+              <SourceOptionButton
+                disabled={false}
+                label={copy.sourceTelegram}
+                badge={formCopy.comingSoon}
                 onClick={() => setStep('telegram')}
-              >
-                <img src="/Telegram.svg" alt="" aria-hidden className="h-7 w-7 shrink-0 object-contain" />
-                <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{copy.sourceTelegram}</span>
-              </button>
-              <button
-                type="button"
-                className="flex w-full items-center gap-3 rounded-xl border border-neutral-200 px-4 py-3 text-start hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900"
+                icon={<img src="/Telegram.svg" alt="" aria-hidden className="h-7 w-7 object-contain" />}
+              />
+              <SourceOptionButton
+                disabled={telegramOnly}
+                label={formCopy.tabWhatsApp}
+                badge={formCopy.comingSoon}
                 onClick={() => setStep('whatsapp')}
-              >
-                <img src="/whatsapp-icon.png" alt="" aria-hidden className="h-7 w-7 shrink-0 rounded-full object-cover" />
-                <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{formCopy.tabWhatsApp}</span>
-              </button>
-              <button
-                type="button"
-                className="flex w-full items-center gap-3 rounded-xl border border-neutral-200 px-4 py-3 text-start hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900"
+                icon={<img src="/whatsapp-icon.png" alt="" aria-hidden className="h-7 w-7 rounded-full object-cover" />}
+              />
+              <SourceOptionButton
+                disabled={telegramOnly}
+                label={formCopy.tabDiscord}
+                badge={formCopy.comingSoon}
                 onClick={() => setStep('discord')}
-              >
-                <img src="/discord-logo.png" alt="" aria-hidden className="h-7 w-7 shrink-0 rounded-full object-cover" />
-                <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{formCopy.tabDiscord}</span>
-              </button>
-              <button
-                type="button"
-                className="flex w-full items-center gap-3 rounded-xl border border-neutral-200 px-4 py-3 text-start hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900"
+                icon={<img src="/discord-logo.png" alt="" aria-hidden className="h-7 w-7 rounded-full object-cover" />}
+              />
+              <SourceOptionButton
+                disabled={telegramOnly}
+                label={formCopy.tabTradingView}
+                badge={formCopy.comingSoon}
                 onClick={() => setStep('tradingview')}
-              >
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-400 text-[10px] font-semibold text-neutral-950">TV</span>
-                <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{formCopy.tabTradingView}</span>
-              </button>
-              <button
-                type="button"
-                className="flex w-full items-center gap-3 rounded-xl border border-neutral-200 px-4 py-3 text-start hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900"
+                icon={(
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-green-400 text-[10px] font-semibold text-neutral-950">
+                    TV
+                  </span>
+                )}
+              />
+              <SourceOptionButton
+                disabled={false}
+                label={copy.sourceBroker}
+                badge={formCopy.comingSoon}
                 onClick={() => setStep('broker')}
-              >
-                <img src="/MT5.png" alt="" aria-hidden className="h-7 w-7 shrink-0 object-contain" />
-                <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{copy.sourceBroker}</span>
-              </button>
+                icon={<img src="/MT5.png" alt="" aria-hidden className="h-7 w-7 object-contain" />}
+              />
             </div>
           ) : null}
           {step === 'broker' ? (

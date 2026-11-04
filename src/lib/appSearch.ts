@@ -1,5 +1,6 @@
 import type { LucideIcon } from 'lucide-react'
 import type { Translations } from '../i18n/locales/types'
+import { buildFlags } from './featureFlags'
 
 export type AppSearchResultKind = 'page' | 'broker' | 'channel'
 
@@ -24,7 +25,7 @@ export interface AppSearchPageDef {
 /** Static navigable pages for the header search index. */
 export function buildAppSearchPages(t: Translations): AppSearchPageDef[] {
   const p = t.pages
-  return [
+  const pages: AppSearchPageDef[] = [
     { path: '/dashboard', title: t.nav.items.dashboard, sectionLabel: t.nav.sections.general, subtitle: t.dashboard.title, keywords: ['home', 'overview'] },
     { path: '/brokers', title: t.nav.items.brokers, sectionLabel: t.nav.sections.general, subtitle: p.accountConfiguration.description, keywords: ['broker', 'mt5', 'fxsocket', 'account', 'copier'] },
     { path: '/mirror-trading', title: t.nav.items.mirrorTrading, sectionLabel: t.nav.sections.general, keywords: ['mirror', 'master', 'slave', 'copy', 'account'] },
@@ -53,6 +54,10 @@ export function buildAppSearchPages(t: Translations): AppSearchPageDef[] {
     { path: '/portfolio', title: p.portfolio.title, sectionLabel: t.nav.sections.general, subtitle: p.portfolio.description },
     { path: '/analysis-hub', title: p.analysisHub.title, sectionLabel: t.nav.sections.tradingTools, subtitle: p.analysisHub.description },
   ]
+  // Production builds hide social trading, so the search must not offer it either.
+  return buildFlags.hideSocialTrading
+    ? pages.filter(page => page.path !== '/social-trading')
+    : pages
 }
 
 function normalizeForSearch(value: string): string {
