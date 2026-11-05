@@ -23,6 +23,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useLocale, useT } from '../../context/LocaleContext'
 import { useUserProfile } from '../../context/UserProfileContext'
 import { useLiveOwnOpenPnl } from '../../hooks/useLiveOwnOpenPnl'
+import { resolveAccountDeposit } from '../../lib/accountDeposit'
 import { findTimezoneLabel } from '../../lib/timezoneOptions'
 import type { SocialTradingPageTranslations } from '../../i18n/locales/types'
 import { useTheme } from '../../context/ThemeContext'
@@ -472,13 +473,21 @@ export function OwnProviderProfileView() {
     directoryTrader ? { ...directoryTrader, isYou: true } : undefined,
     selectedOwnAccountId,
   )
-  const { timezone: ownTimezone } = useUserProfile()
+  const { profile: ownProfile } = useUserProfile()
+  const ownTimezoneLabel = ownProfile.timezone?.trim()
+    ? findTimezoneLabel(ownProfile.timezone.trim())
+    : null
   const rawTrader = ownAccountView.trader
   const trader = useMemo(
-    () => rawTrader && ownTimezone
-      ? { ...rawTrader, profile: { ...rawTrader.profile, timezone: findTimezoneLabel(ownTimezone) } }
-      : rawTrader,
-    [rawTrader, ownTimezone],
+    () => {
+      if (!rawTrader) return rawTrader
+      const timezone = ownTimezoneLabel
+        ?? rawTrader.profile.timezone
+        ?? null
+      if (timezone === rawTrader.profile.timezone) return rawTrader
+      return { ...rawTrader, profile: { ...rawTrader.profile, timezone } }
+    },
+    [rawTrader, ownTimezoneLabel],
   )
   const openCountHint = Math.max(trader?.openTradeCount ?? 0, trader?.openTrades.length ?? 0)
   // Poll as soon as the published source account is known — do not wait for history hydration.
@@ -500,8 +509,10 @@ export function OwnProviderProfileView() {
   }
 
   const baseStats = socialTraderStats(trader)
+  const deposit = resolveAccountDeposit(ownAccountView.account) ?? baseStats.deposit
   const stats = {
     ...baseStats,
+    deposit,
     openPosition: liveOwn.openPnl != null ? liveOwn.openPnl : baseStats.openPosition,
   }
   const name = copy.you
@@ -1219,7 +1230,13 @@ function OverviewPanel({
   formatMoney: (value: number) => string
   formatSignedMoney: (value: number) => string
 }) {
+  const { profile: viewerProfile } = useUserProfile()
   const lastTrade = trader.activities.reduce((latest, item) => item.at > latest ? item.at : latest, trader.activities[0]?.at ?? '')
+  // Own manage overview reads the same Settings timezone; others use directory-published timezone.
+  const timezoneLabel = trader.profile.timezone
+    ?? (trader.isYou && viewerProfile.timezone?.trim()
+      ? findTimezoneLabel(viewerProfile.timezone.trim())
+      : null)
   return (
     <Card className="xl:sticky xl:top-4">
       <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{copy.overview}</h2>
@@ -1259,9 +1276,9 @@ function OverviewPanel({
         <OverviewRow label={copy.lastTrade} value={lastTrade ? formatWhen(lastTrade) : '—'} />
         <OverviewRow label={copy.openPosition} value={stats.openPosition == null ? '—' : formatSignedMoney(stats.openPosition)} tone={stats.openPosition == null ? undefined : stats.openPosition >= 0 ? 'up' : 'down'} />
         <OverviewRow label={copy.liveCopiers} value={trader.liveCopiers == null ? '—' : String(trader.liveCopiers)} />
-<OverviewRow label={copy.bestTrade} value={stats.bestTradeProfit == null || !stats.bestTradeAt ? '—' : formatSignedMoney(stats.bestTradeProfit) + ' / ' + formatWhen(stats.bestTradeAt)} tone="up" />
-<OverviewRow label={copy.worstTrade} value={stats.worstTradeProfit == null || !stats.worstTradeAt ? '—' : formatSignedMoney(stats.worstTradeProfit) + ' / ' + formatWhen(stats.worstTradeAt)} tone="down" />
-        <OverviewRow label={copy.timezone} value={trader.profile.timezone ?? '—'} />
+        <OverviewRow label={copy.bestTrade} value={stats.bestTradeProfit == null || !stats.bestTradeAt ? '—' : formatSignedMoney(stats.bestTradeProfit) + ' / ' + formatWhen(stats.bestTradeAt)} tone="up" />
+        <OverviewRow label={copy.worstTrade} value={stats.worstTradeProfit == null || !stats.worstTradeAt ? '—' : formatSignedMoney(stats.worstTradeProfit) + ' / ' + formatWhen(stats.worstTradeAt)} tone="down" />
+        <OverviewRow label={copy.timezone} value={timezoneLabel ?? '—'} />
         <OverviewRow label={copy.amountFollowing} value={stats.amountFollowing == null ? '—' : formatMoney(stats.amountFollowing)} />
       </dl>
     </Card>
@@ -1272,7 +1289,12 @@ function OverviewRow({ label, value, tone }: { label: string; value: string; ton
   return (
     <div className="flex items-start justify-between gap-3 border-b border-neutral-100 pb-2 dark:border-neutral-800">
       <dt className="text-neutral-900 dark:text-neutral-50">{label}</dt>
-      <dd className={clsx('text-end font-medium text-neutral-900 dark:text-neutral-50', tone === 'up' && 'text-green-500 dark:text-teal-300', tone === 'down' && 'text-red-600 dark:text-red-400')}>{value}</dd>
+      <dd className={clsx(
+        'text-end font-medium',
+        tone === 'up' ? 'text-green-500 dark:text-teal-300'
+          : tone === 'down' ? 'text-red-600 dark:text-red-400'
+            : 'text-neutral-900 dark:text-neutral-50',
+      )}>{value}</dd>
     </div>
   )
 }
@@ -1281,7 +1303,12 @@ function Metric({ label, value, tone }: { label: string; value: string; tone?: '
   return (
     <div>
       <dt className="text-xs text-neutral-900 dark:text-neutral-50">{label}</dt>
-      <dd className={clsx('mt-1 text-sm font-semibold text-neutral-900 dark:text-neutral-50', tone === 'up' && 'text-green-500 dark:text-teal-300', tone === 'down' && 'text-red-600 dark:text-red-400')}>{value}</dd>
+      <dd className={clsx(
+        'mt-1 text-sm font-semibold',
+        tone === 'up' ? 'text-green-500 dark:text-teal-300'
+          : tone === 'down' ? 'text-red-600 dark:text-red-400'
+            : 'text-neutral-900 dark:text-neutral-50',
+      )}>{value}</dd>
     </div>
   )
 }

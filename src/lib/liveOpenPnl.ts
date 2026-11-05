@@ -41,9 +41,9 @@ export function liveOpenPnlFromOpenedOrders(orders: unknown[] | null | undefined
 }
 
 /**
- * Prefer the account-level floating P/L (broker profit / equity−balance) — same source as
- * Linked Accounts. Position-leg sums can omit swap/commission or miss legs and disagree with
- * the terminal; only use them when the summary is missing or misleadingly flat with opens.
+ * Merge REST bootstrap sources. Account floating (equity−balance / profit) matches the
+ * terminal headline; position sums fill in when the summary is missing or flat with opens.
+ * Live WS position ticks overwrite this in useLiveOwnOpenPnl (same path as Linked Accounts).
  */
 export function preferLiveOpenPnl(input: {
   fromSummary: number | null

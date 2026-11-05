@@ -17,6 +17,14 @@ describe('liveOpenPnlFromSummary', () => {
     expect(liveOpenPnlFromSummary({ balance: 1000, equity: 1012.34 }, 1)).toBe(12.34)
   })
 
+  it('prefers equity minus balance when profit field is incomplete', () => {
+    expect(liveOpenPnlFromSummary({
+      balance: 498_282.55,
+      equity: 495_786.55,
+      profit: -1_318,
+    }, 1)).toBe(-2_496)
+  })
+
   it('is null without a summary or without enough data', () => {
     expect(liveOpenPnlFromSummary(null)).toBeNull()
     expect(liveOpenPnlFromSummary({})).toBeNull()

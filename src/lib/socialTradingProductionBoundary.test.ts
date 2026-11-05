@@ -233,7 +233,7 @@ test("deposits come from server-written account totals, never from browser-suppl
   assert.match(edge, /fetchCashflowTotals\(/);
   assert.match(edge, /cashflowSyncDue\(/);
   const ownView = readFileSync(new URL("../hooks/useOwnSocialAccountView.ts", import.meta.url), "utf8");
-  assert.match(ownView, /account\.total_deposits \?\? account\.performance_baseline_balance/);
+  assert.match(ownView, /resolveAccountDeposit\(account\)/);
   const select = readFileSync(new URL("../lib/brokerAccountSelect.ts", import.meta.url), "utf8");
   assert.match(select, /'total_deposits'/);
 });
