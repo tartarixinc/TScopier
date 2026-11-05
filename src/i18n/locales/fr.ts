@@ -1478,6 +1478,7 @@ export const fr: Translations = {
     execNotesTitle: 'Notes d’exécution',
     execNoteTpSplit: 'Certains take-profits partiels ont été ignorés — ce lot est trop petit pour être fractionné (ces tranches seraient sous le minimum du broker). Les take-profits restants s’appliquent toujours.',
     execNoteStaleEntry: 'L’entrée du signal était {entry} mais le trade s’est ouvert à {fill} — le prix avait déjà bougé quand l’ordre a été envoyé.',
+    execNoteTpStripped: 'Les take-profits {levels} ont été retirés — le trade s’est ouvert à {fill}, au-delà du prix de take-profit, car les appliquer aurait clôturé le trade immédiatement.',
     imageSignal: '(signal image)',
     loadingSignal: 'Chargement du signal…',
     loadSignalError: 'Impossible de charger les détails du signal.',

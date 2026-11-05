@@ -1478,6 +1478,7 @@ export const es: Translations = {
     execNotesTitle: 'Notas de ejecución',
     execNoteTpSplit: 'Se omitieron algunos take-profits parciales — este lote es demasiado pequeño para dividirlo (esas porciones quedarían por debajo del mínimo del broker). Los take-profits restantes siguen aplicando.',
     execNoteStaleEntry: 'La entrada de la señal era {entry} pero la operación se abrió en {fill} — el precio ya se había movido cuando se envió la orden.',
+    execNoteTpStripped: 'Los take-profits {levels} fueron eliminados — la operación se abrió en {fill}, más allá del precio de take-profit, porque aplicarlos habría cerrado la operación de inmediato.',
     imageSignal: '(señal con imagen)',
     loadingSignal: 'Cargando señal…',
     loadSignalError: 'No se pudieron cargar los detalles de la señal.',

@@ -1556,6 +1556,7 @@ broker: {
     execNotesTitle: 'Execution notes',
     execNoteTpSplit: 'Some partial take-profits were skipped — this lot is too small to split (those slices would be below the broker minimum). The remaining take-profits still apply.',
     execNoteStaleEntry: 'The signal entry was {entry} but the trade opened at {fill} — price had already moved when the order was sent.',
+    execNoteTpStripped: 'Take-profits {levels} were stripped — the trade opened at {fill}, past the take-profit price, so applying them would have closed the trade immediately.',
     imageSignal: '(image signal)',
     loadingSignal: 'Loading signal…',
     loadSignalError: 'Could not load signal details.',
