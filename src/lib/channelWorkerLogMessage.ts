@@ -661,15 +661,8 @@ function buildChannelWorkerLogMessage(row: ChannelWorkerLogRow, cw: ChannelWorke
   const err = errSuffix(row, cw)
 
   if (logAction === 'mgmt_skip') {
-    const reason = translateSkipReason(
-      String(payload.skip_reason ?? row.error_message ?? cw.noMatchingOpenTrade),
-      cw,
-    )
     const mgmt = signalAction === 'close' ? 'close' : signalAction || 'modify'
-    return interpolate(cw.mgmtSkippedReason, {
-      phrase: mgmtSkippedPhrase(mgmt, instr, cw),
-      reason,
-    })
+    return mgmtSkippedMessage(payload.skip_reason ?? row.error_message, mgmt, instr, cw)
   }
 
   if (logAction === 'dispatch_skipped') {
@@ -810,12 +803,7 @@ function buildChannelWorkerLogMessage(row: ChannelWorkerLogRow, cw: ChannelWorke
       return `${mgmtFailurePhrase(mgmt, instr, cw)}${err}`
     }
     if (status === 'skipped') {
-      const phrase = mgmtSkippedPhrase(mgmt, instr, cw)
-      const reason = translateSkipReason(
-        String(payload.skip_reason ?? row.error_message ?? cw.noMatchingOpenTrade),
-        cw,
-      )
-      return interpolate(cw.mgmtSkippedReason, { phrase, reason })
+      return mgmtSkippedMessage(payload.skip_reason ?? row.error_message, mgmt, instr, cw)
     }
     return mgmtSuccessPhrase(mgmt, instr, parsed, cw)
   }
@@ -1069,6 +1057,12 @@ function buildChannelWorkerLogMessage(row: ChannelWorkerLogRow, cw: ChannelWorke
       const sl = slPart(payload.new_sl, cw, half ? 'paren' : 'at')
       return half ? interpolate(cw.autoBeHalf, { on, sl }) : interpolate(cw.autoBe, { on, sl })
     }
+    if (status === 'skipped') {
+      // Deferred, not failed: the row's position was absent from the live
+      // snapshot (2026-11-03 Luis incident) — show the neutral skipped
+      // phrasing, not "could not move stop loss".
+      return mgmtSkippedMessage(payload.skip_reason ?? row.error_message, 'breakeven', instr, cw)
+    }
     return interpolate(cw.autoBeFailed, { on: onInstrument(instr, cw), err })
   }
   if (logAction === 'cwe_close') {
@@ -1237,6 +1231,26 @@ function mgmtFailurePhrase(action: string, instr: string | null, cw: ChannelWork
         () => cw.mgmtApplyFailGeneric,
       )
   }
+}
+
+/**
+ * Shared sentence for a skipped management action: neutral phrase + translated
+ * reason. One copy of the idiom for `mgmt_skip`, `mgmt_*` skipped rows, and
+ * `auto_be` skipped rows, so the reason-priority chain
+ * (`skip_reason` → `error_message` → "no matching open trade") and wording
+ * change in exactly one place.
+ */
+function mgmtSkippedMessage(
+  reasonRaw: unknown,
+  phraseAction: string,
+  instr: string | null,
+  cw: ChannelWorkerTranslations,
+): string {
+  const reason = translateSkipReason(String(reasonRaw ?? cw.noMatchingOpenTrade), cw)
+  return interpolate(cw.mgmtSkippedReason, {
+    phrase: mgmtSkippedPhrase(phraseAction, instr, cw),
+    reason,
+  })
 }
 
 function mgmtSkippedPhrase(action: string, instr: string | null, cw: ChannelWorkerTranslations): string {
