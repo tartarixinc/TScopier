@@ -330,16 +330,18 @@ export function EditSignalOverrideModal({
     try {
       const res = await forceCloseTradesApi.close({ broker_account_id: brokerAccountId })
       const virtualDeleted = res.virtual_legs_deleted ?? 0
+      const pendingCancelled = res.pending_cancelled ?? 0
+      const settled = res.closed + pendingCancelled
       if (res.market_closed) {
         setCloseError(sh.closeMarketClosed)
         return
       }
-      if (res.closed === 0 && (res.failed > 0 || virtualDeleted === 0)) {
+      if (res.closed === 0 && pendingCancelled === 0 && (res.failed > 0 || virtualDeleted === 0)) {
         if (virtualDeleted > 0) onClosed({ closed: 0, failed: res.failed, virtualDeleted })
         setCloseError(closeResultError(sh, res))
         return
       }
-      onClosed({ closed: res.closed, failed: res.failed, virtualDeleted })
+      onClosed({ closed: settled, failed: res.failed, virtualDeleted })
       await loadAccounts()
     } catch (e) {
       const msg = e instanceof Error ? e.message : ''
@@ -358,6 +360,11 @@ export function EditSignalOverrideModal({
     try {
       const closeResult = await forceCloseTradesApi.close({ signal_id: signalId })
       const virtualDeleted = closeResult.virtual_legs_deleted ?? 0
+      // Settled rows include cancelled resting pendings: a signal whose only
+      // rows were pending orders reports closed=0, pending_cancelled=N — a
+      // success, not "nothing actually closed".
+      const pendingCancelled = closeResult.pending_cancelled ?? 0
+      const settled = closeResult.closed + pendingCancelled
       // The market itself refused: say so, instead of a generic failure
       // (weekend gold/silver/forex closes are impossible until it reopens).
       if (closeResult.market_closed) {
@@ -367,7 +374,7 @@ export function EditSignalOverrideModal({
       // Nothing actually closed (broker down, close not confirmed, wrong shard,
       // no legs): stay on the confirm view with a specific error instead of
       // showing a green success — even if queued legs were swept along the way.
-      if (closeResult.closed === 0 && (closeResult.failed > 0 || virtualDeleted === 0)) {
+      if (closeResult.closed === 0 && pendingCancelled === 0 && (closeResult.failed > 0 || virtualDeleted === 0)) {
         // Queued legs may still have been swept on the worker side — tell the
         // parent so the page refreshes those rows, then show the error here.
         if (virtualDeleted > 0) {
@@ -377,17 +384,17 @@ export function EditSignalOverrideModal({
         return
       }
       onClosed({
-        closed: closeResult.closed,
+        closed: settled,
         failed: closeResult.failed,
         virtualDeleted,
       })
-      const text = closeResult.closed > 0
+      const text = settled > 0
         ? closeResult.failed > 0
           ? interpolate(sh.closePartial, {
-              closed: String(closeResult.closed),
-              total: String(closeResult.closed + closeResult.failed),
+              closed: String(settled),
+              total: String(settled + closeResult.failed),
             })
-          : interpolate(sh.closeSuccess, { count: String(closeResult.closed) })
+          : interpolate(sh.closeSuccess, { count: String(settled) })
         : interpolate(sh.closeQueuedRemoved, { count: String(virtualDeleted) })
       setResult({ kind: 'closed', text, partial: closeResult.failed > 0 })
       setCountdown(RESULT_AUTO_CLOSE_SECONDS)
