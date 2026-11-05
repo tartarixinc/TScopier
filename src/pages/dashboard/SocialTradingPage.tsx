@@ -249,13 +249,6 @@ export function SocialTradingPage() {
           </div>
         )}
       />
-      {!social.loading && !social.currentProfile ? (
-        <Card>
-          <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{copy.joinTitle}</h2>
-          <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-50">{copy.joinBody}</p>
-          <Button type="button" size="sm" className="mt-3" disabled={social.pendingKeys.has('register')} onClick={() => void social.register()}>{copy.joinAction}</Button>
-        </Card>
-      ) : null}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <input
           type="search"
@@ -458,7 +451,6 @@ function PerformanceNotice({ loading, trader }: { loading: boolean, trader: Soci
   if (trader.performanceError) return <Alert variant={'error'}>{trader.performanceError}</Alert>
   if (trader.performanceStatus === 'no_history') return <Alert variant={'warning'}>Verified source history contains no trades yet.</Alert>
   if (trader.performanceStatus === 'pending') return <Alert variant={'warning'}>Source history synchronization has not completed yet. Statistics remain unavailable.</Alert>
-  if (trader.performanceStatus === 'incomplete') return <Alert variant={'warning'}>Source history is incomplete. Known trades are shown, but historical totals remain unavailable.</Alert>
   if (trader.performanceStatus === 'unavailable') return <Alert variant={'warning'}>Source performance is unavailable.</Alert>
   if (trader.performanceStatus === 'stale') return <Alert variant={'warning'}>Source history is stale. Historical values are shown and copying remains unavailable until synchronization succeeds.</Alert>
   return null
@@ -882,7 +874,7 @@ function MonthlyProfitChart({ title, data }: { title: string; data: SocialTrader
           </BarChart>
         </ResponsiveContainer>
       </div>}
-      {hasKnownPerformance && data.some(month => month.state === 'incomplete' || month.state === 'unavailable') ? <p className="mt-2 text-xs text-neutral-500">Blank months are unavailable or outside complete verified history; they are not zero-performance months.</p> : null}
+      {hasKnownPerformance && data.some(month => month.state === 'unavailable') ? <p className="mt-2 text-xs text-neutral-500">Blank months have no known closed trades; they are not zero-performance months.</p> : null}
     </Card>
   )
 }
@@ -1238,9 +1230,9 @@ function OverviewPanel({
         <OverviewRow label={copy.balance} value={trader.previewBalance == null ? '—' : trader.accountCurrency ? formatAccountAmount(trader.previewBalance, trader.accountCurrency) : formatMoney(trader.previewBalance)} />
         <OverviewRow label={copy.equity} value={stats.equity == null ? '—' : formatMoney(stats.equity)} />
         <OverviewRow label={copy.deposit} value={stats.deposit == null ? '—' : formatMoney(stats.deposit)} />
-        <OverviewRow label={copy.totalTrades} value={!trader.historyComplete || trader.closedTrades == null || trader.openTradeCount == null ? '—' : String(trader.closedTrades + trader.openTradeCount)} />
-        <OverviewRow label={copy.openTrades} value={!trader.historyComplete || trader.openTradeCount == null ? '—' : String(trader.openTradeCount)} />
-        <OverviewRow label={copy.lastTrade} value={!trader.historyComplete ? '—' : lastTrade ? formatWhen(lastTrade) : trader.historyAvailable ? '—' : '—'} />
+        <OverviewRow label={copy.totalTrades} value={trader.closedTrades == null || trader.openTradeCount == null ? '—' : String(trader.closedTrades + trader.openTradeCount)} />
+        <OverviewRow label={copy.openTrades} value={trader.openTradeCount == null ? '—' : String(trader.openTradeCount)} />
+        <OverviewRow label={copy.lastTrade} value={lastTrade ? formatWhen(lastTrade) : '—'} />
         <OverviewRow label={copy.openPosition} value={stats.openPosition == null ? '—' : formatSignedMoney(stats.openPosition)} tone={stats.openPosition == null ? undefined : stats.openPosition >= 0 ? 'up' : 'down'} />
         <OverviewRow label={copy.liveCopiers} value={trader.liveCopiers == null ? '—' : String(trader.liveCopiers)} />
 <OverviewRow label={copy.bestTrade} value={stats.bestTradeProfit == null || !stats.bestTradeAt ? '—' : formatSignedMoney(stats.bestTradeProfit) + ' / ' + formatWhen(stats.bestTradeAt)} tone="up" />

@@ -122,10 +122,11 @@ export function hydrateTrader(
   return {
     ...base,
     roi: performance?.returnPercentage ?? null,
-    winRate: historyComplete ? performance.winRate : null,
+    // Show known metrics as soon as performance loads; do not wait for complete history.
+    winRate: performance?.winRate ?? null,
     maxDrawdown: performance?.maximumDrawdown ?? null,
-    closedTrades: historyComplete ? performance.closedTradeCount : null,
-    openTradeCount: historyComplete ? performance.openTradeCount : null,
+    closedTrades: performance?.closedTradeCount ?? null,
+    openTradeCount: performance?.openTradeCount ?? null,
     sourceId: source?.sourceId ?? null,
     sourceLabel: source?.label ?? null,
     sourceProvider: source?.provider ?? null,

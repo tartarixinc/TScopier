@@ -29,8 +29,6 @@ const socialCopyEligibilityRules = [
   { label: 'Account mode is verified', reasons: ['account_mode_unknown', 'demo_only'] },
   { label: 'Account is active and connected', reasons: ['source_inactive', 'sync_failed', 'source_disconnected'] },
   { label: 'Synchronized within 15 minutes', reasons: ['sync_pending', 'history_stale'] },
-  { label: 'Trade history is complete and verified', reasons: ['history_incomplete'] },
-  { label: 'At least 10 closed trades', reasons: ['minimum_trades_not_met'] },
   { label: 'Trade history spans at least 7 days', reasons: ['minimum_period_not_met'] },
   { label: 'Profile is eligible for copying', reasons: ['synthetic_demo'] },
 ] as const
@@ -57,7 +55,6 @@ export function socialPerformanceStatusMessage(status: SocialPerformanceStatus, 
   if (reason === 'sync_failed') return 'History synchronization failed. Reconnect the source account and try again.'
   if (reason === 'sync_pending') return 'The source account has not completed its first history synchronization.'
   if (reason === 'history_stale') return 'History is stale. The figures shown are from the last successful synchronization.'
-  if (reason === 'history_incomplete') return 'Some source trades remain unverified or have missing realized results. Known metrics are partial until synchronization resolves them.'
   if (reason === 'no_history') return 'No verified source trading history exists yet.'
   return 'Performance is unavailable for this source.'
 }

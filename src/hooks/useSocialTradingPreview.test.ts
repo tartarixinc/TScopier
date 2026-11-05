@@ -64,21 +64,23 @@ describe('social trading preview hydration', () => {
     const failed = hydrateTrader(base, null, performance, source, 'Trade-history request failed')
     const empty = hydrateTrader(base, [], { ...performance, performanceStatus: 'no_history', openTradeCount: 0, closedTradeCount: 0 }, source)
     expect(failed.historyAvailable).toBe(false)
-    expect(failed.closedTrades).toBeNull()
+    expect(failed.historyComplete).toBe(false)
+    // Aggregate performance metrics still surface even when the trade-history RPC fails.
+    expect(failed.closedTrades).toBe(1)
     expect(empty.historyAvailable).toBe(true)
     expect(empty.historyComplete).toBe(true)
     expect(empty.closedTrades).toBe(0)
     expect(empty.openTradeCount).toBe(0)
   })
 
-  it('does not mix incomplete or duplicate history with complete totals', () => {
-    const incomplete = hydrateTrader(base, [flatTrade], { ...performance, performanceStatus: 'incomplete', closedTradeCount: 2 }, source)
+  it('shows known metrics immediately and still flags incomplete or duplicate history', () => {
+    const incomplete = hydrateTrader(base, [flatTrade], { ...performance, performanceStatus: 'incomplete', closedTradeCount: 2, winRate: 50 }, source)
     const duplicate = hydrateTrader(base, [flatTrade, { ...flatTrade }], performance, source)
     expect(incomplete.closedPerformance).toHaveLength(1)
-    expect(incomplete.closedTrades).toBeNull()
-    expect(incomplete.winRate).toBeNull()
+    expect(incomplete.closedTrades).toBe(2)
+    expect(incomplete.winRate).toBe(50)
     expect(incomplete.historyComplete).toBe(false)
-    expect(duplicate.closedTrades).toBeNull()
+    expect(duplicate.closedTrades).toBe(1)
     expect(duplicate.historyComplete).toBe(false)
   })
 
@@ -96,7 +98,7 @@ describe('social trading preview hydration', () => {
 
   it('requires both a published source and backend eligibility for real traders', () => {
     const eligible = hydrateTrader(base, [flatTrade], performance, source)
-    const ineligible = hydrateTrader(base, [flatTrade], performance, { ...source, isCopyEligible: false, eligibilityReason: 'minimum_trades_not_met' })
+    const ineligible = hydrateTrader(base, [flatTrade], performance, { ...source, isCopyEligible: false, eligibilityReason: 'minimum_period_not_met' })
     expect(canOpenCopyTrader(eligible)).toBe(true)
     expect(canOpenCopyTrader(ineligible)).toBe(false)
     expect(canOpenCopyTrader({ ...eligible, sourceId: null })).toBe(true)

@@ -270,8 +270,9 @@ export function computeBestWorstTrades(
       broker: trade.broker_name || trade.broker_label || unlinkedLabel,
       timeLabel: formatTradeTime(trade.closed_at ?? trade.opened_at),
     }
-    if (!bestTrade || pnl > bestTrade.pnl) bestTrade = row
-    if (!worstTrade || pnl < worstTrade.pnl) worstTrade = row
+    if (pnl > 0 && (!bestTrade || pnl > bestTrade.pnl)) bestTrade = row
+    // Only a losing trade counts as "worst"; all-green history shows an em dash.
+    if (pnl < 0 && (!worstTrade || pnl < worstTrade.pnl)) worstTrade = row
   }
 
   return { bestTrade, worstTrade }

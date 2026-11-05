@@ -32,8 +32,9 @@ const COPY: Record<SocialEligibilityReason, Copy> = {
   source_disconnected: item('blocked', 'error', 'The source account is disconnected from its broker.', 'Reconnect the source account and confirm that its connection is healthy.'),
   sync_pending: item('pending', 'info', 'The first successful source synchronization has not completed.', 'Keep the account connected and wait for synchronization to finish.'),
   history_stale: item('blocked', 'error', 'The source history is older than the 15-minute freshness limit.', 'Restore synchronization and wait for a fresh broker snapshot.'),
-  history_incomplete: item('blocked', 'error', 'One or more closed trades are missing a verified broker ticket or realized result.', 'Synchronize the complete closed-trade history before publishing it for copying.'),
-  minimum_trades_not_met: item('pending', 'info', 'Fewer than 10 complete closed trades are available.', 'Accumulate at least 10 complete closed trades and synchronize them.'),
+  history_incomplete: item('passed', 'success', 'Known closed-trade results are published as they synchronize.', null),
+  // Retired: no longer a copy blocker; keep the code for older RPC payloads.
+  minimum_trades_not_met: item('passed', 'success', 'Known closed-trade results are published as they synchronize.', null),
   minimum_period_not_met: item('pending', 'info', 'The verified closed-trade history spans less than 7 days.', 'Keep the account synchronized until its closed-trade history spans at least 7 days.'),
   eligible: item('passed', 'success', 'The source currently passes every server-side copy eligibility check.', null),
 }

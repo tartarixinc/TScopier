@@ -59,7 +59,6 @@ export function ProviderPublicPerformance({
           <h2 className="text-sm font-semibold">Performance</h2>
           <p className="text-xs text-neutral-600 dark:text-neutral-400">
             {syncedAt == null ? 'Not synced yet' : `${stale ? 'Last synced' : 'Updated'} ${whenTime(performance.lastSyncedAt)}`}
-            {!performance.historyComplete && syncedAt != null ? ' · Partial history' : ''}
           </p>
         </div>
         {stale && syncedAt != null && (
@@ -89,13 +88,17 @@ export function ProviderPublicPerformance({
           <Metric label="History period">
             <span className="text-sm">{performance.periodStart && performance.periodEnd ? `${when(performance.periodStart)} – ${when(performance.periodEnd)}` : DASH}</span>
           </Metric>
-          <Metric label="Best trade" tone={toneFor(performance.bestProfit)}>
-            {money(performance.bestProfit)}
-            {performance.bestAt && <span className="block text-xs font-normal text-neutral-600 dark:text-neutral-400">{when(performance.bestAt)}</span>}
+          <Metric label="Best trade" tone={toneFor(performance.bestProfit != null && performance.bestProfit > 0 ? performance.bestProfit : null)}>
+            {money(performance.bestProfit != null && performance.bestProfit > 0 ? performance.bestProfit : null)}
+            {performance.bestProfit != null && performance.bestProfit > 0 && performance.bestAt ? (
+              <span className="block text-xs font-normal text-neutral-600 dark:text-neutral-400">{when(performance.bestAt)}</span>
+            ) : null}
           </Metric>
-          <Metric label="Worst trade" tone={toneFor(performance.worstProfit)}>
-            {money(performance.worstProfit)}
-            {performance.worstAt && <span className="block text-xs font-normal text-neutral-600 dark:text-neutral-400">{when(performance.worstAt)}</span>}
+          <Metric label="Worst trade" tone={toneFor(performance.worstProfit != null && performance.worstProfit < 0 ? performance.worstProfit : null)}>
+            {money(performance.worstProfit != null && performance.worstProfit < 0 ? performance.worstProfit : null)}
+            {performance.worstProfit != null && performance.worstProfit < 0 && performance.worstAt ? (
+              <span className="block text-xs font-normal text-neutral-600 dark:text-neutral-400">{when(performance.worstAt)}</span>
+            ) : null}
           </Metric>
         </dl>
       </section>

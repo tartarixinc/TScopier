@@ -22,7 +22,7 @@ test('maps only persisted source availability and subscription lifecycle state',
   const rpc = async () => ({ data: [{
     source_id: 'source', trader_user_id: 'trader', label: 'Demo source', provider: 'fxsocket',
     platform: 'MT5', account_hint: '•••1234', account_mode: 'demo', connection_healthy: true,
-    is_copy_eligible: false, eligibility_reason: 'minimum_trades_not_met', is_synthetic: false,
+    is_copy_eligible: false, eligibility_reason: 'minimum_period_not_met', is_synthetic: false,
   }], error: null })
   const query = {
     select() { return this }, eq() { return this }, order: async () => ({ data: [{
@@ -37,8 +37,8 @@ test('maps only persisted source availability and subscription lifecycle state',
   assert.deepEqual(await fetchSocialCopySources(client, 'trader'), [{
     sourceId: 'source', label: 'Demo source', provider: 'fxsocket',
     platform: 'MT5', accountHint: '•••1234', accountMode: 'demo', connectionHealthy: true,
-    isCopyEligible: false, eligibilityReason: 'minimum_trades_not_met',
-    eligibilityDiagnostics: [expectDiagnostic('minimum_trades_not_met')], isSynthetic: false,
+    isCopyEligible: false, eligibilityReason: 'minimum_period_not_met',
+    eligibilityDiagnostics: [expectDiagnostic('minimum_period_not_met')], isSynthetic: false,
   }])
   const subscriptions = await fetchSocialCopySubscriptions(client, 'trader')
   assert.equal(subscriptions[0]?.status, 'pending')
