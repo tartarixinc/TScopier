@@ -119,7 +119,6 @@ import { useFormatMoney } from '../../hooks/useFormatMoney'
 import { lossTextClass, pnlSignTextClass } from '../../lib/pnlDisplay'
 import { formatMoneyWithCode } from '../../lib/currency'
 import { interpolate } from '../../i18n/interpolate'
-import { TelegramConnectBanner } from '../../components/dashboard/TelegramConnectBanner'
 import { ListenerLeaseOfflineBanner } from '../../components/dashboard/ListenerLeaseOfflineBanner'
 import { LiveFeedDegradedBanner } from '../../components/LiveFeedDegradedBanner'
 import {
@@ -2477,7 +2476,6 @@ export function DashboardPage() {
         <DashboardMetricsSkeleton message={t.dashboard.loadingMetrics} />
       ) : (
         <>
-      <TelegramConnectBanner />
       <ListenerLeaseOfflineBanner />
       <LiveFeedDegradedBanner />
 

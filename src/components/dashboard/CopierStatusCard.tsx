@@ -328,7 +328,7 @@ export function CopierStatusCard({
         ? cs.telegramReconnectingMessage
         : cs.checkingMessage
       : headline === 'no_source'
-        ? cs.noSourceMessage
+        ? ''
         : headline === 'unknown'
           ? cs.unreportedMessage
           : headline === 'ready'
@@ -422,14 +422,16 @@ export function CopierStatusCard({
 
       {expanded ? (
         <div className="divide-y divide-neutral-100 px-5 py-4 dark:divide-neutral-800/80">
-          <div className="pb-3 text-sm text-neutral-900 dark:text-neutral-50">
-            <div>{statusMessage}</div>
-            {lastHealthy ? (
-              <div className="mt-1 text-xs text-neutral-900 dark:text-neutral-50">
-                {cs.lastHealthy}: {lastHealthy}
-              </div>
-            ) : null}
-          </div>
+          {statusMessage || lastHealthy ? (
+            <div className="pb-3 text-sm text-neutral-900 dark:text-neutral-50">
+              {statusMessage ? <div>{statusMessage}</div> : null}
+              {lastHealthy ? (
+                <div className={clsx(statusMessage && 'mt-1', 'text-xs text-neutral-900 dark:text-neutral-50')}>
+                  {cs.lastHealthy}: {lastHealthy}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <div className="py-1">
             <p className="pb-1 text-xs font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
               {cs.signalSources}
