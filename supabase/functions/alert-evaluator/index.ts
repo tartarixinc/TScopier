@@ -31,6 +31,7 @@
  *   bridge_down            { grace_seconds: number, targets: string[] }
  *   probe_stale            { max_stale_minutes: number, targets: string[] }
  *   mtapi_accounts_error   { max_error_pct: number, min_accounts: number }
+ *   mtapi_connect_errors   { min_accounts: number }
  *   mtapi_reconnect_storm  { max_events: number }            // windowed
  *   workers_offline        { }                               // zero leases sustained for window_minutes
  *   trade_workers_offline  { max_stale_minutes: number }      // worker_trade heartbeat
@@ -82,6 +83,7 @@ const NEXT_ACTION: Record<string, string> = {
   bridge_down: "Check the MTAPI bridge service and the Systems Health page — MT5/MT4 copies are blocked until it recovers.",
   probe_stale: "Open the Systems Health page — the named target stopped reporting. If it is the alert evaluator itself, other alerts may be delayed.",
   mtapi_accounts_error: "Check the Bridges / Reconnects pages — this usually means a bridge-side problem, not isolated user issues.",
+  mtapi_connect_errors: "The bridge is refusing new broker logins. On the Contabo VPS check the MTAPI licence/product expiry (docker logs mtapi | grep 'Product expired') and container health. New retryable failures clear on their own; if older rows stay parked in error after the bridge is healthy, reset them: update broker_accounts set connection_status='pending', mtapi_status='connecting', connection_error=null where provider='mtapi' and connection_status='error' and (connection_error like '%CONNECT_ERROR%' or connection_error like '%broker connection temporarily unavailable%').",
   mtapi_reconnect_storm: "Accounts are flapping between connected and error; check bridge and network stability before users report failed copies.",
   workers_offline: "Check the Railway listener service — nothing is listening, so no signals are being received at all.",
   trade_workers_offline: "Check the Railway trade-worker service — existing open trades are not being managed while this fires.",
@@ -355,6 +357,38 @@ async function evalMtapiAccountsError(sb: any, rule: RuleRow): Promise<EvalOutco
     fired: pct > maxPct,
     value: round1(pct),
     message: `${errored} of ${total} MTAPI accounts in error (${round1(pct)}%)`,
+  };
+}
+
+/**
+ * A single account refused at broker login is usually that account's problem.
+ * Several at once is a bridge-wide fault — an expired MTAPI licence/product, a
+ * dead terminal manager, or a broken bridge. `/health` keeps answering while
+ * new logins are refused, and the percentage-based `mtapi_accounts_error` rule
+ * stays quiet when only a handful of accounts are affected, so this counts the
+ * distinct accounts showing a `CONNECT_ERROR` instead.
+ *
+ * The worker treats `CONNECT_ERROR` as retryable and keeps such rows `pending`,
+ * so the count clears by itself once the bridge accepts logins again. Older
+ * builds parked the row in `error`; those are counted too, and NEXT_ACTION
+ * carries the one-off reset SQL for them.
+ */
+async function evalMtapiConnectErrors(sb: any, rule: RuleRow): Promise<EvalOutcome> {
+  const minAccounts = Math.max(1, Math.floor(num(rule.threshold.min_accounts, 3)));
+  // Count both states: the worker keeps a retryable bridge failure `pending`
+  // while it retries, and older builds parked it in `error`. `is_active` keeps
+  // disabled/paused accounts from tripping a critical page.
+  const count = await headCount(sb, "broker_accounts", q =>
+    q.eq("provider", "mtapi")
+      .eq("is_active", true)
+      .in("connection_status", ["error", "pending"])
+      .or("connection_error.ilike.%CONNECT_ERROR%,connection_error.ilike.%broker connection temporarily unavailable%"));
+  if (count == null) return { kind: "skip", reason: "broker_accounts connect-error count unreadable" };
+  return {
+    kind: "ok",
+    fired: count >= minAccounts,
+    value: count,
+    message: `${count} MTAPI account(s) refused at broker login (CONNECT_ERROR) — check the bridge licence/health`,
   };
 }
 
@@ -660,6 +694,7 @@ async function evaluate(sb: any, rule: RuleRow, nowMs: number): Promise<EvalOutc
     case "bridge_down": return evalBridgeDown(sb, rule, nowMs);
     case "probe_stale": return evalProbeStale(sb, rule, nowMs);
     case "mtapi_accounts_error": return evalMtapiAccountsError(sb, rule);
+    case "mtapi_connect_errors": return evalMtapiConnectErrors(sb, rule);
     case "mtapi_reconnect_storm": return evalReconnectStorm(sb, rule, nowMs);
     case "workers_offline": return evalWorkersOffline(sb, rule, nowMs);
     case "trade_workers_offline": return evalTradeWorkersOffline(sb, rule, nowMs);
