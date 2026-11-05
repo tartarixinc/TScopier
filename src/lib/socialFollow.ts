@@ -50,6 +50,7 @@ export interface SocialDirectoryProfile {
   equity: number | null
   currency: string | null
   snapshotAt: string | null
+  timezone: string | null
 }
 
 interface SocialDirectoryRow {
@@ -80,6 +81,7 @@ interface SocialDirectoryRow {
   equity?: number | string | null
   currency?: string | null
   snapshot_at?: string | null
+  timezone?: string | null
 }
 
 interface RpcErrorLike {
@@ -187,6 +189,7 @@ function mapProfile(row: SocialDirectoryRow): SocialDirectoryProfile {
     equity: row.equity == null ? null : Number(row.equity),
     currency: row.currency ?? null,
     snapshotAt: row.snapshot_at ?? null,
+    timezone: typeof row.timezone === 'string' && row.timezone.trim() ? row.timezone.trim() : null,
   }
 }
 

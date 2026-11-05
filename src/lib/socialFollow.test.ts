@@ -27,6 +27,7 @@ describe('socialFollow client', () => {
         following_count: 2,
         viewer_relationship_status: 'pending',
         follows_viewer_status: null,
+        timezone: 'Africa/Lagos',
       }],
     })
 
@@ -35,6 +36,7 @@ describe('socialFollow client', () => {
       followerCount: 3,
       followingCount: 2,
       viewerRelationshipStatus: 'pending',
+      timezone: 'Africa/Lagos',
     })])
   })
 

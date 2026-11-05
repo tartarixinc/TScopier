@@ -235,7 +235,10 @@ export function floatingOpenPnl(input: {
   const { equity, balance, openCount, snapshotAt } = input
   if (equity == null || balance == null || !Number.isFinite(equity) || !Number.isFinite(balance)) return null
   if ((openCount ?? 0) > 0 && snapshotFreshness(snapshotAt, input.now) !== 'fresh') return null
-  return Math.round((equity - balance) * 100) / 100
+  const diff = Math.round((equity - balance) * 100) / 100
+  // Equity≈balance with open trades is usually a stale synced pair, not a real flat book.
+  if ((openCount ?? 0) > 0 && Math.abs(diff) < 0.005) return null
+  return diff
 }
 
 // ---------------------------------------------------------------------------

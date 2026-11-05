@@ -1,17 +1,37 @@
 import { useEffect, useState } from 'react'
 import { useBrokerAccounts } from '../context/BrokerAccountsContext'
 import { fxsocketBroker } from '../lib/fxsocketBroker'
-import { resolveProvider } from '../lib/brokerLink'
-import { describeLiveFetchError, liveOpenPnlFromSummary } from '../lib/liveOpenPnl'
+import { resolveProvider, type BrokerProvider } from '../lib/brokerLink'
+import {
+  describeLiveFetchError,
+  liveOpenPnlFromMtTrades,
+  liveOpenPnlFromOpenedOrders,
+  liveOpenPnlFromSummary,
+  preferLiveOpenPnl,
+} from '../lib/liveOpenPnl'
 
-const MTAPI_POLL_MS = 60_000
-const DEFAULT_POLL_MS = 15_000
+const MTAPI_POLL_MS = 15_000
+const DEFAULT_POLL_MS = 10_000
 
 type Live = { accountId: string; openPnl: number | null; error: string | null }
 
+async function fetchPositionOpenPnl(brokerId: string, provider: BrokerProvider): Promise<number | null> {
+  if (provider === 'ctrader' || provider === 'binance' || provider === 'bybit' || provider === 'kucoin') {
+    const { trades } = await fxsocketBroker.trades({
+      brokerId,
+      scope: 'open',
+      historyProfile: 'dashboard',
+      provider,
+    })
+    return liveOpenPnlFromMtTrades(trades)
+  }
+  const orders = await fxsocketBroker.openedOrders(brokerId, provider)
+  return liveOpenPnlFromOpenedOrders(orders)
+}
+
 /**
- * Fetches the real floating P/L straight from the trading account (not the saved snapshot) while
- * the "You" page is open. Also writes the refreshed balance/equity back into the broker list.
+ * Fetches floating open P/L live from the trading account while a social profile is open.
+ * Uses account summary plus open positions so equity≈balance snapshots do not show $0.00.
  */
 export function useLiveOwnOpenPnl(accountId: string, openCount: number, enabled: boolean) {
   const { brokers, upsertBroker } = useBrokerAccounts()
@@ -36,8 +56,29 @@ export function useLiveOwnOpenPnl(accountId: string, openCount: number, enabled:
           summary = (await fxsocketBroker.liveSnapshot(brokerId, provider)).summary
         }
         if (cancelled) return
-        const openPnl = liveOpenPnlFromSummary(summary, openCount)
-        // A failed poll must not wipe the last good value, or the page flips between a number and an em dash.
+
+        const summaryOpen = typeof summary?.open_trades === 'number' && Number.isFinite(summary.open_trades)
+          ? summary.open_trades
+          : openCount
+        const fromSummary = liveOpenPnlFromSummary(summary, summaryOpen)
+
+        let fromPositions: number | null = null
+        const needsPositions = summaryOpen > 0 || openCount > 0 || fromSummary == null || Math.abs(fromSummary) < 0.005
+        if (needsPositions) {
+          try {
+            fromPositions = await fetchPositionOpenPnl(brokerId, provider)
+          } catch {
+            fromPositions = null
+          }
+        }
+        if (cancelled) return
+
+        const openPnl = preferLiveOpenPnl({
+          fromSummary,
+          fromPositions,
+          openCount: Math.max(summaryOpen, openCount),
+        })
+
         setLive(prev => ({
           accountId: brokerId,
           openPnl: openPnl ?? (prev?.accountId === brokerId ? prev.openPnl : null),
@@ -59,7 +100,7 @@ export function useLiveOwnOpenPnl(accountId: string, openCount: number, enabled:
       cancelled = true
       window.clearInterval(timer)
     }
-    // openCount only tunes the 0-P/L heuristic; do not restart polling when it changes.
+    // openCount only tunes heuristics; do not restart polling when it changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, brokerId, provider, upsertBroker])
 

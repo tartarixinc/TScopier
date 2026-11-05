@@ -10,6 +10,7 @@ import clsx from 'clsx'
 import { AccountGrowthChart } from '../../components/dashboard/AccountGrowthChart'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { CopyTraderModal } from '../../components/social/CopyTraderModal'
+import { SocialTraderProfileSkeleton } from '../../components/social/SocialTraderProfileSkeleton'
 import { TraderReviews } from '../../components/social/TraderReviews'
 import { SocialProfileLinks } from '../../components/social/SocialProfileLinks'
 import { PageShell } from '../../components/layout/PageShell'
@@ -446,8 +447,7 @@ function CopyActionButton({
   )
 }
 
-function PerformanceNotice({ loading, trader }: { loading: boolean, trader: SocialTrader }) {
-  if (loading) return <Alert variant={'warning'}>Loading source-scoped performance and trade history...</Alert>
+function PerformanceNotice({ trader }: { trader: SocialTrader }) {
   if (trader.performanceError) return <Alert variant={'error'}>{trader.performanceError}</Alert>
   if (trader.performanceStatus === 'no_history') return <Alert variant={'warning'}>Verified source history contains no trades yet.</Alert>
   if (trader.performanceStatus === 'pending') return <Alert variant={'warning'}>Source history synchronization has not completed yet. Statistics remain unavailable.</Alert>
@@ -467,7 +467,7 @@ export function OwnProviderProfileView() {
   const directoryTrader = social.traders.find(item => item.isYou)
     ?? (user?.id ? social.traders.find(item => item.id === user.id) : undefined)
   // Manage provider uses the published source account; no account picker.
-  const selectedOwnAccountId = useDefaultOwnSourceAccount(Boolean(directoryTrader))
+  const selectedOwnAccountId = useDefaultOwnSourceAccount(true)
   const ownAccountView = useOwnSocialAccountView(
     directoryTrader ? { ...directoryTrader, isYou: true } : undefined,
     selectedOwnAccountId,
@@ -480,12 +480,14 @@ export function OwnProviderProfileView() {
       : rawTrader,
     [rawTrader, ownTimezone],
   )
-  const liveOwn = useLiveOwnOpenPnl(selectedOwnAccountId, trader?.openTradeCount ?? 0, Boolean(trader))
+  const openCountHint = Math.max(trader?.openTradeCount ?? 0, trader?.openTrades.length ?? 0)
+  // Poll as soon as the published source account is known — do not wait for history hydration.
+  const liveOwn = useLiveOwnOpenPnl(selectedOwnAccountId, openCountHint, Boolean(selectedOwnAccountId))
   const ownAvatarUrl = useOwnAvatarUrl()
   const [profileTab, setProfileTab] = useState<'performance' | 'trading' | 'portfolio'>('performance')
 
-  if ((social.loading || ownAccountView.loading) && !trader) {
-    return <Card><p className="text-sm text-neutral-900 dark:text-neutral-50">{copy.loadingDirectory}</p></Card>
+  if (social.loading || social.performanceLoading || ownAccountView.loading) {
+    return <SocialTraderProfileSkeleton />
   }
   if (!trader) {
     return (
@@ -498,7 +500,10 @@ export function OwnProviderProfileView() {
   }
 
   const baseStats = socialTraderStats(trader)
-  const stats = liveOwn.openPnl != null ? { ...baseStats, openPosition: liveOwn.openPnl } : baseStats
+  const stats = {
+    ...baseStats,
+    openPosition: liveOwn.openPnl != null ? liveOwn.openPnl : baseStats.openPosition,
+  }
   const name = copy.you
   const joined = trader.profile.joinedAt
     ? new Date(trader.profile.joinedAt).toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric' })
@@ -542,7 +547,7 @@ export function OwnProviderProfileView() {
             <ProfileTab icon={<LineChart className="h-4 w-4" />} active={profileTab === 'trading'} onClick={() => setProfileTab('trading')}>{copy.tabTrading}</ProfileTab>
             <ProfileTab icon={<Wallet className="h-4 w-4" />} active={profileTab === 'portfolio'} onClick={() => setProfileTab('portfolio')}>{copy.tabPortfolio}</ProfileTab>
           </div>
-          <PerformanceNotice loading={social.performanceLoading || ownAccountView.loading} trader={trader} />
+          <PerformanceNotice trader={trader} />
           {liveOwn.error ? (
             <Alert variant={'warning'}>
               Couldn&apos;t get live data from your trading account, so some values show a dash or the last known number. {liveOwn.error}
@@ -656,8 +661,12 @@ export function SocialTraderActivityPage() {
     return <Navigate to="/social-trading" replace />
   }
 
-  if (social.loading && !trader) {
-    return <PageShell maxWidth="xl"><Card><p className="text-sm text-neutral-900 dark:text-neutral-50">{copy.loadingDirectory}</p></Card></PageShell>
+  if ((social.loading || social.performanceLoading) && !trader) {
+    return (
+      <PageShell maxWidth="xl">
+        <SocialTraderProfileSkeleton />
+      </PageShell>
+    )
   }
 
   if (!trader) {
@@ -670,6 +679,21 @@ export function SocialTraderActivityPage() {
             {copy.back}
           </Link>
         </Card>
+      </PageShell>
+    )
+  }
+
+  if (social.performanceLoading) {
+    return (
+      <PageShell maxWidth="xl">
+        <div>
+          <Link to="/social-trading" className="text-sm font-medium text-green-500 hover:text-teal-800 dark:text-teal-300">
+            {copy.back}
+          </Link>
+          <div className="mt-3">
+            <SocialTraderProfileSkeleton />
+          </div>
+        </div>
       </PageShell>
     )
   }
@@ -734,7 +758,7 @@ export function SocialTraderActivityPage() {
             <ProfileTab icon={<LineChart className="h-4 w-4" />} active={profileTab === 'trading'} onClick={() => setProfileTab('trading')}>{copy.tabTrading}</ProfileTab>
             <ProfileTab icon={<Wallet className="h-4 w-4" />} active={profileTab === 'portfolio'} onClick={() => setProfileTab('portfolio')}>{copy.tabPortfolio}</ProfileTab>
           </div>
-          <PerformanceNotice loading={social.performanceLoading} trader={trader} />
+          <PerformanceNotice trader={trader} />
           {profileTab === 'performance' ? (
             <>
               <MonthlyProfitChart title={copy.monthlyStatistics} data={stats.monthly} />

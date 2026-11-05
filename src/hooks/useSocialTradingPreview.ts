@@ -8,6 +8,7 @@ import {
   type SocialTradeHistoryItem,
 } from '../lib/socialTradeHistory'
 import { eligibilityDiagnosticForReason } from '../lib/socialEligibility'
+import { findTimezoneLabel } from '../lib/timezoneOptions'
 import { supabase } from '../lib/supabase'
 import type { SocialDirectoryProfile } from '../lib/socialFollow'
 import type { SocialTrader } from '../lib/socialTradingFixture'
@@ -62,7 +63,7 @@ function previewTrader(profile: SocialDirectoryProfile, rank: number): SocialTra
       rank,
       leverage: null,
       country: profile.country,
-      timezone: null,
+      timezone: profile.timezone ? findTimezoneLabel(profile.timezone) : null,
     },
     openTrades: [],
     closedPerformance: [],
