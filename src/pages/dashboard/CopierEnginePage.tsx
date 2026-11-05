@@ -72,7 +72,7 @@ import {
 } from '../../lib/signalSourceTabs'
 import { subscribeTradingViewWebhooksChanged } from '../../lib/tradingViewWebhook'
 import { subscribeWhatsAppSourcesChanged } from '../../lib/whatsappSource'
-import { buildFlags } from '../../lib/featureFlags'
+import { buildFlags, isSignalSourceLocked } from '../../lib/featureFlags'
 import type { BrokerAccount, TelegramChannel } from '../../types/database'
 
 type AddedSignalSource = SignalSourceKind
@@ -165,7 +165,7 @@ export function CopierEnginePage() {
   const [channels, setChannels] = useState<TelegramChannel[]>([])
   const [searchParams] = useSearchParams()
   // Production builds ignore Discord invite links until the Discord worker ships.
-  const guildFromInvite = buildFlags.telegramOnlySourcePicker ? null : searchParams.get('guild_id')
+  const guildFromInvite = buildFlags.extraSourcesLocked ? null : searchParams.get('guild_id')
   const [source, setSource] = useState<AddedSignalSource | null>(guildFromInvite ? 'discord' : null)
   const [settingUpSource, setSettingUpSource] = useState<AddedSignalSource | null>(
     guildFromInvite ? 'discord' : null,
@@ -1001,8 +1001,8 @@ export function CopierEnginePage() {
   }, [settingUpSource, source, sourcesReady, visibleSources])
 
   const addSignalSource = (kind: AddedSignalSource) => {
-    // Defence in depth: locked builds accept Telegram only, whatever calls this.
-    if (buildFlags.telegramOnlySourcePicker && kind !== 'telegram') return
+    // Defence in depth: locked sources are refused, whatever calls this.
+    if (isSignalSourceLocked(kind)) return
     if (user?.id) {
       setPickedSources(prev => {
         const next = appendSignalSource(prev, kind)
@@ -1441,7 +1441,7 @@ function NewSignalSourceModal({
           {SIGNAL_SOURCE_ORDER.map(kind => {
             const alreadyAdded = added.includes(kind)
             // Production builds may only pick Telegram until the other sources have workers.
-            const locked = buildFlags.telegramOnlySourcePicker && kind !== 'telegram'
+            const locked = isSignalSourceLocked(kind)
             return (
               <button
                 key={kind}

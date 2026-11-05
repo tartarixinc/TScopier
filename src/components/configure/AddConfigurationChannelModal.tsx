@@ -6,7 +6,7 @@ import { useSubscription } from '../../context/SubscriptionContext'
 import { useT } from '../../context/LocaleContext'
 import { interpolate } from '../../i18n/interpolate'
 import { prepareChannelSubscriptionUpsert } from '../../lib/signalChannelRegistry'
-import { buildFlags } from '../../lib/featureFlags'
+import { isSignalSourceLocked } from '../../lib/featureFlags'
 import { upsertTelegramChannel } from '../../lib/telegramChannelApi'
 import { supabase } from '../../lib/supabase'
 import { Alert } from '../ui/Alert'
@@ -113,8 +113,6 @@ export function AddConfigurationChannelModal({
   const tradingViewChannels = channels.filter(channel => channel.source_kind === 'tradingview')
   const discordChannels = channels.filter(channel => channel.source_kind === 'discord')
   const whatsappChannels = channels.filter(channel => channel.source_kind === 'whatsapp')
-  // Production builds offer Telegram only; the other sources wait for their workers.
-  const telegramOnly = buildFlags.telegramOnlySourcePicker
   const [showForm, setShowForm] = useState(false)
   const [draft, setDraft] = useState({ channel_id: '', channel_username: '', display_name: '' })
   const [saving, setSaving] = useState(false)
@@ -240,21 +238,21 @@ export function AddConfigurationChannelModal({
                 icon={<img src="/Telegram.svg" alt="" aria-hidden className="h-7 w-7 object-contain" />}
               />
               <SourceOptionButton
-                disabled={telegramOnly}
+                disabled={isSignalSourceLocked('whatsapp')}
                 label={formCopy.tabWhatsApp}
                 badge={formCopy.comingSoon}
                 onClick={() => setStep('whatsapp')}
                 icon={<img src="/whatsapp-icon.png" alt="" aria-hidden className="h-7 w-7 rounded-full object-cover" />}
               />
               <SourceOptionButton
-                disabled={telegramOnly}
+                disabled={isSignalSourceLocked('discord')}
                 label={formCopy.tabDiscord}
                 badge={formCopy.comingSoon}
                 onClick={() => setStep('discord')}
                 icon={<img src="/discord-logo.png" alt="" aria-hidden className="h-7 w-7 rounded-full object-cover" />}
               />
               <SourceOptionButton
-                disabled={telegramOnly}
+                disabled={isSignalSourceLocked('tradingview')}
                 label={formCopy.tabTradingView}
                 badge={formCopy.comingSoon}
                 onClick={() => setStep('tradingview')}
