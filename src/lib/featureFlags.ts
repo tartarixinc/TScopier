@@ -6,8 +6,9 @@
  * in the Netlify dashboard to hide a feature; switching them back on and
  * redeploying restores it without a code change.
  *
- * - VITE_ENABLE_EXTRA_SOURCES: WhatsApp, Discord, and TradingView in the
- *   source picker (greyed out with "Coming soon" when off).
+ * - VITE_ENABLE_EXTRA_SOURCES: locks Discord and TradingView in the source
+ *   pickers ("Coming soon" when off). Telegram and WhatsApp stay selectable
+ *   because both have a worker.
  * - VITE_ENABLE_SOCIAL_TRADING: social trading everywhere, including the
  *   public provider profile pages on the marketing site.
  *
@@ -21,8 +22,8 @@
  */
 
 export interface BuildFeatureFlags {
-  /** Only Telegram may be chosen as a signal source; the rest show "Coming soon". */
-  telegramOnlySourcePicker: boolean
+  /** Extra signal sources are locked: Discord and TradingView show "Coming soon". */
+  extraSourcesLocked: boolean
   /** Hide social trading (menu, routes, search, settings, public profiles). */
   hideSocialTrading: boolean
 }
@@ -38,7 +39,7 @@ export function resolveBuildFlags(env: {
   socialTrading?: string
 }): BuildFeatureFlags {
   return {
-    telegramOnlySourcePicker: !switchEnabled(env.extraSources),
+    extraSourcesLocked: !switchEnabled(env.extraSources),
     hideSocialTrading: !switchEnabled(env.socialTrading),
   }
 }
@@ -48,3 +49,11 @@ export const buildFlags: BuildFeatureFlags = resolveBuildFlags({
   extraSources: import.meta.env.VITE_ENABLE_EXTRA_SOURCES as string | undefined,
   socialTrading: import.meta.env.VITE_ENABLE_SOCIAL_TRADING as string | undefined,
 })
+
+/** Sources that show "Coming soon" while the switch is off: they have no worker yet. */
+const LOCKED_WHILE_OFF = ['discord', 'tradingview']
+
+/** True when a signal source must be greyed out with "Coming soon" in this build. */
+export function isSignalSourceLocked(kind: string): boolean {
+  return buildFlags.extraSourcesLocked && LOCKED_WHILE_OFF.includes(kind)
+}
