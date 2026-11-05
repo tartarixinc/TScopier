@@ -12,6 +12,14 @@ export interface PlatformUpdate {
  */
 export const PLATFORM_UPDATES: PlatformUpdate[] = [
   {
+    id: 'unicopier-rebrand-2026-11',
+    date: '2026-11-04',
+    title: 'TSCopier is now Unicopier',
+    description:
+      '• Mirror trading is now available\n• More signal sources like WhatsApp and Discord, releasing in waves\n• Better design and user experience\n• cTrader is now available as a broker provider',
+    type: 'feature',
+  },
+  {
     id: 'explain-with-ai-copier-logs',
     date: '2026-09-15',
     title: 'Explain with AI is now in Copier Logs',

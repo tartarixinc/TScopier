@@ -439,7 +439,40 @@ test('cTrader quote ignores the subscribe acknowledgement and reads the spot', a
       followUps: [{
         responseType: CTRADER_PAYLOAD.SPOT_EVENT,
         clientMsgId: null,
-        payload: { bid: 417048000, ask: 417062000 },
+        payload: { symbolId: 41, bid: 417048000, ask: 417062000 },
+      }],
+    },
+  ])
+  const quote = await provider.quote('4242', 'XAUUSD')
+  assert.equal(quote.bid, 4170.48)
+  assert.equal(quote.ask, 4170.62)
+})
+
+test('cTrader quote ignores a spot event for a different symbol', async () => {
+  const { provider } = providerFor([
+    ...authSteps,
+    {
+      request: CTRADER_PAYLOAD.SYMBOLS_LIST_REQ,
+      responseType: CTRADER_PAYLOAD.SYMBOLS_LIST_RES,
+      payload: { symbol: [{ symbolId: 41, symbolName: 'XAUUSD' }] },
+    },
+    {
+      request: CTRADER_PAYLOAD.SYMBOL_BY_ID_REQ,
+      responseType: CTRADER_PAYLOAD.SYMBOL_BY_ID_RES,
+      payload: { symbol: { symbolId: 41, digits: 2, lotSize: 10_000 } },
+    },
+    {
+      request: CTRADER_PAYLOAD.SUBSCRIBE_SPOTS_REQ,
+      responseType: CTRADER_PAYLOAD.SUBSCRIBE_SPOTS_RES,
+      payload: {},
+      followUps: [{
+        responseType: CTRADER_PAYLOAD.SPOT_EVENT,
+        clientMsgId: null,
+        payload: { symbolId: 99, bid: 7728804000, ask: 7728904000 },
+      }, {
+        responseType: CTRADER_PAYLOAD.SPOT_EVENT,
+        clientMsgId: null,
+        payload: { symbolId: 41, bid: 417048000, ask: 417062000 },
       }],
     },
   ])

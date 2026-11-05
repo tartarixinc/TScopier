@@ -5,6 +5,7 @@ import { LocaleProvider } from './context/LocaleContext'
 import { ConfirmDialogProvider } from './context/ConfirmDialogContext'
 import { UserProfileProvider } from './context/UserProfileContext'
 import { SubscriptionProvider } from './context/SubscriptionContext'
+import { buildFlags } from './lib/featureFlags'
 import { AuthLayout } from './components/layout/AuthLayout'
 import { VerifyEmailLayout } from './components/layout/VerifyEmailLayout'
 import { AppShell } from './components/layout/AppShell'
@@ -150,7 +151,12 @@ export default function App() {
           <Route path="/pricing" element={<LazyPage><AppPricingPage /></LazyPage>} />
 
           {/* Public provider profile (shareable link; anon-readable via get_provider_public_profile). */}
-          <Route path="/p/:slug" element={<LazyPage><ProviderPublicProfilePage /></LazyPage>} />
+          <Route
+            path="/p/:slug"
+            element={buildFlags.hideSocialTrading
+              ? <Navigate to="/dashboard" replace />
+              : <LazyPage><ProviderPublicProfilePage /></LazyPage>}
+          />
 
           <Route element={<VerifyEmailLayout />}>
             <Route path="/verify-email" element={<VerifyEmailPage />} />
@@ -177,9 +183,24 @@ export default function App() {
             <Route path="/brokers/ctrader/callback" element={<LazyPage><CtraderCallbackPage /></LazyPage>} />
             <Route path="/brokers" element={<LazyPage><AccountConfigPage /></LazyPage>} />
             <Route path="/mirror-trading" element={<LazyPage><MirrorTradingPage /></LazyPage>} />
-            <Route path="/social-trading/provider" element={<LazyPage><ProviderApplyPage /></LazyPage>} />
-            <Route path="/social-trading/:traderId" element={<LazyPage><SocialTraderActivityPage /></LazyPage>} />
-            <Route path="/social-trading" element={<LazyPage><SocialTradingPage /></LazyPage>} />
+            <Route
+              path="/social-trading/provider"
+              element={buildFlags.hideSocialTrading
+                ? <Navigate to="/dashboard" replace />
+                : <LazyPage><ProviderApplyPage /></LazyPage>}
+            />
+            <Route
+              path="/social-trading/:traderId"
+              element={buildFlags.hideSocialTrading
+                ? <Navigate to="/dashboard" replace />
+                : <LazyPage><SocialTraderActivityPage /></LazyPage>}
+            />
+            <Route
+              path="/social-trading"
+              element={buildFlags.hideSocialTrading
+                ? <Navigate to="/dashboard" replace />
+                : <LazyPage><SocialTradingPage /></LazyPage>}
+            />
             <Route path="/configurations" element={<LazyPage><ConfigurationsPage /></LazyPage>} />
             <Route path="/account-configuration" element={<Navigate to="/brokers" replace />} />
             <Route path="/account-trades" element={<LazyPage><TradesPage /></LazyPage>} />

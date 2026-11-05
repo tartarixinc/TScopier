@@ -28,6 +28,7 @@ import { Button } from '../../components/ui/Button'
 import { Alert } from '../../components/ui/Alert'
 import { Toggle } from '../../components/ui/Toggle'
 import { normalizeSocialProfileLinks, SOCIAL_PROFILE_PLATFORMS, validateSocialProfileLinks } from '../../lib/socialProfileLinks'
+import { buildFlags } from '../../lib/featureFlags'
 import { SocialTradingSettings } from '../../components/settings/SocialTradingSettings'
 
 type SettingsSection = 'personal' | 'social' | 'general' | 'security'
@@ -91,7 +92,7 @@ export function SettingsPage() {
 
   const sections: { id: SettingsSection; label: string; icon: typeof User }[] = [
     { id: 'personal', label: t.settings.sections.personal, icon: User },
-    { id: 'social', label: 'Social Trading', icon: Users },
+    ...(buildFlags.hideSocialTrading ? [] : [{ id: 'social' as const, label: 'Social Trading', icon: Users }]),
     { id: 'general', label: t.settings.sections.general, icon: Globe },
     { id: 'security', label: t.settings.sections.security, icon: Shield },
   ]
@@ -480,7 +481,7 @@ export function SettingsPage() {
             </SettingsCard>
           ) : null}
 
-          {section === 'social' ? <SocialTradingSettings /> : null}
+          {section === 'social' && !buildFlags.hideSocialTrading ? <SocialTradingSettings /> : null}
 
           {section === 'security' ? (
             <SettingsCard
