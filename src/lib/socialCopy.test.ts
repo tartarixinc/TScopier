@@ -4,10 +4,12 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   changeSocialCopySubscription,
   createSocialCopySubscription,
+  fetchMySocialCopySubscriptions,
   fetchOwnSocialCopySources,
   fetchSocialCopySources,
   fetchSocialCopySubscriptions,
   fetchSocialTraderLiveCopierCount,
+  isCurrentSocialCopySubscription,
   publishSocialCopySource,
   setSocialCopySourceStatus,
   subscribeSocialCopyIntent,
@@ -109,6 +111,30 @@ test('surfaces backend failures instead of swallowing them', async () => {
     }),
     /private follow required/,
   )
+})
+
+test('loads the current user copy subscriptions for Your Providers', async () => {
+  const calls: Array<[string, unknown]> = []
+  const query = {
+    select(value: string) { calls.push(['select', value]); return this },
+    order: async () => ({
+      data: [{
+        id: 'sub', source_id: 'source', source_trader_user_id: 'provider',
+        destination_broker_account_id: 'destination', sizing_mode: 'fixed_lot',
+        fixed_lot: '0.01', lot_multiplier: '1', max_lot: '0.1', requested_account_mode: 'demo',
+        status: 'pending', desired_status: 'active', error_code: null, error_detail: null,
+        source_account_mode: 'demo', destination_account_mode: 'demo', execution_path: 'broker',
+        worker_acknowledged_at: null, updated_at: '2026-10-14T00:00:00Z',
+      }],
+      error: null,
+    }),
+  }
+  const client = { from(table: string) { calls.push(['from', table]); return query } } as unknown as SupabaseClient
+  const rows = await fetchMySocialCopySubscriptions(client)
+  assert.equal(rows[0]?.sourceTraderUserId, 'provider')
+  assert.equal(isCurrentSocialCopySubscription(rows[0]!), true)
+  assert.ok(calls.some(([name, value]) => name === 'from' && value === 'social_copy_subscriptions'))
+  assert.ok(calls.some(([name, value]) => name === 'select' && String(value).includes('source_trader_user_id')))
 })
 
 test('records paid-provider copy intent through subscribe_social_copy_intent', async () => {

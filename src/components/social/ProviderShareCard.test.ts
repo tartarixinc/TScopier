@@ -31,9 +31,9 @@ describe('ProviderShareCard sharing hint', () => {
   )
 
   it('asks the provider to turn on Share trade history when it is off', () => {
-    const markup = render({ shareTradeHistory: false, manageHref: '/social-trading/u-1' })
+    const markup = render({ shareTradeHistory: false, manageHref: '/social-trading/provider' })
     expect(markup).toContain('Turn on Share trade history')
-    expect(markup).toContain('href="/social-trading/u-1"')
+    expect(markup).toContain('href="/social-trading/provider"')
   })
 
   it('shows no hint when sharing is on or unknown', () => {

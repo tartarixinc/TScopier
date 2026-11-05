@@ -1098,6 +1098,7 @@ export interface SocialTradingPageTranslations {
   sortRoi: string
   sortWinRate: string
   sortFollowers: string
+  sortCopiers: string
   sortRating: string
   rating: string
   noRating: string
@@ -1142,6 +1143,31 @@ export interface SocialTradingPageTranslations {
   viewFollowers: string
   viewFollowing: string
   tabProviders: string
+  tabDiscoverProviders: string
+  tabYourProviders: string
+  findNewProviders: string
+  yourProvidersEmpty: string
+  providerHomeTitle: string
+  providerManageLink: string
+  providerCopiersTitle: string
+  providerCopiersBody: string
+  providerCopiersEmpty: string
+  providerCopiersError: string
+  providerPaymentsTitle: string
+  providerPaymentsBody: string
+  providerPaymentsEmpty: string
+  providerPaymentsError: string
+  providerPaymentsWalletLink: string
+  providerPaymentDate: string
+  providerPaymentDescription: string
+  providerPaymentAmount: string
+  providerPaymentStatus: string
+  providerPaymentPending: string
+  providerPaymentPaid: string
+  providerPaymentReversed: string
+  applyCopyWarningTitle: string
+  applyCopyWarningBody: string
+  providerCannotCopy: string
   tabFollowers: string
   tabFollowing: string
   colName: string

@@ -1,5 +1,7 @@
 import type { SocialTrader } from './socialTradingFixture'
 
+export const PROVIDER_CANNOT_COPY_REASON = 'Approved providers cannot copy other providers. Close your provider profile to copy again.'
+
 const ELIGIBILITY_REASONS: Record<string, string> = {
   source_missing: 'This trader has no published source account.',
   source_not_published: 'The trader source is not published.',
@@ -17,12 +19,17 @@ const ELIGIBILITY_REASONS: Record<string, string> = {
   synthetic_demo: 'This synthetic trader is available only through the simulated flow.',
 }
 
-export function canOpenCopyTrader(trader: SocialTrader): boolean {
+export function canOpenCopyTrader(trader: SocialTrader, options?: { viewerIsApprovedProvider?: boolean }): boolean {
+  if (options?.viewerIsApprovedProvider) return false
   return trader.sources?.some(source => source.isCopyEligible) ?? Boolean(trader.sourceId && trader.copyEligible)
 }
 
-export function copyTraderUnavailableReason(trader: SocialTrader): string | null {
-  if (canOpenCopyTrader(trader)) return null
+export function copyTraderUnavailableReason(
+  trader: SocialTrader,
+  options?: { viewerIsApprovedProvider?: boolean },
+): string | null {
+  if (options?.viewerIsApprovedProvider) return PROVIDER_CANNOT_COPY_REASON
+  if (canOpenCopyTrader(trader, options)) return null
   // Preview traders start with empty sources before hydration — do not flash source_missing.
   if (trader.performanceStatusReason === 'not_loaded') return null
   if (!trader.sourceId && !trader.sources?.length) return trader.performanceError ?? ELIGIBILITY_REASONS.source_missing

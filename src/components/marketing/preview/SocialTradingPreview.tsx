@@ -44,12 +44,12 @@ export function SocialTradingPreview() {
     <AppPreviewWindow activeRoute="/social-trading">
       <PreviewPageHeader title={sp.title} />
       <div className="mb-4 flex items-center gap-2">
-        {[sp.tabProviders, sp.tabFollowers, sp.tabFollowing].map((tab, index) => (
+        {[sp.tabYourProviders, sp.tabProviders].map((tab, index) => (
           <span
             key={tab}
             className={clsx(
               'rounded-full px-4 py-1.5 text-sm font-medium',
-              index === 0
+              index === 1
                 ? 'bg-neutral-900 text-white dark:bg-white dark:text-neutral-950'
                 : 'bg-white text-neutral-900 ring-1 ring-neutral-200 dark:bg-neutral-900 dark:text-neutral-50 dark:ring-neutral-700',
             )}

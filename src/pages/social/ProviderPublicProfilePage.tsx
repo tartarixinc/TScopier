@@ -195,7 +195,7 @@ export function ProviderPublicProfilePage() {
             )}
 
             {isOwner ? (
-              <ProviderShareCard slug={profile.slug} name={profile.displayName} shareTradeHistory={publicData ? publicData.performance?.shared ?? null : null} manageHref={`/social-trading/${profile.profileUserId}`} />
+              <ProviderShareCard slug={profile.slug} name={profile.displayName} shareTradeHistory={publicData ? publicData.performance?.shared ?? null : null} manageHref="/social-trading" />
             ) : (
               <section className="sticky bottom-3 rounded-2xl border border-green-200 bg-green-50 p-5 text-center shadow-sm dark:border-green-900 dark:bg-green-950/80">
                 <p className="text-sm font-medium">

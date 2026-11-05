@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canOpenCopyTrader, copyTraderUnavailableReason } from './socialCopyAvailability'
+import { PROVIDER_CANNOT_COPY_REASON, canOpenCopyTrader, copyTraderUnavailableReason } from './socialCopyAvailability'
 import { SOCIAL_TRADERS } from './socialTradingFixture'
 import type { SocialCopySource } from './socialCopy'
 
@@ -50,5 +50,12 @@ describe('copy trader availability', () => {
     }
     expect(canOpenCopyTrader(trader)).toBe(false)
     expect(copyTraderUnavailableReason(trader)).toBeNull()
+  })
+
+  it('blocks approved providers from opening copy setup', () => {
+    expect(baseTrader).toBeDefined()
+    const trader = { ...baseTrader!, sourceId: null, copyEligible: false, sources: [eligibleSource] }
+    expect(canOpenCopyTrader(trader, { viewerIsApprovedProvider: true })).toBe(false)
+    expect(copyTraderUnavailableReason(trader, { viewerIsApprovedProvider: true })).toBe(PROVIDER_CANNOT_COPY_REASON)
   })
 })

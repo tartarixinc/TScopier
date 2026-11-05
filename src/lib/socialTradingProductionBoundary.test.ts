@@ -181,6 +181,19 @@ test("provider onboarding is wired into routes, the directory and the account sn
   assert.doesNotMatch(page, /localStorage|COPY_PRICE_STORAGE_KEY/);
 });
 
+test("social trading directory is Discover / Your Providers without follow chrome", () => {
+  assert.match(page, /tabProviders/);
+  assert.match(page, /tabYourProviders/);
+  assert.match(page, /fetchMySocialCopySubscriptions/);
+  assert.match(page, /findNewProviders/);
+  assert.match(page, /isApprovedProvider/);
+  assert.match(page, /ProviderCopiersPanel/);
+  assert.doesNotMatch(page, /view=followers|view=following/);
+  assert.doesNotMatch(page, /tabFollowers|tabFollowing/);
+  assert.doesNotMatch(page, /SummaryStat/);
+  assert.doesNotMatch(wizard, /Who can follow you\?/);
+});
+
 test("the provider wizard persists drafts server-side and submits for admin review", () => {
   assert.match(wizard, /useProviderApplication\(\)/);
   assert.match(wizard, /validateProviderStep/);
