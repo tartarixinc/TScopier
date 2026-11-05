@@ -72,6 +72,7 @@ import {
 } from '../../lib/signalSourceTabs'
 import { subscribeTradingViewWebhooksChanged } from '../../lib/tradingViewWebhook'
 import { subscribeWhatsAppSourcesChanged } from '../../lib/whatsappSource'
+import { buildFlags } from '../../lib/featureFlags'
 import type { BrokerAccount, TelegramChannel } from '../../types/database'
 
 type AddedSignalSource = SignalSourceKind
@@ -163,7 +164,8 @@ export function CopierEnginePage() {
   const pw = t.pricing.paywall
   const [channels, setChannels] = useState<TelegramChannel[]>([])
   const [searchParams] = useSearchParams()
-  const guildFromInvite = searchParams.get('guild_id')
+  // Production builds ignore Discord invite links until the Discord worker ships.
+  const guildFromInvite = buildFlags.telegramOnlySourcePicker ? null : searchParams.get('guild_id')
   const [source, setSource] = useState<AddedSignalSource | null>(guildFromInvite ? 'discord' : null)
   const [settingUpSource, setSettingUpSource] = useState<AddedSignalSource | null>(
     guildFromInvite ? 'discord' : null,
@@ -999,6 +1001,8 @@ export function CopierEnginePage() {
   }, [settingUpSource, source, sourcesReady, visibleSources])
 
   const addSignalSource = (kind: AddedSignalSource) => {
+    // Defence in depth: locked builds accept Telegram only, whatever calls this.
+    if (buildFlags.telegramOnlySourcePicker && kind !== 'telegram') return
     if (user?.id) {
       setPickedSources(prev => {
         const next = appendSignalSource(prev, kind)
@@ -1360,6 +1364,7 @@ export function CopierEnginePage() {
         title={ce.newSignalSource}
         hint={ce.chooseSignalSource}
         addedLabel={ce.added}
+        comingSoonLabel={t.common.comingSoon}
         closeLabel={ce.keywordsClose}
         onClose={() => setSourcePickerOpen(false)}
         onSelect={addSignalSource}
@@ -1376,6 +1381,7 @@ function NewSignalSourceModal({
   title,
   hint,
   addedLabel,
+  comingSoonLabel,
   closeLabel,
   onClose,
   onSelect,
@@ -1386,6 +1392,7 @@ function NewSignalSourceModal({
   title: string
   hint: string
   addedLabel: string
+  comingSoonLabel: string
   closeLabel: string
   onClose: () => void
   onSelect: (kind: AddedSignalSource) => void
@@ -1433,12 +1440,18 @@ function NewSignalSourceModal({
         <div className="mt-4 space-y-2">
           {SIGNAL_SOURCE_ORDER.map(kind => {
             const alreadyAdded = added.includes(kind)
+            // Production builds may only pick Telegram until the other sources have workers.
+            const locked = buildFlags.telegramOnlySourcePicker && kind !== 'telegram'
             return (
               <button
                 key={kind}
                 type="button"
+                disabled={locked}
+                aria-label={locked ? `${labelFor(kind)} — ${comingSoonLabel}` : undefined}
                 onClick={() => onSelect(kind)}
-                className="flex w-full items-center gap-3 rounded-xl border border-neutral-200 px-3 py-3 text-left transition-colors hover:border-green-400 hover:bg-teal-50/60 dark:border-neutral-800 dark:hover:border-green-400 dark:hover:bg-teal-950/30"
+                className={locked
+                  ? 'flex w-full items-center gap-3 rounded-xl border border-neutral-100 bg-neutral-50/60 px-3 py-3 text-left cursor-not-allowed dark:border-neutral-800/40 dark:bg-neutral-900/50'
+                  : 'flex w-full items-center gap-3 rounded-xl border border-neutral-200 px-3 py-3 text-left transition-colors hover:border-green-400 hover:bg-teal-50/60 dark:border-neutral-800 dark:hover:border-green-400 dark:hover:bg-teal-950/30'}
               >
                 <img
                   src={SIGNAL_SOURCE_MARKS[kind].iconSrc}
@@ -1447,12 +1460,23 @@ function NewSignalSourceModal({
                   className={clsx(
                     'h-8 w-8 shrink-0',
                     kind === 'telegram' ? 'object-contain' : 'rounded-full object-cover',
+                    locked && 'opacity-50 grayscale',
                   )}
                 />
-                <span className="min-w-0 flex-1 text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                <span className={clsx(
+                  'min-w-0 flex-1 text-sm font-medium',
+                  locked
+                    ? 'text-neutral-400 dark:text-neutral-500'
+                    : 'text-neutral-900 dark:text-neutral-50',
+                )}
+                >
                   {labelFor(kind)}
                 </span>
-                {alreadyAdded ? (
+                {locked ? (
+                  <span className="rounded-full bg-neutral-200 px-2 py-0.5 text-[10px] font-medium text-neutral-700 dark:bg-neutral-700 dark:text-neutral-300">
+                    {comingSoonLabel}
+                  </span>
+                ) : alreadyAdded ? (
                   <span className="text-xs font-medium text-green-500 dark:text-teal-300">{addedLabel}</span>
                 ) : null}
               </button>
