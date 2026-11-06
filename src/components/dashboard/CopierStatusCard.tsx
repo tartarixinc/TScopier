@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { useSubscription } from '../../context/SubscriptionContext'
 import { useT } from '../../context/LocaleContext'
-import { isBrokerSessionHealthy } from '../../lib/brokerReconnect'
+import { isBrokerSessionConnected, isBrokerSessionHealthy } from '../../lib/brokerReconnect'
 import { hasLinkedBrokerForUi } from '../../lib/brokerLink'
 import {
   fetchCopierHealthStatus,
@@ -244,6 +244,11 @@ export function CopierStatusCard({
     }
   }, [userId, refreshCopierHealth, refreshSources])
 
+  const hasConnectedBroker = useMemo(
+    () => accounts.some(account => account.is_active !== false && isBrokerSessionConnected(account)),
+    [accounts],
+  )
+
   const { brokerConnectionsLabel, brokerConnectionsTone, brokerErrorCount } = useMemo(() => {
     const linked = accounts.filter(hasLinkedBrokerForUi)
     const activeLinked = linked.filter(a => a.is_active !== false)
@@ -293,7 +298,9 @@ export function CopierStatusCard({
     brokerIssue: brokerConnectionsTone === 'bad' || brokerErrorCount > 0,
     links,
   })
-  const processState = !hasActiveSubscription ? 'stopped' : resolveCopierProcessState(links)
+  const processState = !hasActiveSubscription || !hasConnectedBroker
+    ? 'stopped'
+    : resolveCopierProcessState(links)
 
   const sourceLabel = (link: CopierSourceLink): string => {
     if (link === 'connected') return cs.connected

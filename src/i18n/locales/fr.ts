@@ -78,7 +78,7 @@ export const fr: Translations = {
       statusPaused: 'Copieur En Pause',
       statusCopierStopped: 'Copieur Arrêté',
       stoppedHintSubscription: 'Abonnez-vous pour démarrer le copieur',
-      stoppedHintSetup: 'Connectez Telegram, ajoutez des canaux et liez un courtier pour démarrer le copieur',
+      stoppedHintSetup: 'Liez un courtier pour démarrer le copieur',
       stopCopier: 'Mettre le copieur en pause',
       confirmTitle: 'Mettre le copieur en pause ?',
       confirmBody: 'La copie des signaux, l\'exécution des trades et les journaux du copieur s\'arrêteront jusqu\'à reprise.',

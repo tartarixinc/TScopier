@@ -58,7 +58,7 @@ export const chromeRu: AppChromeTranslations = {
       statusPaused: 'Копир приостановлен',
       statusCopierStopped: 'Копир остановлен',
       stoppedHintSubscription: 'Оформите подписку, чтобы запустить копир',
-      stoppedHintSetup: 'Подключите Telegram, добавьте каналы и привяжите брокера, чтобы запустить копир',
+      stoppedHintSetup: 'Привяжите брокера, чтобы запустить копир',
       stopCopier: 'Приостановить копир',
       confirmTitle: 'Приостановить копир',
       confirmBody:

@@ -58,7 +58,7 @@ export const chromeNl: AppChromeTranslations = {
       statusPaused: 'Copier gepauzeerd',
       statusCopierStopped: 'Copier gestopt',
       stoppedHintSubscription: 'Abonneer om de copier te starten',
-      stoppedHintSetup: 'Verbind Telegram, voeg kanalen toe en koppel een broker om de copier te starten',
+      stoppedHintSetup: 'Koppel een broker om de copier te starten',
       stopCopier: 'Copier pauzeren',
       confirmTitle: 'Copier pauzeren',
       confirmBody: 'Signaalkopiëren, trade-uitvoering en copierlogs stoppen totdat je hervat.',
