@@ -55,6 +55,8 @@ import {
 import {
   loadCachedUserSubscription,
   loadCachedUserIsAdmin,
+  loadCachedSubscriptionExtensionEnd,
+  extensionAccessActive,
   subscriptionBlocksSignalExecution,
   isSubscriptionActive,
 } from '../subscriptionAccess'
@@ -617,6 +619,7 @@ export async function handleSignal(ctx: TradeExecutorContext,
       }
       let userSub: Awaited<ReturnType<typeof loadCachedUserSubscription>>
       let isAdmin: boolean
+      let extensionEndMs: number | null = null
       const nonTelegramSource = isNonTelegramSignalSource(opts?.dispatchSource, row.dispatch_source)
         || await isTradingViewSourceChannel(ctx.supabase, row.channel_id)
       if (
@@ -658,9 +661,17 @@ export async function handleSignal(ctx: TradeExecutorContext,
           loadCachedUserIsAdmin(ctx.supabase, row.user_id),
         ])
       }
-      if (!isAdmin && (!userSub || !isSubscriptionActive(userSub.status, userSub.trial_ends_at))) {
-        await ctx.logDispatchSkipped(row, 'subscription_inactive')
-        return
+      if (!isAdmin) {
+        const subscriptionActive =
+          userSub != null && isSubscriptionActive(userSub.status, userSub.trial_ends_at)
+        if (!subscriptionActive) {
+          // Not active on its own: a live admin extension keeps the copy running.
+          extensionEndMs = await loadCachedSubscriptionExtensionEnd(ctx.supabase, row.user_id)
+          if (!extensionAccessActive(extensionEndMs)) {
+            await ctx.logDispatchSkipped(row, 'subscription_inactive')
+            return
+          }
+        }
       }
 
       if (isMessageRevision) {
@@ -847,6 +858,7 @@ export async function handleSignal(ctx: TradeExecutorContext,
           userSub,
           (broker.manual_settings ?? null) as Record<string, unknown> | null,
           isAdmin,
+          extensionEndMs,
         )
         if (blockReason === 'plan_advanced_feature_required') {
           await ctx.logDispatchSkipped(row, blockReason)

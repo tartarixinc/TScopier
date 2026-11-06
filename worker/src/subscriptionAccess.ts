@@ -18,6 +18,42 @@ export interface UserSubscriptionRow {
 const CACHE_TTL_MS = 60_000
 const cache = new Map<string, { expiresAt: number; row: UserSubscriptionRow | null }>()
 const adminCache = new Map<string, { expiresAt: number; isAdmin: boolean }>()
+const extensionCache = new Map<string, { expiresAt: number; endMs: number | null }>()
+
+/** Latest admin-granted extension end in epoch milliseconds, cached for a minute. */
+export async function loadCachedSubscriptionExtensionEnd(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<number | null> {
+  const hit = extensionCache.get(userId)
+  if (hit && hit.expiresAt > Date.now()) return hit.endMs
+
+  const { data, error } = await supabase
+    .from('subscription_extensions')
+    .select('days, granted_at')
+    .eq('user_id', userId)
+    .order('granted_at', { ascending: false })
+    .limit(30)
+
+  let endMs: number | null = null
+  if (!error && data) {
+    for (const row of data) {
+      const days = Number((row as { days: unknown }).days)
+      const start = Date.parse(String((row as { granted_at: unknown }).granted_at ?? ''))
+      if (Number.isFinite(days) && days > 0 && !Number.isNaN(start)) {
+        const end = start + days * 86_400_000
+        if (endMs == null || end > endMs) endMs = end
+      }
+    }
+  }
+  extensionCache.set(userId, { endMs, expiresAt: Date.now() + CACHE_TTL_MS })
+  return endMs
+}
+
+/** True while an admin-granted extension window is still open. */
+export function extensionAccessActive(endMs: number | null, now = Date.now()): boolean {
+  return endMs != null && endMs > now
+}
 
 export async function loadCachedUserSubscription(
   supabase: SupabaseClient,
@@ -87,10 +123,15 @@ export function subscriptionBlocksSignalExecution(
   sub: UserSubscriptionRow | null,
   manualSettings: Record<string, unknown> | null | undefined,
   isAdmin = false,
+  extensionEndMs: number | null = null,
 ): string | null {
   if (isAdmin) return null
-  if (!isSubscriptionActive(sub?.status, sub?.trial_ends_at)) return 'subscription_inactive'
-  const plan = effectivePlan(sub?.plan, sub?.status, sub?.trial_ends_at)
+  const active = isSubscriptionActive(sub?.status, sub?.trial_ends_at)
+  if (!active && !extensionAccessActive(extensionEndMs)) return 'subscription_inactive'
+  // While a trial or an extension keeps access alive, plan limits follow the stored plan.
+  const plan = active
+    ? effectivePlan(sub?.plan, sub?.status, sub?.trial_ends_at)
+    : (sub?.plan ?? 'basic')
   if (plan === 'basic' && brokerManualSettingsUseAdvancedFeatures(manualSettings)) {
     return 'plan_advanced_feature_required'
   }
@@ -104,7 +145,8 @@ export async function userMayRunCopierListener(
 ): Promise<boolean> {
   if (await loadCachedUserIsAdmin(supabase, userId)) return true
   const sub = await loadCachedUserSubscription(supabase, userId)
-  return isSubscriptionActive(sub?.status, sub?.trial_ends_at)
+  if (isSubscriptionActive(sub?.status, sub?.trial_ends_at)) return true
+  return extensionAccessActive(await loadCachedSubscriptionExtensionEnd(supabase, userId))
 }
 
 export { isSubscriptionActive, effectivePlan, manualSettingsUseAdvancedFeatures }

@@ -38,6 +38,41 @@ function adminUserIdsFromEnv(): Set<string> {
   );
 }
 
+/** True when a single grant window is still open at `now`. */
+export function extensionWindowActive(
+  days: unknown,
+  grantedAt: unknown,
+  now = Date.now(),
+): boolean {
+  const d = Number(days);
+  const start = Date.parse(String(grantedAt ?? ""));
+  return (
+    Number.isFinite(d) && d > 0 && !Number.isNaN(start) && start + d * 86_400_000 > now
+  );
+}
+
+/** True when any admin-granted access extension is still live for this user. */
+export async function hasLiveSubscriptionExtension(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("subscription_extensions")
+    .select("days, granted_at")
+    .eq("user_id", userId)
+    .order("granted_at", { ascending: false })
+    .limit(30);
+  if (error) {
+    console.warn(
+      `[subscriptionAccess] extension lookup failed for ${userId}: ${error.message}`,
+    );
+    return false;
+  }
+  return (data ?? []).some((row) =>
+    extensionWindowActive(row.days, row.granted_at),
+  );
+}
+
 /** True when user bypasses subscription limits (DB flag, env list, or Auth app_metadata). */
 export async function loadUserIsAdmin(
   supabase: SupabaseClient,
@@ -101,7 +136,10 @@ export async function assertBrokerAccountLimit(
 ): Promise<Response | null> {
   if (await loadUserIsAdmin(supabase, userId)) return null;
 
-  const plan = effectivePlan(sub?.plan, sub?.status, sub?.trial_ends_at);
+  let plan = effectivePlan(sub?.plan, sub?.status, sub?.trial_ends_at);
+  if (!plan && (await hasLiveSubscriptionExtension(supabase, userId))) {
+    plan = sub?.plan ?? "basic";
+  }
   if (!plan) {
     return subscriptionAccessDenied(
       "An active subscription is required to connect broker accounts.",
@@ -146,7 +184,10 @@ export async function assertBacktestMonthlyLimit(
 ): Promise<Response | null> {
   if (await loadUserIsAdmin(supabase, userId)) return null;
 
-  const plan = effectivePlan(sub?.plan, sub?.status, sub?.trial_ends_at);
+  let plan = effectivePlan(sub?.plan, sub?.status, sub?.trial_ends_at);
+  if (!plan && (await hasLiveSubscriptionExtension(supabase, userId))) {
+    plan = sub?.plan ?? "basic";
+  }
   if (!plan) {
     return subscriptionAccessDenied(
       "An active subscription is required to run backtests.",
@@ -192,7 +233,10 @@ export async function assertTelegramChannelLimit(
 ): Promise<Response | null> {
   if (await loadUserIsAdmin(supabase, userId)) return null;
 
-  const plan = effectivePlan(sub?.plan, sub?.status, sub?.trial_ends_at);
+  let plan = effectivePlan(sub?.plan, sub?.status, sub?.trial_ends_at);
+  if (!plan && (await hasLiveSubscriptionExtension(supabase, userId))) {
+    plan = sub?.plan ?? "basic";
+  }
   if (!plan) {
     return subscriptionAccessDenied(
       "An active subscription is required to add Telegram channels.",
@@ -278,6 +322,9 @@ export async function revokeCopierAccessOnSubscriptionEnd(
   userId: string,
 ): Promise<void> {
   if (await loadUserIsAdmin(supabase, userId)) return
+
+  // A live admin extension outranks billing: keep the copier running until it ends.
+  if (await hasLiveSubscriptionExtension(supabase, userId)) return
 
   // Only on the pause transition: a copier the user already paused keeps its
   // own reason instead of being relabelled by a later billing event.
