@@ -7,7 +7,7 @@
 
 create table if not exists public.subscription_extensions (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users (user_id) on delete cascade,
+  user_id uuid not null references auth.users (id) on delete cascade,
   days integer not null check (days > 0 and days <= 30),
   reason text not null,
   granted_by uuid,
