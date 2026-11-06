@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { CheckCircle2, Clock, Loader2, Pencil, Scale, Trash2, TrendingUp, X } from 'lucide-react'
 import clsx from 'clsx'
+import { useConfirm } from '../../context/ConfirmDialogContext'
 import { useT } from '../../context/LocaleContext'
 import { backtestApi } from '../../lib/backtestApi'
 import type { BacktestRunRow, BacktestTradeRow } from '../../lib/backtestTypes'
@@ -39,6 +40,7 @@ export function BacktestResultModal({
   onTradeDeleted,
 }: BacktestResultModalProps) {
   const t = useT()
+  const confirm = useConfirm()
   const bt = t.backtest
   const btLabels = backtestDisplayLabels(bt)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -101,10 +103,16 @@ export function BacktestResultModal({
         ? lossBannerClass
         : bannerTone === 'warning'
           ? 'bg-amber-50 border-amber-200 text-amber-900 dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-200'
-          : 'bg-neutral-50 border-neutral-200 text-neutral-700 dark:bg-neutral-800/50 dark:border-neutral-700'
+          : 'bg-neutral-50 border-neutral-200 text-neutral-900 dark:text-neutral-50 dark:bg-neutral-800/50 dark:border-neutral-700'
 
   const handleDelete = async () => {
-    if (!window.confirm(bt.deleteConfirm)) return
+    const approved = await confirm({
+      title: bt.deleteResult,
+      body: bt.deleteConfirm,
+      confirmLabel: t.common.delete,
+      cancelLabel: t.common.cancel,
+    })
+    if (!approved) return
     setFormError('')
     setBusy(true)
     try {
@@ -140,7 +148,7 @@ export function BacktestResultModal({
         />
         <div
           ref={panelRef}
-          className="relative w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-2xl"
+          className="relative w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 shadow-2xl"
         >
           <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-5 py-4 border-b border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900">
             <h2 id="backtest-result-title" className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">
@@ -150,7 +158,7 @@ export function BacktestResultModal({
               <button
                 type="button"
                 disabled={busy}
-                className="p-2 rounded-lg text-neutral-400 hover:text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-950/40 transition-colors disabled:opacity-40"
+                className="p-2 rounded-lg text-neutral-900 dark:text-neutral-50 hover:text-green-400 hover:bg-teal-50 dark:hover:bg-teal-950/40 transition-colors disabled:opacity-40"
                 aria-label={bt.editSignal}
                 onClick={() => setEditOpen(true)}
               >
@@ -159,7 +167,7 @@ export function BacktestResultModal({
               <button
                 type="button"
                 disabled={busy}
-                className="p-2 rounded-lg text-neutral-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-950/40 transition-colors disabled:opacity-40"
+                className="p-2 rounded-lg text-neutral-900 dark:text-neutral-50 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-950/40 transition-colors disabled:opacity-40"
                 aria-label={bt.deleteResult}
                 onClick={() => { void handleDelete() }}
               >
@@ -171,7 +179,7 @@ export function BacktestResultModal({
               </button>
               <button
                 type="button"
-                className="p-2 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40"
+                className="p-2 rounded-lg text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40"
                 aria-label={bt.close}
                 onClick={onClose}
                 disabled={busy}
@@ -196,14 +204,14 @@ export function BacktestResultModal({
             </div>
 
             <div className="grid grid-cols-3 gap-3">
-              <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-3 text-center">
-                <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">{bt.pips}</p>
+              <div className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 p-3 text-center">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50">{bt.pips}</p>
                 <p className={clsx('text-xl font-bold tabular-nums mt-1', pipValueTextClass(pips))}>
                   {formatPipValue(pips).replace(/p$/, '')}
                 </p>
               </div>
-              <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-3 text-center">
-                <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400 flex items-center justify-center gap-1">
+              <div className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 p-3 text-center">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50 flex items-center justify-center gap-1">
                   <Scale className="w-3 h-3" />
                   {bt.riskReward}
                 </p>
@@ -211,8 +219,8 @@ export function BacktestResultModal({
                   {rr}
                 </p>
               </div>
-              <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-3 text-center">
-                <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400 flex items-center justify-center gap-1">
+              <div className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 p-3 text-center">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50 flex items-center justify-center gap-1">
                   <Clock className="w-3 h-3" />
                   {bt.duration}
                 </p>
@@ -222,7 +230,7 @@ export function BacktestResultModal({
               </div>
             </div>
 
-            <div className="text-xs text-neutral-500 flex flex-wrap gap-x-3 gap-y-1">
+            <div className="text-xs text-neutral-900 dark:text-neutral-50 flex flex-wrap gap-x-3 gap-y-1">
               <span>{displayTrade.symbol}</span>
               <span>·</span>
               <span className="uppercase font-medium">{displayTrade.direction}</span>

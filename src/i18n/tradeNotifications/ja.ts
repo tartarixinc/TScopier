@@ -25,7 +25,7 @@ export const tradeNotificationsJa: TradeNotificationsTranslations = {
     tradesClosedGeneric: '{channel}から{broker}で{count}件の取引が決済されました。',
     tradesClosedSingle: '{channel}から{broker}で取引が1件決済されました。',
     reviewRequired: '{channel}からのシグナルが承認待ちです。',
-    manualOverrideReverted: 'TScopier detected a manual SL/TP change made directly on your broker account and restored the signal managed values. To change SL or TP for a copied signal, use Manage Signal in TScopier.',
+    manualOverrideReverted: 'UniCopier detected a manual SL/TP change made directly on your broker account and restored the signal managed values. To change SL or TP for a copied signal, use Manage Signal in UniCopier.',
   },
   sides: {
     buy: '買い',

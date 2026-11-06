@@ -169,11 +169,10 @@ export function EconomicCalendarPage() {
     <PageShell maxWidth="lg">
       <PageHeader
         title={ec.title}
-        subtitle={ec.subtitle}
         actions={(
           <>
             {lastUpdatedLabel && !loading ? (
-              <span className="text-xs tabular-nums text-neutral-400 dark:text-neutral-500">
+              <span className="text-xs tabular-nums text-neutral-900 dark:text-neutral-50">
                 {lastUpdatedLabel}
               </span>
             ) : null}
@@ -219,7 +218,7 @@ export function EconomicCalendarPage() {
       {error ? <Alert>{error}</Alert> : null}
 
       <div className={showNewsFilter ? 'grid gap-6 lg:grid-cols-[1fr_20rem]' : ''}>
-        <div className="rounded-xl border border-neutral-200/80 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="rounded-xl border border-neutral-200/55 bg-white shadow-xs dark:border-neutral-800/55 dark:bg-neutral-950">
           {loading ? (
             <div className="space-y-4 p-4 animate-pulse">
               {Array.from({ length: 6 }).map((_, i) => (
@@ -227,12 +226,12 @@ export function EconomicCalendarPage() {
               ))}
             </div>
           ) : events.length === 0 && !error ? (
-            <p className="px-4 py-12 text-center text-sm text-neutral-500 dark:text-neutral-400">{ec.empty}</p>
+            <p className="px-4 py-12 text-center text-sm text-neutral-900 dark:text-neutral-50">{ec.empty}</p>
           ) : (
             <div className="px-4">
               {[...grouped.entries()].map(([day, dayEvents]) => (
                 <section key={day} className="py-2">
-                  <h3 className="sticky top-0 z-10 bg-white/95 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-500 backdrop-blur dark:bg-neutral-900/95 dark:text-neutral-400">
+                  <h3 className="sticky top-0 z-10 bg-white/95 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-900 backdrop-blur-sm dark:bg-neutral-900/95 dark:text-neutral-50">
                     {formatDayHeading(day)}
                   </h3>
                   {dayEvents.map((event) => (
@@ -264,12 +263,12 @@ export function EconomicCalendarPage() {
         ) : null}
       </div>
 
-      <footer className="border-t border-neutral-200 pt-6 dark:border-neutral-800">
+      <footer className="border-t border-neutral-200/65 pt-6 dark:border-neutral-800/55">
         <a
           href="https://site.financialmodelingprep.com"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-xs text-neutral-400 hover:text-teal-600 dark:hover:text-teal-400"
+          className="text-xs text-neutral-900 dark:text-neutral-50 hover:text-green-400 dark:hover:text-green-400"
         >
           {ec.dataByFmp}
         </a>

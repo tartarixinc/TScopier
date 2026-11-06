@@ -21,7 +21,6 @@ const MAX_OPEN_MS = 5 * 86_400_000
 const MAX_TICKS_BEFORE_WIDEN = 20_000
 const REPLAY_QUERY_PAD_MS = 2 * 86_400_000
 const BAR_TIMEFRAMES: readonly BacktestTimeframe[] = ["1m", "5m", "15m"]
-const SHORT_TRADE_MS = 3 * 60_000
 
 export interface TradeReplayTpEvent {
   index: number
@@ -91,9 +90,12 @@ function barIntervalMs(timeframe: BacktestTimeframe): number {
   }
 }
 
-function pickBarTimeframe(tradeDurationMs: number): readonly BacktestTimeframe[] {
-  if (tradeDurationMs <= SHORT_TRADE_MS) return ["1m"]
-  if (tradeDurationMs <= 30 * 60_000) return ["1m", "5m"]
+/**
+ * Always offer every supported bar timeframe (shortest first). Short trades
+ * used to try 1m alone, so a symbol without M1 history (common on broker
+ * suffix variants) failed the whole replay even though M5 existed.
+ */
+export function pickBarTimeframe(): readonly BacktestTimeframe[] {
   return BAR_TIMEFRAMES
 }
 
@@ -105,7 +107,7 @@ async function fetchBarReplayCandles(
   fetchToMs: number,
   tradeDurationMs: number,
 ): Promise<{ candles: ReplayOhlcCandle[]; intervalMs: number } | null> {
-  for (const timeframe of pickBarTimeframe(tradeDurationMs)) {
+  for (const timeframe of pickBarTimeframe()) {
     try {
       const result = await source.historicalBars({
         sessionId: ctx.sessionId,
@@ -125,8 +127,12 @@ async function fetchBarReplayCandles(
           close: bar.close,
         }))
       if (candles.length > 0) return { candles, intervalMs: barIntervalMs(timeframe) }
-    } catch {
+    } catch (err) {
       // Try the next normalized timeframe before reporting no replay data.
+      console.warn(
+        "[tradeReplay] bars failed",
+        { symbol: brokerSymbol, timeframe, error: err instanceof Error ? err.message : String(err) },
+      )
     }
   }
   return null
@@ -195,8 +201,8 @@ export async function fetchTradeReplayData(
   candles = trimCandlesToTradeWindow(candles, signalMs, endMs, intervalMs)
   if (candles.length === 0) {
     throw new TradeReplayNoDataError(tickUnavailable
-      ? "Quote ticks unavailable and OHLC bars could not be loaded for this trade window."
-      : "No market data found for this trade window.")
+      ? `Quote ticks unavailable and OHLC bars could not be loaded for ${brokerSymbol} in this trade window.`
+      : `No market data found for ${brokerSymbol} in this trade window.`)
   }
 
   const details = (trade.details ?? {}) as Record<string, unknown>

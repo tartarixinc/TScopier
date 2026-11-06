@@ -10,15 +10,15 @@ export function AppPricingPage() {
   const navigate = useNavigate()
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain bg-neutral-50 dark:bg-neutral-950">
-      <header className="sticky top-0 z-20 flex shrink-0 items-center justify-between border-b border-neutral-200/80 bg-neutral-50/95 px-6 py-4 backdrop-blur dark:border-neutral-800/80 dark:bg-neutral-950/95 pt-[calc(1rem+env(safe-area-inset-top,0px)+var(--app-banner-h,0px))]">
-        <Link to="/" className="flex items-center" aria-label="TScopier">
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain bg-white dark:bg-neutral-950">
+      <header className="sticky top-0 z-20 flex shrink-0 items-center justify-between border-b border-neutral-200/55 bg-white/95 px-6 py-4 backdrop-blur-sm dark:border-neutral-800/50 dark:bg-neutral-950/95 pt-[calc(1rem+env(safe-area-inset-top,0px)+var(--app-banner-h,0px))]">
+        <Link to="/" className="flex items-center" aria-label="UniCopier">
           <AuthBrandLogo className="h-8 w-auto" />
         </Link>
         <button
           type="button"
           onClick={() => navigate('/dashboard', { replace: true })}
-          className="text-sm font-medium text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 transition-colors"
+          className="text-sm font-medium text-neutral-900 hover:text-neutral-900 dark:text-neutral-50 dark:hover:text-neutral-50 transition-colors"
         >
           Not now
         </button>

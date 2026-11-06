@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_APP_ANNOUNCEMENT_LINK_LABEL,
+  appAnnouncementRevision,
   isExternalAnnouncementHref,
   normalizeAppAnnouncementRow,
 } from './appAnnouncement'
@@ -29,6 +30,29 @@ describe('normalizeAppAnnouncementRow', () => {
     expect(state.enabled).toBe(true)
     expect(state.linkHref).toBe('/brokers')
     expect(state.linkLabel).toBe(DEFAULT_APP_ANNOUNCEMENT_LINK_LABEL)
+  })
+
+  it('treats a changed message or link as a new announcement', () => {
+    const current = appAnnouncementRevision({
+      enabled: true,
+      message: 'Maintenance tonight',
+      linkHref: '/updates',
+      linkLabel: 'Details',
+    })
+    const edited = appAnnouncementRevision({
+      enabled: true,
+      message: 'Maintenance moved to Friday',
+      linkHref: '/updates',
+      linkLabel: 'Details',
+    })
+    expect(current).toBeTruthy()
+    expect(edited).not.toBe(current)
+    expect(appAnnouncementRevision({
+      enabled: false,
+      message: 'Maintenance tonight',
+      linkHref: null,
+      linkLabel: null,
+    })).toBeNull()
   })
 
   it('omits link when href is empty', () => {

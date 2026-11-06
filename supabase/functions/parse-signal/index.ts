@@ -8,7 +8,7 @@ import {
 } from "../_shared/tradableSymbol.ts"
 import { looksLikeCasualNonTradeMessage } from "../_shared/signalCommentaryGuard.ts"
 import { entryMissingSlTpRequiresNow } from "../_shared/signalEntryNowRequirement.ts"
-import { COMMON_MARKET_NOW_TERMS } from "../_shared/multilingualSignalTerms.ts"
+import { COMMON_BUY_TERMS, COMMON_MARKET_NOW_TERMS, COMMON_SELL_TERMS } from "../_shared/multilingualSignalTerms.ts"
 import {
   classifyPricesByDirection,
   detectReEnterIntent,
@@ -263,6 +263,11 @@ function buyAliasesForChannel(
   const delim = channelKeywords.additional.delimiters
   return Array.from(new Set([
     'buy', 'long',
+    // Multilingual direction words (achat/vente, kaufen/verkaufen, …) — the
+    // worker parser spreads the same lists; without them the edge rejects
+    // French signals like "VENTE — XAUUSD" before the AI ever sees them
+    // (2026-11-04, CRYPTO LIFE CLUB backtest).
+    ...COMMON_BUY_TERMS,
     ...splitKeywordAliases(channelKeywords.signal.buy, delim),
     ...lexiconActionAliases(lexicon, 'buy'),
   ]))
@@ -275,6 +280,8 @@ function sellAliasesForChannel(
   const delim = channelKeywords.additional.delimiters
   return Array.from(new Set([
     'sell', 'short',
+    // Mirrors worker/src/parseSignal.ts — see the note in buyAliasesForChannel.
+    ...COMMON_SELL_TERMS,
     ...splitKeywordAliases(channelKeywords.signal.sell, delim),
     ...lexiconActionAliases(lexicon, 'sell'),
   ])).filter(alias => {

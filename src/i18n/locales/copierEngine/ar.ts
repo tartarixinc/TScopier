@@ -3,6 +3,10 @@ import type { CopierEngineBundleTranslations } from './types'
 export const copierEngineAr: CopierEngineBundleTranslations = {
   copierEnginePage: {
     connectTelegram: 'ربط Telegram',
+    newSignalSource: 'مصدر إشارات جديد',
+    chooseSignalSource: 'اختر مصدر إشارات',
+    noSignalSourcesTitle: 'لا توجد مصادر إشارات',
+    noSignalSourcesBody: 'أضف مصدر إشارات لبدء النسخ.',
     telegramNotConnectedTitle: 'Telegram غير متصل.',
     telegramNotConnectedBody: 'اربط Telegram هنا لتحميل قائمة القنوات وإدارتها.',
     tgConnectHeroTitle: 'اربط حساب Telegram الخاص بك',
@@ -23,7 +27,7 @@ export const copierEngineAr: CopierEngineBundleTranslations = {
     tgConnectHowItWorks2: 'أدخل الرمز المُرسل في تطبيق Telegram',
     tgConnectHowItWorks3: 'اختر قنوات الإشارات للمراقبة والنسخ',
     tgConnectPhoneWarning:
-      'لا يصل TScopier إلى رسائلك ولا يقرأها. بربط Telegram، تمنح التطبيق وصولًا فقط إلى القنوات التي أنت عضو فيها.',
+      'لا يصل UniCopier إلى رسائلك ولا يقرأها. بربط Telegram، تمنح التطبيق وصولًا فقط إلى القنوات التي أنت عضو فيها.',
     tgConnectMethodTitle: 'Choose how to sign in',
     tgConnectMethodSubtitle: 'Use your phone number or scan a QR code with the Telegram app on your phone.',
     tgConnectMethodPhone: 'Phone number',
@@ -59,7 +63,7 @@ export const copierEngineAr: CopierEngineBundleTranslations = {
     failedSendCode: 'تعذّر إرسال الرمز',
     verificationFailed: 'فشل التحقق',
     telegramAlreadyLinked:
-      'حساب Telegram هذا مرتبط بالفعل بحساب TScopier آخر. سجّل الدخول إلى ذلك الحساب أو تواصل مع الدعم.',
+      'حساب Telegram هذا مرتبط بالفعل بحساب UniCopier آخر. سجّل الدخول إلى ذلك الحساب أو تواصل مع الدعم.',
     failedLoadTgChannels: 'تعذّر تحميل قنوات Telegram',
     telegramSessionExpired: 'انتهت جلسة Telegram. أعد الربط — ستُحفظ القنوات المُعدّة.',
     telegramConnectionBusy: 'Telegram يعيد الاتصال بعد اختبار رجعي أو مهمة أخرى. انتظر 30 ثانية ثم اضغط تحديث — أو استخدم إعادة ربط Telegram.',

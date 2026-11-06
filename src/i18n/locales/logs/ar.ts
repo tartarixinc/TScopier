@@ -11,7 +11,7 @@ export const logsAr: LogsBundleTranslations = {
     filterPending: 'معلقة',
     colStatus: 'الحالة',
     colReason: 'السبب',
-    colChannel: 'القناة',
+    colChannel: 'المصدر',
     colSymbol: 'الرمز',
     colMessage: 'الرسالة',
     colType: 'النوع',

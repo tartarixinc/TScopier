@@ -2,26 +2,54 @@ import { testimonialsJa } from '../../testimonials/ja'
 import type { LandingTranslations } from './types'
 
 export const landingJa: LandingTranslations = {
+  promo: {
+    regionLabel: 'プロモーション',
+    days: '日',
+    hours: '時間',
+    minutes: '分',
+    seconds: '秒',
+    endsIn: '終了まで',
+    couponLabel: 'クーポンコード',
+    copyCoupon: 'クーポンコードをコピー',
+    copied: 'コピーしました',
+    dismiss: 'プロモーションを閉じる',
+  },
   nav: {
     product: '製品',
     features: '機能',
     pricing: '料金',
     faq: 'FAQ',
     docs: 'ドキュメント',
+    forTraders: 'トレーダー向け',
+    forProviders: 'プロバイダー向け',
     signIn: 'ログイン',
     getStarted: '新規登録',
     dashboard: 'ダッシュボード',
     menuOpen: 'メニューを開く',
     menuClose: 'メニューを閉じる',
+    productMenu: {
+      heading: '製品',
+      signalCopier: { title: 'シグナルコピー', description: 'Telegram、WhatsApp、Discord、TradingViewのシグナルをブローカーへ直接コピーします。' },
+      socialTrading: { title: 'ソーシャルトレード', description: 'ROIや勝率でトップトレーダーを探し、無料または月額でコピーできます。' },
+      accountMirroring: { title: 'アカウントミラーリング', description: 'マスター口座の取引をリアルタイムで他の口座にミラーリングします。' },
+      featuredTitle: '8以上のプラットフォームに対応',
+      featuredBody: 'MT4、MT5、cTrader、Binance、Bybit、KuCoin。VPS不要。',
+      socialPanel: { title: '実績あるトレーダーをコピー', body: 'パフォーマンスを比較し、信頼できるトレーダーをフォローします。' },
+      mirrorPanel: { title: '1つのマスターで複数の口座へ', body: 'マスター口座を接続すると、すべてのスレーブ口座が取引を自動で追従します。' },
+      labels: { roi: 'ROI', winRate: '勝率', following: 'フォロー中', copyTrader: 'トレーダーをコピー', master: 'マスター', slave: 'スレーブ' },
+      exploreFeatures: 'すべての機能を見る',
+      viewPricing: '料金を見る',
+    },
   },
   hero: {
-    headline: 'Telegramシグナル。自動でコピー。',
+    headline: 'すべてのFX・暗号資産トレーダーのためのNo.1コピープラットフォーム',
+    headlinePhrases: [],
     subheadline:
-      'TScopierはオールインワンのTelegramシグナルコピープラットフォームです。Telegramを接続し、トレードシグナルをMT4/MT5に直接コピー。複雑な設定、EA、VPSは不要です。',
-    socialProof: 'クラウド型Telegramシグナルコピーで評価#1',
-    primaryCta: '5日間の無料トライアルを始める',
-    secondaryCta: 'ログイン',
-    imageAlt: '残高、当日損益、取引結果、口座成長チャートを表示したTScopierダッシュボード',
+      'Telegram、WhatsApp、Discord、TradingView、またはマスター口座から8以上のブローカーへ、50ms未満で取引を自動化。VPSは不要です。',
+    socialProof: 'TScopier.aiは UniCopier になりました',
+    primaryCta: 'プランを選ぶ',
+    secondaryCta: '使い方を見る',
+    imageAlt: '残高、当日損益、取引結果、口座成長チャートを表示したUniCopierダッシュボード',
     previewUrl: 'app.tscopier.ai/dashboard',
     dashboard: {
       headlineStats: [
@@ -101,6 +129,34 @@ export const landingJa: LandingTranslations = {
       ],
     },
   },
+  integrations: {
+    eyebrow: '連携',
+    title: '主要プラットフォームに対応',
+  },
+  supportedPlatforms: {
+    title: '対応シグナル＆取引プラットフォーム',
+  },
+  completePicture: {
+    eyebrow: 'トータルな全体像',
+    title: '本気のコピートレーダーのために。',
+    description: '最初のメッセージから最後の決済まで、シグナルを確実にコピーするために必要なすべてを備えています。',
+    cards: [
+      { title: '複数のシグナルソース', description: 'プロバイダーがすでに使っているシグナルソースから取引をコピーできます。' },
+      { title: '8以上のプラットフォームに対応', description: 'UniCopierはFXから暗号資産まで、主要なプラットフォームすべてに対応します。' },
+      { title: 'TradingViewとのシームレスな連携', description: 'TradingViewで戦略を作成し、WebhookでUniCopierに接続できます。' },
+      { title: 'AI搭載', description: '私たちのAIは提案するだけでなく、実際の操作を実行し、設定を支援し、取引を分析して、コピートレード体験を向上させます。' },
+    ],
+  },
+  showcase: {
+    eyebrow: 'UniCopier',
+    title: '現代のトレードの複雑さを減らし、より賢い判断を支えるために作りました',
+    cta: '詳しく見る',
+    cards: [
+      { headline: 'すべての口座をつなぎ、ルールは一度だけ設定。', description: 'MT4、MT5、cTrader、Binance、Bybit、KuCoinの口座を連携し、ロットサイズ、リスク、目標、シグナルソースを口座ごとに設定できます。' },
+      { headline: 'マスターからスレーブ口座へ、取引を即座にミラーリング。', description: 'マスター口座を選び、固定ロット、倍率、残高ベースのサイズで他の口座に追従させます。保護オプションも利用できます。' },
+      { headline: 'トップトレーダーをフォローして、数クリックでコピー。', description: 'ROI、勝率、評価を比較して、無料または月額でプロバイダーをコピーしたり、自分の成績を共有したりできます。' },
+    ],
+  },
   whyChoose: {
     statsCaption: '最も人気のあるTelegramシグナルプロバイダーのトレーダーに利用されています',
     stats: [
@@ -110,13 +166,13 @@ export const landingJa: LandingTranslations = {
       { label: '開始取引', value: '500K+' },
     ],
     eyebrow: '賢いコピーは、賢いツールから',
-    title: 'TScopierのすべての機能は、コントロール・可視性・成果のために設計されています。',
+    title: 'ついに登場、あらゆるシグナルタイプに対応するシグナルコピー',
     cards: [
       {
         label: '約定スピード',
-        metric: '<150ms',
+        metric: '<50ms',
         metricVariant: 'teal',
-        description: 'シグナル解析からブローカー送信まで、クラウド基盤で150ms未満の低遅延。',
+        description: 'シグナル解析からブローカー送信まで、クラウド基盤で50ms未満の低遅延。',
         layout: 'tall',
         icon: 'zap',
       },
@@ -194,6 +250,16 @@ export const landingJa: LandingTranslations = {
       },
     ],
   },
+  providers: {
+    eyebrow: 'シグナルプロバイダーの方へ',
+    title: 'UniCopierで、あなたのシグナルサービスを販売しよう。',
+    description: '価格を自分で設定し、コミュニティを育て、他のトレーダーに月額料金であなたの取引をコピーしてもらえます。利益は100%あなたのものです。',
+    points: [
+      { title: '価格を自分で設定', description: '月額料金を設定するか、無料でコピーを提供できます。' },
+      { title: 'コミュニティを育てる', description: '自動でコピーしてくれるトレーダーを集められます。' },
+      { title: '利益は100%あなたに', description: 'コピーしたトレーダーからの支払いはすべてあなたのものです。' },
+    ],
+  },
   features: {
     eyebrow: 'プラットフォーム機能',
     title: '本気のシグナルコピーのために設計',
@@ -204,14 +270,14 @@ export const landingJa: LandingTranslations = {
         eyebrow: 'シグナルコピー',
         title: 'TelegramシグナルをMT4/MT5へ高精度コピー',
         description:
-          '信頼するチャンネルをあなたのブローカー口座へ反映。TScopierはエントリー、TP、レンジレッグ、管理指示を解析し、ロットルール・複数分割・レイヤリングを各接続口座へ適用します。',
+          '信頼するチャンネルをあなたのブローカー口座へ反映。UniCopierはエントリー、TP、レンジレッグ、管理指示を解析し、ロットルール・複数分割・レイヤリングを各接続口座へ適用します。',
         visual: 'copier',
       },
       {
         eyebrow: '多言語シグナル',
         title: '複数言語のシグナルに対応',
         description:
-          '英語・スペイン語・フランス語・ロシア語・ポーランド語・日本語など、さまざまな言語で配信されるチャンネルをコピー。TScopierは各言語の売買・SL・TP・管理フレーズを認識し、チャンネルごとの学習で配信者固有の表現にも対応します。',
+          '英語・スペイン語・フランス語・ロシア語・ポーランド語・日本語など、さまざまな言語で配信されるチャンネルをコピー。UniCopierは各言語の売買・SL・TP・管理フレーズを認識し、チャンネルごとの学習で配信者固有の表現にも対応します。',
         visual: 'multilingual',
       },
       {
@@ -225,7 +291,7 @@ export const landingJa: LandingTranslations = {
         eyebrow: 'メッセージ編集',
         title: '編集済みメッセージにも追従してシグナル更新',
         description:
-          '配信者がTelegramメッセージを編集してSL/TPを変更した場合でも、TScopierが差分を検知し、既存ポジションを更新。新規建て増しはせず、全レッグのSL/TPのみ同期します。',
+          '配信者がTelegramメッセージを編集してSL/TPを変更した場合でも、UniCopierが差分を検知し、既存ポジションを更新。新規建て増しはせず、全レッグのSL/TPのみ同期します。',
         visual: 'signalEdit',
       },
       {
@@ -255,7 +321,7 @@ export const landingJa: LandingTranslations = {
         telegramLabel: 'シグナルチャンネル',
         channelName: 'Gold Signals Pro',
         channelMeta: '新規シグナル 3件・たった今',
-        hubLabel: 'TScopier',
+        hubLabel: 'UniCopier',
         mt4Label: 'MT4口座',
         mt4Meta: 'コピー中・0.10ロットルール',
         mt5Label: 'MT5口座',
@@ -549,20 +615,20 @@ export const landingJa: LandingTranslations = {
   faq: {
     eyebrow: 'FAQ',
     title: 'よくある質問',
-    subtitle: 'セットアップ、コピー実行、TScopierの違いをすぐに確認できます。',
+    subtitle: 'セットアップ、コピー実行、UniCopierの違いをすぐに確認できます。',
     items: [
       {
         question: 'EAのインストールやVPS運用は必要ですか？',
         answer:
-          '不要です。TScopierは完全クラウド型。ブラウザでログインし、TelegramとMT4/MT5を接続するだけで、コピー処理は当社インフラ上で稼働します。',
+          '不要です。UniCopierは完全クラウド型。ブラウザでログインし、TelegramとMT4/MT5を接続するだけで、コピー処理は当社インフラ上で稼働します。',
       },
       {
         question: 'EAを禁止しているプロップファームでも使えますか？',
         answer:
-          'はい。TScopierは完全にクラウドで動作し、MT4/MT5ターミナルには何もインストールしません。EAの可否に関わらず、あらゆるプロップファーム口座へシグナルをコピーできます。',
+          'はい。UniCopierは完全にクラウドで動作し、MT4/MT5ターミナルには何もインストールしません。EAの可否に関わらず、あらゆるプロップファーム口座へシグナルをコピーできます。',
       },
       {
-        question: 'TScopierはどのプラットフォームに対応していますか？',
+        question: 'UniCopierはどのプラットフォームに対応していますか？',
         answer:
           'Telegramシグナルチャンネルを接続し、MetaTrader 4 / MetaTrader 5へコピーできます。複数ブローカーを接続し、チャンネルごとに送信先口座を指定可能です。',
       },
@@ -577,7 +643,7 @@ export const landingJa: LandingTranslations = {
           'プランに応じて、1ユーザーあたり最大100件のMT4/MT5接続が可能です。Telegramチャンネルごとに、1つ以上のブローカー口座へ接続できます。',
       },
       {
-        question: 'TScopierは個人のTelegramメッセージを読みますか？',
+        question: 'UniCopierは個人のTelegramメッセージを読みますか？',
         answer:
           '読みません。Telegram接続で許可されるのは、あなたが参加しているチャンネル・グループのシグナル受信のみです。個人チャットは対象外です。',
       },
@@ -605,10 +671,10 @@ export const landingJa: LandingTranslations = {
   },
   comparison: {
     eyebrow: '乗り換えが進む理由',
-    title: 'TScopierで次のレベルへ',
+    title: 'UniCopierで次のレベルへ',
     subtitle: '一般的なTelegram copierと、速度・可視性・拡張性を重視したクラウド基盤を比較。',
     otherLabel: '他社copier',
-    tscopierLabel: 'TScopier',
+    tscopierLabel: 'UniCopier',
     cta: '5日間の無料トライアルを始める',
     rows: [
       {
@@ -846,6 +912,6 @@ export const landingJa: LandingTranslations = {
     },
     platforms: '対応プラットフォーム',
     copyright: '© {year} Tartarix Inc. All rights reserved.',
-    disclaimer: '取引にはリスクがあります。TScopierはコピー支援ツールであり、投資助言ではありません。',
+    disclaimer: '取引にはリスクがあります。UniCopierはコピー支援ツールであり、投資助言ではありません。',
   },
 }

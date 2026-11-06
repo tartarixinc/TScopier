@@ -46,7 +46,7 @@ export function brokerLimitPriceKeysFromOpenedOrders(args: {
   symbol: string
   side: 'buy' | 'sell'
   digits: number
-  /** When set, only adopt limits whose comment contains this (signal id / TScopier prefix). */
+  /** When set, only adopt limits whose comment contains this (signal id / UniCopier prefix). */
   commentNeedle?: string | null
 }): Set<string> {
   const sym = args.symbol.toUpperCase()

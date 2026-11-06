@@ -52,7 +52,25 @@ function bad(status: number, msg: string) {
 
 /** Strip sensitive columns so they are never sent to the browser. */
 function stripSecrets(row: Record<string, unknown>) {
-  const { broker_password_encrypted: _pw, mtapi_session_id: _sid, ...safe } = row
+  const {
+    broker_password_encrypted: _pw,
+    mtapi_session_id: _sid,
+    ctrader_access_token_encrypted: _ctAccess,
+    ctrader_refresh_token_encrypted: _ctRefresh,
+    ctrader_client_id_encrypted: _ctClientId,
+    ctrader_client_secret_encrypted: _ctClientSecret,
+    binance_api_key_encrypted: _bnKey,
+    binance_api_secret_encrypted: _bnSecret,
+    bybit_api_key_encrypted: _byKey,
+    bybit_api_secret_encrypted: _bySecret,
+    kucoin_api_key_encrypted: _kcKey,
+    kucoin_api_secret_encrypted: _kcSecret,
+    kucoin_passphrase_encrypted: _kcPass,
+    dxtrade_password_encrypted: _dxPassword,
+    tradelocker_password_encrypted: _tlPassword,
+    matchtrader_password_encrypted: _mtPassword,
+    ...safe
+  } = row
   return safe
 }
 
@@ -98,9 +116,19 @@ async function persistBrokerMtStatus(
   status: FxsocketMtStatus,
 ) {
   const healthy = isFxsocketMtStatusHealthy(status)
+  const patch: Record<string, unknown> = {
+    ...terminalHealthRowPatch(status),
+  }
+  if (healthy) {
+    patch.connection_status = "connected"
+    patch.fxsocket_status = "connected"
+    patch.connection_error = null
+    patch.connection_error_kind = null
+    patch.connection_error_message = null
+  }
   const { data: updated, error } = await supabase
     .from("broker_accounts")
-    .update(terminalHealthRowPatch(status))
+    .update(patch)
     .eq("id", accountRowId)
     .eq("user_id", userId)
     .select("*")

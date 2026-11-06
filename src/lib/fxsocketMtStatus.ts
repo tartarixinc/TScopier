@@ -17,6 +17,8 @@ export interface FxsocketMtStatusAccount {
   currency?: string
   type?: string
   tradeAllowed?: boolean
+  /** Bybit: the account's margin mode (ISOLATED_MARGIN, REGULAR_MARGIN, PORTFOLIO_MARGIN). KuCoin: isolated or cross. */
+  marginMode?: string
 }
 
 export interface FxsocketMtStatusBridge {
@@ -99,6 +101,7 @@ export function normalizeFxsocketMtStatus(raw: unknown): FxsocketMtStatus {
       login: num(account.login ?? account.Login),
       currency: account.currency != null ? String(account.currency) : undefined,
       type: account.type != null ? String(account.type) : undefined,
+      marginMode: account.marginMode != null ? String(account.marginMode) : undefined,
       tradeAllowed: boolField(
         account.tradeAllowed ?? account.TradeAllowed ?? account.trade_allowed,
       ),

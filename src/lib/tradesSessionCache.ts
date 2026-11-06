@@ -27,11 +27,11 @@ export function tradesListFingerprint(trades: MtTrade[]): string {
   return `${trades.length}:${open}:${maxTs}`
 }
 
-/** True when cached Trades page data includes at least one open leg; null if no fresh cache. */
-export function hasOpenTradesInCache(userId: string): boolean | null {
+/** Open-leg count from cached Trades page data; null if no fresh cache. */
+export function openTradeCountInCache(userId: string): number | null {
   const cached = readSessionCache<TradesCachePayload>(tradesCacheKey(userId), TRADES_CACHE_TTL_MS)
   if (!cached) return null
-  return cached.data.trades.some(t => t.status === 'open')
+  return cached.data.trades.filter(t => t.status === 'open').length
 }
 
 export function clearTradesSessionCache(userId?: string | null): void {

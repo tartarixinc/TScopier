@@ -46,7 +46,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: subscription } = await supabase
       .from("subscriptions")
-      .select("stripe_customer_id")
+      .select("stripe_customer_id, stripe_subscription_id")
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -59,12 +59,35 @@ Deno.serve(async (req: Request) => {
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2024-12-18.acacia" });
 
-    const { returnUrl } = await req.json().catch(() => ({ returnUrl: null }));
+    const body = await req.json().catch(() => ({} as Record<string, unknown>));
+    const returnUrl =
+      typeof body.returnUrl === "string" && body.returnUrl
+        ? body.returnUrl
+        : `${req.headers.get("origin")}/billing`;
+    const flow = body.flow === "cancel" ? "cancel" : null;
 
-    const portalSession = await stripe.billingPortal.sessions.create({
+    const sessionParams: Stripe.BillingPortal.SessionCreateParams = {
       customer: subscription.stripe_customer_id,
-      return_url: returnUrl || `${req.headers.get("origin")}/billing`,
-    });
+      return_url: returnUrl,
+    };
+
+    if (flow === "cancel") {
+      const stripeSubId = subscription.stripe_subscription_id;
+      if (!stripeSubId || !String(stripeSubId).startsWith("sub_")) {
+        return new Response(
+          JSON.stringify({ error: "No cancelable Stripe subscription" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      sessionParams.flow_data = {
+        type: "subscription_cancel",
+        subscription_cancel: {
+          subscription: String(stripeSubId),
+        },
+      };
+    }
+
+    const portalSession = await stripe.billingPortal.sessions.create(sessionParams);
 
     return new Response(
       JSON.stringify({ url: portalSession.url }),

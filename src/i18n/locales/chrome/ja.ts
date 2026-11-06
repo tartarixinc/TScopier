@@ -15,10 +15,12 @@ export const chromeJa: AppChromeTranslations = {
     items: {
       dashboard: 'ダッシュボード',
       configuration: '設定',
-      brokers: 'ブローカー',
+      brokers: '取引設定',
+      mirrorTrading: 'ミラーアカウント',
+      socialTrading: 'ソーシャルトレード',
       trades: '取引',
       management: 'アクティビティ',
-      channels: 'チャンネル',
+      channels: 'シグナルソース',
       popularChannels: '人気チャンネル',
       backtest: 'バックテスト',
       copierLogs: 'コピーログ',
@@ -42,6 +44,7 @@ export const chromeJa: AppChromeTranslations = {
     expandSidebar: 'サイドバーを展開',
     collapseSidebar: 'サイドバーを折りたたむ',
     openTradesActive: '保有中の取引あり',
+    openTradesCount: '{count} 保有',
     highImpactNewsToday: '本日の重要ニュース',
     planFree: '無料',
     settings: '設定',
@@ -62,6 +65,7 @@ export const chromeJa: AppChromeTranslations = {
       setupBroker: 'ブローカーのリンク',
       setupTelegram: 'Telegramへの接続',
       setupChannels: 'チャンネルの追加',
+      setupSource: 'シグナルソースへの接続',
       bannerAction: 'セットアップへ進む',
       bannerText: 'コピーを開始するには、{items}が必要です。',
       bannerLastSep: '、',
@@ -85,6 +89,7 @@ export const chromeJa: AppChromeTranslations = {
       profileSettings: 'プロフィールと設定',
       subscriptionBilling: 'サブスクリプションと請求',
       affiliateProgram: 'アフィリエイトプログラム',
+      wallet: 'ウォレット',
       rateUs: '評価する',
       signOut: 'サインアウト',
     },
@@ -102,7 +107,7 @@ export const chromeJa: AppChromeTranslations = {
     },
     updatesPage: {
       title: 'Updates',
-      subtitle: 'Recent changes, fixes, and improvements to TScopier.',
+      subtitle: 'Recent changes, fixes, and improvements to UniCopier.',
       empty: 'No updates yet. Check back soon.',
       typeFeature: 'Feature',
       typeFix: 'Fix',
@@ -110,7 +115,7 @@ export const chromeJa: AppChromeTranslations = {
     },
 
     assistant: {
-      title: 'TScopier Assistant',
+      title: 'UniCopier Assistant',
       subtitle: 'Ask questions or get help taking action',
       ariaLabel: 'Open AI assistant',
       close: 'Close assistant',
@@ -119,12 +124,12 @@ export const chromeJa: AppChromeTranslations = {
       newChat: 'New chat',
       historyEmpty: 'No past conversations yet.',
       deleteChat: 'Delete conversation',
-      placeholder: 'Ask anything about TScopier…',
+      placeholder: 'Ask anything about UniCopier…',
       send: 'Send',
       thinking: 'Thinking…',
       confirm: 'Confirm',
       cancel: 'Cancel',
-      welcomeTitle: 'I can help you set up and run TScopier.',
+      welcomeTitle: 'I can help you set up and run UniCopier.',
       suggestions: [
         'Is my Telegram linked?',
         'Pause the copier',
@@ -154,11 +159,11 @@ export const chromeJa: AppChromeTranslations = {
         twoFaPlaceholder: 'Cloud password',
         submitPassword: 'Continue',
         restart: 'Start over',
-        openQrInstead: 'Prefer QR code? Open Copier Engine',
+        openQrInstead: 'Prefer QR code? Open Copier Process',
         invalidPhone: 'Enter a valid phone number with country code (e.g. +1…).',
         codeSent: 'Great — a code has been sent to Telegram. Enter it in the secure field below to continue.',
         twoFaNeeded: 'Telegram needs your two-step verification password. Enter it in the secure field below.',
-        linkedSuccess: 'Telegram is linked. You can add channels next on Copier Engine.',
+        linkedSuccess: 'Telegram is linked. You can add channels next on Copier Process.',
         useSecureCodeField: 'Enter the code in the secure field above — don’t send it in chat.',
         sessionExpired: 'Login session expired. Request a new verification code.',
         composerPhoneHint: 'Type your number here or use the field above…',
@@ -249,7 +254,7 @@ export const chromeJa: AppChromeTranslations = {
   },
   pages: {
     accountConfiguration: {
-      title: 'ブローカー',
+      title: '取引設定',
       description: 'MetaTrader口座を接続し、各口座のシグナルコピー方法を調整します。',
     },
     brokers: {
@@ -258,7 +263,7 @@ export const chromeJa: AppChromeTranslations = {
     },
     contactSupport: {
       title: 'サポートに連絡',
-      description: 'アカウント、コピー設定、技術的な問題について TScopier チームがサポートします。',
+      description: 'アカウント、コピー設定、技術的な問題について UniCopier チームがサポートします。',
     },
     riskDisclaimer: {
       title: 'リスクに関する免責事項',
@@ -266,7 +271,7 @@ export const chromeJa: AppChromeTranslations = {
     },
     termsOfService: {
       title: '利用規約',
-      description: 'TScopier の利用に関する規約。',
+      description: 'UniCopier の利用に関する規約。',
     },
     privacyPolicy: {
       title: 'プライバシーポリシー',
@@ -274,7 +279,7 @@ export const chromeJa: AppChromeTranslations = {
     },
     cookiePolicy: {
       title: 'Cookieポリシー',
-      description: 'TScopier における Cookie および類似技術の利用方法。',
+      description: 'UniCopier における Cookie および類似技術の利用方法。',
     },
     featureRequest: {
       title: '機能リクエスト',
@@ -287,6 +292,10 @@ export const chromeJa: AppChromeTranslations = {
     affiliateProgram: {
       title: 'アフィリエイトプログラム',
       description: 'トレーダーを招待して、有料サブスクリプション更新ごとに生涯 10% の紹介報酬を獲得。',
+    },
+    wallet: {
+      title: 'ウォレット',
+      description: 'コピースクの残高と支払い履歴を確認します。',
     },
     billing: {
       title: '請求',
@@ -321,7 +330,7 @@ export const chromeJa: AppChromeTranslations = {
       description: 'アカウントに紐づく解析済みシグナルを表示。チャンネルと期間で絞り込めます。',
     },
     copierEngine: {
-      title: 'チャンネル',
+      title: 'シグナルソース',
       description: 'Telegram のシグナルチャンネルとコピー設定を管理します。',
     },
     settings: {

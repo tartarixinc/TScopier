@@ -12,6 +12,14 @@ export type TradeNotificationHeadline =
   | 'trades_closed'
   | 'review_required'
   | 'manual_override_reverted'
+  | 'social_follow_accepted'
+  | 'social_copy_activated'
+  | 'social_copy_stopped'
+  | 'social_copy_suspended'
+  | 'provider_application_approved'
+  | 'provider_application_rejected'
+  | 'provider_suspended'
+  | 'provider_reinstated'
 
 export type TradeExecutionLogRow = ChannelWorkerLogRow & {
   id: string
@@ -48,6 +56,7 @@ export interface TradeNotification {
   createdAt: string
   actionUrl?: string | null
   actionLabel?: string | null
+  readAt?: string | null
 }
 
 export interface TradeNotificationContext {
@@ -531,6 +540,15 @@ export function formatHolisticNotification(
       title = t.headlines.reviewRequired
       body = interpolate(t.bodies.reviewRequired, { channel })
       break
+    case 'social_follow_accepted':
+    case 'social_copy_activated':
+    case 'social_copy_stopped':
+    case 'social_copy_suspended':
+    case 'provider_application_approved':
+    case 'provider_application_rejected':
+    case 'provider_suspended':
+    case 'provider_reinstated':
+      throw new Error('Persistent social notifications must be formatted from their stored row')
   }
 
   return {
@@ -628,10 +646,12 @@ export function countUnreadNotifications(
   items: TradeNotification[],
   lastReadAt: string | null,
 ): number {
-  if (!lastReadAt) return items.length
+  const persistentUnread = items.filter(item => item.readAt === null).length
+  const legacyItems = items.filter(item => item.readAt === undefined)
+  if (!lastReadAt) return persistentUnread + legacyItems.length
   const readMs = Date.parse(lastReadAt)
-  if (!Number.isFinite(readMs)) return items.length
-  return items.filter(n => Date.parse(n.createdAt) > readMs).length
+  if (!Number.isFinite(readMs)) return persistentUnread + legacyItems.length
+  return persistentUnread + legacyItems.filter(n => Date.parse(n.createdAt) > readMs).length
 }
 
 export const TRADE_EXECUTION_LOG_NOTIFICATION_SELECT = `

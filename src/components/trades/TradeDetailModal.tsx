@@ -6,13 +6,32 @@ import {
   Loader2,
   Minus,
   Radio,
+  Repeat,
   TriangleAlert,
   X,
 } from 'lucide-react'
 import clsx from 'clsx'
+import { useConfirm } from '../../context/ConfirmDialogContext'
 import { useT } from '../../context/LocaleContext'
+import { interpolate } from '../../i18n/interpolate'
 import { useAssistant } from '../../context/useAssistant'
 import { supabase } from '../../lib/supabase'
+import {
+  fetchMirrorCopyAttribution,
+  type MirrorCopyAttribution,
+} from '../../lib/mirrorCopyAttribution'
+import {
+  canRequestMirrorClose,
+  requestMirrorCopyClose,
+  waitForMirrorCopyClosed,
+} from '../../lib/mirrorCopyClose'
+import {
+  fetchPlanFallbackReason,
+  isTpSplitSkippedReason,
+  staleEntryNotice,
+  strippedTpNotice,
+} from '../../lib/tradeExecutionNotes'
+import { resolveTradeDisplayDirection } from '../../lib/tradeDirection'
 import type { MtTrade } from '../../lib/fxsocketBroker'
 import {
   formatSignalInstructions,
@@ -57,6 +76,7 @@ interface TradeDetailModalProps {
 
 export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onClose }: TradeDetailModalProps) {
   const t = useT()
+  const confirm = useConfirm()
   const assistant = useAssistant()
   const tr = t.trades
   const navigate = useNavigate()
@@ -66,6 +86,10 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
   const [context, setContext] = useState<TradeSignalContext | null | undefined>(undefined)
   const [closeReasonCode, setCloseReasonCode] = useState<TradeCloseReasonCode | null>(null)
   const [brokerFailures, setBrokerFailures] = useState<CopierBrokerFailureRow[]>([])
+  const [mirrorAttribution, setMirrorAttribution] = useState<MirrorCopyAttribution | null>(null)
+  const [mirrorCloseStatus, setMirrorCloseStatus] = useState<'idle' | 'working' | 'done' | 'timeout' | 'error'>('idle')
+  const [mirrorCloseError, setMirrorCloseError] = useState<string | null>(null)
+  const [planFallbackReason, setPlanFallbackReason] = useState<string | null>(null)
   const [showReport, setShowReport] = useState(false)
 
   useEffect(() => {
@@ -75,12 +99,20 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
       setLoadError('')
       setLoading(false)
       setBrokerFailures([])
+      setMirrorAttribution(null)
+      setMirrorCloseStatus('idle')
+      setMirrorCloseError(null)
+      setPlanFallbackReason(null)
       return
     }
     if (!userId) {
       setContext(null)
       setCloseReasonCode(null)
       setBrokerFailures([])
+      setMirrorAttribution(null)
+      setMirrorCloseStatus('idle')
+      setMirrorCloseError(null)
+      setPlanFallbackReason(null)
       return
     }
 
@@ -90,10 +122,14 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
     setContext(undefined)
     setCloseReasonCode(null)
     setBrokerFailures([])
+    setMirrorAttribution(null)
+    setMirrorCloseStatus('idle')
+    setMirrorCloseError(null)
+    setPlanFallbackReason(null)
 
     void (async () => {
       try {
-        const [result, storedCloseReason] = await Promise.all([
+        const [result, storedCloseReason, mirror] = await Promise.all([
           resolveTradeSignalContext(userId, trade),
           trade.status === 'closed'
             ? fetchTradeCloseReason(supabase, {
@@ -102,17 +138,31 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                 ticket: trade.ticket,
               }).catch(() => null)
             : Promise.resolve(null),
+          fetchMirrorCopyAttribution(supabase, userId, trade.comment).catch(() => null),
         ])
         if (cancelled) return
-        setCloseReasonCode(resolveTradeCloseReason(storedCloseReason, trade))
+        const resolvedReason = resolveTradeCloseReason(mirror?.mappingCloseReason ?? storedCloseReason, trade)
+        setCloseReasonCode(
+          resolvedReason === 'unknown' && mirror?.mappingState === 'closed' ? 'mirror_copy_closed' : resolvedReason,
+        )
         setContext(result)
+        setMirrorAttribution(mirror)
         if (result?.signal) {
-          const failures = await fetchBrokerFailuresForTrade(supabase, {
-            userId,
-            signalId: result.signal.id,
-            brokerAccountId: trade.broker_id,
-          })
-          if (!cancelled) setBrokerFailures(failures)
+          const [failures, fallbackReason] = await Promise.all([
+            fetchBrokerFailuresForTrade(supabase, {
+              userId,
+              signalId: result.signal.id,
+              brokerAccountId: trade.broker_id,
+            }),
+            fetchPlanFallbackReason(supabase, {
+              userId,
+              signalId: result.signal.id,
+              brokerAccountId: trade.broker_id,
+            }),
+          ])
+          if (cancelled) return
+          setBrokerFailures(failures)
+          setPlanFallbackReason(fallbackReason)
         }
       } catch (e) {
         if (!cancelled) {
@@ -185,6 +235,63 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
     navigate('/copier-logs')
   }
 
+  const reloadMirrorAttribution = async () => {
+    if (!userId || !trade) return
+    const next = await fetchMirrorCopyAttribution(supabase, userId, trade.comment).catch(() => null)
+    if (!next) return
+    setMirrorAttribution(next)
+    if (next.mappingCloseReason) {
+      setCloseReasonCode(resolveTradeCloseReason(next.mappingCloseReason, trade))
+    }
+  }
+
+  const handleCloseCopy = async () => {
+    const mappingId = mirrorAttribution?.mappingId
+    if (!mappingId || mirrorCloseStatus === 'working') return
+    const confirmText = tr.closeCopyConfirm
+      ?? 'Close this copied trade on the slave account? The master trade stays open — this copy will not be reopened.'
+    const approved = await confirm({
+      title: tr.closeCopy ?? 'Close copy',
+      body: confirmText,
+      confirmLabel: tr.closeCopy ?? 'Close copy',
+      cancelLabel: t.common.cancel,
+    })
+    if (!approved) return
+    setMirrorCloseStatus('working')
+    setMirrorCloseError(null)
+    try {
+      const request = await requestMirrorCopyClose(supabase, mappingId)
+      if (request.error) {
+        setMirrorCloseStatus('error')
+        setMirrorCloseError(request.error)
+        return
+      }
+      if (!request.applied) {
+        // Nothing changed: the copy is already closed (or closing was refused).
+        setMirrorCloseStatus('done')
+        setMirrorAttribution(prev => (prev ? { ...prev, mappingState: 'closed' } : prev))
+        void reloadMirrorAttribution()
+        return
+      }
+      setMirrorAttribution(prev => (prev ? { ...prev, mappingState: 'closing' } : prev))
+      const wait = await waitForMirrorCopyClosed(supabase, mappingId)
+      if (wait.outcome === 'closed') {
+        setMirrorCloseStatus('done')
+        setMirrorAttribution(prev => (prev ? { ...prev, mappingState: 'closed' } : prev))
+        setCloseReasonCode('user_force_close')
+        void reloadMirrorAttribution()
+      } else if (wait.outcome === 'read-error') {
+        setMirrorCloseStatus('error')
+        setMirrorCloseError(wait.error)
+      } else {
+        setMirrorCloseStatus('timeout')
+      }
+    } catch (e) {
+      setMirrorCloseStatus('error')
+      setMirrorCloseError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
   const askAssistantAboutFailure = () => {
     if (!structuredBrokerFailure) return
     assistant.persistMessages(prev => [
@@ -228,6 +335,22 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
 
   if (!trade || !display) return null
 
+  const signalParsed = (context?.signal?.parsed_data as Record<string, unknown> | null) ?? null
+  const staleEntry = staleEntryNotice(signalParsed?.entry_price, trade.entry_price)
+  const showTpSplitNote = isTpSplitSkippedReason(planFallbackReason)
+  const strippedTp = strippedTpNotice({
+    tpLevels: signalParsed?.tp,
+    fillPrice: trade.entry_price,
+    brokerTp: trade.tp,
+    direction: resolveTradeDisplayDirection({
+      direction: trade.direction,
+      entry_price: trade.entry_price,
+      sl: trade.sl,
+      tp: trade.tp,
+    }) || String(signalParsed?.action ?? ''),
+    tpUnit: signalParsed?.tp_unit,
+  })
+
   const channelLabel = (() => {
     const ch = context?.channel
     if (!ch) return null
@@ -260,20 +383,20 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
       />
       <div
         ref={panelRef}
-        className="relative w-full sm:max-w-lg max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-2xl"
+        className="relative w-full sm:max-w-lg max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 shadow-2xl"
       >
         <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-5 py-4 border-b border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900">
           <div className="min-w-0">
             <h2 id="trade-detail-title" className="text-lg font-semibold text-neutral-900 dark:text-neutral-50 truncate">
               {trade.symbol || '—'}
             </h2>
-            <p className="text-xs text-neutral-400 tabular-nums">#{trade.ticket}</p>
+            <p className="text-xs text-neutral-900 dark:text-neutral-50 tabular-nums">#{trade.ticket}</p>
           </div>
           <div className="flex items-center gap-1.5">
             <button
               type="button"
               onClick={() => setShowReport(true)}
-              className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
             >
               {tr.report}
             </button>
@@ -281,13 +404,13 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
               type="button"
               disabled={!linkedSignalId}
               onClick={handleManage}
-              className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-40 disabled:pointer-events-none transition-colors"
             >
               {tr.manage}
             </button>
             <button
               type="button"
-              className="p-2 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+              className="p-2 rounded-lg text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
               aria-label={tr.close}
               onClick={onClose}
             >
@@ -297,8 +420,8 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
         </div>
 
         <div className="p-5 space-y-5">
-          <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-4 space-y-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{tr.tradeSummary}</p>
+          <section className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 p-4 space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-50">{tr.tradeSummary}</p>
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={display.status.variant} size="sm">{statusLabel}</Badge>
               <span
@@ -306,7 +429,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                   'inline-flex items-center gap-1 text-sm font-medium',
                   display.isBuy && 'text-success-600',
                   display.isSell && 'text-error-600',
-                  !display.isBuy && !display.isSell && 'text-neutral-500',
+                  !display.isBuy && !display.isSell && 'text-neutral-900 dark:text-neutral-50',
                 )}
               >
                 {display.isBuy ? (
@@ -322,12 +445,12 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                 className={clsx(
                   'text-sm font-semibold tabular-nums ml-auto',
                   display.profit === null
-                    ? 'text-neutral-400'
+                    ? 'text-neutral-900 dark:text-neutral-50'
                     : display.profit > 0
                       ? 'text-success-600'
                       : display.profit < 0
                         ? 'text-error-600'
-                        : 'text-neutral-500',
+                        : 'text-neutral-900 dark:text-neutral-50',
                 )}
               >
                 {display.profit === null
@@ -337,44 +460,44 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
             </div>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
               <div>
-                <dt className="text-neutral-400 uppercase tracking-wide">{tr.colBroker}</dt>
-                <dd className="text-neutral-700 dark:text-neutral-300 mt-0.5 truncate" title={display.broker}>
+                <dt className="text-neutral-900 dark:text-neutral-50 uppercase tracking-wide">{tr.colBroker}</dt>
+                <dd className="text-neutral-900 dark:text-neutral-50 mt-0.5 truncate" title={display.broker}>
                   {display.broker}
                 </dd>
               </div>
               <div>
-                <dt className="text-neutral-400 uppercase tracking-wide">{tr.colLots}</dt>
-                <dd className="text-neutral-700 dark:text-neutral-300 tabular-nums mt-0.5">
+                <dt className="text-neutral-900 dark:text-neutral-50 uppercase tracking-wide">{tr.colLots}</dt>
+                <dd className="text-neutral-900 dark:text-neutral-50 tabular-nums mt-0.5">
                   {formatTradeLots(trade.lot_size)}
                 </dd>
               </div>
               <div>
-                <dt className="text-neutral-400 uppercase tracking-wide">{tr.colEntry}</dt>
-                <dd className="text-neutral-700 dark:text-neutral-300 tabular-nums mt-0.5">
+                <dt className="text-neutral-900 dark:text-neutral-50 uppercase tracking-wide">{tr.colEntry}</dt>
+                <dd className="text-neutral-900 dark:text-neutral-50 tabular-nums mt-0.5">
                   {formatTradePrice(trade.entry_price)}
                 </dd>
               </div>
               <div>
-                <dt className="text-neutral-400 uppercase tracking-wide">{tr.colTime}</dt>
-                <dd className="text-neutral-600 dark:text-neutral-400 mt-0.5">{display.timeLabel}</dd>
+                <dt className="text-neutral-900 dark:text-neutral-50 uppercase tracking-wide">{tr.colTime}</dt>
+                <dd className="text-neutral-900 dark:text-neutral-50 mt-0.5">{display.timeLabel}</dd>
               </div>
               <div>
-                <dt className="text-neutral-400 uppercase tracking-wide">{tr.colSl}</dt>
-                <dd className="text-neutral-700 dark:text-neutral-300 tabular-nums mt-0.5">
+                <dt className="text-neutral-900 dark:text-neutral-50 uppercase tracking-wide">{tr.colSl}</dt>
+                <dd className="text-neutral-900 dark:text-neutral-50 tabular-nums mt-0.5">
                   {formatTradePrice(trade.sl)}
                 </dd>
               </div>
               <div>
-                <dt className="text-neutral-400 uppercase tracking-wide">{tr.colTp}</dt>
-                <dd className="text-neutral-700 dark:text-neutral-300 tabular-nums mt-0.5">
+                <dt className="text-neutral-900 dark:text-neutral-50 uppercase tracking-wide">{tr.colTp}</dt>
+                <dd className="text-neutral-900 dark:text-neutral-50 tabular-nums mt-0.5">
                   {formatTradePrice(trade.tp)}
                 </dd>
               </div>
               {trade.status === 'open' ? (
                 <div className="col-span-2">
-                  <dt className="text-neutral-400 uppercase tracking-wide">{tr.colCurrent}</dt>
+                  <dt className="text-neutral-900 dark:text-neutral-50 uppercase tracking-wide">{tr.colCurrent}</dt>
                   <dd className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
-                    <span className="text-neutral-700 dark:text-neutral-300 tabular-nums font-semibold">
+                    <span className="text-neutral-900 dark:text-neutral-50 tabular-nums font-semibold">
                       {liveQuote.price != null
                         ? formatTradePrice(liveQuote.price)
                         : liveQuote.loading
@@ -382,17 +505,17 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                           : '—'}
                     </span>
                     {bidAskLine ? (
-                      <span className="text-neutral-400 tabular-nums text-[11px]">{bidAskLine}</span>
+                      <span className="text-neutral-900 dark:text-neutral-50 tabular-nums text-[11px]">{bidAskLine}</span>
                     ) : null}
                     {liveQuote.loading ? (
-                      <Loader2 className="w-3 h-3 animate-spin text-neutral-400" aria-hidden="true" />
+                      <Loader2 className="w-3 h-3 animate-spin text-neutral-900 dark:text-neutral-50" aria-hidden="true" />
                     ) : null}
                   </dd>
                 </div>
               ) : (
                 <div className="col-span-2">
-                  <dt className="text-neutral-400 uppercase tracking-wide">{tr.colClosePrice}</dt>
-                  <dd className="text-neutral-700 dark:text-neutral-300 tabular-nums mt-0.5 font-semibold">
+                  <dt className="text-neutral-900 dark:text-neutral-50 uppercase tracking-wide">{tr.colClosePrice}</dt>
+                  <dd className="text-neutral-900 dark:text-neutral-50 tabular-nums mt-0.5 font-semibold">
                     {formatTradePrice(trade.close_price)}
                   </dd>
                 </div>
@@ -407,6 +530,118 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
               ) : null}
             </dl>
           </section>
+
+          {mirrorAttribution ? (
+            <section className="rounded-xl border border-teal-200/80 dark:border-teal-900/60 bg-teal-50/40 dark:bg-teal-950/20 p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <Repeat className="w-4 h-4 text-green-400 shrink-0" aria-hidden />
+                <p className="text-xs font-semibold uppercase tracking-wide text-teal-800 dark:text-teal-300">
+                  {tr.copiedFromMasterTitle ?? 'Mirror copy'}
+                </p>
+              </div>
+              <p className="text-sm text-neutral-900 dark:text-neutral-50">
+                {interpolate(tr.copiedFromMaster ?? 'Copied from master account {login}', {
+                  login: mirrorAttribution.masterLogin,
+                })}
+              </p>
+              {trade.status === 'open' && mirrorAttribution.mappingId ? (
+                <div className="pt-1 space-y-1.5">
+                  {mirrorCloseStatus === 'done' ? (
+                    <p className="text-sm font-medium text-teal-800 dark:text-teal-300">
+                      {tr.closeCopyDone ?? 'Copy closed'}
+                    </p>
+                  ) : mirrorCloseStatus === 'timeout' ? (
+                    <>
+                      <p className="text-sm text-neutral-900 dark:text-neutral-50">
+                        {tr.closeCopyTimeout
+                          ?? 'Close requested — the worker closes it within about a minute. Refresh the page if it still shows open.'}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => void handleCloseCopy()}
+                        disabled={!canRequestMirrorClose(mirrorAttribution.mappingState)}
+                        className="rounded-lg border border-teal-300 dark:border-teal-800 px-3 py-1.5 text-sm font-medium text-teal-900 dark:text-teal-200 hover:bg-teal-100/70 dark:hover:bg-teal-900/40 disabled:opacity-50"
+                      >
+                        {tr.closeCopyRetry ?? 'Retry close'}
+                      </button>
+                    </>
+                  ) : mirrorCloseStatus === 'error' ? (
+                    <>
+                      <p className="text-sm text-error-700 dark:text-error-300">
+                        {mirrorCloseError
+                          ? interpolate(tr.closeCopyError ?? 'Could not close the copy: {error}', { error: mirrorCloseError })
+                          : (tr.closeCopyErrorFallback ?? 'Could not close the copy. Try again.')}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => void handleCloseCopy()}
+                        className="rounded-lg border border-teal-300 dark:border-teal-800 px-3 py-1.5 text-sm font-medium text-teal-900 dark:text-teal-200 hover:bg-teal-100/70 dark:hover:bg-teal-900/40"
+                      >
+                        {tr.closeCopyRetry ?? 'Retry close'}
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void handleCloseCopy()}
+                      disabled={mirrorCloseStatus === 'working' || !canRequestMirrorClose(mirrorAttribution.mappingState)}
+                      className="inline-flex items-center gap-2 rounded-lg border border-teal-300 dark:border-teal-800 px-3 py-1.5 text-sm font-medium text-teal-900 dark:text-teal-200 hover:bg-teal-100/70 dark:hover:bg-teal-900/40 disabled:opacity-50"
+                    >
+                      {mirrorCloseStatus === 'working' ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
+                      ) : null}
+                      {mirrorCloseStatus === 'working'
+                        ? (tr.closeCopyWorking ?? 'Closing copy…')
+                        : (tr.closeCopy ?? 'Close copy')}
+                    </button>
+                  )}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
+          {staleEntry != null || showTpSplitNote || strippedTp != null ? (
+            <section className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 space-y-2 dark:border-amber-900/60 dark:bg-amber-950/25">
+              <div className="flex items-center gap-2">
+                <TriangleAlert className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" aria-hidden />
+                <p className="text-xs font-semibold uppercase tracking-wide text-amber-900 dark:text-amber-200">
+                  {tr.execNotesTitle ?? 'Execution notes'}
+                </p>
+              </div>
+              <ul className="space-y-1.5">
+                {showTpSplitNote ? (
+                  <li className="text-sm text-neutral-900 dark:text-neutral-50">
+                    {tr.execNoteTpSplit
+                      ?? 'Some partial take-profits were skipped — this lot is too small to split (those slices would be below the broker minimum). The remaining take-profits still apply.'}
+                  </li>
+                ) : null}
+                {staleEntry != null ? (
+                  <li className="text-sm text-neutral-900 dark:text-neutral-50">
+                    {interpolate(
+                      tr.execNoteStaleEntry
+                        ?? 'The signal entry was {entry} but the trade opened at {fill} — price had already moved when the order was sent.',
+                      {
+                        entry: formatTradePrice(staleEntry.signalEntry),
+                        fill: formatTradePrice(staleEntry.fillPrice),
+                      },
+                    )}
+                  </li>
+                ) : null}
+                {strippedTp != null ? (
+                  <li className="text-sm text-neutral-900 dark:text-neutral-50">
+                    {interpolate(
+                      tr.execNoteTpStripped
+                        ?? 'Take-profits {levels} were stripped — the trade opened at {fill}, past the take-profit price, so applying them would have closed the trade immediately.',
+                      {
+                        levels: strippedTp.levels.map(formatTradePrice).join(', '),
+                        fill: formatTradePrice(strippedTp.fillPrice),
+                      },
+                    )}
+                  </li>
+                ) : null}
+              </ul>
+            </section>
+          ) : null}
 
           {manualOverrideWarning ? (
             <ManualBrokerOverrideWarningNotice
@@ -423,24 +658,24 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                   {tr.brokerErrorTitle}
                 </p>
               </div>
-              <p className="text-sm text-neutral-700 dark:text-neutral-300">{tr.brokerErrorIntro}</p>
+              <p className="text-sm text-neutral-900 dark:text-neutral-50">{tr.brokerErrorIntro}</p>
               {structuredBrokerFailure ? (
                 <div className="space-y-1 rounded-lg border border-error-200/80 dark:border-error-900/60 bg-white/70 dark:bg-neutral-900/40 px-3 py-2">
                   <p className="text-sm font-semibold text-error-800 dark:text-error-200">
                     {structuredBrokerFailure.title}
                   </p>
-                  <p className="text-xs text-neutral-700 dark:text-neutral-300">
+                  <p className="text-xs text-neutral-900 dark:text-neutral-50">
                     {structuredBrokerFailure.explanation}
                   </p>
                   {structuredBrokerFailure.recommendedAction ? (
-                    <p className="text-xs text-neutral-600 dark:text-neutral-400">
+                    <p className="text-xs text-neutral-900 dark:text-neutral-50">
                       {structuredBrokerFailure.recommendedAction}
                     </p>
                   ) : null}
                   <button
                     type="button"
                     onClick={askAssistantAboutFailure}
-                    className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline underline-offset-2"
+                    className="text-xs font-semibold text-green-500 dark:text-teal-300 hover:underline underline-offset-2"
                   >
                     Ask AI about this issue
                   </button>
@@ -452,14 +687,14 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                     key={`${failure.created_at}-${failure.action}-${idx}`}
                     className="flex gap-2 text-xs"
                   >
-                    <span className="text-neutral-400 whitespace-nowrap tabular-nums shrink-0 pt-0.5">
+                    <span className="text-neutral-900 dark:text-neutral-50 whitespace-nowrap tabular-nums shrink-0 pt-0.5">
                       {new Date(failure.created_at).toLocaleTimeString([], {
                         hour: '2-digit',
                         minute: '2-digit',
                       })}
                     </span>
                     <span
-                      className="text-error-700 dark:text-error-300 min-w-0 break-words"
+                      className="text-error-700 dark:text-error-300 min-w-0 wrap-break-word"
                       title={failure.error_message ?? undefined}
                     >
                       {formatBrokerFailureRow(failure, t.copierLogs)}
@@ -470,7 +705,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
               <button
                 type="button"
                 onClick={handleViewCopierLogs}
-                className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline underline-offset-2"
+                className="text-xs font-semibold text-green-500 dark:text-teal-300 hover:underline underline-offset-2"
               >
                 {tr.viewCopierLogs}
               </button>
@@ -478,21 +713,21 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
           ) : null}
 
           {loading ? (
-            <div className="flex items-center gap-2 text-sm text-neutral-500 py-4">
+            <div className="flex items-center gap-2 text-sm text-neutral-900 dark:text-neutral-50 py-4">
               <Loader2 className="w-4 h-4 animate-spin" />
               {tr.loadingSignal}
             </div>
           ) : loadError ? (
             <p className="text-sm text-error-600 dark:text-error-400">{loadError}</p>
           ) : context === null || !context ? (
-            <p className="text-sm text-neutral-500 dark:text-neutral-400 rounded-xl bg-neutral-50 dark:bg-neutral-800/40 px-4 py-3">
+            <p className="text-sm text-neutral-900 dark:text-neutral-50 rounded-xl bg-neutral-50 dark:bg-neutral-800/40 px-4 py-3">
               {tr.noLinkedSignal}
             </p>
           ) : (
             <>
               <section className="rounded-xl border border-teal-200/80 dark:border-teal-900/60 bg-teal-50/40 dark:bg-teal-950/20 p-4 space-y-2">
                 <div className="flex items-center gap-2">
-                  <Radio className="w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0" />
+                  <Radio className="w-4 h-4 text-green-400 dark:text-green-400 shrink-0" />
                   <p className="text-xs font-semibold uppercase tracking-wide text-teal-800 dark:text-teal-300">
                     {tr.signalChannel}
                   </p>
@@ -500,7 +735,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                 <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                   {channelLabel ?? '—'}
                 </p>
-                <p className="text-xs text-neutral-500 tabular-nums">
+                <p className="text-xs text-neutral-900 dark:text-neutral-50 tabular-nums">
                   {tr.signalTime}:{' '}
                   {new Date(context.signal.created_at).toLocaleString([], {
                     day: '2-digit',
@@ -515,17 +750,17 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
               <button
                 type="button"
                 onClick={askAssistantExplainSignal}
-                className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline underline-offset-2"
+                className="text-xs font-semibold text-green-500 dark:text-teal-300 hover:underline underline-offset-2"
               >
                 {t.copierLogs.detailModal?.explainWithAi ?? 'Explain with AI'}
               </button>
 
               {messageBody ? (
                 <section className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
                     {tr.telegramMessage}
                   </p>
-                  <p className="text-sm text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-800/30 px-4 py-3">
+                  <p className="text-sm text-neutral-900 dark:text-neutral-50 whitespace-pre-wrap rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50/80 dark:bg-neutral-800/30 px-4 py-3">
                     {messageBody}
                   </p>
                   {context.signal.raw_image_url ? (
@@ -533,7 +768,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                       href={context.signal.raw_image_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-xs text-teal-600 dark:text-teal-400 hover:underline"
+                      className="text-xs text-green-400 dark:text-green-400 hover:underline"
                     >
                       {context.signal.raw_image_url}
                     </a>
@@ -543,14 +778,14 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
 
               {instructionLines.length > 0 ? (
                 <section className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
                     {tr.parsedInstruction}
                   </p>
-                  <dl className="rounded-xl border border-neutral-200 dark:border-neutral-800 divide-y divide-neutral-100 dark:divide-neutral-800">
+                  <dl className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 divide-y divide-neutral-100 dark:divide-neutral-800">
                     {instructionLines.map(line => (
                       <div key={line.label} className="flex justify-between gap-3 px-4 py-2.5 text-sm">
-                        <dt className="text-neutral-500 shrink-0">{line.label}</dt>
-                        <dd className="text-neutral-800 dark:text-neutral-200 text-right font-medium tabular-nums">
+                        <dt className="text-neutral-900 dark:text-neutral-50 shrink-0">{line.label}</dt>
+                        <dd className="text-neutral-900 dark:text-neutral-50 text-right font-medium tabular-nums">
                           {line.value}
                         </dd>
                       </div>

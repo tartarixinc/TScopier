@@ -2,8 +2,10 @@ import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { LocaleProvider } from './context/LocaleContext'
+import { ConfirmDialogProvider } from './context/ConfirmDialogContext'
 import { UserProfileProvider } from './context/UserProfileContext'
 import { SubscriptionProvider } from './context/SubscriptionContext'
+import { buildFlags } from './lib/featureFlags'
 import { AuthLayout } from './components/layout/AuthLayout'
 import { VerifyEmailLayout } from './components/layout/VerifyEmailLayout'
 import { AppShell } from './components/layout/AppShell'
@@ -25,6 +27,27 @@ const AppPricingPage = lazy(() =>
 )
 const AccountConfigPage = lazy(() =>
   import('./pages/dashboard/AccountConfigPage').then(m => ({ default: m.AccountConfigPage })),
+)
+const CtraderCallbackPage = lazy(() =>
+  import('./pages/dashboard/CtraderCallbackPage').then(m => ({ default: m.CtraderCallbackPage })),
+)
+const ConfigurationsPage = lazy(() =>
+  import('./pages/dashboard/ConfigurationsPage').then(m => ({ default: m.ConfigurationsPage })),
+)
+const MirrorTradingPage = lazy(() =>
+  import('./pages/dashboard/MirrorTradingPage').then(m => ({ default: m.MirrorTradingPage })),
+)
+const SocialTradingPage = lazy(() =>
+  import('./pages/dashboard/SocialTradingPage').then(m => ({ default: m.SocialTradingPage })),
+)
+const ProviderPublicProfilePage = lazy(() =>
+  import('./pages/social/ProviderPublicProfilePage').then(m => ({ default: m.ProviderPublicProfilePage })),
+)
+const ProviderApplyPage = lazy(() =>
+  import('./pages/dashboard/ProviderApplyPage').then(m => ({ default: m.ProviderApplyPage })),
+)
+const SocialTraderActivityPage = lazy(() =>
+  import('./pages/dashboard/SocialTradingPage').then(m => ({ default: m.SocialTraderActivityPage })),
 )
 const CopierEnginePage = lazy(() =>
   import('./pages/dashboard/CopierEnginePage').then(m => ({ default: m.CopierEnginePage })),
@@ -76,6 +99,9 @@ const UpdatesPage = lazy(() =>
 const AffiliateProgramPage = lazy(() =>
   import('./pages/dashboard/SupportMembershipPages').then(m => ({ default: m.AffiliateProgramPage })),
 )
+const WalletPage = lazy(() =>
+  import('./pages/dashboard/SupportMembershipPages').then(m => ({ default: m.WalletPage })),
+)
 const BillingPage = lazy(() =>
   import('./pages/dashboard/SupportMembershipPages').then(m => ({ default: m.BillingPage })),
 )
@@ -101,11 +127,12 @@ export default function App() {
   return (
     <AuthProvider>
       <LocaleProvider>
+      <ConfirmDialogProvider>
       <UserProfileProvider>
       <BrowserRouter>
       <AppTopBannersProvider>
       <SubscriptionProvider>
-      <div className="flex h-[100dvh] min-h-0 flex-col overflow-hidden overscroll-none">
+      <div className="flex h-dvh min-h-0 flex-col overflow-hidden overscroll-none">
         <AppTopBanners />
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden overscroll-none">
       <GoogleAnalyticsRouteTracker />
@@ -122,6 +149,14 @@ export default function App() {
 
           {/* Public pricing — paywall / acquisition (no auth required). */}
           <Route path="/pricing" element={<LazyPage><AppPricingPage /></LazyPage>} />
+
+          {/* Public provider profile (shareable link; anon-readable via get_provider_public_profile). */}
+          <Route
+            path="/p/:slug"
+            element={buildFlags.hideSocialTrading
+              ? <Navigate to="/dashboard" replace />
+              : <LazyPage><ProviderPublicProfilePage /></LazyPage>}
+          />
 
           <Route element={<VerifyEmailLayout />}>
             <Route path="/verify-email" element={<VerifyEmailPage />} />
@@ -145,7 +180,28 @@ export default function App() {
             <Route path="/welcome" element={<Navigate to="/dashboard" replace />} />
             <Route element={<AppShell />}>
             <Route path="/dashboard/*" element={<DashboardRouteAnchor />} />
+            <Route path="/brokers/ctrader/callback" element={<LazyPage><CtraderCallbackPage /></LazyPage>} />
             <Route path="/brokers" element={<LazyPage><AccountConfigPage /></LazyPage>} />
+            <Route path="/mirror-trading" element={<LazyPage><MirrorTradingPage /></LazyPage>} />
+            <Route
+              path="/social-trading/provider"
+              element={buildFlags.hideSocialTrading
+                ? <Navigate to="/dashboard" replace />
+                : <LazyPage><ProviderApplyPage /></LazyPage>}
+            />
+            <Route
+              path="/social-trading/:traderId"
+              element={buildFlags.hideSocialTrading
+                ? <Navigate to="/dashboard" replace />
+                : <LazyPage><SocialTraderActivityPage /></LazyPage>}
+            />
+            <Route
+              path="/social-trading"
+              element={buildFlags.hideSocialTrading
+                ? <Navigate to="/dashboard" replace />
+                : <LazyPage><SocialTradingPage /></LazyPage>}
+            />
+            <Route path="/configurations" element={<LazyPage><ConfigurationsPage /></LazyPage>} />
             <Route path="/account-configuration" element={<Navigate to="/brokers" replace />} />
             <Route path="/account-trades" element={<LazyPage><TradesPage /></LazyPage>} />
             <Route path="/channels" element={<LazyPage><CopierEnginePage /></LazyPage>} />
@@ -169,6 +225,7 @@ export default function App() {
             <Route path="/feature-request" element={<LazyPage><FeatureRequestPage /></LazyPage>} />
             <Route path="/partner-with-us" element={<LazyPage><PartnerWithUsPage /></LazyPage>} />
             <Route path="/affiliate-program" element={<LazyPage><AffiliateProgramPage /></LazyPage>} />
+            <Route path="/wallet" element={<LazyPage><WalletPage /></LazyPage>} />
             <Route path="/billing" element={<LazyPage><BillingPage /></LazyPage>} />
             <Route path="/subscriptions" element={<Navigate to="/billing" replace />} />
             <Route path="/performance" element={<LazyPage><PerformancePage /></LazyPage>} />
@@ -195,6 +252,7 @@ export default function App() {
       </AppTopBannersProvider>
       </BrowserRouter>
       </UserProfileProvider>
+      </ConfirmDialogProvider>
       </LocaleProvider>
     </AuthProvider>
   )

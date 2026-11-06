@@ -9,11 +9,12 @@
  *   trade_mgmt   — management only + reconcile / auto-mgmt monitors
  *   backtest          — Ephemeral Telegram client for backtest sync only
  *   channel_listener  — Channel-scoped ingest sharded by signal_channel_id
+ *   discord_listener  — Discord gateway ingest only; one process per bot token
  */
 
 import { tradeExecutorModeForRole, type TradeExecutorMode } from './tradeSignalActions'
 
-type WorkerRole =
+export type WorkerRole =
   | 'all'
   | 'listener'
   | 'channel_listener'
@@ -21,20 +22,41 @@ type WorkerRole =
   | 'trade_entry'
   | 'trade_mgmt'
   | 'backtest'
+  | 'discord_listener'
 
-function parseRole(raw: string | undefined): WorkerRole {
+export const KNOWN_ROLES: readonly WorkerRole[] = [
+  'all',
+  'listener',
+  'channel_listener',
+  'trade',
+  'trade_entry',
+  'trade_mgmt',
+  'backtest',
+  'discord_listener',
+]
+
+/** An empty value means the default role; a non-empty unknown value is a deploy error. */
+export function isKnownRole(raw: string | undefined): boolean {
+  const v = String(raw ?? '').toLowerCase().trim()
+  return v === '' || (KNOWN_ROLES as readonly string[]).includes(v)
+}
+
+export function parseRole(raw: string | undefined): WorkerRole {
   const v = String(raw ?? 'all').toLowerCase().trim()
-  if (
-    v === 'listener'
-    || v === 'channel_listener'
-    || v === 'trade'
-    || v === 'trade_entry'
-    || v === 'trade_mgmt'
-    || v === 'backtest'
-  ) {
-    return v
+  return (KNOWN_ROLES as readonly string[]).includes(v) ? (v as WorkerRole) : 'all'
+}
+
+/** Role → startup flags. Kept pure so a new role cannot silently inherit Telegram/trade work. */
+export function workerRoleFlags(role: WorkerRole) {
+  return {
+    runsListener: role === 'all' || role === 'listener' || role === 'channel_listener',
+    runsChannelListener: role === 'all' || role === 'channel_listener',
+    runsTrade: role === 'all' || role === 'trade' || role === 'trade_entry' || role === 'trade_mgmt',
+    runsExecutionMonitors: role === 'all' || role === 'trade' || role === 'trade_entry',
+    runsManagementMonitors: role === 'all' || role === 'trade' || role === 'trade_mgmt',
+    runsBacktestHttp: role === 'all' || role === 'backtest',
+    runsDiscordListener: role === 'discord_listener',
   }
-  return 'all'
 }
 
 export function parseEnvBool(raw: string | undefined, defaultValue: boolean): boolean {
@@ -46,9 +68,6 @@ export function parseEnvBool(raw: string | undefined, defaultValue: boolean): bo
 }
 
 const role = parseRole(process.env.WORKER_ROLE)
-
-const runsTradeRole =
-  role === 'all' || role === 'trade' || role === 'trade_entry' || role === 'trade_mgmt'
 
 /**
  * FxSocket terminals stay connected server-side; REST calls authenticate per request.
@@ -72,16 +91,9 @@ export const workerConfig = {
   ),
   shardId: Math.max(0, Math.floor(Number(process.env.WORKER_SHARD_ID ?? 0))),
   shardCount: Math.max(1, Math.floor(Number(process.env.WORKER_SHARD_COUNT ?? 1))),
-  runsListener: role === 'all' || role === 'listener' || role === 'channel_listener',
-  runsChannelListener: role === 'all' || role === 'channel_listener',
-  runsTrade: runsTradeRole,
+  ...workerRoleFlags(role),
   runsBrokerSessionHeartbeat,
   tradeExecutorMode: tradeExecutorModeForRole(role) as TradeExecutorMode,
-  runsExecutionMonitors:
-    role === 'all' || role === 'trade' || role === 'trade_entry',
-  runsManagementMonitors:
-    role === 'all' || role === 'trade' || role === 'trade_mgmt',
-  runsBacktestHttp: role === 'all' || role === 'backtest',
   /** Backtest uses a short-lived Telegram client, never the live listener connection. */
   backtestUsesEphemeralClient: role !== 'all' || process.env.BACKTEST_EPHEMERAL_CLIENT !== 'false',
   /**

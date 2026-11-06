@@ -26,3 +26,21 @@ test('signalPipPrice: short index symbols use index multiplier', () => {
   assert.equal(signalPipPrice('US30'), 1)
   assert.equal(getPipMultiplierForSymbol('US30'), 1)
 })
+
+test('signalPipPrice: crypto pairs use a 2-decimal pip (0.01), not forex 0.0001', () => {
+  assert.equal(getPipMultiplierForSymbol('BTCUSD'), 100)
+  assert.equal(signalPipPrice('BTCUSD'), 0.01)
+  assert.equal(getPipMultiplierForSymbol('ETHUSD'), 100)
+  assert.equal(signalPipPrice('ETHUSD'), 0.01)
+  assert.equal(getPipMultiplierForSymbol('BTCUSDm'), 100)
+})
+
+test('signalPipPrice: USDC/USDT-prefixed forex pairs keep the forex pip', () => {
+  // Regression: classifySymbol used to match USDC/USDT crypto tokens before
+  // the FX shape check, giving USDCHF the 0.01 crypto pip (100× off).
+  assert.equal(getPipMultiplierForSymbol('USDCHF'), 10_000)
+  assert.equal(signalPipPrice('USDCHF'), 0.0001)
+  assert.equal(getPipMultiplierForSymbol('USDCAD'), 10_000)
+  assert.equal(getPipMultiplierForSymbol('USDTRY'), 10_000)
+  assert.equal(signalPipPrice('USDTRY'), 0.0001)
+})

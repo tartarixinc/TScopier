@@ -51,10 +51,10 @@ function StatItem({
 }) {
   return (
     <div className="text-center">
-      <dt className="text-sm font-medium text-neutral-500 dark:text-neutral-400 sm:text-base">
+      <dt className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 sm:text-base">
         {stat.label}
       </dt>
-      <dd className="mt-2 text-2xl tracking-tight text-teal-700 dark:text-teal-400 sm:mt-3 sm:text-4xl lg:text-[2.75rem] lg:leading-none">
+      <dd className="mt-2 text-2xl font-semibold tracking-tight text-green-500 dark:text-green-400 sm:mt-3 sm:text-4xl lg:text-[2.75rem] lg:leading-none">
         <AnimatedStatValue value={stat.value} active={active} delayMs={index * 120} />
       </dd>
     </div>
@@ -66,7 +66,7 @@ export function MarketingStatsBar({ stats }: MarketingStatsBarProps) {
 
   return (
     <div ref={ref} className="mx-auto mb-12 max-w-6xl sm:mb-14">
-      <dl className="grid grid-cols-2 gap-x-6 gap-y-8 rounded-2xl border border-neutral-200/90 bg-white/70 px-6 py-8 shadow-sm backdrop-blur-sm dark:border-neutral-800 dark:bg-neutral-900/70 sm:grid-cols-4 sm:gap-8 sm:px-10 sm:py-10">
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-8 rounded-2xl border border-neutral-200/60 bg-white/70 px-6 py-8 shadow-xs backdrop-blur-xs dark:border-neutral-800/55 dark:bg-neutral-900/70 sm:grid-cols-4 sm:gap-8 sm:px-10 sm:py-10">
         {stats.map((stat, index) => (
           <StatItem key={stat.label} stat={stat} active={inView} index={index} />
         ))}

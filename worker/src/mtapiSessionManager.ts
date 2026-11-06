@@ -3,6 +3,7 @@ import { decryptMtPassword } from './brokerCredentialsCrypto'
 import type { MtPlatform } from './fxsocketClient'
 import { getMtapiProvider, MtapiApiError, type MtapiProvider } from './mtapiProvider'
 import { authorityFromBrokerRow, withBrokerWriteAuthority } from './brokerWriteAuthority'
+import { brokerAccountModeForPlatform } from './copyShared/brokerAccountMode'
 import { BridgeHealthTracker } from './observability/bridgeHealthTracker'
 import { BridgeProbe } from './observability/bridgeProbe'
 import { captureCriticalHealthIssue, hashHealthResourceId } from './observability/criticalHealth'
@@ -53,6 +54,11 @@ const MTAPI_CODE_DETAIL: Record<string, string> = {
   HTTP_503: 'broker bridge temporarily unavailable',
   HTTP_504: 'broker bridge temporarily unavailable',
   TRANSPORT_ERROR: 'broker bridge unreachable',
+  // The bridge returns this when its terminal socket is disposed before the
+  // login completes (documented as transient in the conformance notes). Leaving
+  // it unmapped made it a permanent rejection: on 2026-11-04 an expired MTAPI
+  // licence refused every new login with CONNECT_ERROR and parked the accounts.
+  CONNECT_ERROR: 'broker connection temporarily unavailable',
 }
 
 /**
@@ -65,6 +71,10 @@ const MTAPI_CODE_DETAIL: Record<string, string> = {
  */
 const TRANSIENT_PROVISION_CODES = new Set([
   'TRANSPORT_ERROR',
+  // A disposed terminal socket (e.g. while the bridge settles or a licence is
+  // being restored) resolves without operator action; retrying lets the account
+  // recover on its own and keeps it out of a permanently parked `error` state.
+  'CONNECT_ERROR',
   'INVALID_RESPONSE',
   'HTTP_429',
   'RATE_LIMITED',
@@ -299,6 +309,8 @@ export class MtapiSessionManager {
     if (summary.type != null) {
       patch.linked_account_type = summary.type === 0 || summary.type === 1 ? 'Demo' : 'Live'
     }
+    const marginMode = brokerAccountModeForPlatform(row.platform, { method: summary.method })
+    if (marginMode !== 'unknown') patch.margin_mode = marginMode
     if (row.performance_baseline_balance == null && summary.balance != null) {
       patch.performance_baseline_balance = summary.balance
       patch.performance_baseline_captured_at = now

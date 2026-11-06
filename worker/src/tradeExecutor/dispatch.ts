@@ -55,6 +55,8 @@ import {
 import {
   loadCachedUserSubscription,
   loadCachedUserIsAdmin,
+  loadCachedSubscriptionExtensionEnd,
+  extensionAccessActive,
   subscriptionBlocksSignalExecution,
   isSubscriptionActive,
 } from '../subscriptionAccess'
@@ -185,6 +187,36 @@ export function revisionInflightWaitMs(row: SignalRow, dispatchSource?: string):
     return 10_000
   }
   return 60_000
+}
+
+const tradingViewSourceCache = new Map<string, { at: number; value: boolean }>()
+
+const NON_TELEGRAM_SIGNAL_SOURCES = new Set(['tradingview', 'discord', 'whatsapp'])
+
+/** Dispatch hints and channel rows that are not a Telegram chat. */
+export function isNonTelegramSignalSource(...hints: Array<string | null | undefined>): boolean {
+  return hints.some(hint => NON_TELEGRAM_SIGNAL_SOURCES.has(String(hint ?? '').trim().toLowerCase()))
+}
+
+/** TradingView, Discord, and WhatsApp rows are not Telegram chats, so the listener-live gate does not apply. */
+export async function isTradingViewSourceChannel(
+  supabase: TradeExecutorContext['supabase'],
+  channelId: string | null,
+): Promise<boolean> {
+  if (!channelId) return false
+  const key = channelId.toLowerCase()
+  const hit = tradingViewSourceCache.get(key)
+  if (hit && Date.now() - hit.at < 5 * 60_000) return hit.value
+  const { data, error } = await supabase
+    .from('telegram_channels')
+    .select('source_kind')
+    .eq('id', channelId)
+    .maybeSingle()
+  if (error || !data) return false
+  const kind = (data as { source_kind?: string | null }).source_kind
+  const value = isNonTelegramSignalSource(kind)
+  tradingViewSourceCache.set(key, { at: Date.now(), value })
+  return value
 }
 
 export function enqueueSignal(ctx: TradeExecutorContext, 
@@ -587,8 +619,12 @@ export async function handleSignal(ctx: TradeExecutorContext,
       }
       let userSub: Awaited<ReturnType<typeof loadCachedUserSubscription>>
       let isAdmin: boolean
+      let extensionEndMs: number | null = null
+      const nonTelegramSource = isNonTelegramSignalSource(opts?.dispatchSource, row.dispatch_source)
+        || await isTradingViewSourceChannel(ctx.supabase, row.channel_id)
       if (
-        (liveFast || liveMgmtFast)
+        !nonTelegramSource
+        && (liveFast || liveMgmtFast)
         && telegramLiveTradeGateEnabled()
         && row.channel_id
         && ctx.sessionManager
@@ -608,7 +644,7 @@ export async function handleSignal(ctx: TradeExecutorContext,
         userSub = sub
         isAdmin = admin
       } else {
-        if (telegramLiveTradeGateEnabled() && row.channel_id) {
+        if (!nonTelegramSource && telegramLiveTradeGateEnabled() && row.channel_id) {
           const live = ctx.sessionManager
             ? await ctx.sessionManager.canExecuteTelegramCopierTradesAsync(row.user_id, row.channel_id)
             : false
@@ -625,9 +661,17 @@ export async function handleSignal(ctx: TradeExecutorContext,
           loadCachedUserIsAdmin(ctx.supabase, row.user_id),
         ])
       }
-      if (!isAdmin && (!userSub || !isSubscriptionActive(userSub.status, userSub.trial_ends_at))) {
-        await ctx.logDispatchSkipped(row, 'subscription_inactive')
-        return
+      if (!isAdmin) {
+        const subscriptionActive =
+          userSub != null && isSubscriptionActive(userSub.status, userSub.trial_ends_at)
+        if (!subscriptionActive) {
+          // Not active on its own: a live admin extension keeps the copy running.
+          extensionEndMs = await loadCachedSubscriptionExtensionEnd(ctx.supabase, row.user_id)
+          if (!extensionAccessActive(extensionEndMs)) {
+            await ctx.logDispatchSkipped(row, 'subscription_inactive')
+            return
+          }
+        }
       }
 
       if (isMessageRevision) {
@@ -814,6 +858,7 @@ export async function handleSignal(ctx: TradeExecutorContext,
           userSub,
           (broker.manual_settings ?? null) as Record<string, unknown> | null,
           isAdmin,
+          extensionEndMs,
         )
         if (blockReason === 'plan_advanced_feature_required') {
           await ctx.logDispatchSkipped(row, blockReason)

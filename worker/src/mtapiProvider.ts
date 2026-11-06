@@ -2,13 +2,14 @@ import type {
   AccountSummary, FxsocketMtStatus, FxsocketTerminalStatus, MtPlatform,
   OrderCloseArgs, OrderModifyArgs, OrderResult, OrderSendArgs, QuoteResult, SymbolParams,
 } from './fxsocketClient'
-import { normalizeOrderResponse, isTransientMtApiError, isOrderOpTimedOutMessage, orderListResponseIsIncomplete, isApiThrottleError } from './fxsocketClient'
+import { normalizeOrderResponse, isTransientMtApiError, isOrderOpTimedOutMessage, isApiThrottleError, parseApiThrottleBackoffMs, orderListResponseIsIncomplete } from './fxsocketClient'
 import type { BrokerProvider } from './brokerProvider'
 import { ingestMtHistoryRows, type MtHistoryProfile } from './mtTradeFields'
 import { auditOrderClose } from './orderCloseAudit'
 import { createConcurrencyGate } from './perAccountConcurrency'
 import { createBrokerGateway, type BrokerGateway, type BrokerPriority } from './brokerGateway'
 import { redactBridgeSecrets } from './mtapiRedaction'
+import { normalizeMtBrokerTicket } from './brokerTradeTicket'
 
 type FetchLike = typeof fetch
 type RecoveryHandler = (sessionId: string) => Promise<string | null>
@@ -45,6 +46,12 @@ function object(value: unknown): Record<string, unknown> {
 function numberValue(value: unknown): number | undefined {
   const n = typeof value === 'number' ? value : Number(value)
   return Number.isFinite(n) ? n : undefined
+}
+
+/** Like numberValue but drops zero/negative, for fields where 0 means "not set". */
+function positiveValue(value: unknown): number | undefined {
+  const n = numberValue(value)
+  return n != null && n > 0 ? n : undefined
 }
 
 function boolValue(value: unknown): boolean | undefined {
@@ -101,8 +108,20 @@ function isSessionGone(error: unknown): boolean {
 }
 
 const tradeOpGate = createConcurrencyGate()
+/**
+ * MTAPI rejects a burst of OrderSend/Modify/Close on one session ("too many
+ * requests"). The terminal also runs trade ops one at a time, so the default
+ * is a single in-flight trade call per session. Raise MT_TRADE_OP_CONCURRENCY
+ * only if a broker is known to accept overlap.
+ */
 function perAccountTradeConcurrency(): number {
-  return Math.max(1, Number(process.env.MT_TRADE_OP_CONCURRENCY ?? 3) || 3)
+  return Math.max(1, Number(process.env.MT_TRADE_OP_CONCURRENCY ?? 1) || 1)
+}
+
+function throttleRetryDelayMs(error: unknown): number {
+  const cap = Number(process.env.MTAPI_THROTTLE_RETRY_CAP_MS ?? 12_000)
+  const capMs = Number.isFinite(cap) && cap >= 0 ? cap : 12_000
+  return Math.min(capMs, parseApiThrottleBackoffMs(error))
 }
 
 export interface MtapiProviderOptions {
@@ -423,7 +442,11 @@ export class MtapiProvider implements BrokerProvider {
       // retry is opt-in (`MTAPI_ORDER_THROTTLE_RETRY=true`) until it is.
       const orderThrottleRetry = env('MTAPI_ORDER_THROTTLE_RETRY') === 'true' ? 'pre_accept' : 'off'
       const raw = await this.requestWithRetry('OrderSendSafe', params, id, false, orderThrottleRetry)
-      return normalizeOrderResponse(raw, { platform: this.platform(id), operation: args.operation })
+      const result = normalizeOrderResponse(raw, { platform: this.platform(id), operation: args.operation })
+      if (normalizeMtBrokerTicket(result.ticket) == null) {
+        throw new MtapiApiError('OrderSendSafe returned no valid broker ticket', 502, 'INVALID_TICKET')
+      }
+      return result
     } finally {
       release()
     }
@@ -549,18 +572,27 @@ export class MtapiProvider implements BrokerProvider {
     allowTimeoutRetry = true,
     // 'pre_accept' restricts throttle retries to the pre-accept 429 signature
     // (`code=rate_limited`); 'any' also retries a bare 429; 'off' never retries
-    // a throttle. OrderSend uses 'off' by default because its idempotency is not
-    // proven (see MTAPI_ORDER_THROTTLE_RETRY); idempotent calls use 'any'.
+    // a throttle — except the bridge's own `expected available in` pre-execution
+    // signature, which is always retried because the order was refused before
+    // it reached the terminal. OrderSend uses 'off' by default because its
+    // idempotency is not proven (see MTAPI_ORDER_THROTTLE_RETRY); idempotent
+    // calls use 'any'.
     throttleRetry: 'any' | 'pre_accept' | 'off' = 'any',
   ): Promise<unknown> {
     const MAX_ATTEMPTS = Math.max(1, Number(process.env.MT_ORDERSEND_MAX_ATTEMPTS ?? 3) || 3)
+    // A rate-limited OrderSend was rejected, so retrying cannot duplicate a fill.
+    // Give the broker's window time to clear before failing the trade.
+    const THROTTLE_ATTEMPTS = Math.max(
+      MAX_ATTEMPTS,
+      Number(process.env.MT_ORDER_THROTTLE_ATTEMPTS ?? 6) || 6,
+    )
     const rawThrottleBase = (process.env.MT_RATE_LIMIT_BACKOFF_MS ?? '').trim()
     const configuredThrottleBase = rawThrottleBase === '' ? Number.NaN : Number(rawThrottleBase)
     const throttleBaseMs = Number.isFinite(configuredThrottleBase) && configuredThrottleBase >= 0
       ? configuredThrottleBase
       : 1_000
     let lastErr: unknown
-    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    for (let attempt = 0; attempt < THROTTLE_ATTEMPTS; attempt++) {
       try {
         // Order operations get the longer order timeout and the priority lane,
         // so background reads never delay them.
@@ -576,6 +608,19 @@ export class MtapiProvider implements BrokerProvider {
           continue
         }
         const msg = error instanceof Error ? error.message : String(error)
+        // A throttle response that states when capacity returns
+        // (`expected available in N seconds`) is the bridge's own pre-execution
+        // queue: the order was refused, so retrying cannot duplicate a fill.
+        // Give the broker's window time to clear before failing the trade.
+        if (/expected available in/i.test(msg)) {
+          if (attempt >= THROTTLE_ATTEMPTS - 1) throw error
+          const waitMs = throttleRetryDelayMs(error)
+          console.warn(
+            `[mtapiProvider] ${endpoint} rate limited id=${sessionId} attempt=${attempt + 1}/${THROTTLE_ATTEMPTS}; waiting ${waitMs}ms`,
+          )
+          await new Promise(r => setTimeout(r, waitMs))
+          continue
+        }
         // A 429 / `rate_limited` is a clean pre-accept rejection: the bridge (or
         // the broker) refused the request before executing it, so retrying an
         // order send cannot duplicate a fill. It is safe and expected to retry
@@ -722,6 +767,7 @@ export class MtapiProvider implements BrokerProvider {
       leverage: numberValue(row.leverage ?? row.Leverage),
       currency: row.currency == null ? undefined : String(row.currency),
       type: tradeModeValue(row.type ?? row.Type ?? row.tradeMode ?? row.TradeMode),
+      method: row.method == null && row.Method == null ? undefined : String(row.method ?? row.Method),
       synced: boolValue(row.synced ?? row.Synced),
     }
   }
@@ -752,25 +798,41 @@ export class MtapiProvider implements BrokerProvider {
 
   async symbolParams(id: string, symbol: string): Promise<SymbolParams> {
     const row = object(await this.readRequest('SymbolParams', { symbol }, id))
-    const info = object(row.symbolInfo ?? row.SymbolInfo)
-    const group = object(row.symbolGroup ?? row.SymbolGroup)
     if (Object.keys(row).length === 0) {
       throw new MtapiApiError('SymbolParams returned an invalid response', 502, 'INVALID_RESPONSE')
     }
+    // MT5 sends `symbolInfo` / `symbolGroup`; MT4 sends the instrument under
+    // `symbol` as an object plus `group` / `groupParams`. Read both shapes so
+    // lot limits are not lost on MT4 (which made every MT4 mirror copy fail as
+    // an unsupported symbol).
+    const mt4Symbol = object(row.symbol)
+    // Merge, so an empty `symbolInfo` cannot hide the MT4 instrument object.
+    const info = { ...mt4Symbol, ...object(row.symbolInfo ?? row.SymbolInfo) }
+    const group = object(row.symbolGroup ?? row.SymbolGroup ?? row.group ?? row.Group)
+    const groupParams = object(row.groupParams ?? row.GroupParams)
+    const declaredName = row.symbolName ?? row.SymbolName
+    const symbolName = typeof row.symbol === 'string'
+      ? row.symbol
+      : typeof declaredName === 'string' && declaredName.trim()
+        ? declaredName.trim()
+        : String(mt4Symbol.symbolAsString ?? (typeof row.Symbol === 'string' ? row.Symbol : symbol))
     return {
       ...row,
-      symbolName: String(row.symbol ?? row.Symbol ?? symbol),
+      symbolName,
       symbol: {
-        digits: numberValue(info.digits ?? info.Digits),
-        point: numberValue(info.points ?? info.point ?? info.Point),
-        contractSize: numberValue(info.contractSize ?? info.ContractSize),
-        stopsLevel: numberValue(info.stopsLevel ?? info.StopsLevel),
-        freezeLevel: numberValue(info.freezeLevel ?? info.FreezeLevel),
+        digits: positiveValue(info.digits ?? info.Digits),
+        point: positiveValue(info.points ?? info.point ?? info.Point),
+        contractSize: positiveValue(info.contractSize ?? info.ContractSize ?? info.contract_size),
+        stopsLevel: numberValue(info.stopsLevel ?? info.StopsLevel ?? info.stops_level),
+        freezeLevel: numberValue(info.freezeLevel ?? info.FreezeLevel ?? info.freeze_level),
       },
       groupParams: {
-        minLot: numberValue(group.minLots ?? group.minLot ?? group.MinLots),
-        maxLot: numberValue(group.maxLots ?? group.maxLot ?? group.MaxLots),
-        lotStep: numberValue(group.lotsStep ?? group.lotStep ?? group.LotsStep),
+        minLot: numberValue(groupParams.minLot ?? groupParams.MinLot ?? groupParams.min_lot
+          ?? group.minLots ?? group.minLot ?? group.MinLots ?? group.min_lot),
+        maxLot: numberValue(groupParams.maxLot ?? groupParams.MaxLot ?? groupParams.max_lot
+          ?? group.maxLots ?? group.maxLot ?? group.MaxLots ?? group.max_lot),
+        lotStep: numberValue(groupParams.lotStep ?? groupParams.LotStep ?? groupParams.lot_step
+          ?? group.lotsStep ?? group.lotStep ?? group.LotsStep ?? group.lot_step),
       },
     }
   }

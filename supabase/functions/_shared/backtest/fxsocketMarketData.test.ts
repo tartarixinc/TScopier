@@ -39,9 +39,52 @@ Deno.test("resolveBrokerSymbol maps GOLD / XAU aliases to XAUUSD", () => {
   assertEquals(resolveBrokerSymbol("XAUUSD", ["GOLD.m", "EURUSD"]), "GOLD.m")
 })
 
+Deno.test("resolveBrokerSymbol prefers canonical names over aliases regardless of broker list order", () => {
+  // 2026-11-02: on a server listing both, GOLD appeared first in the Symbols
+  // list and its GOLD symbol has no history while XAUUSD does — gold backtests
+  // resolved to a data-less alias. Canonical must win in either order.
+  assertEquals(resolveBrokerSymbol("XAUUSD", ["GOLD", "XAUUSD"]), "XAUUSD")
+  assertEquals(resolveBrokerSymbol("XAUUSD", ["XAUUSD", "GOLD"]), "XAUUSD")
+  assertEquals(resolveBrokerSymbol("XAUUSD", ["GOLD", "XAUUSDm"]), "XAUUSDm")
+  assertEquals(resolveBrokerSymbol("BTCUSD", ["BTC", "BTCUSDm"]), "BTCUSDm")
+  // Decorated canonical beats a bare alias; bare canonical beats a decorated alias.
+  assertEquals(resolveBrokerSymbol("BTCUSD", ["BTCUSDm", "BTC"]), "BTCUSDm")
+  // Alias still resolves when no canonical-shaped name exists.
+  assertEquals(resolveBrokerSymbol("XAUUSD", ["GOLD", "EURUSD"]), "GOLD")
+})
+
 Deno.test("normalizeBacktestSymbol strips punctuation", () => {
   assertEquals(normalizeBacktestSymbol("XAU/USD"), "XAUUSD")
   assertEquals(normalizeBacktestSymbol(" eurusd "), "EURUSD")
+})
+
+Deno.test("resolveBrokerSymbol never resolves a cross-currency quote variant", () => {
+  // 2026-11-01: BTCAUDm was picked for a BTCUSD signal on an Exness suffix
+  // server and the whole backtest simulated BTC in AUD.
+  const symbols = ["BTCUSDTm", "BTCUSDm", "BTCAUDm", "BTCCNHm", "EURUSDm"]
+  assertEquals(resolveBrokerSymbol("BTCUSD", symbols), "BTCUSDm")
+  assertEquals(resolveBrokerSymbol("BTCUSD", ["BTCAUDm", "BTCCNHm"]), null)
+  assertEquals(resolveBrokerSymbol("BTC", ["BTCAUDm", "BTCCNHm"]), null)
+  assertEquals(resolveBrokerSymbol("BTCUSD", ["BTCAUDm", "BTCUSDTm"]), "BTCUSDTm")
+  assertEquals(resolveBrokerSymbol("EURUSD", ["EURUSDm", "EURJPYm"]), "EURUSDm")
+})
+
+Deno.test("resolveBrokerSymbol accepts broker suffix tokens after a target", () => {
+  assertEquals(resolveBrokerSymbol("BTCUSD", ["BTCUSD.pro"]), "BTCUSD.pro")
+  assertEquals(resolveBrokerSymbol("BTCUSD", ["BTCUSDCASH"]), "BTCUSDCASH")
+  assertEquals(resolveBrokerSymbol("XAUUSD", ["XAUUSDm"]), "XAUUSDm")
+  assertEquals(resolveBrokerSymbol("BTCUSD", ["BTCUSDM"]), "BTCUSDM")
+  // Vocabulary from worker/src/tradeExecutor/brokerSymbolCache.ts decorations.
+  assertEquals(resolveBrokerSymbol("EURUSD", ["EURUSD.S"]), "EURUSD.S")
+  assertEquals(resolveBrokerSymbol("EURUSD", ["EURUSDC"]), "EURUSDC")
+  assertEquals(resolveBrokerSymbol("XAUUSD", ["XAUUSD.STP"]), "XAUUSD.STP")
+  assertEquals(resolveBrokerSymbol("GOLD", ["GOLD.cent"]), "GOLD.cent")
+})
+
+Deno.test("resolveBrokerSymbol shorter-root fallback prefers the longest root", () => {
+  assertEquals(resolveBrokerSymbol("BTCUSD", ["BT", "BTC"]), "BTC")
+  assertEquals(resolveBrokerSymbol("BTCUSD", ["BTC"]), "BTC")
+  assertEquals(resolveBrokerSymbol("BTCUSD", ["BT"]), "BT")
 })
 
 Deno.test("parsePriceHistoryResponse parses FXsocket docs fixture", () => {

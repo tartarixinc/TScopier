@@ -52,6 +52,8 @@ export interface ConfigureModalTranslations {
   applyPresetWarning: string
   applyPresetAction: string
   closeUnsavedConfirm: string
+  closeUnsavedTitle?: string
+  discardChanges?: string
   noPresetsYet: string
   saveAsPreset: string
   saveAsPresetTitle: string
@@ -132,6 +134,7 @@ export interface ConfigureModalTranslations {
     editExample: string
     manualBadge: string
     deleteExampleConfirm: string
+    deleteExampleTitle?: string
     cancel: string
     entryCues: string
     buyCues: string

@@ -8,6 +8,8 @@ import {
   type ChannelWorkerLogRow,
 } from './channelWorkerLogMessage'
 import type { ChannelWorkerTranslations } from '../i18n/channelWorker/types'
+import { resolveActivitySourceKind, type ActivitySourceKind } from './activityRoute'
+import type { SignalSourceKind } from './signalSourceMark'
 
 export type TradeActivityLogRow = ChannelWorkerLogRow & {
   id: string
@@ -194,6 +196,8 @@ export interface DisplayableTradeActivity {
   kind: string
   symbol: string | null
   channelName: string | null
+  /** Set from the channel row so Discord, WhatsApp, and TradingView are not shown as Telegram. */
+  sourceKind?: ActivitySourceKind | null
   retryEligible: boolean
 }
 
@@ -202,6 +206,7 @@ export function buildDisplayableTradeActivities(
   cw: ChannelWorkerTranslations,
   mgmt: ManagementTranslations,
   channelDisplayNames: Record<string, string>,
+  channelSourceKinds: Record<string, SignalSourceKind> = {},
 ): DisplayableTradeActivity[] {
   const deduped = dedupePipelineParseAttempts(rows)
   const filtered = filterChannelWorkerDisplayLogs(deduped)
@@ -212,13 +217,15 @@ export function buildDisplayableTradeActivities(
     if (!message) continue
     const status = normalizeActivityStatus(row.status)
     if (!status) continue
+    const channelName = resolveChannelNameFromLog(row, channelDisplayNames)
     out.push({
       row,
       message,
       status,
       kind: resolveTradeActivityKind(row, mgmt),
       symbol: resolveInstrumentSymbol(row),
-      channelName: resolveChannelNameFromLog(row, channelDisplayNames),
+      channelName,
+      sourceKind: resolveActivitySourceKind(row, channelName, channelSourceKinds),
       retryEligible: isRetryEligibleActivity(row),
     })
   }
@@ -263,6 +270,7 @@ export function buildSkippedSignalActivities(
   cw: ChannelWorkerTranslations,
   mgmt: ManagementTranslations,
   channelDisplayNames: Record<string, string>,
+  channelSourceKinds: Record<string, SignalSourceKind> = {},
 ): DisplayableTradeActivity[] {
   // Only skipped log rows occupy the Skipped tab — a signal whose logs are all
   // success/failed still needs a synthesized row there.
@@ -298,13 +306,15 @@ export function buildSkippedSignalActivities(
     if (!message) continue
     const status = normalizeActivityStatus(row.status)
     if (!status) continue
+    const channelName = resolveChannelNameFromLog(row, channelDisplayNames)
     out.push({
       row,
       message,
       status,
       kind: resolveTradeActivityKind(row, mgmt),
       symbol: resolveInstrumentSymbol(row),
-      channelName: resolveChannelNameFromLog(row, channelDisplayNames),
+      channelName,
+      sourceKind: resolveActivitySourceKind(row, channelName, channelSourceKinds),
       retryEligible: false,
     })
   }
@@ -318,6 +328,7 @@ export function mergeSkippedSignalActivities(
   cw: ChannelWorkerTranslations,
   mgmt: ManagementTranslations,
   channelDisplayNames: Record<string, string>,
+  channelSourceKinds: Record<string, SignalSourceKind> = {},
 ): DisplayableTradeActivity[] {
   const synthesized = buildSkippedSignalActivities(
     skippedSignals,
@@ -325,6 +336,7 @@ export function mergeSkippedSignalActivities(
     cw,
     mgmt,
     channelDisplayNames,
+    channelSourceKinds,
   )
   if (!synthesized.length) return logActivities
   return [...logActivities, ...synthesized].sort(

@@ -1,3 +1,5 @@
+import type { CopyRiskSettings } from '../lib/copyRiskTypes'
+
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[]
 
 export interface Database {
@@ -22,6 +24,16 @@ export interface Database {
         Row: TelegramChannel
         Insert: Omit<TelegramChannel, 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Omit<TelegramChannel, 'id' | 'created_at' | 'updated_at'>>
+      }
+      tradingview_webhooks: {
+        Row: TradingViewWebhook
+        Insert: Omit<TradingViewWebhook, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<TradingViewWebhook, 'id' | 'created_at'>>
+      }
+      tradingview_webhook_deliveries: {
+        Row: TradingViewWebhookDelivery
+        Insert: Omit<TradingViewWebhookDelivery, 'id' | 'created_at'>
+        Update: Partial<Omit<TradingViewWebhookDelivery, 'id' | 'created_at'>>
       }
       signal_channels: {
         Row: SignalChannel
@@ -73,6 +85,16 @@ export interface Database {
         Insert: Omit<UserProfileRow, 'created_at' | 'updated_at'> & { created_at?: string; updated_at?: string }
         Update: Partial<Omit<UserProfileRow, 'user_id' | 'created_at'>>
       }
+      social_profiles: {
+        Row: SocialProfileRow
+        Insert: Omit<SocialProfileRow, 'created_at' | 'updated_at'> & { created_at?: string; updated_at?: string }
+        Update: Partial<Omit<SocialProfileRow, 'user_id' | 'created_at'>>
+      }
+      social_follow_relationships: {
+        Row: SocialFollowRelationshipRow
+        Insert: Omit<SocialFollowRelationshipRow, 'id' | 'created_at' | 'updated_at'> & { id?: string; created_at?: string; updated_at?: string }
+        Update: Partial<Omit<SocialFollowRelationshipRow, 'id' | 'follower_user_id' | 'followed_user_id' | 'created_at'>>
+      }
       affiliate_profiles: {
         Row: AffiliateProfileRow
         Insert: Omit<AffiliateProfileRow, 'created_at' | 'updated_at'> & { created_at?: string; updated_at?: string }
@@ -87,6 +109,16 @@ export interface Database {
         Row: CommissionLedgerRow
         Insert: Omit<CommissionLedgerRow, 'id' | 'created_at'> & { id?: string; created_at?: string }
         Update: Partial<Omit<CommissionLedgerRow, 'id' | 'created_at'>>
+      }
+      user_wallets: {
+        Row: UserWalletRow
+        Insert: Omit<UserWalletRow, 'created_at' | 'updated_at'> & { created_at?: string; updated_at?: string }
+        Update: Partial<Omit<UserWalletRow, 'user_id' | 'created_at'>>
+      }
+      wallet_ledger: {
+        Row: WalletLedgerRow
+        Insert: Omit<WalletLedgerRow, 'id' | 'created_at'> & { id?: string; created_at?: string }
+        Update: Partial<Omit<WalletLedgerRow, 'id' | 'created_at'>>
       }
       payout_batches: {
         Row: PayoutBatchRow
@@ -127,6 +159,24 @@ export interface UserProfileRow {
   updated_at: string
 }
 
+export interface SocialProfileRow {
+  user_id: string
+  access_mode: 'open' | 'private'
+  is_listed: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface SocialFollowRelationshipRow {
+  id: string
+  follower_user_id: string
+  followed_user_id: string
+  status: 'pending' | 'accepted' | 'declined'
+  created_at: string
+  updated_at: string
+  responded_at: string | null
+}
+
 export interface AffiliateProfileRow {
   user_id: string
   referral_code: string
@@ -145,6 +195,25 @@ export interface ReferralAttributionRow {
   affiliate_user_id: string
   referral_code: string
   attribution_source: 'signup_url' | 'signup_form' | 'onboarding' | 'admin'
+  created_at: string
+}
+
+export interface UserWalletRow {
+  user_id: string
+  available_cents: number
+  pending_cents: number
+  created_at: string
+  updated_at: string
+}
+
+export interface WalletLedgerRow {
+  id: string
+  payer_user_id: string
+  provider_user_id: string
+  amount_cents: number
+  currency: string
+  status: 'pending' | 'paid' | 'reversed'
+  description: string
   created_at: string
 }
 
@@ -383,6 +452,8 @@ export interface ManualSettings {
   resume_after_news_minutes?: number
   /** Per-channel profit targets and max risk (Targets tab). */
   copy_limits?: CopyLimitsConfig
+  /** Mirror and social copy risk profile. Telegram channel config leaves this unset. */
+  copy_risk?: CopyRiskSettings
 }
 
 export type FxsocketConnectionStatus = 'connecting' | 'connected' | 'error' | 'disconnected'
@@ -398,8 +469,8 @@ export interface BrokerAccount {
   fxsocket_account_id?: string | null
   /** FxSocket v1 account status. */
   fxsocket_status?: FxsocketConnectionStatus | null
-  /** Provider routing: 'fxsocket' (default) or 'mtapi'. */
-  provider?: 'fxsocket' | 'mtapi' | null
+  /** Provider routing: 'fxsocket' (default), 'mtapi', 'ctrader', 'binance', or 'bybit'. */
+  provider?: 'fxsocket' | 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin' | 'dxtrade' | 'tradelocker' | 'matchtrader' | null
   /** Monotonic broker-writer fence used to reject stale worker jobs. */
   writer_epoch?: number
   /** Mutations are allowed only while stable. */
@@ -410,6 +481,80 @@ export interface BrokerAccount {
   mtapi_session_id?: string | null
   /** MTAPI connection status (when provider='mtapi'). */
   mtapi_status?: 'connected' | 'connecting' | 'disconnected' | 'error' | null
+  /** cTrader ctidTraderAccountId. Tokens stay server-side. */
+  ctrader_account_id?: string | null
+  /** cTrader Open API host. */
+  ctrader_environment?: 'demo' | 'live' | null
+  /** cTrader link status shown in the Connection column. */
+  ctrader_status?: 'connected' | 'connecting' | 'disconnected' | 'error' | null
+  /** Binance futures key fingerprint. The key and secret stay server-side. */
+  binance_account_id?: string | null
+  /** Binance futures host: demo or live. */
+  binance_environment?: 'demo' | 'live' | null
+  /** Binance link status shown in the Connection column. */
+  binance_status?: 'connected' | 'connecting' | 'disconnected' | 'error' | null
+  /** USDT margin committed to each copied signal. */
+  binance_margin_usdt?: number | null
+  /** Leverage applied to the symbol before each order. */
+  binance_leverage?: number | null
+  /** Cross or isolated margin. */
+  binance_margin_mode?: 'isolated' | 'cross' | null
+  /** Bybit linear futures key fingerprint. The key and secret stay server-side. */
+  bybit_account_id?: string | null
+  /** Bybit host: demo or live. */
+  bybit_environment?: 'demo' | 'live' | null
+  /** Bybit link status shown in the Connection column. */
+  bybit_status?: 'connected' | 'connecting' | 'disconnected' | 'error' | null
+  /** Quote-currency margin committed to each copied signal. */
+  bybit_margin_usdt?: number | null
+  /** Leverage applied to the symbol before each order. */
+  bybit_leverage?: number | null
+  /** KuCoin futures key fingerprint. The key, secret and passphrase stay server-side. */
+  kucoin_account_id?: string | null
+  /** KuCoin link status shown in the Connection column. */
+  kucoin_status?: 'connected' | 'connecting' | 'disconnected' | 'error' | null
+  /** Quote-currency margin committed to each copied signal. */
+  kucoin_margin_usdt?: number | null
+  /** Leverage applied to the symbol before each order. */
+  kucoin_leverage?: number | null
+  /** Cross or isolated margin, applied per symbol before each order. */
+  kucoin_margin_mode?: 'isolated' | 'cross' | null
+  /** DXtrade login fingerprint (server, login, account code). The password stays server-side. */
+  dxtrade_account_id?: string | null
+  /** Broker DXtrade REST base URL. */
+  dxtrade_server_url?: string | null
+  /** DXtrade login without the domain. */
+  dxtrade_username?: string | null
+  /** DXtrade login domain, usually default. */
+  dxtrade_domain?: string | null
+  /** DXtrade account code in clearing:account format. */
+  dxtrade_account_code?: string | null
+  /** DXtrade link status shown in the Connection column. */
+  dxtrade_status?: 'connected' | 'connecting' | 'disconnected' | 'error' | null
+  /** Only position-based (hedging) accounts can be linked. */
+  dxtrade_is_position_based?: boolean | null
+  /** TradeLocker login + account fingerprint. The password stays server-side. */
+  tradelocker_account_id?: string | null
+  /** TradeLocker environment (fixed API host per environment). */
+  tradelocker_environment?: 'demo' | 'live' | null
+  /** TradeLocker broker server name used at login. */
+  tradelocker_server?: string | null
+  /** TradeLocker account id (not the login fingerprint). */
+  tradelocker_account_ref?: string | null
+  /** TradeLocker link status shown in the Connection column. */
+  tradelocker_status?: 'connected' | 'connecting' | 'disconnected' | 'error' | null
+  /** Match-Trader platform + login + trading account fingerprint. The password stays server-side. */
+  matchtrader_account_id?: string | null
+  /** Validated https platform URL of the broker's Match-Trader server. */
+  matchtrader_server_url?: string | null
+  /** Match-Trader brokerId (partnerId) used at login. */
+  matchtrader_broker_id?: string | null
+  /** Match-Trader trading account uuid. */
+  matchtrader_trading_account_uuid?: string | null
+  /** Match-Trader system uuid (path segment of the trading API). */
+  matchtrader_system_uuid?: string | null
+  /** Match-Trader link status shown in the Connection column. */
+  matchtrader_status?: 'connected' | 'connecting' | 'disconnected' | 'error' | null
   /** Auto-reconnect enabled flag. */
   auto_reconnect_enabled?: boolean | null
   /** Error kind classifier (e.g. credential, network, timeout). */
@@ -445,6 +590,14 @@ export interface BrokerAccount {
   performance_baseline_balance?: number | null
   /** UTC time when `performance_baseline_balance` was first captured. */
   performance_baseline_captured_at?: string | null
+  /** Sum of all deposits from the broker's balance-operation history (server-written). */
+  /** Broker-reported account leverage (500 = 1:500). */
+  account_leverage?: number | null
+  total_deposits?: number | null
+  /** Sum of all withdrawals (positive magnitude) from the same history (server-written). */
+  total_withdrawals?: number | null
+  /** When the deposit/withdrawal totals were last pulled from the broker. */
+  cashflow_synced_at?: string | null
   /** Wall time when the broker was last activated (connect / reconnect). */
   last_activated_at?: string | null
   /** Balance at the start of `day_start_balance_on` (local calendar day). */
@@ -456,6 +609,8 @@ export interface BrokerAccount {
   copier_mode?: 'ai' | 'manual'
   /** Subscribed telegram_channels row ids; signals copy only when listed here. */
   signal_channel_ids?: string[] | null
+  /** When true, this account is a copy source on the configuration map. */
+  copy_source?: boolean | null
   /** True when at least one channel is explicitly linked. */
   enforce_signal_channel_filter?: boolean | null
   ai_settings?: Json | null
@@ -483,6 +638,17 @@ export interface ChannelTradingPreset {
 }
 
 /** Authoritative per-broker, per-channel trading configuration row. */
+/** Saved map link from a source broker to a destination broker. */
+export interface BrokerCopyLink {
+  id: string
+  user_id: string
+  source_broker_account_id: string
+  destination_broker_account_id: string
+  manual_settings: ManualSettings
+  created_at: string
+  updated_at: string
+}
+
 export interface BrokerChannelTradingConfig {
   id: string
   user_id: string
@@ -513,6 +679,29 @@ export interface TelegramAuthPending {
   expires_at: string
 }
 
+export interface TradingViewWebhook {
+  id: string
+  user_id: string
+  channel_id: string
+  name: string
+  token_hash: string
+  token: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface TradingViewWebhookDelivery {
+  id: string
+  webhook_id: string
+  user_id: string
+  signal_id: string | null
+  status: 'accepted' | 'skipped' | 'error' | 'duplicate'
+  skip_reason: string | null
+  idempotency_key: string
+  created_at: string
+}
+
 export interface TelegramChannel {
   id: string
   user_id: string
@@ -520,6 +709,8 @@ export interface TelegramChannel {
   channel_username: string
   display_name: string
   is_active: boolean
+  /** telegram channels are listened to. tradingview rows are webhook copy targets. discord rows are bot channel copy targets. */
+  source_kind?: 'telegram' | 'tradingview' | 'discord' | 'whatsapp' | null
   /** FK to permanent global signal_channels registry row. */
   signal_channel_id?: string | null
   lot_size_override: number | null

@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { FxsocketBrokerClient } from './fxsocketClient'
 import { cancelPendingOrderAtBroker } from './pendingOrderCancel'
 import { writeExecutionLog } from './observability/executionLog'
+import { normalizeMtBrokerTicket } from './brokerTradeTicket'
 export type SignalEntryPendingRow = {
   id: string
   signal_id: string
@@ -15,7 +16,7 @@ export type SignalEntryPendingRow = {
 }
 
 export function rawOrderTicket(o: Record<string, unknown>): number {
-  const t = Number(
+  const identity = normalizeMtBrokerTicket(
     o.ticket
     ?? o.Ticket
     ?? o.order
@@ -23,10 +24,9 @@ export function rawOrderTicket(o: Record<string, unknown>): number {
     ?? o.orderId
     ?? o.OrderID
     ?? o.deal
-    ?? o.Deal
-    ?? 0,
+    ?? o.Deal,
   )
-  return Number.isFinite(t) ? t : 0
+  return identity == null ? 0 : Number(identity)
 }
 
 export function rawOrderOperation(o: Record<string, unknown>): string {

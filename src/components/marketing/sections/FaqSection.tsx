@@ -7,13 +7,13 @@ export function FaqSection() {
   return (
     <section id="faq" className="mx-auto max-w-6xl scroll-mt-28 px-5 py-16 sm:px-8 sm:py-24">
       <div className="mx-auto max-w-2xl text-center">
-        <p className="text-xs font-semibold uppercase tracking-wider text-teal-600 dark:text-teal-400">
+        <p className="text-xs font-semibold uppercase tracking-wider text-green-400 dark:text-green-400">
           {f.eyebrow}
         </p>
         <h2 className="mt-3 text-3xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-4xl">
           {f.title}
         </h2>
-        <p className="mt-4 text-base text-neutral-600 dark:text-neutral-400">{f.subtitle}</p>
+        <p className="mt-4 text-base text-neutral-900 dark:text-neutral-50">{f.subtitle}</p>
       </div>
 
       <div className="marketing-faq-list mx-auto mt-10 max-w-3xl sm:mt-12">
@@ -22,7 +22,7 @@ export function FaqSection() {
             <summary className="marketing-faq-question">
               <span>{item.question}</span>
               <ChevronDown
-                className="h-5 w-5 shrink-0 text-neutral-400 transition-transform duration-200 group-open:rotate-180 dark:text-neutral-500"
+                className="h-5 w-5 shrink-0 text-neutral-900 transition-transform duration-200 group-open:rotate-180 dark:text-neutral-50"
                 aria-hidden
               />
             </summary>

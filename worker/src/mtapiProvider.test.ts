@@ -2,6 +2,8 @@ import { strict as assert } from 'node:assert'
 import { afterEach, beforeEach, test } from 'node:test'
 import { MtapiApiError, MtapiProvider } from './mtapiProvider'
 import { fetchLiveAccountEquity } from './copyLimitMetrics'
+import { symbolLimits } from './copyShared/copyHelpers'
+import { normalizeSymbolParams } from './fxsocketClient'
 import {
   resetProviderResolverForTests,
   setMtapiProviderForResolverTests,
@@ -158,6 +160,7 @@ test('AccountSummary preserves synced=false and normalizes values', async () => 
     leverage: undefined,
     currency: 'USD',
     type: undefined,
+    method: undefined,
     synced: false,
   })
   assert.equal(await api.verifyTradingReady('session'), false)
@@ -214,6 +217,60 @@ test('quote, symbols, SymbolParams, status, and history reads normalize MTAPI sh
   assert.deepEqual(await api.orderHistory('session', 'from', 'to'), [{ ticket: 9 }])
   assert.deepEqual(await api.closedOrders('session'), [{ ticket: 8 }])
   assert.deepEqual(await api.historyPositions('session', 'from', 'to'), [{ ticket: 7 }])
+})
+
+test('SymbolParams reads the MT4 shape (symbol object + groupParams) so lot limits survive', async () => {
+  const api = provider(url => {
+    if (url.pathname !== '/SymbolParams') return new Response('{}', { status: 404 })
+    return new Response(JSON.stringify({
+      symbolName: 'XAUUSDm',
+      symbol: {
+        symbolAsString: 'XAUUSDm',
+        digits: 3,
+        point: 0.001,
+        contract_size: 100,
+        stops_level: 0,
+        freeze_level: 0,
+      },
+      group: { name: 'Forex_group', description: 'Foreign Exchange' },
+      groupParams: { minLot: 0.01, maxLot: 200, lotStep: 0.01 },
+    }))
+  })
+  const spec = await api.symbolParams('session', 'XAUUSDm')
+  assert.equal(spec.symbolName, 'XAUUSDm')
+  assert.equal(spec.symbol?.digits, 3)
+  assert.equal(spec.symbol?.point, 0.001)
+  assert.equal(spec.symbol?.contractSize, 100)
+  assert.equal(spec.symbol?.stopsLevel, 0)
+  assert.equal(spec.symbol?.freezeLevel, 0)
+  assert.equal(spec.groupParams?.minLot, 0.01)
+  assert.equal(spec.groupParams?.maxLot, 200)
+  assert.equal(spec.groupParams?.lotStep, 0.01)
+  assert.deepEqual(symbolLimits(spec), { min: 0.01, max: 200, step: 0.01 })
+  assert.deepEqual(normalizeSymbolParams(spec), {
+    digits: 3,
+    point: 0.001,
+    contractSize: 100,
+    stopsLevel: 0,
+    freezeLevel: 0,
+    minLot: 0.01,
+    maxLot: 200,
+    lotStep: 0.01,
+  })
+})
+
+test('SymbolParams falls back to symbolAsString when the MT4 name field is empty', async () => {
+  const api = provider(url => {
+    if (url.pathname !== '/SymbolParams') return new Response('{}', { status: 404 })
+    return new Response(JSON.stringify({
+      symbolName: '',
+      symbol: { symbolAsString: 'XAUUSDm', digits: 3, point: 0.001 },
+      groupParams: { min_lot: 0.01, max_lot: 200, lot_step: 0.01 },
+    }))
+  })
+  const spec = await api.symbolParams('session', 'requested')
+  assert.equal(spec.symbolName, 'XAUUSDm')
+  assert.deepEqual(symbolLimits(spec), { min: 0.01, max: 200, step: 0.01 })
 })
 
 test('ConnectEx and ConnectByToken use GET query parameters without leaking credentials in errors', async () => {
@@ -302,6 +359,17 @@ test('orderSend calls OrderSendSafe on MT5 and normalizes the response', async (
   assert.equal(capturedUrl?.searchParams.get('volume'), '0.01')
   assert.equal(capturedUrl?.searchParams.get('stoploss'), '1.15')
   assert.equal(capturedUrl?.searchParams.get('takeprofit'), '1.16')
+})
+
+test('orderSend rejects an invalid or missing broker ticket', async () => {
+  for (const ticket of [null, 'NaN', 'Infinity', 'malformed', 0, -1, 1.5]) {
+    const api = provider(() => new Response(JSON.stringify({ ticket })))
+    await assert.rejects(
+      api.orderSend('session', { symbol: 'EURUSDm', operation: 'Buy', volume: 0.01 }),
+      /no valid broker ticket/,
+      String(ticket),
+    )
+  }
 })
 
 test('orderModify calls OrderModifySafe on MT5 and normalizes the response', async () => {
@@ -428,6 +496,38 @@ test('orderSend retries after INVALID_TOKEN and reconnects', async () => {
   assert.deepEqual(endpoints, [
     '/OrderSendSafe', '/CheckConnect', '/ConnectByToken', '/OrderSendSafe',
   ])
+})
+
+test('orderSend waits out a broker rate limit and retries the rejected order', async () => {
+  const previousCap = process.env.MTAPI_THROTTLE_RETRY_CAP_MS
+  process.env.MTAPI_THROTTLE_RETRY_CAP_MS = '20'
+  const endpoints: string[] = []
+  let sendCalls = 0
+  const api = provider(url => {
+    endpoints.push(url.pathname)
+    if (url.pathname === '/OrderSendSafe') {
+      sendCalls += 1
+      if (sendCalls === 1) {
+        return new Response(JSON.stringify({
+          code: 'RATE_LIMIT',
+          message: 'Too many requests, expected available in 1 seconds',
+        }), { status: 429 })
+      }
+      return new Response(JSON.stringify({ ticket: 1001, state: 'Filled' }))
+    }
+    return new Response('{}')
+  })
+  try {
+    const result = await api.orderSend('session', {
+      symbol: 'EURUSDm', operation: 'Buy', volume: 0.01,
+    })
+    assert.equal(result.ticket, 1001)
+    assert.equal(sendCalls, 2)
+    assert.deepEqual(endpoints, ['/OrderSendSafe', '/OrderSendSafe'])
+  } finally {
+    if (previousCap == null) delete process.env.MTAPI_THROTTLE_RETRY_CAP_MS
+    else process.env.MTAPI_THROTTLE_RETRY_CAP_MS = previousCap
+  }
 })
 
 test('orderSend retries a bridge 429 rate_limited only when explicitly enabled', async () => {

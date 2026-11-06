@@ -3,12 +3,26 @@ import { afterEach, test } from 'node:test'
 import type { FxsocketBrokerClient, OrderModifyArgs, OrderSendArgs, SymbolParams } from './fxsocketClient'
 import { FxsocketProvider } from './fxsocketProvider'
 import { MtapiProvider } from './mtapiProvider'
+import { CtraderProvider } from './ctraderProvider'
+import { BinanceProvider } from './binanceProvider'
+import { BybitProvider } from './bybitProvider'
+import { KucoinProvider } from './kucoinProvider'
+import { DxtradeProvider } from './dxtradeProvider'
+import { TradelockerProvider } from './tradelockerProvider'
+import { MatchtraderProvider } from './matchtraderProvider'
 import { apiForFxsocketAccount, brokerSessionId, type PlatformByFxsocketId } from './mtApiByAccount'
 import {
   apiForBrokerAccount,
   inferProvider,
   resetProviderResolverForTests,
   setFxsocketProviderForTests,
+  setBinanceProviderForResolverTests,
+  setBybitProviderForResolverTests,
+  setKucoinProviderForResolverTests,
+  setDxtradeProviderForResolverTests,
+  setTradelockerProviderForResolverTests,
+  setMatchtraderProviderForResolverTests,
+  setCtraderProviderForResolverTests,
   setMtapiProviderForResolverTests,
 } from './providerResolver'
 
@@ -59,6 +73,27 @@ test('resolver routes mtapi and fails closed for unknown providers', () => {
   const mtapi = new MtapiProvider({ fetchImpl: async () => new Response('OK') })
   setMtapiProviderForResolverTests(mtapi)
   assert.equal(apiForBrokerAccount('mtapi', 'session-123'), mtapi)
+  const ctrader = new CtraderProvider()
+  setCtraderProviderForResolverTests(ctrader)
+  assert.equal(apiForBrokerAccount('ctrader', '4242'), ctrader)
+  const binance = new BinanceProvider()
+  setBinanceProviderForResolverTests(binance)
+  assert.equal(apiForBrokerAccount('binance', 'abcd1234abcd1234'), binance)
+  const bybit = new BybitProvider()
+  setBybitProviderForResolverTests(bybit)
+  assert.equal(apiForBrokerAccount('bybit', 'abcd1234abcd1234'), bybit)
+  const kucoin = new KucoinProvider()
+  setKucoinProviderForResolverTests(kucoin)
+  assert.equal(apiForBrokerAccount('kucoin', 'abcd1234abcd1234'), kucoin)
+  const dxtrade = new DxtradeProvider()
+  setDxtradeProviderForResolverTests(dxtrade)
+  assert.equal(apiForBrokerAccount('dxtrade', 'abcd1234abcd1234'), dxtrade)
+  const tradelocker = new TradelockerProvider()
+  setTradelockerProviderForResolverTests(tradelocker)
+  assert.equal(apiForBrokerAccount('tradelocker', 'abcd1234abcd1234'), tradelocker)
+  const matchtrader = new MatchtraderProvider()
+  setMatchtraderProviderForResolverTests(matchtrader)
+  assert.equal(apiForBrokerAccount('matchtrader', 'abcd1234abcd1234'), matchtrader)
   assert.equal(apiForBrokerAccount('unknown-provider', 'session-123'), null)
 })
 
@@ -93,6 +128,13 @@ test('inferProvider is typed and fails closed for invalid values', () => {
   assert.equal(inferProvider({ provider: '' }), 'fxsocket')
   assert.equal(inferProvider({ provider: 'fxsocket' }), 'fxsocket')
   assert.equal(inferProvider({ provider: 'mtapi' }), 'mtapi')
+  assert.equal(inferProvider({ provider: 'ctrader' }), 'ctrader')
+  assert.equal(inferProvider({ provider: 'binance' }), 'binance')
+  assert.equal(inferProvider({ provider: 'bybit' }), 'bybit')
+  assert.equal(inferProvider({ provider: 'kucoin' }), 'kucoin')
+  assert.equal(inferProvider({ provider: 'dxtrade' }), 'dxtrade')
+  assert.equal(inferProvider({ provider: 'tradelocker' }), 'tradelocker')
+  assert.equal(inferProvider({ provider: 'matchtrader' }), 'matchtrader')
   assert.equal(inferProvider({ provider: 'other' }), null)
 })
 
@@ -101,10 +143,24 @@ test('broker session identity is provider-specific and unknown providers fail cl
     mtapi_session_id: 'mtapi-token',
     fxsocket_account_id: 'fxsocket-id',
     metaapi_account_id: 'legacy-id',
+    ctrader_account_id: '4242',
+    binance_account_id: 'abcd1234abcd1234',
+    bybit_account_id: 'ef561234ef561234',
+    kucoin_account_id: '9a8b1234ef561234',
+    dxtrade_account_id: '77c01234ef561234',
+    tradelocker_account_id: '5d0e1234ef561234',
+    matchtrader_account_id: '8b2f1234ef561234',
   }
   assert.equal(brokerSessionId({ ...row, provider: 'mtapi' }), 'mtapi-token')
   assert.equal(brokerSessionId({ ...row, provider: 'fxsocket' }), 'fxsocket-id')
   assert.equal(brokerSessionId({ ...row, provider: null }), 'fxsocket-id')
+  assert.equal(brokerSessionId({ ...row, provider: 'ctrader' }), '4242')
+  assert.equal(brokerSessionId({ ...row, provider: 'binance' }), 'abcd1234abcd1234')
+  assert.equal(brokerSessionId({ ...row, provider: 'bybit' }), 'ef561234ef561234')
+  assert.equal(brokerSessionId({ ...row, provider: 'kucoin' }), '9a8b1234ef561234')
+  assert.equal(brokerSessionId({ ...row, provider: 'dxtrade' }), '77c01234ef561234')
+  assert.equal(brokerSessionId({ ...row, provider: 'tradelocker' }), '5d0e1234ef561234')
+  assert.equal(brokerSessionId({ ...row, provider: 'matchtrader' }), '8b2f1234ef561234')
   assert.equal(brokerSessionId({ ...row, provider: 'unknown' }), '')
 })
 
