@@ -137,6 +137,29 @@ test('unsupported destination symbols fail before any broker write', async () =>
   assert.equal(db.tables.social_copy_subscriptions[0]?.error_code, 'UNSUPPORTED_SYMBOL')
 })
 
+test('equity-ratio volume below broker minimum skips the open without suspending the subscription', async () => {
+  const db = new FakeDb()
+  const sub = subscription({ sizing_mode: 'equity_ratio', fixed_lot: null, lot_multiplier: 1, max_lot: 1, status: 'active' })
+  db.claimed = [sub]
+  db.tables.social_copy_subscriptions = [{ ...sub }]
+  const source = provider({ orders: [{ ...sourcePosition, lots: 0.3 }] })
+  const destination = provider()
+  // Source equity dwarfs destination so sized volume falls under 0.01.
+  source.accountSummary = async () => ({ equity: 100_000 })
+  destination.accountSummary = async () => ({ equity: 1_000 })
+  const monitor = new SocialCopyMonitor(db as never, {
+    executionEnabled: true,
+    providerFor: row => String((row as Row).id) === 'src' ? source : destination,
+  })
+  await monitor.tick()
+  assert.equal(destination.sends, 0)
+  assert.equal(db.tables.social_copy_trade_mappings.length, 0)
+  assert.equal(db.tables.social_copy_subscriptions[0]?.status, 'active')
+  assert.equal(db.tables.social_copy_subscriptions[0]?.error_code, null)
+  assert.equal(db.tables.social_copy_execution_events[0]?.status, 'skipped')
+  assert.equal(db.tables.social_copy_execution_events[0]?.error_code, 'VOLUME_BELOW_MINIMUM')
+})
+
 test('destination failure is uncertain, never retried as a duplicate', async () => {
   const db = new FakeDb(); const sub = subscription(); db.claimed = [sub]; db.tables.social_copy_subscriptions = [{ ...sub }]
   const source = provider({ orders: [sourcePosition] })

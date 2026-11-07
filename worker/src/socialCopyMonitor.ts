@@ -327,7 +327,34 @@ export class SocialCopyMonitor {
       }
       return
     }
-    const volume = await this.requestedVolume(subscription, context, position, api, symbol)
+    let volume: number
+    try {
+      volume = await this.requestedVolume(subscription, context, position, api, symbol)
+    } catch (error) {
+      // Undersized equity-ratio / multiplier opens must not suspend the whole
+      // subscription — skip this ticket so later trades can still copy.
+      if (brokerErrorCode(error) === 'VOLUME_BELOW_MINIMUM') {
+        const event = await this.claimEvent(
+          subscription.id,
+          null,
+          position.ticket,
+          'open',
+          `volume-skip:${position.ticket}`,
+          { symbol, reason: 'VOLUME_BELOW_MINIMUM', sourceVolume: position.volume },
+        )
+        if (event) {
+          await this.finishEvent(
+            event,
+            'skipped',
+            { symbol, reason: 'VOLUME_BELOW_MINIMUM', sourceVolume: position.volume },
+            'VOLUME_BELOW_MINIMUM',
+            error,
+          )
+        }
+        return
+      }
+      throw error
+    }
     const comment = `sc:${subscription.id.slice(0, 8)}:${position.ticket}`.slice(0, 31)
     const { data: mappingData, error: mappingError } = await this.supabase.from('social_copy_trade_mappings').insert({
       subscription_id: subscription.id, source_ticket: position.ticket, source_symbol: position.symbol,
