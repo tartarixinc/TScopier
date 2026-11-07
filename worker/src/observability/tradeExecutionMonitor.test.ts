@@ -20,10 +20,28 @@ test('tradeOutcomeIsSuccess treats deterministic skips as non-failures', () => {
   assert.equal(tradeOutcomeIsSuccess({ openedOrMerged: false, finalizeSkipReason: 'add_new_trades_to_existing=false' }), true)
 })
 
-test('tradeOutcomeIsSuccess treats failures and unknowns as failures', () => {
+test('tradeOutcomeIsSuccess treats guard refusals and prepare-phase exits as non-failures', () => {
+  // Merge/teaser guard refusals return openedOrMerged:false with no reason.
+  assert.equal(tradeOutcomeIsSuccess({ openedOrMerged: false }), true)
+  // Prepare-phase policy exits return an empty outcome (symbol exempted,
+  // news blackout, no broker API, empty plan).
+  assert.equal(tradeOutcomeIsSuccess({}), true)
+})
+
+test('tradeOutcomeIsSuccess treats deferral and skip flags as non-failures', () => {
+  assert.equal(tradeOutcomeIsSuccess({ signalRangeEntryDeferred: true }), true)
+  assert.equal(tradeOutcomeIsSuccess({ signalEntryRequiredSkip: true }), true)
+  assert.equal(tradeOutcomeIsSuccess({ signalRangeEntryRequiredSkip: true }), true)
+  assert.equal(
+    tradeOutcomeIsSuccess({ openedOrMerged: false, signalRangeEntryDeferred: true, channelDelayMs: 5 }),
+    true,
+  )
+})
+
+test('tradeOutcomeIsSuccess treats only explicit failure reasons as failures', () => {
   assert.equal(tradeOutcomeIsSuccess({ failureReason: 'Order rejected' }), false)
-  assert.equal(tradeOutcomeIsSuccess({ openedOrMerged: false }), false)
-  assert.equal(tradeOutcomeIsSuccess({}), false)
+  assert.equal(tradeOutcomeIsSuccess({ openedOrMerged: false, failureReason: 'Not enough money' }), false)
+  assert.equal(tradeOutcomeIsSuccess({ openedOrMerged: true, failureReason: 'boom' }), false)
 })
 
 test('no alert below min attempts', () => {
@@ -144,4 +162,78 @@ test('per-account trading-disabled failures do not trip the systemic alert', () 
   })
   for (let i = 0; i < 12; i++) m.recordExecution(false, 'b1', 'BROKER_SYMBOL_TRADE_DISABLED')
   assert.equal(alerted, 0)
+})
+
+test('money and credential rejections do not trip the systemic alert', () => {
+  let alerted = 0
+  const m = new TradeExecutionMonitor({
+    windowMs: 300_000,
+    minAttempts: 10,
+    failureThresholdPct: 50,
+    onAlert: () => { alerted += 1 },
+  })
+  for (let i = 0; i < 12; i++) {
+    m.recordExecution(false, 'b1', 'There is not enough money to complete the request (:252862389)')
+  }
+  for (let i = 0; i < 6; i++) m.recordExecution(false, 'b1', 'Missing or invalid access token')
+  for (let i = 0; i < 6; i++) m.recordExecution(false, 'b1', 'Invalid account (:62136328)')
+  for (let i = 0; i < 6; i++) m.recordExecution(false, 'b1', 'INSUFFICIENT_MARGIN')
+  assert.equal(alerted, 0)
+})
+
+test('symbol-not-found rejections do not trip the systemic alert', () => {
+  let alerted = 0
+  const m = new TradeExecutionMonitor({
+    windowMs: 300_000,
+    minAttempts: 10,
+    failureThresholdPct: 50,
+    onAlert: () => { alerted += 1 },
+  })
+  for (let i = 0; i < 10; i++) m.recordExecution(false, 'b1', 'BROKER_SYMBOL_NOT_FOUND')
+  for (let i = 0; i < 6; i++) m.recordExecution(false, 'b1', 'XAUUSD not exist')
+  assert.equal(alerted, 0)
+})
+
+test('session availability failures still count toward the systemic alert', () => {
+  let alerted = 0
+  const m = new TradeExecutionMonitor({
+    windowMs: 300_000,
+    minAttempts: 10,
+    failureThresholdPct: 50,
+    onAlert: () => { alerted += 1 },
+  })
+  for (let i = 0; i < 10; i++) m.recordExecution(false, 'b1', 'BROKER_ACCOUNT_UNAVAILABLE')
+  assert.equal(alerted, 1)
+})
+
+test('non-symbol "not exist" text still counts toward the systemic alert', () => {
+  let alerted = 0
+  const m = new TradeExecutionMonitor({
+    windowMs: 300_000,
+    minAttempts: 10,
+    failureThresholdPct: 50,
+    onAlert: () => { alerted += 1 },
+  })
+  for (let i = 0; i < 10; i++) m.recordExecution(false, 'b1', 'order not exist')
+  assert.equal(alerted, 1)
+})
+
+test('excluded rejections still count as attempts in the denominator', () => {
+  let alerted = 0
+  const m = new TradeExecutionMonitor({
+    windowMs: 300_000,
+    minAttempts: 10,
+    failureThresholdPct: 50,
+    onAlert: () => { alerted += 1 },
+  })
+  // 10 excluded rejections + 10 successes: 0% system failures => quiet.
+  for (let i = 0; i < 10; i++) m.recordExecution(false, 'b1', 'Not enough money')
+  for (let i = 0; i < 10; i++) m.recordExecution(true, 'b1')
+  assert.equal(alerted, 0)
+  // +10 real failures: 10/30 = 33% => still below threshold => quiet.
+  for (let i = 0; i < 10; i++) m.recordExecution(false, 'b1', 'ERR')
+  assert.equal(alerted, 0)
+  // +10 more real failures: 20/40 = 50% => threshold crossed => alert.
+  for (let i = 0; i < 10; i++) m.recordExecution(false, 'b1', 'ERR')
+  assert.equal(alerted, 1)
 })

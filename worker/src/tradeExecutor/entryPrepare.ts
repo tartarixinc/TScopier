@@ -385,7 +385,15 @@ export async function prepareEntryExecution(
       })
       return {
         ok: false,
-        outcome: { openedOrMerged: paramOutcome.handled === true && paramOutcome.success === true },
+        outcome: {
+          openedOrMerged: paramOutcome.handled === true && paramOutcome.success === true,
+          ...(paramOutcome.handled === true && paramOutcome.failureReason
+            ? {
+              failureReason: paramOutcome.failureReason,
+              failureReasonCode: 'basket_modify_failed',
+            }
+            : {}),
+        },
       }
     }
   }
@@ -518,6 +526,12 @@ export async function prepareEntryExecution(
         ok: false,
         outcome: {
           openedOrMerged: paramOutcome.success === true,
+          ...(paramOutcome.failureReason
+            ? {
+              failureReason: paramOutcome.failureReason,
+              failureReasonCode: 'basket_modify_failed',
+            }
+            : {}),
         },
       }
     }
@@ -560,7 +574,15 @@ export async function prepareEntryExecution(
     if (teaserOutcome.handled) {
       return {
         ok: false,
-        outcome: { openedOrMerged: teaserOutcome.success === true },
+        outcome: {
+          openedOrMerged: teaserOutcome.success === true,
+          ...(teaserOutcome.failureReason
+            ? {
+              failureReason: teaserOutcome.failureReason,
+              failureReasonCode: 'basket_modify_failed',
+            }
+            : {}),
+        },
       }
     }
   }

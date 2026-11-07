@@ -79,7 +79,7 @@ export interface RangePendingCancelScope {
 /** Merge path ran (cancel + re-insert virtuals under anchor); caller must not fall through to standard sendOrder. */
 export type MergeOutcome =
   | { handled: false }
-  | { handled: true; success: boolean }
+  | { handled: true; success: boolean; failureReason?: string }
 
 export interface BrokerRow {
   id: string
