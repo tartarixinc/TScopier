@@ -75,6 +75,9 @@ export function resolveModificationParentSymbol(args: {
 /**
  * Load the user's open trades whose signals came from this channel.
  * Closed trades are excluded — a modification targeting a closed trade is stale.
+ * Broker-pending entries are included: an explicit LIMIT/STOP leg keeps the
+ * trade row at `pending` until fill tracking promotes it, so excluding
+ * `pending` wrongly treats a live position as "no open trade".
  * Returns null when the query fails (caller must fail open — never block the
  * normal parse flow on missing trade data).
  */
@@ -97,7 +100,7 @@ export async function loadOpenTradesForChannel(
       .from('trades')
       .select('symbol, direction')
       .eq('user_id', args.userId)
-      .eq('status', 'open')
+      .in('status', ['open', 'pending'])
       .in('signal_id', ids)
       .limit(RECENT_SIGNAL_WINDOW)
     const seen = new Set<string>()

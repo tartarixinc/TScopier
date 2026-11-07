@@ -12,7 +12,7 @@ import {
   startMonitorLoop,
   type MonitorLoopHandle,
 } from './monitorIdleGate'
-import { rawOrderTicket } from './signalEntryPendingHelpers'
+import { isLikelyMarketPositionRow, rawOrderTicket } from './signalEntryPendingHelpers'
 import {
   applyBrokerDriftRepairs,
   GhostObservation,
@@ -50,13 +50,21 @@ type AccountProbe = { id: string; user_id: string | null }
 
 const ROW_COLUMNS = 'id,user_id,broker_account_id,metaapi_order_id,broker_position_ticket,status,signal_id'
 
-function isFilledPosition(order: Record<string, unknown>): boolean {
-  const state = String(order.state ?? '').toUpperCase()
-  if (state === 'FILLED' || state === 'OPEN_NORMAL') return true
-  if (state === 'PLACED') return false
-  const type = String(order.orderType ?? order.type ?? '').toUpperCase()
-  if (!type) return true
-  return !/STOP|LIMIT/.test(type)
+/**
+ * Fill flag for one `/OpenedOrders` row: true only when the row looks like a
+ * live position, false for a resting pending entry.
+ *
+ * This deliberately delegates to `isLikelyMarketPositionRow` — the classifier
+ * the rest of the copier already trusts (open-trade reconcile, position
+ * identity). The previous local check only excluded *string* LIMIT/STOP types
+ * and treated "no state, no type" as filled, so the numeric MT4 shims
+ * (`type: 2` = BuyLimit) and `operation: "buy limit"` rows — documented in
+ * `signalEntryPendingHelpers.ts` — were reported as FILLED while they were
+ * still resting. Used here that meant a pending trade row would be promoted
+ * pending→open (and announced as "entry filled") on a live resting order.
+ */
+export function filledFlagForOpenedOrder(order: Record<string, unknown>): boolean {
+  return isLikelyMarketPositionRow(order)
 }
 
 export class TradeBrokerDriftMonitor {
@@ -190,7 +198,7 @@ export class TradeBrokerDriftMonitor {
         parsed += 1
         live.push({
           ticket,
-          filled: isFilledPosition(order),
+          filled: filledFlagForOpenedOrder(order),
           brokerAccountId: probe.id,
           userId,
         })
@@ -273,10 +281,10 @@ export class TradeBrokerDriftMonitor {
     const confirmedRows = plan.missingOnce.filter(row => confirmedIds.has(row.id))
     const applied = await applyBrokerDriftRepairs(this.supabase, plan, confirmedRows)
 
-    if (applied.reopened || applied.attached || applied.closed || plan.unknown.length) {
+    if (applied.reopened || applied.attached || applied.closed || applied.promoted || plan.unknown.length) {
       console.log(
         `[tradeBrokerDriftMonitor] tick reopened=${applied.reopened} attached=${applied.attached}`
-        + ` closed=${applied.closed} unknown=${plan.unknown.length}`
+        + ` promoted=${applied.promoted} closed=${applied.closed} unknown=${plan.unknown.length}`
         + ` missing_once=${plan.missingOnce.length} awaiting_gap=${confirmedIds.size === 0 ? plan.missingOnce.length : 0}`,
       )
     }

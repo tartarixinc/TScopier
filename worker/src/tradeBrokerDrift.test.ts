@@ -142,6 +142,50 @@ describe('planBrokerDrift', () => {
     // a closed row is not a ghost either — the forward loop owns closes
     assert.deepEqual(plan.missingOnce, [])
   })
+
+  it('promotes a pending row when the broker reports the ticket as filled', () => {
+    const plan = planBrokerDrift({
+      rows: [row({ id: 't1', status: 'pending', metaapi_order_id: '100' })],
+      live: [hit({ ticket: 100, filled: true })],
+      fullyProbedUsers: new Set(['user-1']),
+    })
+    assert.deepEqual(plan.promote, [{
+      row: row({ id: 't1', status: 'pending', metaapi_order_id: '100' }),
+      ticket: 100,
+      brokerAccountId: 'broker-1',
+    }])
+    assert.deepEqual(plan.missingOnce, [])
+    assert.deepEqual(plan.reopen, [])
+  })
+
+  it('does not promote a pending row whose ticket is still a resting order', () => {
+    const plan = planBrokerDrift({
+      rows: [row({ id: 't1', status: 'pending', metaapi_order_id: '100' })],
+      live: [hit({ ticket: 100, filled: false })],
+      fullyProbedUsers: new Set(['user-1']),
+    })
+    assert.deepEqual(plan.promote, [])
+    assert.deepEqual(plan.missingOnce, [])
+  })
+
+  it('does not promote a row that is already open', () => {
+    const plan = planBrokerDrift({
+      rows: [row({ id: 't1', status: 'open', metaapi_order_id: '100' })],
+      live: [hit({ ticket: 100, filled: true })],
+      fullyProbedUsers: new Set(['user-1']),
+    })
+    assert.deepEqual(plan.promote, [])
+  })
+
+  it('does not promote a pending row whose ticket lives on another account', () => {
+    const plan = planBrokerDrift({
+      rows: [row({ id: 't1', status: 'pending', metaapi_order_id: '100' })],
+      live: [hit({ ticket: 100, filled: true, brokerAccountId: 'broker-2' })],
+      fullyProbedUsers: new Set(['user-1']),
+    })
+    assert.deepEqual(plan.promote, [])
+    assert.deepEqual(plan.missingOnce.map(r => r.id), ['t1'])
+  })
 })
 
 describe('GhostObservation', () => {
@@ -185,11 +229,15 @@ describe('applyBrokerDriftRepairs', () => {
 
   function fakeSupabase(
     records: Recorded[],
-    options: { data?: Array<{ id: string }>; error?: string } = {},
+    options: { data?: Array<{ id: string }>; error?: string; logs?: Array<Record<string, unknown>> } = {},
   ) {
     const chain = {
       update(payload: Record<string, unknown>) {
         records.push({ payload, filters: [] })
+        return chain
+      },
+      insert(payload: Record<string, unknown>) {
+        options.logs?.push(payload)
         return chain
       },
       eq(col: string, ...args: unknown[]) {
@@ -277,12 +325,57 @@ describe('applyBrokerDriftRepairs', () => {
     ])
   })
 
+  it('promotes a pending row to open only while it is still pending', async () => {
+    const records: Recorded[] = []
+    const logs: Array<Record<string, unknown>> = []
+    const plan = planBrokerDrift({
+      rows: [row({ id: 't1', status: 'pending', metaapi_order_id: '100' })],
+      live: [hit({ ticket: 100, filled: true })],
+      fullyProbedUsers: new Set(['user-1']),
+    })
+    const result = await applyBrokerDriftRepairs(
+      fakeSupabase(records, { data: [{ id: 't1' }], logs }),
+      plan,
+      [],
+    )
+    assert.equal(result.promoted, 1)
+    const payload = records[0]!.payload
+    assert.equal(payload.status, 'open')
+    assert.equal(payload.broker_position_ticket, '100')
+    assert.ok(typeof payload.opened_at === 'string' && payload.opened_at.length > 0)
+    assert.deepEqual(records[0]!.filters, [
+      { col: 'id', args: ['t1'] },
+      { col: 'status', args: ['pending'] },
+      { col: 'select', args: ['id'] },
+    ])
+    assert.equal(logs.length, 1)
+    assert.equal(logs[0]!.action, 'signal_entry_pending_filled')
+    assert.equal(logs[0]!.signal_id, 'signal-1')
+  })
+
+  it('reports zero and writes no log when the guard rejected the promote', async () => {
+    const records: Recorded[] = []
+    const logs: Array<Record<string, unknown>> = []
+    const plan = planBrokerDrift({
+      rows: [row({ id: 't1', status: 'pending', metaapi_order_id: '100' })],
+      live: [hit({ ticket: 100, filled: true })],
+      fullyProbedUsers: new Set(['user-1']),
+    })
+    const result = await applyBrokerDriftRepairs(
+      fakeSupabase(records, { data: [], logs }), // row changed between plan and apply
+      plan,
+      [],
+    )
+    assert.equal(result.promoted, 0)
+    assert.deepEqual(logs, [])
+  })
+
   it('closes confirmed ghosts only for open/pending rows', async () => {
     const records: Recorded[] = []
     const ghosts = [row({ id: 'g1', broker_account_id: null, signal_id: null })]
     const result = await applyBrokerDriftRepairs(
       fakeSupabase(records, { data: [{ id: 'g1' }] }),
-      { reopen: [], attach: [], unknown: [], missingOnce: [] },
+      { reopen: [], attach: [], unknown: [], missingOnce: [], promote: [] },
       ghosts,
     )
     assert.equal(result.closed, 1)
