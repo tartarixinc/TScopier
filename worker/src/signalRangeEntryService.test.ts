@@ -4,6 +4,7 @@ import {
   buildWaitFromParsed,
   evaluatePreEntryStaleness,
   evaluateWakeEligibility,
+  syncWaitRow,
 } from './signalRangeEntryService'
 import { virtualLegTriggerAllowed, virtualLegTriggerInZone } from './manualPlanning/signalEntryRange'
 import { virtualPendingTriggerAllowed } from './tradeExecutor/helpers'
@@ -138,4 +139,37 @@ test('virtualPendingTriggerAllowed: useSignalEntryRange enforces full zone', () 
     }),
     true,
   )
+})
+
+test('syncWaitRow reports an upsert failure instead of swallowing it', async () => {
+  const fake = {
+    from(table: string) {
+      assert.equal(table, 'signal_range_entry_waits')
+      return {
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({ data: null, error: null }),
+            }),
+          }),
+        }),
+        upsert: async () => ({
+          error: { message: 'invalid input syntax for type integer: "0.061"' },
+        }),
+      }
+    },
+  } as unknown as Parameters<typeof syncWaitRow>[0]
+
+  const result = await syncWaitRow(fake, {
+    signal: { id: 'signal-1', user_id: 'user-1' } as Parameters<typeof syncWaitRow>[1]['signal'],
+    broker: { id: 'broker-1' } as Parameters<typeof syncWaitRow>[1]['broker'],
+    uuid: 'session-1',
+    symbol: 'XAUUSD',
+    parsed: zoneParsed as Parameters<typeof syncWaitRow>[1]['parsed'],
+    manual: { use_signal_entry_range: true, trade_style: 'multi', signal_entry_pip_tolerance: 0.061 },
+    preserveExpiresAt: false,
+  })
+
+  assert.equal(result.ok, false)
+  assert.equal(result.ok === false && 'reason' in result ? result.reason : null, 'upsert_failed')
 })
