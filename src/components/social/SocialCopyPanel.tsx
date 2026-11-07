@@ -7,14 +7,20 @@ import {
   fetchSocialCopySources,
   fetchSocialCopySubscriptions,
   publishSocialCopySource,
+  updateSocialCopySubscriptionSettings,
   type SocialCopySource,
   type SocialCopySubscription,
 } from '../../lib/socialCopy'
+import {
+  DEFAULT_SOCIAL_COPY_FILTER_SETTINGS,
+  type SocialCopyFilterSettings,
+} from '../../lib/socialCopyFilterSettings'
 import { Alert } from '../ui/Alert'
 import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
 import { isSocialDestinationEligible, resolveSocialAccountMode } from '../../lib/socialAccount'
 import { eligibilityDiagnosticForReason, publishingEligibilityDiagnostics } from '../../lib/socialEligibility'
+import { SocialCopyFilterSettingsEditor } from './SocialCopyFilterSettingsEditor'
 import { SocialEligibilityDiagnostics } from './SocialEligibilityDiagnostics'
 
 function accountLabel(account: { label?: string | null; platform?: string | null; account_login?: string | null }): string {
@@ -44,6 +50,13 @@ export function SocialCopyPanel({ traderUserId, isSelf }: { traderUserId: string
   const [fixedLot, setFixedLot] = useState('0.01')
   const [multiplier, setMultiplier] = useState('1')
   const [maxLot, setMaxLot] = useState('0.10')
+  const [filterSettings, setFilterSettings] = useState<SocialCopyFilterSettings>(DEFAULT_SOCIAL_COPY_FILTER_SETTINGS)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editSizingMode, setEditSizingMode] = useState<'fixed_lot' | 'lot_multiplier' | 'equity_ratio'>('fixed_lot')
+  const [editFixedLot, setEditFixedLot] = useState('0.01')
+  const [editMultiplier, setEditMultiplier] = useState('1')
+  const [editMaxLot, setEditMaxLot] = useState('0.10')
+  const [editFilters, setEditFilters] = useState<SocialCopyFilterSettings>(DEFAULT_SOCIAL_COPY_FILTER_SETTINGS)
   const [confirmed, setConfirmed] = useState(false)
   const generation = useRef(0)
 
@@ -92,6 +105,26 @@ export function SocialCopyPanel({ traderUserId, isSelf }: { traderUserId: string
   const configurationValid = Number.isFinite(maxLotNumber) && maxLotNumber > 0 && maxLotNumber <= 1000
     && (sizingMode !== 'fixed_lot' || (Number.isFinite(fixedLotNumber) && fixedLotNumber > 0 && fixedLotNumber <= maxLotNumber))
     && (sizingMode === 'fixed_lot' || (Number.isFinite(multiplierNumber) && multiplierNumber > 0 && multiplierNumber <= 100))
+    && (!filterSettings.days_filter_enabled || filterSettings.trade_days.length > 0)
+    && (filterSettings.news_trading_enabled || filterSettings.news_avoid_impacts.length > 0)
+
+  const editFixedLotNumber = Number(editFixedLot)
+  const editMultiplierNumber = Number(editMultiplier)
+  const editMaxLotNumber = Number(editMaxLot)
+  const editConfigurationValid = Number.isFinite(editMaxLotNumber) && editMaxLotNumber > 0 && editMaxLotNumber <= 1000
+    && (editSizingMode !== 'fixed_lot' || (Number.isFinite(editFixedLotNumber) && editFixedLotNumber > 0 && editFixedLotNumber <= editMaxLotNumber))
+    && (editSizingMode === 'fixed_lot' || (Number.isFinite(editMultiplierNumber) && editMultiplierNumber > 0 && editMultiplierNumber <= 100))
+    && (!editFilters.days_filter_enabled || editFilters.trade_days.length > 0)
+    && (editFilters.news_trading_enabled || editFilters.news_avoid_impacts.length > 0)
+
+  function beginEdit(subscription: SocialCopySubscription) {
+    setEditingId(subscription.id)
+    setEditSizingMode(subscription.sizingMode)
+    setEditFixedLot(String(subscription.fixedLot ?? 0.01))
+    setEditMultiplier(String(subscription.lotMultiplier ?? 1))
+    setEditMaxLot(String(subscription.maxLot))
+    setEditFilters(subscription.manualSettings ?? DEFAULT_SOCIAL_COPY_FILTER_SETTINGS)
+  }
 
 
   async function run(key: string, action: () => Promise<void>, success: string) {
@@ -177,6 +210,7 @@ export function SocialCopyPanel({ traderUserId, isSelf }: { traderUserId: string
               <input type="number" min="0.01" step="0.01" className="mt-1 block w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900" value={maxLot} onChange={event => setMaxLot(event.target.value)} />
             </label>
           </div>
+          <SocialCopyFilterSettingsEditor value={filterSettings} onChange={setFilterSettings} />
           {selectedSource?.isSynthetic ? <Alert variant="warning">Synthetic preview participant: this creates a persisted subscription that can run only through the isolated simulation path.</Alert> : null}
           {selectedSource && !selectedSource.isCopyEligible ? (
             <SocialEligibilityDiagnostics diagnostics={selectedSource.eligibilityDiagnostics} />
@@ -185,13 +219,14 @@ export function SocialCopyPanel({ traderUserId, isSelf }: { traderUserId: string
             <input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} />
             I understand this persists a {selectedExecutionMode === 'unknown' ? 'mode-unverified' : selectedExecutionMode} destination subscription and can place real broker orders only after the worker acknowledges it.
           </label>
-          {!configurationValid ? <p className="text-xs text-red-600 dark:text-red-400">Enter positive sizing values; fixed lot cannot exceed maximum lot.</p> : null}
+          {!configurationValid ? <p className="text-xs text-red-600 dark:text-red-400">Enter positive sizing values; fixed lot cannot exceed maximum lot. Complete filter selections when enabled.</p> : null}
           <Button type="button" size="sm" disabled={Boolean(pending) || !confirmed || !configurationValid || !selectedSource?.connectionHealthy || !selectedSource?.isCopyEligible || !selectedDestination} onClick={() => {
             if (!selectedSource || !selectedDestination) return
             void run('create', () => createSocialCopySubscription(supabase, {
               sourceId: selectedSource.sourceId, destinationBrokerAccountId: selectedDestination.id,
               sizingMode, fixedLot: fixedLotNumber, lotMultiplier: multiplierNumber, maxLot: maxLotNumber,
               accountMode: selectedExecutionMode as 'demo' | 'live',
+              manualSettings: filterSettings,
             }).then(() => undefined), 'Subscription saved. Waiting for worker acknowledgement.')
           }}>Confirm subscription</Button>
           {!selectedSource || !selectedDestination ? <p className="text-xs text-amber-700 dark:text-amber-300">Select an eligible source and destination explicitly. Stale or unavailable selections are never replaced automatically.</p> : null}
@@ -205,9 +240,42 @@ export function SocialCopyPanel({ traderUserId, isSelf }: { traderUserId: string
           {subscription.errorDetail ? <p className="mt-1 text-xs text-red-600 dark:text-red-400">{subscription.errorDetail}</p> : null}
           {!['stopped', 'emergency_stopped'].includes(subscription.status) ? <div className="mt-2 flex flex-wrap gap-2">
             {subscription.status === 'paused' || subscription.status === 'error' ? <Button size="sm" type="button" disabled={Boolean(pending)} onClick={() => void run(subscription.id, () => changeSocialCopySubscription(supabase, subscription.id, 'resume'), 'Resume requested.')}>Retry / resume</Button> : <Button size="sm" type="button" variant="secondary" disabled={Boolean(pending)} onClick={() => void run(subscription.id, () => changeSocialCopySubscription(supabase, subscription.id, 'pause'), 'Pause requested.')}>Pause</Button>}
+            <Button size="sm" type="button" variant="secondary" disabled={Boolean(pending)} onClick={() => beginEdit(subscription)}>Edit settings</Button>
             <Button size="sm" type="button" variant="secondary" disabled={Boolean(pending)} onClick={() => void run(subscription.id, () => changeSocialCopySubscription(supabase, subscription.id, 'stop'), 'Stop requested.')}>Stop and close copies</Button>
             <Button size="sm" type="button" variant="secondary" disabled={Boolean(pending)} onClick={() => void run(subscription.id, () => changeSocialCopySubscription(supabase, subscription.id, 'emergency_stop'), 'Emergency stop requested.')}>Emergency stop</Button>
           </div> : null}
+          {editingId === subscription.id ? (
+            <div className="mt-3 space-y-3 border-t border-neutral-100 pt-3 dark:border-neutral-800">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label className="text-xs text-neutral-500">Sizing
+                  <select className="mt-1 block w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900" value={editSizingMode} onChange={event => setEditSizingMode(event.target.value as typeof editSizingMode)}>
+                    <option value="fixed_lot">Fixed lot</option><option value="lot_multiplier">Source lot multiplier</option><option value="equity_ratio">Equity proportional</option>
+                  </select>
+                </label>
+                <label className="text-xs text-neutral-500">{editSizingMode === 'fixed_lot' ? 'Fixed lot' : 'Multiplier'}
+                  <input type="number" min="0.01" step="0.01" className="mt-1 block w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900" value={editSizingMode === 'fixed_lot' ? editFixedLot : editMultiplier} onChange={event => editSizingMode === 'fixed_lot' ? setEditFixedLot(event.target.value) : setEditMultiplier(event.target.value)} />
+                </label>
+                <label className="text-xs text-neutral-500">Maximum lot
+                  <input type="number" min="0.01" step="0.01" className="mt-1 block w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900" value={editMaxLot} onChange={event => setEditMaxLot(event.target.value)} />
+                </label>
+              </div>
+              <SocialCopyFilterSettingsEditor value={editFilters} onChange={setEditFilters} />
+              {!editConfigurationValid ? <p className="text-xs text-red-600 dark:text-red-400">Enter positive sizing values and complete filter selections when enabled.</p> : null}
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" type="button" disabled={Boolean(pending) || !editConfigurationValid} onClick={() => {
+                  void run(`edit:${subscription.id}`, () => updateSocialCopySubscriptionSettings(supabase, {
+                    subscriptionId: subscription.id,
+                    sizingMode: editSizingMode,
+                    fixedLot: editFixedLotNumber,
+                    lotMultiplier: editMultiplierNumber,
+                    maxLot: editMaxLotNumber,
+                    manualSettings: editFilters,
+                  }).then(() => { setEditingId(null) }), 'Settings updated.')
+                }}>Save settings</Button>
+                <Button size="sm" type="button" variant="secondary" disabled={Boolean(pending)} onClick={() => setEditingId(null)}>Cancel</Button>
+              </div>
+            </div>
+          ) : null}
         </div>)}
       </div> : null}
     </Card>

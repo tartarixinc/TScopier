@@ -1,5 +1,13 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { normalizeEligibilityDiagnostics, type SocialEligibilityDiagnostic } from './socialEligibility'
+import {
+  DEFAULT_SOCIAL_COPY_FILTER_SETTINGS,
+  normalizeSocialCopyFilterSettings,
+  type SocialCopyFilterSettings,
+} from './socialCopyFilterSettings'
+
+export type { SocialCopyFilterSettings }
+export { DEFAULT_SOCIAL_COPY_FILTER_SETTINGS, normalizeSocialCopyFilterSettings }
 
 export type SocialCopySource = {
   sourceId: string
@@ -29,6 +37,7 @@ export type SocialCopySubscription = {
   sourceAccountMode: 'demo' | 'live' | 'unknown'
   destinationAccountMode: 'demo' | 'live' | 'unknown'
   executionPath: 'broker' | 'synthetic_simulation'
+  manualSettings: SocialCopyFilterSettings
   status: SocialCopySubscriptionStatus
   desiredStatus: 'active' | 'paused' | 'stopped'
   errorCode: string | null
@@ -81,6 +90,7 @@ type SubscriptionRow = {
   source_account_mode: 'demo' | 'live' | 'unknown'
   destination_account_mode: 'demo' | 'live' | 'unknown'
   execution_path: 'broker' | 'synthetic_simulation'
+  manual_settings?: unknown
   status: SocialCopySubscriptionStatus
   desired_status: SocialCopySubscription['desiredStatus']
   error_code: string | null
@@ -89,7 +99,7 @@ type SubscriptionRow = {
   updated_at: string
 }
 
-const SUBSCRIPTION_SELECT = 'id,source_id,destination_broker_account_id,sizing_mode,fixed_lot,lot_multiplier,max_lot,requested_account_mode,source_account_mode,destination_account_mode,execution_path,status,desired_status,error_code,error_detail,worker_acknowledged_at,updated_at'
+const SUBSCRIPTION_SELECT = 'id,source_id,destination_broker_account_id,sizing_mode,fixed_lot,lot_multiplier,max_lot,requested_account_mode,source_account_mode,destination_account_mode,execution_path,manual_settings,status,desired_status,error_code,error_detail,worker_acknowledged_at,updated_at'
 
 function mapSubscriptionRow(row: SubscriptionRow): SocialCopySubscription {
   return {
@@ -104,6 +114,7 @@ function mapSubscriptionRow(row: SubscriptionRow): SocialCopySubscription {
     sourceAccountMode: row.source_account_mode,
     destinationAccountMode: row.destination_account_mode,
     executionPath: row.execution_path,
+    manualSettings: normalizeSocialCopyFilterSettings(row.manual_settings),
     status: row.status,
     desiredStatus: row.desired_status,
     errorCode: row.error_code,
@@ -204,6 +215,7 @@ export async function createSocialCopySubscription(client: SupabaseClient, input
   lotMultiplier: number
   maxLot: number
   accountMode: 'demo' | 'live'
+  manualSettings?: SocialCopyFilterSettings | Record<string, unknown>
 }): Promise<string> {
   const { data, error } = await client.rpc('create_social_copy_subscription', {
     p_source_id: input.sourceId,
@@ -215,9 +227,29 @@ export async function createSocialCopySubscription(client: SupabaseClient, input
     p_max_daily_loss: null,
     p_requested_account_mode: input.accountMode,
     p_symbol_map: {},
+    p_manual_settings: normalizeSocialCopyFilterSettings(input.manualSettings),
   })
   if (error) throw failure(error)
   return String(data)
+}
+
+export async function updateSocialCopySubscriptionSettings(client: SupabaseClient, input: {
+  subscriptionId: string
+  sizingMode: SocialCopySubscription['sizingMode']
+  fixedLot: number | null
+  lotMultiplier: number
+  maxLot: number
+  manualSettings: SocialCopyFilterSettings | Record<string, unknown>
+}): Promise<void> {
+  const { error } = await client.rpc('update_social_copy_subscription_settings', {
+    p_subscription_id: input.subscriptionId,
+    p_sizing_mode: input.sizingMode,
+    p_fixed_lot: input.sizingMode === 'fixed_lot' ? input.fixedLot : null,
+    p_lot_multiplier: input.lotMultiplier,
+    p_max_lot: input.maxLot,
+    p_manual_settings: normalizeSocialCopyFilterSettings(input.manualSettings),
+  })
+  if (error) throw failure(error)
 }
 
 /** Records a pending wallet ledger row for a paid provider copy (UI paywall). No charge yet. */

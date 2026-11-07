@@ -6,6 +6,7 @@ export const PROVIDER_CANNOT_COPY_REASON = 'Approved providers cannot copy other
 const RETIRED_ELIGIBILITY_REASONS = new Set([
   'minimum_trades_not_met',
   'history_incomplete',
+  'minimum_period_not_met',
 ])
 
 const ELIGIBILITY_REASONS: Record<string, string> = {
@@ -19,11 +20,10 @@ const ELIGIBILITY_REASONS: Record<string, string> = {
   sync_failed: 'The trader source failed to synchronize.',
   sync_pending: 'The trader source is still synchronizing.',
   history_stale: 'The trader history is stale. Copying will be available after a fresh sync.',
-  minimum_period_not_met: 'At least 7 days of complete history are required before copying.',
   synthetic_demo: 'This synthetic trader is available only through the simulated flow.',
 }
 
-function sourceAllowsCopy(source: { isCopyEligible: boolean; eligibilityReason: string }): boolean {
+export function sourceAllowsCopy(source: { isCopyEligible: boolean; eligibilityReason: string }): boolean {
   return source.isCopyEligible || RETIRED_ELIGIBILITY_REASONS.has(source.eligibilityReason)
 }
 

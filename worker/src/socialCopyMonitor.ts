@@ -19,6 +19,11 @@ import {
   symbolLimits,
   type NormalizedSourcePosition,
 } from './copyShared/copyHelpers'
+import { getCalendarEventsCached } from './newsTrading/calendarProvider'
+import {
+  evaluateSocialCopyOpenFilters,
+  type SocialCopyManualSettings,
+} from './socialCopyFilters'
 
 export { normalizeSourcePosition, constrainedCopyVolume }
 export type { NormalizedSourcePosition }
@@ -39,6 +44,7 @@ export type SocialCopySubscriptionRow = {
   destination_account_mode: 'demo' | 'live' | 'unknown'
   execution_path: 'broker' | 'synthetic_simulation'
   symbol_map: Record<string, string> | null
+  manual_settings: SocialCopyManualSettings | null
   status: 'pending' | 'active' | 'paused' | 'stopped' | 'error' | 'emergency_stopped'
   desired_status: 'active' | 'paused' | 'stopped'
   error_code: string | null
@@ -295,6 +301,26 @@ export class SocialCopyMonitor {
 
   private async openPosition(subscription: SocialCopySubscriptionRow, context: { sourceBroker: BrokerRow; destinationBroker: BrokerRow }, api: BrokerProvider, destinationOrders: unknown[], position: NormalizedSourcePosition): Promise<void> {
     const symbol = subscription.symbol_map?.[position.symbol] ?? position.symbol
+    const newsEvents = await getCalendarEventsCached().catch(() => [])
+    const filterSkip = evaluateSocialCopyOpenFilters({
+      symbol,
+      manualSettings: subscription.manual_settings,
+      newsEvents,
+    })
+    if (filterSkip) {
+      const event = await this.claimEvent(
+        subscription.id,
+        null,
+        position.ticket,
+        'open',
+        `filter-skip:${filterSkip}:${position.ticket}`,
+        { symbol, reason: filterSkip },
+      )
+      if (event) {
+        await this.finishEvent(event, 'skipped', { symbol, reason: filterSkip }, filterSkip.toUpperCase(), new Error(`Social copy open skipped: ${filterSkip}`))
+      }
+      return
+    }
     const volume = await this.requestedVolume(subscription, context, position, api, symbol)
     const comment = `sc:${subscription.id.slice(0, 8)}:${position.ticket}`.slice(0, 31)
     const { data: mappingData, error: mappingError } = await this.supabase.from('social_copy_trade_mappings').insert({

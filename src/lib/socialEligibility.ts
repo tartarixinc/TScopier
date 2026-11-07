@@ -35,7 +35,8 @@ const COPY: Record<SocialEligibilityReason, Copy> = {
   history_incomplete: item('passed', 'success', 'Known closed-trade results are published as they synchronize.', null),
   // Retired: no longer a copy blocker; keep the code for older RPC payloads.
   minimum_trades_not_met: item('passed', 'success', 'Known closed-trade results are published as they synchronize.', null),
-  minimum_period_not_met: item('pending', 'info', 'The verified closed-trade history spans less than 7 days.', 'Keep the account synchronized until its closed-trade history spans at least 7 days.'),
+  // Temporarily retired: 7-day history is not required for copying.
+  minimum_period_not_met: item('passed', 'success', 'The 7-day history minimum is temporarily not required for copying.', null),
   eligible: item('passed', 'success', 'The source currently passes every server-side copy eligibility check.', null),
 }
 

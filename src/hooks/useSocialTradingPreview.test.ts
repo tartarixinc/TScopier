@@ -98,9 +98,11 @@ describe('social trading preview hydration', () => {
 
   it('requires both a published source and backend eligibility for real traders', () => {
     const eligible = hydrateTrader(base, [flatTrade], performance, source)
-    const ineligible = hydrateTrader(base, [flatTrade], performance, { ...source, isCopyEligible: false, eligibilityReason: 'minimum_period_not_met' })
+    const ineligible = hydrateTrader(base, [flatTrade], performance, { ...source, isCopyEligible: false, eligibilityReason: 'history_stale' })
+    const retiredPeriod = hydrateTrader(base, [flatTrade], performance, { ...source, isCopyEligible: false, eligibilityReason: 'minimum_period_not_met' })
     expect(canOpenCopyTrader(eligible)).toBe(true)
     expect(canOpenCopyTrader(ineligible)).toBe(false)
+    expect(canOpenCopyTrader(retiredPeriod)).toBe(true)
     expect(canOpenCopyTrader({ ...eligible, sourceId: null })).toBe(true)
     expect(canOpenCopyTrader({ ...eligible, sourceId: null, sources: [] })).toBe(false)
   })

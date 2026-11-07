@@ -29,7 +29,6 @@ const socialCopyEligibilityRules = [
   { label: 'Account mode is verified', reasons: ['account_mode_unknown', 'demo_only'] },
   { label: 'Account is active and connected', reasons: ['source_inactive', 'sync_failed', 'source_disconnected'] },
   { label: 'Synchronized within 15 minutes', reasons: ['sync_pending', 'history_stale'] },
-  { label: 'Trade history spans at least 7 days', reasons: ['minimum_period_not_met'] },
   { label: 'Profile is eligible for copying', reasons: ['synthetic_demo'] },
 ] as const
 

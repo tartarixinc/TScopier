@@ -107,12 +107,14 @@ test("production directory keeps compact ratings in the Name column and copy con
 test("real Copy Trader flow persists through the existing subscription RPC", () => {
   assert.match(copyModal, /createSocialCopySubscription\(supabase/);
   assert.match(copyModal, /destinationBrokerAccountId: selectedBroker\.id/);
-  assert.match(copyModal, /selectedSource\?\.isCopyEligible/);
+  assert.match(copyModal, /sourceAllowsCopy\(selectedSource\)/);
   assert.match(
     copyModal,
     /const createdSubscriptionId = await createSocialCopySubscription/,
   );
   assert.match(copyModal, /maxLot,/);
+  assert.match(copyModal, /manualSettings: filterSettings/);
+  assert.match(copyModal, /SocialCopyFilterSettingsEditor/);
   assert.match(
     copyModal,
     /changeSocialCopySubscription\(supabase, subscriptionId, action\)/,

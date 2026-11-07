@@ -4,13 +4,13 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { canLoadSocialTradeHistory, fetchSocialProviderPerformance, fetchSocialTradeHistory, fetchSocialTradeHistoryAccess, setSocialTradeHistorySharing, socialCopyEligibilityChecks, socialDirectoryPerformancePresentation, socialPerformanceStatusMessage } from './socialTradeHistory'
 
 test('presents copy eligibility from the current server reason without assuming later checks pass', () => {
-  assert.deepEqual(socialCopyEligibilityChecks(true, 'eligible').map(check => check.status), Array(7).fill('passed'))
+  assert.deepEqual(socialCopyEligibilityChecks(true, 'eligible').map(check => check.status), Array(6).fill('passed'))
   assert.equal(socialCopyEligibilityChecks(false, 'account_mode_unknown')[2]?.label, 'Account mode is verified')
-  assert.deepEqual(socialCopyEligibilityChecks(false, 'minimum_period_not_met').map(check => check.status), [
-    'passed', 'passed', 'passed', 'passed', 'passed', 'blocked', 'pending',
+  assert.deepEqual(socialCopyEligibilityChecks(false, 'history_stale').map(check => check.status), [
+    'passed', 'passed', 'passed', 'passed', 'blocked', 'pending',
   ])
   assert.deepEqual(socialCopyEligibilityChecks(false, 'synthetic_demo').map(check => check.status), [
-    'pending', 'pending', 'pending', 'pending', 'pending', 'pending', 'blocked',
+    'pending', 'pending', 'pending', 'pending', 'pending', 'blocked',
   ])
 })
 

@@ -37,16 +37,18 @@ describe('copy trader availability', () => {
     expect(copyTraderUnavailableReason(trader)).toBe('The trader history is stale. Copying will be available after a fresh sync.')
   })
 
-  it('ignores the retired minimum-trades gate', () => {
+  it('ignores the retired minimum-trades and minimum-period gates', () => {
     expect(baseTrader).toBeDefined()
-    const trader = {
-      ...baseTrader!,
-      sources: [{ ...eligibleSource, isCopyEligible: false, eligibilityReason: 'minimum_trades_not_met' }],
-      copyEligible: false,
-      copyEligibilityReason: 'minimum_trades_not_met',
+    for (const reason of ['minimum_trades_not_met', 'minimum_period_not_met'] as const) {
+      const trader = {
+        ...baseTrader!,
+        sources: [{ ...eligibleSource, isCopyEligible: false, eligibilityReason: reason }],
+        copyEligible: false,
+        copyEligibilityReason: reason,
+      }
+      expect(canOpenCopyTrader(trader)).toBe(true)
+      expect(copyTraderUnavailableReason(trader)).toBeNull()
     }
-    expect(canOpenCopyTrader(trader)).toBe(true)
-    expect(copyTraderUnavailableReason(trader)).toBeNull()
   })
 
   it('does not flash source_missing while trader sources are still loading', () => {
