@@ -615,6 +615,28 @@ export interface CopierLogsTranslations {
   mirrorMasterTicket?: string
   mirrorCopyTicket?: string
   mirrorLot?: string
+  socialSource?: string
+  socialOpenMessage?: string
+  socialCloseMessage?: string
+  socialModifyMessage?: string
+  socialOtherMessage?: string
+  socialDetailTitle?: string
+  socialOccurred?: string
+  socialProvider?: string
+  socialDestinationAccount?: string
+  socialProviderTicket?: string
+  socialCopyTicket?: string
+  socialLot?: string
+  manualExecutionSource?: string
+  manualOpenMessage?: string
+  manualCloseMessage?: string
+  manualModifyMessage?: string
+  manualOtherMessage?: string
+  manualDetailTitle?: string
+  manualOccurred?: string
+  manualAccount?: string
+  manualTicket?: string
+  manualLot?: string
   skipReasons: Record<string, string>
   skipReasonDetails?: Record<string, string>
   detailModal?: {
@@ -1399,6 +1421,9 @@ export interface TradesTranslations {
   imageSignal: string
   copiedFromMasterTitle?: string
   copiedFromMaster?: string
+  copiedFromSocialTitle?: string
+  copiedFromSocial?: string
+  socialProviderTicket?: string
   closeCopy?: string
   closeCopyConfirm?: string
   closeCopyWorking?: string

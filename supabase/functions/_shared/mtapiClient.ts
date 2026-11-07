@@ -477,6 +477,26 @@ export class MtapiClient {
     if (args.lots != null && args.lots > 0) params.lots = args.lots
     await this.request("OrderCloseSafe", params, sessionId, platform, 45_000)
   }
+
+  /** SL/TP (and optional price) modify used by social-copy-reconcile sync. */
+  async orderModifySafe(
+    sessionId: string,
+    args: {
+      ticket: number
+      stoploss?: number | null
+      takeprofit?: number | null
+      price?: number | null
+    },
+    platform?: string | null,
+  ): Promise<void> {
+    const params: Record<string, string | number | boolean | null | undefined> = {
+      ticket: args.ticket,
+    }
+    if (args.stoploss != null) params.stoploss = args.stoploss
+    if (args.takeprofit != null) params.takeprofit = args.takeprofit
+    if (args.price != null) params.price = args.price
+    await this.request("OrderModifySafe", params, sessionId, platform, 45_000)
+  }
 }
 
 /** Map raw MTAPI AccountSummary into the FxSocket summary shape used by the UI. */
