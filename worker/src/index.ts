@@ -181,9 +181,21 @@ function startTradeMonitors(executor: TradeExecutor | null) {
     const copyLimitMonitor = new CopyLimitMonitor(supabase)
     copyLimitMonitor.start()
     trackMonitor(copyLimitMonitor)
-    const socialCopyMonitor = new SocialCopyMonitor(supabase)
-    socialCopyMonitor.start()
-    trackMonitor(socialCopyMonitor)
+    // Social copy is fail-closed outside Migration preview. Only start when
+    // explicitly enabled (or when this worker targets the Migration project) so
+    // a disabled replica cannot claim leases and stall or error subscriptions.
+    const migrationPreview = /supmsgcubipmmowrzoub/i.test(process.env.SUPABASE_URL ?? '')
+    const socialCopyExecutionEnabled = parseEnvBool(process.env.SOCIAL_COPY_EXECUTION_ENABLED, migrationPreview)
+    const socialCopySyntheticEnabled = parseEnvBool(process.env.SOCIAL_COPY_SYNTHETIC_SIMULATION_ENABLED, migrationPreview)
+    if (socialCopyExecutionEnabled || socialCopySyntheticEnabled) {
+      const socialCopyMonitor = new SocialCopyMonitor(supabase, {
+        workerId: process.env.SOCIAL_COPY_WORKER_ID?.trim() || `social-copy-${workerConfig.instanceId}:${process.pid}`,
+        executionEnabled: socialCopyExecutionEnabled,
+        syntheticSimulationEnabled: socialCopySyntheticEnabled,
+      })
+      socialCopyMonitor.start()
+      trackMonitor(socialCopyMonitor)
+    }
     // Mirror copy is default-off and has no links in production yet. Only start the
     // monitor when the worker is explicitly enabled, so a disabled flag never writes
     // error state against existing links or reads a broker.

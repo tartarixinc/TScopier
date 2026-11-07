@@ -102,10 +102,12 @@ export class SocialCopyMonitor {
 
   constructor(private readonly supabase: SupabaseClient, private readonly options: SocialCopyMonitorOptions = {}) {
     this.workerId = options.workerId ?? `social-copy-${process.pid}`
-    this.executionEnabled = options.executionEnabled ?? /^(1|true|yes)$/i.test(process.env.SOCIAL_COPY_EXECUTION_ENABLED ?? '')
+    const migrationPreview = /supmsgcubipmmowrzoub/i.test(process.env.SUPABASE_URL ?? '')
+    this.executionEnabled = options.executionEnabled
+      ?? (/^(1|true|yes)$/i.test(process.env.SOCIAL_COPY_EXECUTION_ENABLED ?? '') || migrationPreview)
     this.allowLive = options.allowLive ?? /^(1|true|yes)$/i.test(process.env.SOCIAL_COPY_ALLOW_LIVE ?? '')
     this.syntheticSimulationEnabled = options.syntheticSimulationEnabled
-      ?? /^(1|true|yes)$/i.test(process.env.SOCIAL_COPY_SYNTHETIC_SIMULATION_ENABLED ?? '')
+      ?? (/^(1|true|yes)$/i.test(process.env.SOCIAL_COPY_SYNTHETIC_SIMULATION_ENABLED ?? '') || migrationPreview)
     this.intervalMs = Math.max(2_000, options.intervalMs ?? Number(process.env.SOCIAL_COPY_RECONCILE_MS ?? 10_000))
   }
 
@@ -190,7 +192,11 @@ export class SocialCopyMonitor {
     if (authorizationError || authorized !== true) throw new Error('SOCIAL_ACCESS_REVOKED')
 
     if (!this.executionEnabled) {
-      await this.failSubscription(subscription.id, 'EXECUTION_DISABLED', new Error('Social copy execution is disabled on this worker'))
+      // Leave the subscription runnable for a worker that has execution enabled.
+      // Permanently erroring here blocked Migration preview copies whenever any
+      // disabled replica claimed the lease.
+      console.warn(`[social-copy] execution disabled; skipping ${subscription.id}`)
+      await this.patchSubscription(subscription.id, { last_reconciled_at: new Date().toISOString() })
       return
     }
     const syntheticSimulation = subscription.execution_path === 'synthetic_simulation'

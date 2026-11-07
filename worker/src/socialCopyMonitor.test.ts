@@ -10,6 +10,7 @@ const subscription = (patch: Partial<SocialCopySubscriptionRow> = {}): SocialCop
   sizing_mode: 'fixed_lot', fixed_lot: 0.12, lot_multiplier: 1, max_lot: 0.2,
   max_daily_loss: null, requested_account_mode: 'demo',
   source_account_mode: 'demo', destination_account_mode: 'demo', execution_path: 'broker', symbol_map: {},
+  manual_settings: null,
   status: 'pending', desired_status: 'active', error_code: null, ...patch,
 })
 
@@ -265,6 +266,17 @@ test('supports every verified Demo and Live source/destination mode combination 
     assert.equal(db.tables.social_copy_subscriptions[0]?.status, 'active', `${sourceMode}-to-${destinationMode}`)
     assert.equal(source.sends + destination.sends, 0)
   }
+})
+
+test('execution-disabled workers skip without permanently erroring the subscription', async () => {
+  const db = new FakeDb()
+  const sub = subscription({ status: 'pending' })
+  db.claimed = [sub]
+  db.tables.social_copy_subscriptions = [{ ...sub }]
+  const monitor = new SocialCopyMonitor(db as never, { executionEnabled: false, providerFor: () => provider() })
+  await monitor.tick()
+  assert.equal(db.tables.social_copy_subscriptions[0]?.status, 'pending')
+  assert.equal(db.tables.social_copy_subscriptions[0]?.error_code, null)
 })
 
 test('live-involved broker execution fails observably when SOCIAL_COPY_ALLOW_LIVE is disabled', async () => {

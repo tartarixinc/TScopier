@@ -431,6 +431,52 @@ export class MtapiClient {
       time: time == null ? undefined : String(time),
     }
   }
+
+  /**
+   * Market OrderSendSafe used by Migration social-copy-reconcile.
+   * Never retry on timeout — the terminal may have already accepted the order.
+   */
+  async orderSendSafe(
+    sessionId: string,
+    args: {
+      symbol: string
+      operation: "Buy" | "Sell"
+      volume: number
+      stoploss?: number | null
+      takeprofit?: number | null
+      slippage?: number | null
+      comment?: string | null
+    },
+    platform?: string | null,
+  ): Promise<{ ticket: number }> {
+    const params: Record<string, string | number | boolean | null | undefined> = {
+      symbol: args.symbol,
+      operation: args.operation,
+      volume: args.volume,
+    }
+    if (args.stoploss != null && args.stoploss !== 0) params.stoploss = args.stoploss
+    if (args.takeprofit != null && args.takeprofit !== 0) params.takeprofit = args.takeprofit
+    if (args.slippage != null) params.slippage = args.slippage
+    if (args.comment) params.comment = args.comment
+    const raw = object(await this.request("OrderSendSafe", params, sessionId, platform, 45_000))
+    const ticket = Number(raw.ticket ?? raw.Ticket ?? raw.order ?? raw.Order)
+    if (!Number.isFinite(ticket) || ticket <= 0) {
+      throw new MtapiApiError("OrderSendSafe returned no valid broker ticket", 502, "INVALID_TICKET")
+    }
+    return { ticket: Math.trunc(ticket) }
+  }
+
+  async orderCloseSafe(
+    sessionId: string,
+    args: { ticket: number; lots?: number | null },
+    platform?: string | null,
+  ): Promise<void> {
+    const params: Record<string, string | number | boolean | null | undefined> = {
+      ticket: args.ticket,
+    }
+    if (args.lots != null && args.lots > 0) params.lots = args.lots
+    await this.request("OrderCloseSafe", params, sessionId, platform, 45_000)
+  }
 }
 
 /** Map raw MTAPI AccountSummary into the FxSocket summary shape used by the UI. */
