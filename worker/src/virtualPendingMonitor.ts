@@ -1390,7 +1390,7 @@ export class VirtualPendingMonitor {
             tradeRowId,
             trade: {
               id: tradeRowId,
-              metaapi_order_id: tradeTicket,
+              metaapi_order_id: String(ticketNum),
               symbol: leg.symbol,
               direction: leg.is_buy ? 'buy' : 'sell',
               lot_size: result.lots ?? args.volume,

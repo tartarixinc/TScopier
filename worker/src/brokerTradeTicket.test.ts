@@ -31,8 +31,15 @@ describe('provider-specific ticket formats', () => {
   it('preserves non-empty opaque provider identifiers', () => {
     assert.equal(normalizeBrokerTradeTicket('ctrader', 'deal-abc-01'), 'deal-abc-01')
     assert.equal(normalizeBrokerTradeTicket('binance', '  opaque-id  '), 'opaque-id')
-    assert.equal(normalizeBrokerTradeTicket('ctrader', 123), null)
     assert.equal(normalizeBrokerTradeTicket('unknown', 'opaque-id'), null)
     assert.equal(normalizeBrokerTradeTicket('ctrader', 'bad' + String.fromCharCode(0) + 'id'), null)
+  })
+
+  it('accepts positive safe-integer numbers for opaque providers (cTrader positionId arrives as a number)', () => {
+    assert.equal(normalizeBrokerTradeTicket('ctrader', 123), '123')
+    assert.equal(normalizeBrokerTradeTicket('ctrader', 300501331), '300501331')
+    for (const bad of [0, -1, 1.5, NaN, Infinity, -Infinity]) {
+      assert.equal(normalizeBrokerTradeTicket('ctrader', bad), null, String(bad))
+    }
   })
 })

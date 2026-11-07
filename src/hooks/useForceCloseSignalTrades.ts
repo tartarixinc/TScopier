@@ -62,18 +62,22 @@ export function useForceCloseSignalTrades(opts?: {
     window.setTimeout(() => setToastMessage(null), 4500)
   }, [])
 
-  const handleCloseResult = useCallback(async (result: { closed: number; failed: number }) => {
-    if (result.closed > 0 && result.failed === 0) {
-      showToast(interpolate(bs.closeSuccess, { count: String(result.closed) }))
-    } else if (result.closed > 0 && result.failed > 0) {
+  const handleCloseResult = useCallback(async (result: { closed: number; failed: number; pending_cancelled?: number }) => {
+    // Settled rows include cancelled pending orders: a channel whose only rows
+    // were resting pendings reports closed=0, pending_cancelled=N — that is a
+    // success, not the closeFailed toast.
+    const settled = result.closed + (result.pending_cancelled ?? 0)
+    if (settled > 0 && result.failed === 0) {
+      showToast(interpolate(bs.closeSuccess, { count: String(settled) }))
+    } else if (settled > 0 && result.failed > 0) {
       showToast(interpolate(bs.closePartial, {
-        closed: String(result.closed),
-        total: String(result.closed + result.failed),
+        closed: String(settled),
+        total: String(settled + result.failed),
       }))
     } else {
       showToast(bs.closeFailed)
     }
-    if (result.closed > 0) {
+    if (settled > 0) {
       await opts?.onRefresh?.()
     }
   }, [bs, opts, showToast])
@@ -115,12 +119,14 @@ export function useForceCloseSignalTrades(opts?: {
     try {
       let closed = 0
       let failed = 0
+      let pendingCancelled = 0
       for (const brokerId of brokerIds) {
         const result = await forceCloseTradesApi.close({ broker_account_id: brokerId })
         closed += result.closed
         failed += result.failed
+        pendingCancelled += result.pending_cancelled ?? 0
       }
-      await handleCloseResult({ closed, failed })
+      await handleCloseResult({ closed, failed, pending_cancelled: pendingCancelled })
     } catch (err) {
       showToast(err instanceof Error ? err.message : bs.closeFailed)
     } finally {

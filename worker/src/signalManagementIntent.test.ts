@@ -109,3 +109,16 @@ test('partialCloseFractionFromMessage: secure 30% profits', () => {
     0.3,
   )
 })
+
+test('looksLikeChannelManagementUpdate: generic percent partial with plural nouns', () => {
+  assert.equal(looksLikeChannelManagementUpdate('Close 20% of the trades now'), true)
+  assert.equal(looksLikeChannelManagementUpdate('Close 20% of the positions now'), true)
+  assert.equal(looksLikeChannelManagementUpdate('20% of the trades'), true)
+})
+
+test('partialCloseFractionFromMessage: generic percentages and plural nouns', () => {
+  assert.equal(partialCloseFractionFromMessage('Close 20% of the trades now'), 0.2)
+  assert.equal(partialCloseFractionFromMessage('Close 20% of the positions now'), 0.2)
+  assert.equal(partialCloseFractionFromMessage('20% of the trades'), 0.2)
+  assert.equal(partialCloseFractionFromMessage('Close 100% of the trades'), 1)
+})

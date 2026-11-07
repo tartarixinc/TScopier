@@ -1944,6 +1944,7 @@ export const fr: Translations = {
       noData: 'Pas de données',
       skipped: 'Ignoré',
       open: 'Ouvert',
+      dataMismatch: 'Données incohérentes',
     },
     banners: {
       allTpHit: 'Tous les TP atteints',

@@ -37,6 +37,8 @@ export const channelWorkerAr: ChannelWorkerTranslations = {
 
   planFallbackNamed: 'تم تعديل خطة الأوامر لـ {symbol} (استُخدم أمر واحد بدل عدة أوامر).',
   planFallbackGeneric: 'تم تعديل خطة الأوامر (استُخدم أمر واحد بدل عدة أوامر).',
+  planFallbackPartialTpMinLot: 'تم تخطي إغلاقات TP الجزئية: حجم العقد أصغر من أن يقبل التقسيم، لذا يوضع هدف الربح النهائي فقط عند الوسيط.',
+  planFallbackPartialTpMinLotNamed: 'تم تخطي إغلاقات TP الجزئية لـ {symbol}: حجم العقد أصغر من أن يقبل التقسيم، لذا يوضع هدف الربح النهائي فقط عند الوسيط.',
 
   orderDidNotPlaceNamed: 'لم يُنفَّذ الأمر {on}{err}',
   orderDidNotPlaceGeneric: 'لم يُنفَّذ الأمر{err}',

@@ -257,3 +257,16 @@ export function ctraderErrorMessage(payload: unknown): string {
   const description = String(row.description ?? row.errorCode ?? '').trim()
   return description || 'cTrader rejected the request'
 }
+
+/**
+ * The bridge's own human-readable description for an execution event, or null
+ * when the event carries none. Unlike `ctraderErrorMessage` it never falls back
+ * to `errorCode` (a bare number makes a poor user-facing message) or to the
+ * generic rejection string, so callers can decide between their own specific
+ * wording and the bridge's text.
+ */
+export function ctraderErrorDescription(payload: unknown): string | null {
+  const row = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {}
+  const description = String(row.description ?? '').trim()
+  return description || null
+}

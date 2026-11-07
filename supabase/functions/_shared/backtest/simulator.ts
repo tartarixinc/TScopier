@@ -70,6 +70,38 @@ function executionPrice(direction: "buy" | "sell", side: "entry" | "exit", p: Pr
   return side === "entry" ? p.bid : p.ask
 }
 
+/**
+ * The first market price must sit close to at least one level the signal
+ * itself carries (its entry, SL or TP). When every level is far away, the
+ * resolved instrument is not the one the signal was written for — e.g. a
+ * quote-currency variant (BTC in AUD) whose price scale is ~40% off USD
+ * levels — and simulating would produce nonsense like "all TPs hit in <1m".
+ */
+export const MARKET_DATA_MAX_GAP = 0.15
+
+function marketDataMismatch(
+  signal: ParsedSignalForBacktest,
+  marketPx: number,
+  base: SimulatedTradeResult,
+): SimulatedTradeResult | null {
+  const references = [signal.entryPrice, signal.sl, ...signal.tpLevels]
+    .filter((v): v is number => typeof v === "number" && Number.isFinite(v) && v > 0)
+  if (references.length === 0 || !(marketPx > 0)) return null
+  const minGap = Math.min(...references.map((r) => Math.abs(r - marketPx) / marketPx))
+  if (minGap <= MARKET_DATA_MAX_GAP) return null
+  base.outcome = "market_data_mismatch"
+  base.details = {
+    ...base.details,
+    // Only a market-entry signal actually fills at the market price; a stated
+    // entry keeps its own provenance.
+    ...(signal.entryPrice > 0 ? {} : { marketEntry: true }),
+    marketPrice: marketPx,
+    referenceLevels: references,
+    minGapPct: Math.round(minGap * 1000) / 10,
+  }
+  return base
+}
+
 function hitLevel(
   direction: "buy" | "sell",
   level: number,
@@ -125,9 +157,12 @@ export function simulateTradeOnSeries(
 
   let entryIdx = window.findIndex((p) => p.ts >= signalMs)
   if (entryIdx < 0) entryIdx = 0
+  const marketPx = executionPrice(signal.direction, "entry", window[entryIdx]!)
+  const mismatch = marketDataMismatch(signal, marketPx, base)
+  if (mismatch) return mismatch
   const entryPx = signal.entryPrice > 0
     ? signal.entryPrice
-    : executionPrice(signal.direction, "entry", window[entryIdx]!)
+    : marketPx
   if (!(signal.entryPrice > 0)) {
     base.entryPrice = entryPx
     base.details.marketEntry = true

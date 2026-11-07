@@ -5,12 +5,12 @@
  * Intents: guilds, guild messages, and the privileged Message Content intent.
  * Discord must approve Message Content before the bot is in 100 or more servers.
  */
-import 'dotenv/config'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import {
   ChannelType,
   Client,
   Events,
+  GatewayCloseCodes,
   GatewayIntentBits,
   type Guild,
   type GuildBasedChannel,
@@ -18,9 +18,8 @@ import {
   type TextChannel,
 } from 'discord.js'
 import { flattenDiscordMessage } from './discordMessage'
+import { discordReadyWatchdogAction } from './discordReadyWatchdog'
 import { installRelayFetch } from './relayFetch'
-
-installRelayFetch()
 import { parseRawChannelMessage } from './parseSignal'
 import { pushParsedSignalToTradeWorker } from './tradeSignalPush'
 
@@ -28,6 +27,15 @@ type Subscriber = {
   user_id: string
   channel_id: string
 }
+
+export type DiscordListenerHandle = {
+  client: Client
+  stop: () => Promise<void>
+}
+
+const DISCORD_READY_CHECK_MS = 60_000
+const DISCORD_READY_TIMEOUT_MS = 5 * 60_000
+const DISCORD_STOP_TIMEOUT_MS = 5_000
 
 function requireEnv(name: string): string {
   const value = String(process.env[name] ?? '').trim()
@@ -163,7 +171,7 @@ async function copyMessage(supabase: SupabaseClient, message: Message): Promise<
   }
 }
 
-async function main(): Promise<void> {
+export async function startDiscordListener(): Promise<DiscordListenerHandle> {
   const token = requireEnv('DISCORD_BOT_TOKEN')
   const supabase = createClient(requireEnv('SUPABASE_URL'), requireEnv('SUPABASE_SERVICE_ROLE_KEY'))
   const client = new Client({
@@ -174,11 +182,51 @@ async function main(): Promise<void> {
     ],
   })
 
+  // A gateway that never recovers (auth/intent close codes do not auto-reconnect)
+  // must exit non-zero so Railway's ON_FAILURE restart policy brings it back.
+  let lastReadyAt = Date.now()
+  let stopping = false
+  const readyWatchdog = setInterval(() => {
+    const action = discordReadyWatchdogAction({
+      isReady: client.isReady(),
+      lastReadyAt,
+      now: Date.now(),
+      timeoutMs: DISCORD_READY_TIMEOUT_MS,
+    })
+    if (action === 'reset') {
+      lastReadyAt = Date.now()
+      return
+    }
+    if (action === 'wait') return
+    const downForMs = Date.now() - lastReadyAt
+    console.error(`[discord] gateway not ready for ${Math.round(downForMs / 1000)}s — exiting for restart`)
+    clearInterval(readyWatchdog)
+    process.exit(1)
+  }, DISCORD_READY_CHECK_MS)
+
   client.once(Events.ClientReady, () => {
+    lastReadyAt = Date.now()
     console.log(`[discord] gateway ready as ${client.user?.tag ?? 'bot'} guilds=${client.guilds.cache.size}`)
     for (const guild of client.guilds.cache.values()) {
       void syncGuild(supabase, guild)
     }
+  })
+  client.on(Events.Error, err => {
+    console.warn(`[discord] client error: ${err.message}`)
+  })
+  client.on(Events.ShardError, (err, shardId) => {
+    console.warn(`[discord] shard ${shardId} error: ${err.message}`)
+  })
+  client.on(Events.ShardDisconnect, (event, shardId) => {
+    if (stopping) return
+    // discord.js only emits this for unrecoverable close codes; it will not retry.
+    const codeName = GatewayCloseCodes[event.code] ?? 'unknown'
+    console.error(`[discord] shard ${shardId} disconnected code=${event.code} (${codeName}) — exiting for restart`)
+    clearInterval(readyWatchdog)
+    process.exit(1)
+  })
+  client.on(Events.ShardReady, () => {
+    lastReadyAt = Date.now()
   })
   client.on(Events.GuildCreate, guild => {
     void syncGuild(supabase, guild)
@@ -203,10 +251,35 @@ async function main(): Promise<void> {
     void copyMessage(supabase, message)
   })
 
-  await client.login(token)
+  try {
+    await client.login(token)
+  } catch (err) {
+    clearInterval(readyWatchdog)
+    throw err
+  }
+
+  return {
+    client,
+    stop: async () => {
+      stopping = true
+      clearInterval(readyWatchdog)
+      let timer: NodeJS.Timeout | undefined
+      await Promise.race([
+        client.destroy(),
+        new Promise<void>(resolve => {
+          timer = setTimeout(resolve, DISCORD_STOP_TIMEOUT_MS)
+          timer.unref()
+        }),
+      ])
+      if (timer) clearTimeout(timer)
+    },
+  }
 }
 
-main().catch(err => {
-  console.error('[discord] listener stopped', err)
-  process.exit(1)
-})
+if (require.main === module) {
+  installRelayFetch()
+  startDiscordListener().catch(err => {
+    console.error('[discord] listener stopped', err)
+    process.exit(1)
+  })
+}

@@ -2008,7 +2008,7 @@ export function DashboardPage() {
     },
   }, linkedAccounts.some(isFxsocketLinkedBroker))
 
-  /** Poll AccountSummary. MTAPI has no price stream, so this is the live balance source. */
+  /** REST fallback when WS is quiet — keeps Open P/L moving without a full page refresh. */
   const linkedAccountIdsKey = linkedAccounts.map(a => a.id).sort().join(',')
   useEffect(() => {
     const accounts = linkedAccounts.filter(account => {
@@ -2511,14 +2511,14 @@ export function DashboardPage() {
                   <span className="text-green-500 dark:text-green-400">
                     {interpolate(t.common.won, { count: headlineStats.tradesWon })}
                   </span>
-                  <span className="text-neutral-900 dark:text-neutral-50">•</span>
+                  <span className="text-neutral-300 dark:text-neutral-600">•</span>
                   <span className={lossTextClass}>
                     {interpolate(t.common.lost, { count: headlineStats.tradesLost })}
                   </span>
                   {headlineStats.tradesBreakeven > 0 ? (
                     <>
-                      <span className="text-neutral-900 dark:text-neutral-50">•</span>
-                      <span className="text-neutral-900 dark:text-neutral-50">
+                      <span className="text-neutral-300 dark:text-neutral-600">•</span>
+                      <span className="text-neutral-500 dark:text-neutral-400">
                         {interpolate(t.common.breakeven, { count: headlineStats.tradesBreakeven })}
                       </span>
                     </>

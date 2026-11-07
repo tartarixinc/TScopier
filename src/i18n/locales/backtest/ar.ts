@@ -108,6 +108,7 @@ export const backtestAr: BacktestBundleTranslations = {
       noData: 'لا بيانات',
       skipped: 'متخطّى',
       open: 'مفتوح',
+      dataMismatch: 'بيانات غير متطابقة',
     },
     banners: {
       allTpHit: 'جميع TP مُفعّلة',

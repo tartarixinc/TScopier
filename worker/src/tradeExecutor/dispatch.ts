@@ -55,6 +55,8 @@ import {
 import {
   loadCachedUserSubscription,
   loadCachedUserIsAdmin,
+  loadCachedSubscriptionExtensionEnd,
+  extensionAccessActive,
   subscriptionBlocksSignalExecution,
   isSubscriptionActive,
 } from '../subscriptionAccess'
@@ -449,11 +451,17 @@ export async function markSignalExecuted(ctx: TradeExecutorContext, signalId: st
     }
   }
 
-export function aggregateEntryFailureReason(outcomes: SendOrderOutcome[]): string {
-  const reasons = outcomes
-    .map(o => o.finalizeSkipReason ?? o.failureReason)
+export function aggregateEntryFailureReason(outcomes: SendOrderOutcome[]): string | null {
+  const attempted = outcomes.filter(o => o.deferredToOtherDispatcher !== true)
+  const reasons = attempted
+    .map(o => o.failureReasonCode ?? o.finalizeSkipReason ?? o.failureReason)
     .filter((r): r is string => typeof r === 'string' && r.length > 0)
-  return reasons[0] ?? SKIP_REASON_ENTRY_NOT_OPENED
+  if (reasons[0]) return reasons[0]
+  // Every outcome was deferred to another dispatcher: that dispatcher owns the
+  // signal and will write the real result. Returning the generic fallback here
+  // is what replaced a specific broker failure with entry_not_opened.
+  if (attempted.length === 0 && outcomes.length > 0) return null
+  return SKIP_REASON_ENTRY_NOT_OPENED
 }
 
 async function signalDispatchAlreadyHandled(ctx: TradeExecutorContext, signalId: string): Promise<boolean> {
@@ -611,6 +619,7 @@ export async function handleSignal(ctx: TradeExecutorContext,
       }
       let userSub: Awaited<ReturnType<typeof loadCachedUserSubscription>>
       let isAdmin: boolean
+      let extensionEndMs: number | null = null
       const nonTelegramSource = isNonTelegramSignalSource(opts?.dispatchSource, row.dispatch_source)
         || await isTradingViewSourceChannel(ctx.supabase, row.channel_id)
       if (
@@ -652,9 +661,17 @@ export async function handleSignal(ctx: TradeExecutorContext,
           loadCachedUserIsAdmin(ctx.supabase, row.user_id),
         ])
       }
-      if (!isAdmin && (!userSub || !isSubscriptionActive(userSub.status, userSub.trial_ends_at))) {
-        await ctx.logDispatchSkipped(row, 'subscription_inactive')
-        return
+      if (!isAdmin) {
+        const subscriptionActive =
+          userSub != null && isSubscriptionActive(userSub.status, userSub.trial_ends_at)
+        if (!subscriptionActive) {
+          // Not active on its own: a live admin extension keeps the copy running.
+          extensionEndMs = await loadCachedSubscriptionExtensionEnd(ctx.supabase, row.user_id)
+          if (!extensionAccessActive(extensionEndMs)) {
+            await ctx.logDispatchSkipped(row, 'subscription_inactive')
+            return
+          }
+        }
       }
 
       if (isMessageRevision) {
@@ -841,6 +858,7 @@ export async function handleSignal(ctx: TradeExecutorContext,
           userSub,
           (broker.manual_settings ?? null) as Record<string, unknown> | null,
           isAdmin,
+          extensionEndMs,
         )
         if (blockReason === 'plan_advanced_feature_required') {
           await ctx.logDispatchSkipped(row, blockReason)
@@ -942,15 +960,18 @@ export async function handleSignal(ctx: TradeExecutorContext,
         row.pipeline_ts.t_order_send_done = Date.now()
       }
       const anyOpened = outcomes.some(o => o.openedOrMerged === true)
-      const openedCount = outcomes.filter(o => o.openedOrMerged === true).length
-      const failedCount = outcomes.length - openedCount
-      const entryFailureReason = !anyOpened && isEntryAction(action)
+      const attemptedOutcomes = outcomes.filter(o => o.deferredToOtherDispatcher !== true)
+      const allDeferred = outcomes.length > 0 && attemptedOutcomes.length === 0
+      const anyDeferred = attemptedOutcomes.length !== outcomes.length
+      const openedCount = attemptedOutcomes.filter(o => o.openedOrMerged === true).length
+      const failedCount = attemptedOutcomes.length - openedCount
+      const entryFailureReason = !anyOpened && isEntryAction(action) && !anyDeferred
         ? aggregateEntryFailureReason(outcomes)
         : null
       if (isEntryAction(action) && anyOpened && failedCount > 0) {
-        const failureReasons = [...new Set(outcomes
+        const failureReasons = [...new Set(attemptedOutcomes
           .filter(o => o.openedOrMerged !== true)
-          .map(o => o.finalizeSkipReason ?? o.failureReason ?? 'UNKNOWN'))]
+          .map(o => o.failureReasonCode ?? o.finalizeSkipReason ?? o.failureReason ?? 'UNKNOWN'))]
         captureBusinessIssue({
           category: 'trade',
           event: 'trade_copy_partial',
@@ -968,7 +989,8 @@ export async function handleSignal(ctx: TradeExecutorContext,
             symbol: parsed.symbol ?? null,
             side: String(action ?? ''),
             extra: {
-              attempted_count: outcomes.length,
+              attempted_count: attemptedOutcomes.length,
+              deferred_count: outcomes.length - attemptedOutcomes.length,
               successful_count: openedCount,
               failed_count: failedCount,
               failure_reasons: failureReasons.slice(0, 8),
@@ -977,7 +999,7 @@ export async function handleSignal(ctx: TradeExecutorContext,
           },
         })
       }
-      if (isEntryAction(action) && !anyOpened && outcomes.length > 0 && entryFailureReason) {
+      if (isEntryAction(action) && !anyOpened && !anyDeferred && outcomes.length > 0 && entryFailureReason) {
         captureBusinessIssue({
           category: 'trade',
           event: 'trade_copy_failed',
@@ -994,7 +1016,8 @@ export async function handleSignal(ctx: TradeExecutorContext,
             symbol: parsed.symbol ?? null,
             side: String(action ?? ''),
             extra: {
-              attempted_count: outcomes.length,
+              attempted_count: attemptedOutcomes.length,
+              deferred_count: outcomes.length - attemptedOutcomes.length,
               failure_reason: entryFailureReason,
             },
           },
@@ -1031,7 +1054,15 @@ export async function handleSignal(ctx: TradeExecutorContext,
       const finalizeSkipReasons = outcomes
         .map(o => o.finalizeSkipReason)
         .filter((r): r is string => typeof r === 'string' && r.length > 0)
-      if (!anyOpened && strictSkips === brokers.length && strictSkips > 0) {
+      if (allDeferred || anyDeferred) {
+        // Another dispatcher holds the claim and owns the final signal state.
+        // Do not finalize while it may still report an open or a specific
+        // failure; the sweep will recover if that dispatcher dies.
+        console.warn(
+          `[tradeExecutor] signal finalize deferred to claim holder signal=${row.id}`
+          + ` brokers=${brokers.length} attempted=${attemptedOutcomes.length}`,
+        )
+      } else if (!anyOpened && strictSkips === brokers.length && strictSkips > 0) {
         try {
           const { error: sigErr } = await ctx.supabase
             .from('signals')

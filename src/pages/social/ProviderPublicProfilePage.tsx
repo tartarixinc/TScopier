@@ -77,7 +77,7 @@ export function ProviderPublicProfilePage() {
   useEffect(() => {
     if (!profile) return undefined
     const previous = document.title
-    document.title = `${profile.displayName} — Copy trading on TScopier`
+    document.title = `${profile.displayName} — Copy trading on UniCopier`
     return () => { document.title = previous }
   }, [profile])
 
@@ -121,7 +121,7 @@ export function ProviderPublicProfilePage() {
           <div className="py-16 text-center">
             <h1 className="text-lg font-semibold">Provider not found</h1>
             <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">This profile does not exist or is not public.</p>
-            <Link to="/" className="mt-4 inline-block text-sm font-medium text-green-700 hover:underline dark:text-green-400">Go to TScopier</Link>
+            <Link to="/" className="mt-4 inline-block text-sm font-medium text-green-700 hover:underline dark:text-green-400">Go to UniCopier</Link>
           </div>
         ) : (
           <>

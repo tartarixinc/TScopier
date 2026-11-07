@@ -207,6 +207,7 @@ export const configureModalSv: ConfigureModalTranslations = {
     singleTpTargetTp3: 'TP3',
     singleTpLotBreakdownTitle: 'Lot breakdown',
     singleTpLotBreakdownSlice: '{lot} lots closes @ {tp}',
+    partialTpMinLotWarning: 'Med en lot på {lot} kan detta trade inte delas: {levels} stängs inte som delvis take-profit och endast det sista take-profit-nivån läggs hos mäklaren. Varje nivå kräver minst 0.01 lot — öka loten för att stänga på varje nivå.',
     singleTpLotBreakdownJoin: ', ',
     signalEntryTitle: 'Utförande av signalinmatning',
     signalEntryBody: 'Använd signalinträdespris gäller endast i Single Trade-läge. När den är aktiverad måste signalen inkludera en explicit tolkad post (pris, zon, @pris eller etiketter som "Entry Price:"). Efter någon kanalfördröjning jämför arbetaren livecitatet med det inlägget: Köp fyllningar på marknaden endast när fråga är vid eller under posten; annars sätter det en köpgräns vid ingången. Sälja är det omvända. Mäklarens take-profit mål den senast analyserade TP när du har flera mål, med valfria partiella stängningar från din TP stege. Kopiator spårar varje strängt inträde som väntar så fyller synkroniseras med din handelslista; väntan avbryts när korgen är platt. Bara "köp nu" meddelanden utan inmatning hoppas över.',

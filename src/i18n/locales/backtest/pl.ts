@@ -108,6 +108,7 @@ export const backtestPl: BacktestBundleTranslations = {
       noData: 'Brak danych',
       skipped: 'Pominięty',
       open: 'Otwarty',
+      dataMismatch: 'Niezgodność danych',
     },
     banners: {
       allTpHit: 'Wszystkie TP trafione',

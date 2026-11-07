@@ -1,5 +1,5 @@
 import { assertEquals } from "jsr:@std/assert"
-import { selectPointsForTradeWindow } from "./tradeReplayData.ts"
+import { pickBarTimeframe, selectPointsForTradeWindow } from "./tradeReplayData.ts"
 import type { PricePoint } from "./simulator.ts"
 
 Deno.test("selectPointsForTradeWindow keeps only in-trade ticks", () => {
@@ -10,4 +10,10 @@ Deno.test("selectPointsForTradeWindow keeps only in-trade ticks", () => {
   ]
   assertEquals(selectPointsForTradeWindow(pts, 1500, 2500).length, 1)
   assertEquals(selectPointsForTradeWindow(pts, 5000, 6000).length, 0)
+})
+
+Deno.test("pickBarTimeframe always offers every supported timeframe, shortest first", () => {
+  // Short trades used to try 1m alone and failed when the broker symbol has
+  // no M1 history (2026-11-01 replay incident).
+  assertEquals([...pickBarTimeframe()], ["1m", "5m", "15m"])
 })

@@ -86,6 +86,7 @@ test('bridge outage codes reach the customer in plain English', () => {
   assert.equal(mtapiFailureSummary('HTTP_503'), 'broker bridge temporarily unavailable')
   assert.equal(mtapiFailureSummary('HTTP_504'), 'broker bridge temporarily unavailable')
   assert.equal(mtapiFailureSummary('TRANSPORT_ERROR'), 'broker bridge unreachable')
+  assert.equal(mtapiFailureSummary('CONNECT_ERROR'), 'broker connection temporarily unavailable')
   // Rate limiting keeps its original wording — it was deliberately not remapped.
   assert.equal(mtapiFailureSummary('HTTP_429'), 'HTTP_429')
   assert.equal(mtapiFailureSummary('RATE_LIMITED'), 'RATE_LIMITED')
@@ -93,7 +94,7 @@ test('bridge outage codes reach the customer in plain English', () => {
 
 test('only bridge-side failures are treated as transient provision failures', () => {
   for (const code of ['HTTP_502', 'HTTP_503', 'HTTP_504', 'HTTP_500', 'HTTP_429',
-    'TRANSPORT_ERROR', 'INVALID_RESPONSE', 'TIMEOUT', 'RATE_LIMITED']) {
+    'TRANSPORT_ERROR', 'CONNECT_ERROR', 'INVALID_RESPONSE', 'TIMEOUT', 'RATE_LIMITED']) {
     assert.equal(isTransientProvisionError(code), true, `${code} should be transient`)
   }
   for (const code of ['INVALID_ACCOUNT', 'HTTP_403', 'NOT_CONFIGURED', 'UNKNOWN', '']) {

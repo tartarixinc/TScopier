@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   BROKER_REJECTED_STOPS,
   BROKER_SYMBOL_NOT_FOUND,
+  BROKER_SYMBOL_TRADE_DISABLED,
   SIGNAL_MISSING_REQUIRED_SL,
   formatFxHttpFailureMessage,
   humanizeOrderSendError,
@@ -157,6 +158,44 @@ describe('tradeFailureReasonFromBrokerMessage', () => {
       'INVALID_REQUEST',
     )
   })
+
+  it('reports trading-disabled as disabled, not as a missing symbol', () => {
+    assert.equal(
+      tradeFailureReasonFromBrokerMessage(
+        'Trading is disabled for symbol XAUUSD.crp (:1387714)',
+        { requestedSymbol: 'XAUUSD', brokerSymbol: 'XAUUSD.crp', operation: 'Buy' },
+      )?.reasonCode,
+      BROKER_SYMBOL_TRADE_DISABLED,
+    )
+    assert.equal(
+      tradeFailureReasonFromBrokerMessage('Symbol disabled')?.reasonCode,
+      BROKER_SYMBOL_TRADE_DISABLED,
+    )
+    assert.equal(
+      tradeFailureReasonFromBrokerMessage('Symbol is disabled')?.reasonCode,
+      BROKER_SYMBOL_TRADE_DISABLED,
+    )
+    assert.equal(
+      tradeFailureReasonFromBrokerMessage('Symbol not found: XAUUSD (:1387714)')?.reasonCode,
+      BROKER_SYMBOL_NOT_FOUND,
+    )
+    // Long-only still allows one direction, so it must not claim all trading is blocked.
+    assert.notEqual(
+      tradeFailureReasonFromBrokerMessage('Trade mode is LongOnly')?.reasonCode,
+      BROKER_SYMBOL_TRADE_DISABLED,
+    )
+  })
+
+  it('does not rewrite a disabled reply as symbol-not-found on the HTTP path', () => {
+    const msg = formatFxHttpFailureMessage({
+      status: 400,
+      body: { message: 'Trading is disabled for symbol XAUUSD.crp', error: 'mrpc' },
+      requestBody: { symbol: 'XAUUSD.crp' },
+    })
+    assert.match(msg, /trading is disabled/i)
+    assert.doesNotMatch(msg, /symbol not found/i)
+  })
+
   it('maps "Invalid request" to INVALID_REQUEST', () => {
     assert.equal(
       tradeFailureReasonFromBrokerMessage('Invalid request')?.reasonCode,

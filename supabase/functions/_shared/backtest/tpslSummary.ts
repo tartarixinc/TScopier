@@ -35,7 +35,7 @@ export function buildTpslSummary(
   const channelWins = new Map<string, number>()
 
   for (const r of results) {
-    if (r.outcome === "skipped" || r.outcome === "no_data") {
+    if (r.outcome === "skipped" || r.outcome === "no_data" || r.outcome === "market_data_mismatch") {
       skippedSignals++
       continue
     }

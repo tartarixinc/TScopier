@@ -314,6 +314,111 @@ test('cTrader market open waits for the fill after the accepted event', async ()
   assert.equal(result.lots, 0.1)
 })
 
+// Regression (incident 2026-11-02): a market order that the bridge CANCELLED
+// (gold was closed at the send time) resolved the wait and was reported as a
+// phantom success — orderId persisted as the fill, no position at the broker,
+// mirror and Trades page correctly showed nothing, and the DB row could never
+// be closed. Cancelled/expired must fail loudly.
+test('cTrader market open rejects a cancelled order instead of reporting success', async () => {
+  const { provider } = providerFor([
+    ...authSteps,
+    {
+      request: CTRADER_PAYLOAD.SYMBOLS_LIST_REQ,
+      responseType: CTRADER_PAYLOAD.SYMBOLS_LIST_RES,
+      payload: { symbol: [{ symbolId: 41, symbolName: 'XAUUSD' }] },
+    },
+    {
+      request: CTRADER_PAYLOAD.SYMBOL_BY_ID_REQ,
+      responseType: CTRADER_PAYLOAD.SYMBOL_BY_ID_RES,
+      payload: { symbol: { symbolId: 41, digits: 2, lotSize: 10_000 } },
+    },
+    {
+      request: CTRADER_PAYLOAD.NEW_ORDER_REQ,
+      responseType: CTRADER_PAYLOAD.EXECUTION_EVENT,
+      payload: { executionType: 5, order: { orderId: 300501331 } },
+    },
+  ])
+  await assert.rejects(
+    () => provider.orderSend('4242', { symbol: 'XAUUSD', operation: 'Buy', volume: 0.01, comment: 'TScopier:TestSignal:x' }),
+    /cancelled/i,
+  )
+})
+
+test('cTrader market open surfaces the bridge description when the cancel carries one', async () => {
+  const { provider } = providerFor([
+    ...authSteps,
+    {
+      request: CTRADER_PAYLOAD.SYMBOLS_LIST_REQ,
+      responseType: CTRADER_PAYLOAD.SYMBOLS_LIST_RES,
+      payload: { symbol: [{ symbolId: 41, symbolName: 'XAUUSD' }] },
+    },
+    {
+      request: CTRADER_PAYLOAD.SYMBOL_BY_ID_REQ,
+      responseType: CTRADER_PAYLOAD.SYMBOL_BY_ID_RES,
+      payload: { symbol: { symbolId: 41, digits: 2, lotSize: 10_000 } },
+    },
+    {
+      request: CTRADER_PAYLOAD.NEW_ORDER_REQ,
+      responseType: CTRADER_PAYLOAD.EXECUTION_EVENT,
+      payload: { executionType: 5, description: 'Market is closed', order: { orderId: 300501331 } },
+    },
+  ])
+  await assert.rejects(
+    () => provider.orderSend('4242', { symbol: 'XAUUSD', operation: 'Buy', volume: 0.01, comment: 'TScopier:TestSignal:x' }),
+    /cancelled[\s\S]*Market is closed/,
+  )
+})
+
+test('cTrader market open rejects an expired order instead of reporting success', async () => {
+  const { provider } = providerFor([
+    ...authSteps,
+    {
+      request: CTRADER_PAYLOAD.SYMBOLS_LIST_REQ,
+      responseType: CTRADER_PAYLOAD.SYMBOLS_LIST_RES,
+      payload: { symbol: [{ symbolId: 41, symbolName: 'XAUUSD' }] },
+    },
+    {
+      request: CTRADER_PAYLOAD.SYMBOL_BY_ID_REQ,
+      responseType: CTRADER_PAYLOAD.SYMBOL_BY_ID_RES,
+      payload: { symbol: { symbolId: 41, digits: 2, lotSize: 10_000 } },
+    },
+    {
+      request: CTRADER_PAYLOAD.NEW_ORDER_REQ,
+      responseType: CTRADER_PAYLOAD.EXECUTION_EVENT,
+      payload: { executionType: 6, order: { orderId: 300501332 } },
+    },
+  ])
+  await assert.rejects(
+    () => provider.orderSend('4242', { symbol: 'XAUUSD', operation: 'Buy', volume: 0.01, comment: 'TScopier:TestSignal:x' }),
+    /expired/i,
+  )
+})
+
+test('cTrader market open rejects a fill event that carries no position', async () => {
+  const { provider } = providerFor([
+    ...authSteps,
+    {
+      request: CTRADER_PAYLOAD.SYMBOLS_LIST_REQ,
+      responseType: CTRADER_PAYLOAD.SYMBOLS_LIST_RES,
+      payload: { symbol: [{ symbolId: 41, symbolName: 'XAUUSD' }] },
+    },
+    {
+      request: CTRADER_PAYLOAD.SYMBOL_BY_ID_REQ,
+      responseType: CTRADER_PAYLOAD.SYMBOL_BY_ID_RES,
+      payload: { symbol: { symbolId: 41, digits: 2, lotSize: 10_000 } },
+    },
+    {
+      request: CTRADER_PAYLOAD.NEW_ORDER_REQ,
+      responseType: CTRADER_PAYLOAD.EXECUTION_EVENT,
+      payload: { executionType: 3, order: { orderId: 555 } },
+    },
+  ])
+  await assert.rejects(
+    () => provider.orderSend('4242', { symbol: 'XAUUSD', operation: 'Buy', volume: 0.01, comment: 'TScopier:TestSignal:x' }),
+    /did not fill/i,
+  )
+})
+
 test('cTrader quote ignores the subscribe acknowledgement and reads the spot', async () => {
   const { provider } = providerFor([
     ...authSteps,
@@ -334,7 +439,40 @@ test('cTrader quote ignores the subscribe acknowledgement and reads the spot', a
       followUps: [{
         responseType: CTRADER_PAYLOAD.SPOT_EVENT,
         clientMsgId: null,
-        payload: { bid: 417048000, ask: 417062000 },
+        payload: { symbolId: 41, bid: 417048000, ask: 417062000 },
+      }],
+    },
+  ])
+  const quote = await provider.quote('4242', 'XAUUSD')
+  assert.equal(quote.bid, 4170.48)
+  assert.equal(quote.ask, 4170.62)
+})
+
+test('cTrader quote ignores a spot event for a different symbol', async () => {
+  const { provider } = providerFor([
+    ...authSteps,
+    {
+      request: CTRADER_PAYLOAD.SYMBOLS_LIST_REQ,
+      responseType: CTRADER_PAYLOAD.SYMBOLS_LIST_RES,
+      payload: { symbol: [{ symbolId: 41, symbolName: 'XAUUSD' }] },
+    },
+    {
+      request: CTRADER_PAYLOAD.SYMBOL_BY_ID_REQ,
+      responseType: CTRADER_PAYLOAD.SYMBOL_BY_ID_RES,
+      payload: { symbol: { symbolId: 41, digits: 2, lotSize: 10_000 } },
+    },
+    {
+      request: CTRADER_PAYLOAD.SUBSCRIBE_SPOTS_REQ,
+      responseType: CTRADER_PAYLOAD.SUBSCRIBE_SPOTS_RES,
+      payload: {},
+      followUps: [{
+        responseType: CTRADER_PAYLOAD.SPOT_EVENT,
+        clientMsgId: null,
+        payload: { symbolId: 99, bid: 7728804000, ask: 7728904000 },
+      }, {
+        responseType: CTRADER_PAYLOAD.SPOT_EVENT,
+        clientMsgId: null,
+        payload: { symbolId: 41, bid: 417048000, ask: 417062000 },
       }],
     },
   ])

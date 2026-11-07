@@ -12,7 +12,16 @@ import {
   resolveAutoBeTpHitTriggerPrice,
 } from '../autoManagement'
 import { stripInvalidStopsForSide } from '../channelActiveTradeParams'
-import { humanizeOrderSendError, isInvalidStopsMessage, tradeFailureReasonFromBrokerMessage } from '../brokerTradeError'
+import {
+  BROKER_SYMBOL_TRADE_DISABLED,
+  humanizeOrderSendError,
+  isInvalidStopsMessage,
+  tradeFailureReasonFromBrokerMessage,
+} from '../brokerTradeError'
+import {
+  renewSignalBrokerDispatchClaim,
+  SIGNAL_DISPATCH_CLAIM_LEASE_MS,
+} from './signalBrokerDispatchClaim'
 import { reconcileUnknownSend } from './reconcileUnknownSend'
 import { trailingTradeRowSnapshot } from '../trailingStop'
 import { applyPostFillFollowUp, type PostFillTradeLeg } from '../postFillFollowUp'
@@ -258,6 +267,16 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
       dispatchSource: signal.dispatch_source,
     })
 
+    // Refresh the lease while the broker call is pending, including the wait
+    // for the per-account send gate. A slow but healthy send must not be
+    // mistaken for a crashed worker and duplicated.
+    const sendWithLeaseRenewal = <T>(work: Promise<T>): Promise<T> => {
+      const timer = setInterval(() => {
+        void renewSignalBrokerDispatchClaim(ctx.supabase, signal.id, broker.id).catch(() => {})
+      }, Math.max(15_000, Math.floor(SIGNAL_DISPATCH_CLAIM_LEASE_MS / 3)))
+      return work.finally(() => clearInterval(timer))
+    }
+
     for (let attempt = 0; attempt < 2; attempt++) {
       // Each attempt decides for itself; a stale value from an earlier attempt
       // must not be attributed to this failure's payload.
@@ -334,7 +353,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
               user_impact: 'none',
             },
           })
-          const r = await sendPromise
+          const r = await sendWithLeaseRenewal(sendPromise)
           if (!r.ok || !r.ticket) throw new Error(r.message || `v2 order_send rejected (${r.retcodeName})`)
           result = {
             ticket: r.ticket,
@@ -377,7 +396,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
               user_impact: 'none',
             },
           })
-          const raw = await sendPromise
+          const raw = await sendWithLeaseRenewal(sendPromise)
           result = {
             ticket: raw.ticket,
             openPrice: raw.openPrice ?? null,
@@ -1242,12 +1261,26 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
     }
   }
   const openedOrMerged = anyImmediateOpened || materializedBrokerPendings || strictBrokerPlaced
+  // Derive the code from the final error, not from a per-leg variable: legs run
+  // in parallel and the last failure may not be the one that set the code.
+  const finalFailure = !openedOrMerged && lastSendError
+    ? tradeFailureReasonFromBrokerMessage(lastSendError, {
+      requestedSymbol,
+      brokerSymbol: symbol,
+      operation: op,
+    })
+    : null
   return {
     openedOrMerged,
     channelDelayMs,
     channelDelaySkipped,
     ...(!openedOrMerged
-      ? { failureReason: lastSendError ?? SKIP_REASON_ENTRY_NOT_OPENED }
+      ? {
+        failureReason: lastSendError ?? SKIP_REASON_ENTRY_NOT_OPENED,
+        ...(finalFailure?.reasonCode === BROKER_SYMBOL_TRADE_DISABLED
+          ? { failureReasonCode: finalFailure.reasonCode }
+          : {}),
+      }
       : {}),
   }
 }

@@ -37,6 +37,8 @@ export interface ChannelWorkerTranslations {
 
   planFallbackNamed: string
   planFallbackGeneric: string
+  planFallbackPartialTpMinLot: string
+  planFallbackPartialTpMinLotNamed: string
 
   orderDidNotPlaceNamed: string
   orderDidNotPlaceGeneric: string

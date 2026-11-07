@@ -287,7 +287,7 @@ export function providerShareUrl(origin: string, slug: string): string {
 }
 
 export function providerShareTargets(url: string, name: string): { key: 'x' | 'telegram' | 'whatsapp'; label: string; href: string }[] {
-  const text = `Copy ${name} on TScopier`
+  const text = `Copy ${name} on UniCopier`
   const encodedUrl = encodeURIComponent(url)
   const encodedText = encodeURIComponent(text)
   return [

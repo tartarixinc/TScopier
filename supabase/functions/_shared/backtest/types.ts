@@ -53,6 +53,8 @@ export type TradeOutcome =
   | "no_data"
   | "skipped"
   | "open"
+  /** Market price disagrees with every level of the signal — wrong instrument resolved. */
+  | "market_data_mismatch"
 
 export interface SimulatedTradeResult {
   signalId: string

@@ -26,7 +26,10 @@ import {
   refreshCtraderToken,
   signCtraderState,
   verifyCtraderState,
+  applyStoredStopLevels,
+  needsStopEnrichment,
   type CtraderEnvironment,
+  type CtraderTradeRow,
   type CtraderTokens,
   type CtraderTradingAccount,
 } from "../_shared/ctraderOpenApi.ts"
@@ -316,7 +319,7 @@ Deno.serve(async (req: Request) => {
         if (listed.error) return bad(500, listed.error.message)
         for (const account of listed.data ?? []) accounts.push(account as Record<string, unknown>)
       }
-      const trades = []
+      const trades: CtraderTradeRow[] = []
       for (const account of accounts) {
         if (!account?.ctrader_account_id) continue
         const tokens = await tokensForRow(supabase, account as Record<string, unknown>)
@@ -333,6 +336,35 @@ Deno.serve(async (req: Request) => {
           scope,
         })
         trades.push(...book)
+      }
+      // Closed rows come from deal records, which carry no SL/TP — join the
+      // stops stored on the trades row (executor write at send time) so the
+      // Trades page shows protection on closed Spotware trades. Best-effort
+      // and chunked: the Trades page requests full history, so an unbounded
+      // .in() could hit PostgREST's row cap or the query-string limit and
+      // silently drop enrichment — chunking keeps every request small, and a
+      // failed chunk must never break the history read that already succeeded.
+      const missingStops = trades.filter(needsStopEnrichment)
+      if (missingStops.length > 0) {
+        const brokerIds = [...new Set(missingStops.map(row => row.broker_id))]
+        const ticketStrings = [...new Set(missingStops.map(row => String(row.ticket)))]
+        const CHUNK_SIZE = 200
+        for (let i = 0; i < ticketStrings.length; i += CHUNK_SIZE) {
+          try {
+            const { data, error } = await supabase
+              .from("trades")
+              .select("broker_account_id, metaapi_order_id, sl, tp")
+              .in("broker_account_id", brokerIds)
+              .in("metaapi_order_id", ticketStrings.slice(i, i + CHUNK_SIZE))
+            if (error) {
+              console.warn(`[ctrader-broker] stop enrichment chunk failed: ${error.message}`)
+              continue
+            }
+            if (data) applyStoredStopLevels(trades, data)
+          } catch (err) {
+            console.warn(`[ctrader-broker] stop enrichment chunk threw: ${err instanceof Error ? err.message : String(err)}`)
+          }
+        }
       }
       return Response.json({ ok: true, trades }, { headers: corsHeaders })
     }

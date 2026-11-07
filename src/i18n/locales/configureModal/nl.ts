@@ -207,6 +207,7 @@ export const configureModalNl: ConfigureModalTranslations = {
     singleTpTargetTp3: 'TP3',
     singleTpLotBreakdownTitle: 'Lot breakdown',
     singleTpLotBreakdownSlice: '{lot} lots closes @ {tp}',
+    partialTpMinLotWarning: 'Met een lot van {lot} kan deze trade niet worden verdeeld: {levels} worden niet als partiële take-profits gesloten en alleen het laatste take-profit-niveau komt bij de broker. Elk niveau heeft minstens 0.01 lot nodig — verhoog het lot om op elk niveau te sluiten.',
     singleTpLotBreakdownJoin: ', ',
     signalEntryTitle: 'Uitvoering van signaalinvoer',
     signalEntryBody: 'Gebruik signaalinvoerprijs is alleen van toepassing in de Single Trade-modus. Indien ingeschakeld, moet het signaal een expliciet geparseerde invoer bevatten (prijs, zone, @-prijs of labels zoals \'Invoerprijs:\'). Na elke kanaalvertraging vergelijkt de medewerker de live koers met die invoer: Koop alleen vullingen op de markt als de vraag zich op of onder de invoer bevindt; anders plaatst het een kooplimiet bij de ingang. Verkopen is het omgekeerde. De take-profitmakelaar richt zich op de laatst geparseerde TP als u meerdere doelen heeft, met optionele gedeeltelijke afsluitingen vanaf uw TP-ladder. Copier houdt elke in behandeling zijnde strikte invoer bij, zodat de vullingen worden gesynchroniseerd met uw handelslijst; In afwachting worden geannuleerd wanneer de mand plat is. Kale "koop nu"-berichten zonder vermelding worden overgeslagen.',

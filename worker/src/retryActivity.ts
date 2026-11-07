@@ -44,6 +44,16 @@ async function resetSignalForRetry(
   supabase: SupabaseClient,
   args: { userId: string; signalId: string },
 ): Promise<boolean> {
+  // A retry must be able to dispatch immediately. Clear the old dispatch claim
+  // first; otherwise the retry loses the claim and is deferred forever.
+  const { error: claimError } = await supabase
+    .from('signal_broker_dispatch_claims')
+    .delete()
+    .eq('signal_id', args.signalId)
+  if (claimError) {
+    console.warn(`[retryActivity] dispatch claim cleanup failed id=${args.signalId}: ${claimError.message}`)
+    return false
+  }
   const { data, error } = await supabase
     .from('signals')
     .update({ status: 'parsed', skip_reason: null })

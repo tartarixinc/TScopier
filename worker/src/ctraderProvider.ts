@@ -17,6 +17,7 @@ import {
   CTRADER_ORDER_TYPE,
   CTRADER_PAYLOAD,
   CTRADER_REJECTED_EXECUTION,
+  ctraderErrorDescription,
   ctraderErrorMessage,
   ctraderExecutionType,
   ctraderMarketFillReady,
@@ -221,7 +222,36 @@ export class CtraderProvider implements BrokerProvider {
         20_000,
         market ? ctraderMarketFillReady : undefined,
       )
-      return this.resultFromExecution(execution, symbol, args.comment)
+      // Cancelled/expired resolve the wait promptly (they are terminal) but
+      // are never a successful send. Reporting them as success produced a
+      // phantom trade: an orderId persisted as the fill, no position at the
+      // broker, a mirror that correctly found nothing to copy, and a Trades
+      // page that correctly showed nothing (incident 2026-11-02, XAUUSD
+      // cancelled while the market was closed).
+      const settledType = ctraderExecutionType(execution.executionType)
+      if (settledType === 5 || settledType === 6) {
+        const detail = ctraderErrorDescription(execution)
+        const specific = settledType === 5
+          ? 'cTrader order was cancelled before it filled'
+          : 'cTrader order expired before it filled'
+        throw new Error(detail ? `${specific} (${detail})` : specific)
+      }
+      const result = this.resultFromExecution(execution, symbol, args.comment)
+      // A market order that resolved without a position is a non-fill no
+      // matter which event carried it — but the fill event can be sparse
+      // (order only) while the position is real, so the book is the
+      // authority: adopt an existing position before failing loudly instead
+      // of persisting a row the broker has never seen (or, worse, leaving a
+      // real open position unmanaged because the copy was declared failed).
+      if (market && result.positionTicket == null) {
+        const recovered = await this.recoverMarketFill(live, id, symbol, args.comment, execution)
+        if (recovered) return recovered
+        const detail = ctraderErrorDescription(execution)
+        throw new Error(detail
+          ? `cTrader market order did not fill (${detail})`
+          : 'cTrader market order did not fill')
+      }
+      return result
     } catch (error) {
       if (!market || !(error instanceof CtraderRequestTimeout)) throw error
       const recovered = await this.recoverMarketFill(live, id, symbol, args.comment, error.lastPayload)
@@ -384,7 +414,14 @@ export class CtraderProvider implements BrokerProvider {
       { ctidTraderAccountId: accountNumber(id), symbolId: [info.symbolId] },
       [CTRADER_PAYLOAD.SPOT_EVENT],
       5_000,
-      payload => finite(payload.bid) != null && finite(payload.ask) != null,
+      // Spot events carry no clientMsgId, so the session matches them to this
+      // waiter by type + accept only. Every subscribed symbol on the account
+      // pushes spots on the same socket: without the symbolId guard the first
+      // event to arrive (e.g. BTCUSD on an account holding BTC) satisfies a
+      // bare bid/ask check and resolves the quote with the WRONG price. That
+      // fed ref_price=77288.04 into a GBPUSD partial-TP check (2026-11-03).
+      payload => finite(payload.bid) != null && finite(payload.ask) != null
+        && Number(payload.symbolId) === info.symbolId,
     )
     const bid = finite(spot.bid)
     const ask = finite(spot.ask)

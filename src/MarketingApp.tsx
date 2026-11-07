@@ -1,4 +1,4 @@
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { LocaleProvider } from './context/LocaleContext'
 import { LandingPage } from './pages/marketing/LandingPage'
@@ -11,6 +11,7 @@ import { CookiePolicyPage } from './pages/marketing/CookiePolicyPage'
 import { ReferralLandingRedirect } from './pages/marketing/ReferralLandingRedirect'
 import { ProviderPublicProfilePage } from './pages/social/ProviderPublicProfilePage'
 import { appUrl } from './lib/site'
+import { buildFlags } from './lib/featureFlags'
 import { GoogleAnalyticsRouteTracker } from './components/analytics/GoogleAnalyticsRouteTracker'
 import { CookieConsentBanner } from './components/marketing/CookieConsentBanner'
 import { ScrollToTop } from './components/marketing/ScrollToTop'
@@ -39,7 +40,12 @@ export default function MarketingApp() {
             <Route path="/privacy" element={<PrivacyPolicyPage />} />
             <Route path="/cookie-policy" element={<CookiePolicyPage />} />
             {/* Shareable provider profile (same page as the app host; sign-up links cross to the app). */}
-            <Route path="/p/:slug" element={<ProviderPublicProfilePage />} />
+            <Route
+              path="/p/:slug"
+              element={buildFlags.hideSocialTrading
+                ? <Navigate to="/" replace />
+                : <ProviderPublicProfilePage />}
+            />
             {/* After static marketing routes so reserved paths are not treated as refs. */}
             <Route path="/:referralCode" element={<ReferralLandingRedirect />} />
             <Route path="*" element={<MarketingCatchAll />} />
