@@ -11,8 +11,16 @@ import { parseRawChannelMessage } from './parseSignal'
 import { pushParsedSignalToTradeWorker } from './tradeSignalPush'
 import { userBelongsToShard } from './workerConfig'
 import { installRelayFetch } from './relayFetch'
+import WebSocket from 'ws'
 
 installRelayFetch()
+
+// Node.js 20 has no native WebSocket, and the Supabase realtime client refuses
+// to start without one. Same polyfill as index.ts; skipped when the runtime
+// already provides WebSocket (Node.js 22+).
+if (!globalThis.WebSocket) {
+  globalThis.WebSocket = WebSocket as unknown as typeof globalThis.WebSocket
+}
 
 type SessionStatus = 'qr' | 'connected' | 'disconnected'
 

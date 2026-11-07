@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
 import {
   effectivePlan,
+  hasLiveSubscriptionExtension,
   loadUserIsAdmin,
   loadUserSubscription,
 } from "../_shared/subscriptionAccess.ts"
@@ -168,7 +169,10 @@ Deno.serve(async (req: Request) => {
 
     const sub = await loadUserSubscription(supabase, authData.user.id)
     const isAdmin = await loadUserIsAdmin(supabase, authData.user.id)
-    const plan = effectivePlan(sub?.plan, sub?.status, sub?.trial_ends_at)
+    let plan = effectivePlan(sub?.plan, sub?.status, sub?.trial_ends_at)
+    if (!plan && (await hasLiveSubscriptionExtension(supabase, authData.user.id))) {
+      plan = sub?.plan ?? null
+    }
     const advancedAllowed = isAdmin || plan === "advanced"
     const pendingCapability = nativePendingCapability(broker as Record<string, unknown>)
 

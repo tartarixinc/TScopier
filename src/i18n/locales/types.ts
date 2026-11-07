@@ -1377,6 +1377,7 @@ export interface TradesTranslations {
   execNotesTitle?: string
   execNoteTpSplit?: string
   execNoteStaleEntry?: string
+  execNoteTpStripped?: string
   loadingSignal: string
   loadSignalError: string
   viewDetails: string

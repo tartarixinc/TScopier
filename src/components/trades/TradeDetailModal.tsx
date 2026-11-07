@@ -29,7 +29,9 @@ import {
   fetchPlanFallbackReason,
   isTpSplitSkippedReason,
   staleEntryNotice,
+  strippedTpNotice,
 } from '../../lib/tradeExecutionNotes'
+import { resolveTradeDisplayDirection } from '../../lib/tradeDirection'
 import type { MtTrade } from '../../lib/fxsocketBroker'
 import {
   formatSignalInstructions,
@@ -333,11 +335,21 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
 
   if (!trade || !display) return null
 
-  const staleEntry = staleEntryNotice(
-    (context?.signal?.parsed_data as Record<string, unknown> | null)?.entry_price,
-    trade.entry_price,
-  )
+  const signalParsed = (context?.signal?.parsed_data as Record<string, unknown> | null) ?? null
+  const staleEntry = staleEntryNotice(signalParsed?.entry_price, trade.entry_price)
   const showTpSplitNote = isTpSplitSkippedReason(planFallbackReason)
+  const strippedTp = strippedTpNotice({
+    tpLevels: signalParsed?.tp,
+    fillPrice: trade.entry_price,
+    brokerTp: trade.tp,
+    direction: resolveTradeDisplayDirection({
+      direction: trade.direction,
+      entry_price: trade.entry_price,
+      sl: trade.sl,
+      tp: trade.tp,
+    }) || String(signalParsed?.action ?? ''),
+    tpUnit: signalParsed?.tp_unit,
+  })
 
   const channelLabel = (() => {
     const ch = context?.channel
@@ -588,7 +600,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
             </section>
           ) : null}
 
-          {staleEntry != null || showTpSplitNote ? (
+          {staleEntry != null || showTpSplitNote || strippedTp != null ? (
             <section className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 space-y-2 dark:border-amber-900/60 dark:bg-amber-950/25">
               <div className="flex items-center gap-2">
                 <TriangleAlert className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" aria-hidden />
@@ -611,6 +623,18 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                       {
                         entry: formatTradePrice(staleEntry.signalEntry),
                         fill: formatTradePrice(staleEntry.fillPrice),
+                      },
+                    )}
+                  </li>
+                ) : null}
+                {strippedTp != null ? (
+                  <li className="text-sm text-neutral-900 dark:text-neutral-50">
+                    {interpolate(
+                      tr.execNoteTpStripped
+                        ?? 'Take-profits {levels} were stripped — the trade opened at {fill}, past the take-profit price, so applying them would have closed the trade immediately.',
+                      {
+                        levels: strippedTp.levels.map(formatTradePrice).join(', '),
+                        fill: formatTradePrice(strippedTp.fillPrice),
                       },
                     )}
                   </li>
