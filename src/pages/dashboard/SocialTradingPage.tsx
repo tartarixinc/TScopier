@@ -2,7 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { BarChart3, ChevronRight, LineChart, Wallet, X } from 'lucide-react'
-import { fetchMySocialCopySubscriptions, isCurrentSocialCopySubscription } from '../../lib/socialCopy'
+import {
+  changeSocialCopySubscription,
+  fetchMySocialCopySubscriptions,
+  isCurrentSocialCopySubscription,
+  type MySocialCopySubscription,
+} from '../../lib/socialCopy'
 import { ProviderCopiersPanel, ProviderPaymentsPanel } from '../../components/social/ProviderHomePanels'
 import { supabase } from '../../lib/supabase'
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -135,14 +140,31 @@ export function SocialTradingPage() {
   const social = useSocialTradingPreview()
   const provider = useProviderStatus()
   const [setupTrader, setSetupTrader] = useState<SocialTrader | null>(null)
-  const [subscribedProviderIds, setSubscribedProviderIds] = useState<Set<string>>(new Set())
+  const [mySubscriptions, setMySubscriptions] = useState<MySocialCopySubscription[]>([])
   const [subscriptionsLoaded, setSubscriptionsLoaded] = useState(false)
+  const [stoppingTraderId, setStoppingTraderId] = useState<string | null>(null)
   const ownAvatarUrl = useOwnAvatarUrl()
+
+  const refreshMySubscriptions = async () => {
+    if (!user?.id) {
+      setMySubscriptions([])
+      setSubscriptionsLoaded(true)
+      return
+    }
+    try {
+      const rows = await fetchMySocialCopySubscriptions(supabase)
+      setMySubscriptions(rows.filter(isCurrentSocialCopySubscription))
+    } catch {
+      setMySubscriptions([])
+    } finally {
+      setSubscriptionsLoaded(true)
+    }
+  }
 
   useEffect(() => {
     let active = true
     if (!user?.id) {
-      setSubscribedProviderIds(new Set())
+      setMySubscriptions([])
       setSubscriptionsLoaded(true)
       return () => { active = false }
     }
@@ -150,13 +172,10 @@ export function SocialTradingPage() {
     void fetchMySocialCopySubscriptions(supabase)
       .then(rows => {
         if (!active) return
-        const ids = new Set(
-          rows.filter(isCurrentSocialCopySubscription).map(row => row.sourceTraderUserId),
-        )
-        setSubscribedProviderIds(ids)
+        setMySubscriptions(rows.filter(isCurrentSocialCopySubscription))
       })
       .catch(() => {
-        if (active) setSubscribedProviderIds(new Set())
+        if (active) setMySubscriptions([])
       })
       .finally(() => {
         if (active) setSubscriptionsLoaded(true)
@@ -164,7 +183,24 @@ export function SocialTradingPage() {
     return () => { active = false }
   }, [user?.id])
 
+  const subscribedProviderIds = useMemo(
+    () => new Set(mySubscriptions.map(row => row.sourceTraderUserId)),
+    [mySubscriptions],
+  )
   const hasSubscriptions = subscribedProviderIds.size > 0
+
+  const stopCopyingTrader = async (traderId: string) => {
+    const targets = mySubscriptions.filter(row => row.sourceTraderUserId === traderId)
+    if (targets.length === 0) return
+    if (!window.confirm(copy.stopCopyingConfirm)) return
+    setStoppingTraderId(traderId)
+    try {
+      await Promise.all(targets.map(row => changeSocialCopySubscription(supabase, row.id, 'stop')))
+      setMySubscriptions(current => current.filter(row => row.sourceTraderUserId !== traderId))
+    } finally {
+      setStoppingTraderId(null)
+    }
+  }
   const viewParam = params.get('view')
   const view: DirectoryView = viewParam === 'discover'
     ? 'discover'
@@ -348,7 +384,14 @@ export function SocialTradingPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-2">
-                          {trader.isYou ? null : (
+                          {trader.isYou ? null : subscribedProviderIds.has(trader.id) ? (
+                            <ActiveCopyActions
+                              currentlyCopyingLabel={copy.currentlyCopying}
+                              stopLabel={copy.stopCopying}
+                              stopping={stoppingTraderId === trader.id}
+                              onStop={() => void stopCopyingTrader(trader.id)}
+                            />
+                          ) : (
                             <CopyActionButton
                               disabled={!canOpenCopyTrader(trader)}
                               disabledReason={copyTraderUnavailableReason(trader) ?? undefined}
@@ -372,7 +415,10 @@ export function SocialTradingPage() {
       <CopyTraderModal
         trader={setupTrader}
         copy={copy}
-        onClose={() => setSetupTrader(null)}
+        onClose={() => {
+          setSetupTrader(null)
+          void refreshMySubscriptions()
+        }}
         onConnectBroker={() => {
           setSetupTrader(null)
           openAddTradingAccount({ asDestination: true })
@@ -444,6 +490,40 @@ function CopyActionButton({
     {disabledReason ? (
       <p className={'max-w-64 text-right text-xs leading-4 text-neutral-500'} role={'status'}>{disabledReason}</p>
     ) : null}
+    </div>
+  )
+}
+
+function ActiveCopyActions({
+  currentlyCopyingLabel,
+  stopLabel,
+  stopping,
+  onStop,
+}: {
+  currentlyCopyingLabel: string
+  stopLabel: string
+  stopping?: boolean
+  onStop: () => void
+}) {
+  return (
+    <div className="flex flex-col items-end gap-1.5">
+      <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300" role="status">
+        {currentlyCopyingLabel}
+      </p>
+      <Button
+        type="button"
+        size="sm"
+        variant="secondary"
+        loading={stopping}
+        disabled={stopping}
+        onClick={event => {
+          event.stopPropagation()
+          onStop()
+        }}
+        onKeyDown={event => event.stopPropagation()}
+      >
+        {stopLabel}
+      </Button>
     </div>
   )
 }
@@ -647,11 +727,51 @@ export function SocialTraderActivityPage() {
   const rawTrader = ownAccountView.trader
   const trader = rawTrader
   const [copyModalOpen, setCopyModalOpen] = useState(false)
+  const [activeSubscriptions, setActiveSubscriptions] = useState<MySocialCopySubscription[]>([])
+  const [stoppingCopy, setStoppingCopy] = useState(false)
   const [profileParams, setProfileParams] = useSearchParams()
+  const traderIdForSubs = trader?.id ?? traderId ?? null
+
+  const refreshActiveSubscriptions = async () => {
+    if (!user?.id || !traderIdForSubs) {
+      setActiveSubscriptions([])
+      return
+    }
+    try {
+      const rows = await fetchMySocialCopySubscriptions(supabase)
+      setActiveSubscriptions(
+        rows.filter(row => row.sourceTraderUserId === traderIdForSubs && isCurrentSocialCopySubscription(row)),
+      )
+    } catch {
+      setActiveSubscriptions([])
+    }
+  }
+
+  useEffect(() => {
+    let active = true
+    if (!user?.id || !traderIdForSubs) {
+      setActiveSubscriptions([])
+      return () => { active = false }
+    }
+    void fetchMySocialCopySubscriptions(supabase)
+      .then(rows => {
+        if (!active) return
+        setActiveSubscriptions(
+          rows.filter(row => row.sourceTraderUserId === traderIdForSubs && isCurrentSocialCopySubscription(row)),
+        )
+      })
+      .catch(() => {
+        if (active) setActiveSubscriptions([])
+      })
+    return () => { active = false }
+  }, [user?.id, traderIdForSubs])
+
+  const isCurrentlyCopying = activeSubscriptions.length > 0
   const wantsCopy = profileParams.get('copy') === '1'
   const copyIntentReady = wantsCopy && Boolean(trader) && !trader?.isYou && !social.loading && !social.performanceLoading
     && trader?.performanceStatusReason !== 'not_loaded'
     && !viewerIsApprovedProvider
+    && !isCurrentlyCopying
   const copyIntentEligible = Boolean(trader) && canOpenCopyTrader(trader as SocialTrader, { viewerIsApprovedProvider })
   useEffect(() => {
     if (!copyIntentReady) return
@@ -667,6 +787,18 @@ export function SocialTraderActivityPage() {
     })
   }, [copyIntentReady, copyIntentEligible, setProfileParams])
   const [profileTab, setProfileTab] = useState<'performance' | 'trading' | 'portfolio'>('performance')
+
+  const stopCopying = async () => {
+    if (activeSubscriptions.length === 0) return
+    if (!window.confirm(copy.stopCopyingConfirm)) return
+    setStoppingCopy(true)
+    try {
+      await Promise.all(activeSubscriptions.map(row => changeSocialCopySubscription(supabase, row.id, 'stop')))
+      setActiveSubscriptions([])
+    } finally {
+      setStoppingCopy(false)
+    }
+  }
 
   if (isOwnProfile) {
     return <Navigate to="/social-trading" replace />
@@ -748,12 +880,19 @@ export function SocialTraderActivityPage() {
               <HeaderStat label={copy.liveCopiers} value={trader.liveCopiers == null ? '—' : String(trader.liveCopiers)} />
               <HeaderStat label={copy.leverage} value={trader.profile.leverage ?? '—'} />
             </dl>
-            {viewerIsApprovedProvider ? null : (
+            {viewerIsApprovedProvider ? null : isCurrentlyCopying ? (
+              <ActiveCopyActions
+                currentlyCopyingLabel={copy.currentlyCopying}
+                stopLabel={copy.stopCopying}
+                stopping={stoppingCopy}
+                onStop={() => void stopCopying()}
+              />
+            ) : (
               <CopyActionButton
                 disabled={!canOpenCopyTrader(trader, { viewerIsApprovedProvider })}
                 disabledReason={copyTraderUnavailableReason(trader, { viewerIsApprovedProvider }) ?? undefined}
                 copyLabel={copyTraderActionLabel(trader.monthlyCopyPriceCents, formatMoney, {
-                  free: copy.copySetup.action,
+                  free: copy.copyForFree,
                   paid: copy.copyForAmount,
                 })}
                 onOpenSetup={() => setCopyModalOpen(true)}
@@ -835,7 +974,10 @@ export function SocialTraderActivityPage() {
       <CopyTraderModal
         trader={trader}
         copy={copy}
-        onClose={() => setCopyModalOpen(false)}
+        onClose={() => {
+          setCopyModalOpen(false)
+          void refreshActiveSubscriptions()
+        }}
         onConnectBroker={() => {
           setCopyModalOpen(false)
           openAddTradingAccount({ asDestination: true })

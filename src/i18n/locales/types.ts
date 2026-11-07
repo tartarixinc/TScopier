@@ -1113,6 +1113,9 @@ export interface SocialTradingPageTranslations {
   requested: string
   copyForFree: string
   copyForAmount: string
+  currentlyCopying: string
+  stopCopying: string
+  stopCopyingConfirm: string
   monthlyPrice: string
   priceFree: string
   pricePaid: string
