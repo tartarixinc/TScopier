@@ -61,6 +61,12 @@ import {
   buildSignalSymbolLookup,
 } from '../../lib/copierLogDisplay'
 import { buildDisplayableTradeActivities, buildChannelDisplayNames, dedupePipelineParseAttempts, TRADE_ACTIVITY_FETCH_LIMIT, type TradeActivityLogRow } from '../../lib/tradeActivities'
+import {
+  buildSocialCopyTradeActivities,
+  countSocialCopyOpensInRange,
+  fetchSocialCopyLogs,
+  type SocialCopyLogRow,
+} from '../../lib/socialCopyLogs'
 import { buildChannelSourceKinds, SIGNAL_SOURCE_MARKS, type SignalSourceKind } from '../../lib/signalSourceMark'
 import { SignalSourceLogo } from '../../components/dashboard/SignalSourceLogo'
 import { TradeActivityCard } from '../../components/dashboard/TradeActivityCard'
@@ -1025,6 +1031,7 @@ export function DashboardPage() {
   )
   const [channelSourceKinds, setChannelSourceKinds] = useState<Record<string, SignalSourceKind>>({})
   const [aiExpertLogs, setAiExpertLogs] = useState<AiExpertLogRow[]>(() => bootCache?.aiExpertLogs ?? [])
+  const [socialCopyLogs, setSocialCopyLogs] = useState<SocialCopyLogRow[]>([])
   const [linkedAccountBalances, setLinkedAccountBalances] = useState<Record<string, BrokerBalanceSnapshot>>(
     () => bootCache?.linkedAccountBalances ?? {},
   )
@@ -1302,10 +1309,25 @@ export function DashboardPage() {
     return out
   }, [linkedAccounts, linkedAccountBalances])
 
-  const visibleTradeActivities = useMemo(
-    () => buildDisplayableTradeActivities(aiExpertLogs, t.channelWorker, t.management, channelDisplayNames, channelSourceKinds),
-    [aiExpertLogs, channelDisplayNames, channelSourceKinds, t.channelWorker, t.management],
-  )
+  const visibleTradeActivities = useMemo(() => {
+    const channelActivities = buildDisplayableTradeActivities(
+      aiExpertLogs,
+      t.channelWorker,
+      t.management,
+      channelDisplayNames,
+      channelSourceKinds,
+    )
+    const socialActivities = buildSocialCopyTradeActivities(socialCopyLogs, t.management, {
+      source: t.copierLogs.socialSource ?? 'Social trading',
+      openMessage: t.copierLogs.socialOpenMessage ?? 'Copied {detail} from provider #{ticket}',
+      closeMessage: t.copierLogs.socialCloseMessage ?? 'Social copy of #{ticket} closed',
+      modifyMessage: t.copierLogs.socialModifyMessage ?? 'Social copy of #{ticket} updated',
+      otherMessage: t.copierLogs.socialOtherMessage ?? '{action} · social copy of #{ticket}',
+    })
+    return [...channelActivities, ...socialActivities]
+      .sort((a, b) => (a.row.created_at < b.row.created_at ? 1 : a.row.created_at > b.row.created_at ? -1 : 0))
+      .slice(0, 20)
+  }, [aiExpertLogs, socialCopyLogs, channelDisplayNames, channelSourceKinds, t.channelWorker, t.management, t.copierLogs])
 
   const [linkedAccountSortKey, setLinkedAccountSortKey] = useState<LinkedAccountSortKey | null>(null)
   const [linkedAccountSortDir, setLinkedAccountSortDir] = useState<SortDirection>('asc')
@@ -1432,7 +1454,7 @@ export function DashboardPage() {
       mtTradesPromise = Promise.resolve([] as MtTrade[])
     }
 
-    const [channelsRes, tradesRes, todaySignalsRes, yesterdaySignalsRes, logsRes, allSignalsRes, channelsMetaRes, attributionRes, aiLogsRes, prefetchedMtTrades] = await Promise.all([
+    const [channelsRes, tradesRes, todaySignalsRes, yesterdaySignalsRes, logsRes, allSignalsRes, channelsMetaRes, attributionRes, aiLogsRes, prefetchedMtTrades, socialLogs, socialCopiedToday] = await Promise.all([
       supabase.from('telegram_channels').select('id').eq('user_id', user!.id).eq('is_active', true),
       supabase
         .from('trades')
@@ -1475,6 +1497,13 @@ export function DashboardPage() {
         .order('created_at', { ascending: false })
         .limit(TRADE_ACTIVITY_FETCH_LIMIT),
       mtTradesPromise,
+      fetchSocialCopyLogs(supabase, user!.id),
+      countSocialCopyOpensInRange(
+        supabase,
+        user!.id,
+        todayStart.toISOString(),
+        tomorrowStart.toISOString(),
+      ).catch(() => 0),
     ])
 
     const logs = ((logsRes.data ?? []) as Signal[]).filter(s => !isNonTradeSkipReason(s.skip_reason))
@@ -1484,6 +1513,7 @@ export function DashboardPage() {
     const openTrades = allTrades.filter(t => t.status === 'open')
     const todaySignals = (todaySignalsRes.data ?? []) as { status: string }[]
     const copiedToday = todaySignals.filter(s => s.status === 'executed' || s.status === 'parsed').length
+      + (Number.isFinite(socialCopiedToday) ? socialCopiedToday : 0)
     const openPnlFromTrades = openTrades.reduce((sum, t) => sum + (t.profit ?? 0), 0)
     const isInRange = (dateString: string | null | undefined, start: Date, end: Date) =>
       isMtTimestampInRange(dateString, start, end)
@@ -1812,6 +1842,7 @@ export function DashboardPage() {
     linkedBalancesRef.current = mergedBalances
     setLinkedAccountBalances(mergedBalances)
     setAiExpertLogs(aiLogs)
+    setSocialCopyLogs(socialLogs)
 
     if (mtBrokerConnected && (syncLive || fresh)) {
       await refreshMtTrades(brokerAccounts, { force: true, preloadedTrades: prefetchedMtTrades })
@@ -2601,7 +2632,7 @@ export function DashboardPage() {
             </button>
           </div>
 
-          {visibleTradeActivities.length === 0 && chartsEmpty && aiExpertLogs.length === 0 ? (
+          {visibleTradeActivities.length === 0 && chartsEmpty && aiExpertLogs.length === 0 && socialCopyLogs.length === 0 ? (
             <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
               {[...Array(5)].map((_, i) => (
                 <div key={i} className="px-5 py-3">

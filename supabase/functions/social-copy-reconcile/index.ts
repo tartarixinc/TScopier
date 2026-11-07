@@ -97,6 +97,53 @@ function sizedVolume(sub: SubRow, sourceVolume: number): number {
   return Math.max(0.01, Math.floor(requested * 100 + 1e-9) / 100)
 }
 
+/** Persist an audit row so Copier Logs / Activities can show the copy. */
+async function writeExecutionEvent(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  input: {
+    subscriptionId: string
+    mappingId: string | null
+    sourceTicket: string
+    action: "open" | "close"
+    idempotencyKey: string
+    status: "succeeded" | "failed" | "uncertain"
+    request: Record<string, unknown>
+    result?: Record<string, unknown>
+    errorDetail?: string | null
+  },
+): Promise<void> {
+  const { data, error } = await supabase.from("social_copy_execution_events").insert({
+    subscription_id: input.subscriptionId,
+    mapping_id: input.mappingId,
+    source_ticket: input.sourceTicket,
+    action: input.action,
+    idempotency_key: input.idempotencyKey,
+    status: "claimed",
+    request_payload: input.request,
+  }).select("id").single()
+
+  if (error) {
+    // Unique conflict: skip — the original claim owns this key.
+    if (error.code !== "23505") {
+      console.warn("[social-copy-reconcile] event insert failed", error.message)
+    }
+    return
+  }
+  const eventId = data?.id as string | undefined
+  if (!eventId) return
+
+  const { error: updateError } = await supabase.from("social_copy_execution_events").update({
+    status: input.status,
+    result_payload: input.result ?? {},
+    error_detail: input.errorDetail ?? null,
+    completed_at: new Date().toISOString(),
+  }).eq("id", eventId)
+  if (updateError) {
+    console.warn("[social-copy-reconcile] event finish failed", updateError.message)
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok")
 
@@ -249,22 +296,60 @@ Deno.serve(async (req) => {
           if (String(mappingError.message).toLowerCase().includes("duplicate")) continue
           throw mappingError
         }
-        const sent = await mtapi.orderSendSafe(dstSession, {
-          symbol: position.symbol,
-          operation: position.side === "buy" ? "Buy" : "Sell",
-          volume,
-          stoploss: position.stopLoss,
-          takeprofit: position.takeProfit,
-          comment,
-        }, dstPlatform)
-        await supabase.from("social_copy_trade_mappings").update({
-          destination_ticket: String(sent.ticket),
-          state: "open",
-          opened_at: new Date().toISOString(),
-          last_error_code: null,
-          last_error_detail: null,
-        }).eq("id", mappingInsert.id)
-        opened += 1
+        try {
+          const sent = await mtapi.orderSendSafe(dstSession, {
+            symbol: position.symbol,
+            operation: position.side === "buy" ? "Buy" : "Sell",
+            volume,
+            stoploss: position.stopLoss,
+            takeprofit: position.takeProfit,
+            comment,
+          }, dstPlatform)
+          await supabase.from("social_copy_trade_mappings").update({
+            destination_ticket: String(sent.ticket),
+            state: "open",
+            opened_at: new Date().toISOString(),
+            last_error_code: null,
+            last_error_detail: null,
+          }).eq("id", mappingInsert.id)
+          await writeExecutionEvent(supabase, {
+            subscriptionId: sub.id,
+            mappingId: mappingInsert.id,
+            sourceTicket: position.ticket,
+            action: "open",
+            idempotencyKey: `open:${position.ticket}`,
+            status: "succeeded",
+            request: {
+              symbol: position.symbol,
+              side: position.side,
+              volume,
+            },
+            result: { destination_ticket: String(sent.ticket) },
+          })
+          opened += 1
+        } catch (openError) {
+          const detail = openError instanceof Error ? openError.message : String(openError)
+          await supabase.from("social_copy_trade_mappings").update({
+            state: "error",
+            last_error_code: "BROKER_OPERATION_FAILED",
+            last_error_detail: detail.slice(0, 500),
+          }).eq("id", mappingInsert.id)
+          await writeExecutionEvent(supabase, {
+            subscriptionId: sub.id,
+            mappingId: mappingInsert.id,
+            sourceTicket: position.ticket,
+            action: "open",
+            idempotencyKey: `open:${position.ticket}`,
+            status: "failed",
+            request: {
+              symbol: position.symbol,
+              side: position.side,
+              volume,
+            },
+            errorDetail: detail.slice(0, 500),
+          })
+          throw openError
+        }
       }
 
       const openTickets = new Set(positions.map((p) => p.ticket))
@@ -282,6 +367,15 @@ Deno.serve(async (req) => {
           state: "closed",
           closed_at: new Date().toISOString(),
         }).eq("id", mapping.id)
+        await writeExecutionEvent(supabase, {
+          subscriptionId: sub.id,
+          mappingId: mapping.id,
+          sourceTicket: mapping.source_ticket,
+          action: "close",
+          idempotencyKey: `close:${mapping.source_ticket}`,
+          status: "succeeded",
+          request: { destination_ticket: mapping.destination_ticket },
+        })
         closed += 1
       }
 

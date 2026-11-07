@@ -4,33 +4,56 @@ import clsx from 'clsx'
 import { useT } from '../../context/LocaleContext'
 import { Badge } from '../ui/Badge'
 import type { MirrorCopyLogRow } from '../../lib/mirrorCopyLogs'
+import type { SocialCopyLogRow } from '../../lib/socialCopyLogs'
 
 type StatusVariant = 'success' | 'warning' | 'error' | 'neutral' | 'primary'
 
+type AccountCopyLogRow = Pick<
+  MirrorCopyLogRow,
+  | 'createdAt'
+  | 'action'
+  | 'symbol'
+  | 'channelName'
+  | 'destinationAccount'
+  | 'sourceTicket'
+  | 'destinationTicket'
+  | 'lot'
+  | 'reason'
+> | Pick<
+  SocialCopyLogRow,
+  | 'createdAt'
+  | 'action'
+  | 'symbol'
+  | 'channelName'
+  | 'destinationAccount'
+  | 'sourceTicket'
+  | 'destinationTicket'
+  | 'lot'
+  | 'reason'
+>
+
 /**
- * Detail view for one mirror-copy event.
+ * Detail view for one account-copy event (mirror or social).
  *
- * Separate from CopierLogDetailModal because a mirror copy is not a signal: it
- * has no Telegram message, no parsed levels and no signal id for the execution
- * timeline. This shows what the mirror ledger actually records — master and
- * slave account, both tickets, the copy's status and any broker error.
+ * Separate from CopierLogDetailModal because these copies are not signals: no
+ * Telegram message, no parsed levels, no signal execution timeline.
  */
 export function MirrorLogDetailModal({
   row,
   status,
   onClose,
+  variant = 'mirror',
 }: {
-  row: MirrorCopyLogRow | null
+  row: AccountCopyLogRow | null
   status: { variant: StatusVariant; label: string; className?: string }
   onClose: () => void
+  variant?: 'mirror' | 'social'
 }) {
   const t = useT()
   const copierLogs = t.copierLogs
   const panelRef = useRef<HTMLDivElement>(null)
+  const isSocial = variant === 'social'
 
-  // Same behaviour as CopierLogDetailModal: Escape closes, the page behind the
-  // sheet does not scroll, and focus moves into the dialog on open so a
-  // keyboard user does not tab straight through it.
   useEffect(() => {
     if (!row) return
     const onKeyDown = (e: KeyboardEvent) => {
@@ -60,6 +83,31 @@ export function MirrorLogDetailModal({
     minute: '2-digit',
   })
 
+  const title = isSocial
+    ? label(copierLogs.socialDetailTitle, 'Social copy details')
+    : label(copierLogs.mirrorDetailTitle, 'Mirror copy details')
+  const source = isSocial
+    ? label(copierLogs.socialSource, 'Social trading')
+    : label(copierLogs.mirrorSource, 'Mirror copy')
+  const occurred = isSocial
+    ? label(copierLogs.socialOccurred, 'Occurred')
+    : label(copierLogs.mirrorOccurred, 'Occurred')
+  const providerLabel = isSocial
+    ? label(copierLogs.socialProvider, 'Provider')
+    : label(copierLogs.mirrorMasterAccount, 'Master account')
+  const destinationLabel = isSocial
+    ? label(copierLogs.socialDestinationAccount, 'Your account')
+    : label(copierLogs.mirrorSlaveAccount, 'Slave account')
+  const sourceTicketLabel = isSocial
+    ? label(copierLogs.socialProviderTicket, 'Provider ticket')
+    : label(copierLogs.mirrorMasterTicket, 'Master ticket')
+  const copyTicketLabel = isSocial
+    ? label(copierLogs.socialCopyTicket, 'Copy ticket')
+    : label(copierLogs.mirrorCopyTicket, 'Copy ticket')
+  const lotLabel = isSocial
+    ? label(copierLogs.socialLot, 'Lot')
+    : label(copierLogs.mirrorLot, 'Lot')
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-6"
@@ -84,10 +132,10 @@ export function MirrorLogDetailModal({
               id="mirror-log-detail-title"
               className="text-lg font-semibold text-neutral-900 dark:text-neutral-50 truncate"
             >
-              {label(copierLogs.mirrorDetailTitle, 'Mirror copy details')}
+              {title}
             </h2>
             <p className="mt-0.5 text-xs text-neutral-900 dark:text-neutral-50 truncate">
-              {label(copierLogs.mirrorSource, 'Mirror copy')} · {row.symbol}
+              {source} · {row.symbol}
             </p>
           </div>
           <button
@@ -119,31 +167,14 @@ export function MirrorLogDetailModal({
             </div>
 
             <DetailRow label={detailLabel('status', 'Status')} value={status.label} />
-            <DetailRow label={label(copierLogs.mirrorOccurred, 'Occurred')} value={time} />
-            <DetailRow
-              label={label(copierLogs.mirrorMasterAccount, 'Master account')}
-              value={row.channelName}
-            />
-            <DetailRow
-              label={label(copierLogs.mirrorSlaveAccount, 'Slave account')}
-              value={row.destinationAccount ?? '—'}
-            />
-            <DetailRow
-              label={label(copierLogs.mirrorMasterTicket, 'Master ticket')}
-              value={row.sourceTicket ?? '—'}
-              mono
-            />
-            <DetailRow
-              label={label(copierLogs.mirrorCopyTicket, 'Copy ticket')}
-              value={row.destinationTicket ?? '—'}
-              mono
-            />
+            <DetailRow label={occurred} value={time} />
+            <DetailRow label={providerLabel} value={row.channelName} />
+            <DetailRow label={destinationLabel} value={row.destinationAccount ?? '—'} />
+            <DetailRow label={sourceTicketLabel} value={row.sourceTicket ?? '—'} mono />
+            <DetailRow label={copyTicketLabel} value={row.destinationTicket ?? '—'} mono />
             <DetailRow label={detailLabel('symbol', 'Symbol')} value={row.symbol} />
             {row.lot != null ? (
-              <DetailRow
-                label={label(copierLogs.mirrorLot, 'Lot')}
-                value={String(row.lot)}
-              />
+              <DetailRow label={lotLabel} value={String(row.lot)} />
             ) : null}
             {row.reason ? (
               <DetailRow label={detailLabel('reason', 'Reason')} value={row.reason} emphasize />

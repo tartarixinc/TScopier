@@ -140,13 +140,13 @@ function brokerLabel(row: BrokerRow | undefined): string {
  * `signals` must be this page's rows ordered newest-first — element 0 is taken
  * as the newest and the last element as the oldest.
  */
-export function pageMirrorSlice(
-  mirrors: MirrorCopyLogRow[],
+export function pageMirrorSlice<T extends { createdAt: string }>(
+  mirrors: T[],
   signals: Array<{ created_at: string }>,
   page: number,
   previousOldestSignalTime: string | null,
   isLastSignalPage = false,
-): MirrorCopyLogRow[] {
+): T[] {
   if (mirrors.length === 0) return []
   const sorted = [...mirrors].sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))
   const newest = signals[0]?.created_at ?? null
