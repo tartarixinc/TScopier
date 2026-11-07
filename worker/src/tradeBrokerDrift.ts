@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { TRADE_CLOSE_REASON } from './tradeCloseReasons'
 import { applyCloseUpdate } from './tradeCloseUpdate'
 import { captureBusinessIssue } from './observability/businessEvents'
+import { writeExecutionLog } from './observability/executionLog'
 import { purgeRangePendingLegsForBaskets } from './rangePendingLegDelete'
 
 /**
@@ -74,6 +75,13 @@ export type DriftPlan = {
   unknown: Array<{ userId: string; ticket: number }>
   /** Row open/pending, ticket not live on the account it belongs to. */
   missingOnce: DriftRow[]
+  /**
+   * Row says `pending` but the broker reports the ticket as a filled position:
+   * an explicit LIMIT/STOP entry that executed while nothing promoted the row
+   * (only the strict-entry fill path does that). Promote so management,
+   * trailing and reconcile see the live position.
+   */
+  promote: Array<{ row: DriftRow; ticket: number; brokerAccountId: string }>
 }
 
 function ticketOf(row: DriftRow): number | null {
@@ -129,7 +137,7 @@ export function planBrokerDrift(args: {
   live: LiveTicketHit[]
   fullyProbedUsers: ReadonlySet<string>
 }): DriftPlan {
-  const plan: DriftPlan = { reopen: [], attach: [], unknown: [], missingOnce: [] }
+  const plan: DriftPlan = { reopen: [], attach: [], unknown: [], missingOnce: [], promote: [] }
   const liveByUser = buildUserIndex(args.live)
 
   const rowsByUser = new Map<string, DriftRow[]>()
@@ -186,6 +194,8 @@ export function planBrokerDrift(args: {
       if (hit) {
         if (row.status === 'closed') {
           plan.reopen.push({ row, status: hit.filled ? 'open' : 'pending', brokerAccountId: hit.brokerAccountId })
+        } else if (row.status === 'pending' && hit.filled) {
+          plan.promote.push({ row, ticket: hit.ticket, brokerAccountId: hit.brokerAccountId })
         }
         if (!row.broker_account_id) {
           plan.attach.push({ row, brokerAccountId: hit.brokerAccountId })
@@ -293,10 +303,11 @@ export async function applyBrokerDriftRepairs(
   supabase: SupabaseClient,
   plan: DriftPlan,
   ghostRows: readonly DriftRow[],
-): Promise<{ reopened: number; attached: number; closed: number }> {
+): Promise<{ reopened: number; attached: number; closed: number; promoted: number }> {
   let reopened = 0
   let attached = 0
   let closed = 0
+  let promoted = 0
 
   for (const { row, status, brokerAccountId } of plan.reopen) {
     const { data, error } = await supabase
@@ -316,6 +327,50 @@ export async function applyBrokerDriftRepairs(
       + ` broker=${row.broker_account_id ?? brokerAccountId} status=${status}`
       + ` (live at broker, row said closed)`,
     )
+  }
+
+  // Pending row, broker says the ticket is a filled position: the LIMIT/STOP
+  // executed and nothing promoted the row. CAS on status='pending' so a
+  // concurrent writer is never clobbered; opened_at moves to the moment we
+  // learned it filled (the strict-entry fill path does the same). entry_price
+  // is left alone on purpose: a limit/stop fills at its own price, so the
+  // stored value already is the fill price.
+  const promoteNow = new Date().toISOString()
+  for (const { row, ticket, brokerAccountId } of plan.promote) {
+    const { data, error } = await supabase
+      .from('trades')
+      .update({
+        status: 'open',
+        opened_at: promoteNow,
+        broker_position_ticket: String(ticket),
+      })
+      .eq('id', row.id)
+      .eq('status', 'pending')
+      .select('id')
+    if (error) {
+      console.warn(`[tradeBrokerDrift] promote failed trade=${row.id}: ${error.message}`)
+      continue
+    }
+    if (!data?.length) continue
+    promoted += data.length
+    console.warn(
+      `[tradeBrokerDrift] promoted trade=${row.id} ticket=${ticket}`
+      + ` broker=${row.broker_account_id ?? brokerAccountId} pending→open (fill observed at broker)`,
+    )
+    if (row.signal_id) {
+      await writeExecutionLog(supabase, {
+        user_id: row.user_id ?? null,
+        signal_id: row.signal_id,
+        broker_account_id: row.broker_account_id ?? brokerAccountId,
+        action: 'signal_entry_pending_filled',
+        status: 'success',
+        request_payload: {
+          source: 'trade_broker_drift',
+          trade_id: row.id,
+          ticket,
+        } as unknown as Record<string, unknown>,
+      })
+    }
   }
 
   for (const { row, brokerAccountId } of plan.attach) {
@@ -366,7 +421,7 @@ export async function applyBrokerDriftRepairs(
     )
     if (error) {
       console.warn(`[tradeBrokerDrift] ghost close failed: ${error.message}`)
-      return { reopened, attached, closed }
+      return { reopened, attached, closed, promoted }
     }
     const closedIds = new Set((data ?? []).map(row => String(row.id)))
     closed = closedIds.size
@@ -386,5 +441,5 @@ export async function applyBrokerDriftRepairs(
     }
   }
 
-  return { reopened, attached, closed }
+  return { reopened, attached, closed, promoted }
 }

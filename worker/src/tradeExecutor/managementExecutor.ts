@@ -1415,15 +1415,20 @@ export async function applyManagement(
               metaapi_order_id: String(effectiveTicket),
             })
             .eq('id', trade.id)
-            .eq('status', 'open')
+            // Accept `pending` too: a filled explicit LIMIT/STOP row can still
+            // be pending until the drift sweep promotes it. The broker
+            // reduction above was verified against a live read, so the row
+            // identity is proven — failing the CAS here would report a
+            // failure for a reduction that already happened at the broker.
+            .in('status', ['open', 'pending'])
             .select('id')
             .maybeSingle()
           if (partialUpdateError) {
             throw new Error(`partial close DB state update failed: ${partialUpdateError.message}`)
           }
           if (partialUpdated?.id !== trade.id) {
-            // No open row matched: the trade was closed concurrently while the
-            // broker reduction is already done. Do not report success.
+            // No open/pending row matched: the trade was closed concurrently
+            // while the broker reduction is already done. Do not report success.
             throw new Error('partial close DB state update matched no open row')
           }
           partialProfitSucceeded += 1

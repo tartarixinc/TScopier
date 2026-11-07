@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  loadOpenTradesForChannel,
   modificationTargetsOpenTrade,
   isSymbolLessCloseIntent,
   resolveModificationParentSymbol,
@@ -111,5 +112,71 @@ describe('resolveModificationParentSymbol', () => {  it('no parent → no enforc
 
   it('empty model symbol → fill with parent', () => {
     assert.deepEqual(resolveModificationParentSymbol({ parentSymbol: 'XAUUSD', modelSymbol: '  ' }), { kind: 'fill', symbol: 'XAUUSD' })
+  })
+})
+
+function fakeGroundingSupabase(
+  trades: Array<{ symbol: string; direction: string; status: string }>,
+) {
+  const statusFilters: string[][] = []
+  const supabase = {
+    from(table: string) {
+      const builder: Record<string, unknown> = {}
+      const self = () => builder
+      builder.select = self
+      builder.eq = self
+      builder.order = self
+      builder.in = (column: string, values: string[]) => {
+        if (column === 'status') statusFilters.push(values)
+        return builder
+      }
+      builder.limit = () => {
+        if (table === 'signals') {
+          return Promise.resolve({ data: [{ id: 'signal-1' }], error: null })
+        }
+        const allowed = statusFilters.at(-1) ?? []
+        return Promise.resolve({
+          data: trades.filter(t => allowed.includes(t.status)),
+          error: null,
+        })
+      }
+      return builder
+    },
+  }
+  return { supabase, statusFilters }
+}
+
+describe('loadOpenTradesForChannel', () => {
+  it('includes broker-pending entries, not just open ones', async () => {
+    const { supabase, statusFilters } = fakeGroundingSupabase([
+      { symbol: 'XAUUSD', direction: 'SELL', status: 'pending' },
+      { symbol: 'EURUSD', direction: 'BUY', status: 'open' },
+      { symbol: 'GBPUSD', direction: 'BUY', status: 'closed' },
+    ])
+    const refs = await loadOpenTradesForChannel(supabase as never, {
+      userId: 'user-1',
+      channelRowId: 'channel-1',
+    })
+    assert.deepEqual([...(statusFilters[0] ?? [])].sort(), ['open', 'pending'])
+    assert.deepEqual((refs ?? []).map(r => r.symbol).sort(), ['EURUSD', 'XAUUSD'])
+  })
+
+  it('returns an empty list when the channel has no recent signals', async () => {
+    const supabase = {
+      from() {
+        const builder: Record<string, unknown> = {}
+        const self = () => builder
+        builder.select = self
+        builder.eq = self
+        builder.order = self
+        builder.limit = () => Promise.resolve({ data: [], error: null })
+        return builder
+      },
+    }
+    const refs = await loadOpenTradesForChannel(supabase as never, {
+      userId: 'user-1',
+      channelRowId: 'channel-1',
+    })
+    assert.deepEqual(refs, [])
   })
 })

@@ -260,10 +260,17 @@ export async function markSignalEntryFilled(
     .eq('id', row.id)
     .eq('status', 'broker_pending')
 
+  // The trade row moves pending→open only while it is still pending. When the
+  // drift sweep observed the fill first, that CAS matches nothing and the
+  // sweep has already written its own `signal_entry_pending_filled` row — a
+  // second one would show the same entry twice in the activity feed and fire
+  // the notification bell twice. The sep-row transition above and the
+  // partial-TP legs below still happen either way; only the log is skipped.
+  let writeFillLog = true
   if (row.trade_id) {
     const ticket = opts?.brokerPositionTicket?.trim()
     const useTicket = ticket && /^\d+$/.test(ticket) && Number(ticket) > 0
-    await supabase
+    const { data: promotedRows, error: promoteErr } = await supabase
       .from('trades')
       .update({
         status: 'open',
@@ -273,6 +280,22 @@ export async function markSignalEntryFilled(
       })
       .eq('id', row.trade_id)
       .eq('status', 'pending')
+      .select('id')
+    if (promoteErr) {
+      // Unknown state: keep the audit row rather than risk losing it.
+      console.warn(
+        `[signalEntryPendingHelpers] trades promote check failed row=${row.trade_id}: ${promoteErr.message}`,
+      )
+    } else {
+      const matched = Array.isArray(promotedRows) ? promotedRows.length > 0 : Boolean(promotedRows)
+      if (!matched) {
+        writeFillLog = false
+        console.warn(
+          `[signalEntryPendingHelpers] trades row ${row.trade_id} already left pending`
+          + ` (fill recorded by another path); skipping duplicate fill log`,
+        )
+      }
+    }
   }
 
   const plan = opts?.partialTpPlan
@@ -295,6 +318,7 @@ export async function markSignalEntryFilled(
       console.warn(`[signalEntryPendingHelpers] partial_tp_legs insert failed row=${row.id}: ${pErr.message}`)
     }
   }
+  if (!writeFillLog) return
   await writeExecutionLog(supabase, {
     user_id: row.user_id,
     signal_id: row.signal_id,

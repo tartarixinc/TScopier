@@ -1055,6 +1055,66 @@ function parseDeterministicManagement(
   }
   const closeTpIndex = resolveCloseTpIndex()
 
+  const wantsBreakeven =
+    COMMON_BREAKEVEN_PHRASES.some(p => messageContainsKeyword(t, p)) ||
+    /\bbreakeven|break\s*even\b/i.test(t) ||
+    /\bmove\s+stop\s+to\s+(?:breakeven|break\s*even|entry|be)\b/i.test(t) ||
+    /\bmoved?\s+(sl\s+)?to\s+(be|entry|entr(y)?\s?price)|\b(be|bk)\s*now\b/i.test(t) ||
+    /\bstop\s*loss\s+to\s+(be|entry|breakeven|break\s*even)\b/i.test(t) ||
+    /\b(?:sl|stop)\s+to\s+(be|entry|breakeven|break\s*even)\b/i.test(t) ||
+    /\bmove\s+.*\b(stop\s*loss|sl|stop)\b.*\b(breakeven|break\s*even|entry|be)\b/i.test(t) ||
+    hasAnyKeyword(t, kwBreakeven)
+
+  /** Stop/target-change wording, shared by the entry handoff and the modify branch. */
+  const modifyVerbEvidence =
+    new RegExp(`\\b(?:${SL_MGMT_VERBS})\\s+(?:${SL_TEXT_LABELS}|${TP_TEXT_LABELS})\\b`, 'i').test(t)
+    || hasAnyKeyword(t, kwModify)
+
+  // Any percentage below 100% is a partial close, not a full close — the
+  // explicit lists below only cover the common quarter/half tiers, so a
+  // channel saying "close 20% of the trades" must not fall through to `close`.
+  //
+  // The clause is deliberately narrow; every guard below keeps percentage
+  // *prose* out of it, and a message excluded here falls through to exactly
+  // the branches it reached before this clause existed:
+  //  - a close-family verb is required, so "BUY … TP 20% profit" stays an
+  //    entry and commentary like "80% trades hit TP today" stays ignored;
+  //  - an explicit full-close command wins over the percentage, so
+  //    "Close all trades, 20% profit secured" still closes everything;
+  //  - a condition or price level after the percentage ("Close 20% when it
+  //    hits 4200", "Close 20% above 4100", "Close 20% @ 4100",
+  //    "Secure 30% if price hits 2680") is advice, not an instruction — it
+  //    must never fire an immediate partial;
+  //  - a side-bearing message is an entry (same handoff rule as the modify
+  //    branch), and a message carrying a stop/target change goes to the
+  //    modify branch as it did before — except a breakeven combo, where the
+  //    modify branch is unreachable (breakeven is decided first) and dropping
+  //    the percentage would silently discard part of the instruction.
+  const percentPartialFraction = partialCloseFractionFromMessage(t)
+  const percentPartialBase =
+    percentPartialFraction != null
+    && percentPartialFraction < 1
+    && /\b(?:clos(?:e|ing)|secure|take|exit|flatten|withdraw|partial(?:ly)?)\b/i.test(t)
+  const percentEntryHandoff =
+    allowEntryHandoff
+    && messageHasSideKeywords(t, channelKeywords, lexicon)
+    && Boolean(sym)
+    && !modifyVerbEvidence
+  const percentConditionalAdvice =
+    looksLikeConditionalCloseSuggestion(t)
+    || /\b(?:if|when|once|until|after|whenever|as\s+soon\s+as)\b/i.test(t)
+    || /\b(?:at|to|by|above|below|over|under)\s+(?:\d|tp\s*\d|price\b)/i.test(t)
+    || /@\s*\d/.test(t)
+  const percentModifySideBySide =
+    (looksLikeStopOrTpAdjustCommand(t) || hasAnyKeyword(t, kwModify))
+    && !wantsBreakeven
+  const percentPartialIntent =
+    percentPartialBase
+    && !percentEntryHandoff
+    && !percentConditionalAdvice
+    && !percentModifySideBySide
+    && !looksLikeExplicitFullCloseCommand(t)
+
   const wantsPartialHalf =
     hitCloseHalfKw ||
     hitClosePartialKw ||
@@ -1066,16 +1126,8 @@ function parseDeterministicManagement(
     /\btake\s+profit\s+(?:target\s+)?(?:is\s+)?hit\b/i.test(t) ||
     /\b(50|half)\s*%?\s*(of\s+)?(the\s+)?(position|trade|lot|profit)\b/i.test(t) ||
     /\b(25|quarter|30|40|75)\s*%?\s*(of\s+)?(the\s+)?(position|trade|lot|profit)\b/i.test(tl) ||
+    percentPartialIntent ||
     hasAnyKeyword(t, kwPartial)
-  const wantsBreakeven =
-    COMMON_BREAKEVEN_PHRASES.some(p => messageContainsKeyword(t, p)) ||
-    /\bbreakeven|break\s*even\b/i.test(t) ||
-    /\bmove\s+stop\s+to\s+(?:breakeven|break\s*even|entry|be)\b/i.test(t) ||
-    /\bmoved?\s+(sl\s+)?to\s+(be|entry|entr(y)?\s?price)|\b(be|bk)\s*now\b/i.test(t) ||
-    /\bstop\s*loss\s+to\s+(be|entry|breakeven|break\s*even)\b/i.test(t) ||
-    /\b(?:sl|stop)\s+to\s+(be|entry|breakeven|break\s*even)\b/i.test(t) ||
-    /\bmove\s+.*\b(stop\s*loss|sl|stop)\b.*\b(breakeven|break\s*even|entry|be)\b/i.test(t) ||
-    hasAnyKeyword(t, kwBreakeven)
 
   const wantsCloseWorseEntries =
     /\bclose\s+worse\s+entr(?:y|ies)\b/i.test(t) ||
@@ -1131,9 +1183,8 @@ function parseDeterministicManagement(
     // and verb-based management ("SET SL TO …", "MOVE SL …") is untouched.
     // Shared helper covers channel/lexicon side aliases, not just English.
     const sideEvidence = messageHasSideKeywords(t, channelKeywords, lexicon)
-    const verbEvidence =
-      new RegExp(`\\b(?:${SL_MGMT_VERBS})\\s+(?:${SL_TEXT_LABELS}|${TP_TEXT_LABELS})\\b`, 'i').test(t)
-      || hasAnyKeyword(t, kwModify)
+    // Shared with the percent gate above so the two handoff checks can never drift.
+    const verbEvidence = modifyVerbEvidence
     // Only the full sync chain can consume it — and only when there is an
     // instrument to trade. A symbol-less side message ("BUY SL=3990") has no
     // entry parser to fall through to, and the management-only path has none

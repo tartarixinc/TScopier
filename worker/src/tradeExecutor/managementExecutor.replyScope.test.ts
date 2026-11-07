@@ -165,7 +165,9 @@ function makeSupabase(state: TestState) {
         limit(n: number) { limitN = n; return query },
         maybeSingle() {
           if (updatePatch) {
-            if (limitN !== Infinity || Object.keys(ins).length) {
+            // `ins` filters are applied below alongside the `eq` filters, so
+            // update+maybeSingle only rejects an unbounded fetch (no filters).
+            if (limitN !== Infinity) {
               throw new Error('mock: unsupported filter in update+maybeSingle')
             }
             // PostgREST update + select: filter, apply the patch, return the row.

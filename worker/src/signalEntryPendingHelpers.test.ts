@@ -4,6 +4,7 @@ import {
   findClosedRowForTicket,
   isLikelyMarketPositionRow,
   isPendingEntryRow,
+  markSignalEntryFilled,
   readBrokerOrderStopLoss,
   readBrokerOrderTakeProfit,
 } from './signalEntryPendingHelpers'
@@ -83,3 +84,97 @@ test('readBrokerOrderTakeProfit reads FxSocket camelCase takeProfit', () => {
   assert.equal(readBrokerOrderTakeProfit({ tp: 0 }), null)
   assert.equal(readBrokerOrderTakeProfit({}), null)
 })
+test('markSignalEntryFilled: logs the fill once when the trade row was pending', async () => {
+  const logs: Array<Record<string, unknown>> = []
+  const row = {
+    id: 'sep-1',
+    signal_id: 'sig-1',
+    user_id: 'user-1',
+    broker_account_id: 'broker-1',
+    metaapi_account_id: 'mt-1',
+    symbol: 'XAUUSD',
+    trade_id: 'tr-1',
+    broker_ticket: '12345',
+    is_buy: true,
+    entry_price: 4075,
+  }
+  await markSignalEntryFilled(fakeSupabaseForPromote([{ id: 'tr-1' }], logs), row, 4075.5)
+  assert.equal(logs.length, 1)
+  assert.equal(logs[0]!.action, 'signal_entry_pending_filled')
+  assert.equal(logs[0]!.signal_id, 'sig-1')
+})
+
+test('markSignalEntryFilled: no second log when another path already promoted the row', async () => {
+  const logs: Array<Record<string, unknown>> = []
+  const row = {
+    id: 'sep-1',
+    signal_id: 'sig-1',
+    user_id: 'user-1',
+    broker_account_id: 'broker-1',
+    metaapi_account_id: 'mt-1',
+    symbol: 'XAUUSD',
+    trade_id: 'tr-1',
+    broker_ticket: '12345',
+    is_buy: true,
+    entry_price: 4075,
+  }
+  // trades CAS matched no row: the drift sweep already promoted and logged it
+  await markSignalEntryFilled(fakeSupabaseForPromote([], logs), row, 4075.5)
+  assert.equal(logs.length, 0)
+})
+
+test('markSignalEntryFilled: still logs when the row has no trade row to promote', async () => {
+  const logs: Array<Record<string, unknown>> = []
+  const row = {
+    id: 'sep-1',
+    signal_id: 'sig-1',
+    user_id: 'user-1',
+    broker_account_id: 'broker-1',
+    metaapi_account_id: 'mt-1',
+    symbol: 'XAUUSD',
+    trade_id: null,
+    broker_ticket: '12345',
+    is_buy: true,
+    entry_price: 4075,
+  }
+  await markSignalEntryFilled(fakeSupabaseForPromote([], logs), row, 4075.5)
+  assert.equal(logs.length, 1)
+})
+
+/**
+ * Minimal chain: `trades.update().eq().eq().select('id')` resolves with
+ * `tradeRows`; every other write resolves clean; log inserts are captured.
+ */
+function fakeSupabaseForPromote(
+  tradeRows: unknown[],
+  logs: Array<Record<string, unknown>>,
+) {
+  let table = ''
+  let wantsSelect = false
+  const chain = {
+    from(name: string) {
+      table = name
+      wantsSelect = false
+      return chain
+    },
+    update() {
+      return chain
+    },
+    eq() {
+      return chain
+    },
+    select() {
+      wantsSelect = true
+      return chain
+    },
+    insert(payload: Record<string, unknown>) {
+      if (table === 'trade_execution_logs') logs.push(payload)
+      return chain
+    },
+    then(resolve: (value: unknown) => unknown) {
+      const data = table === 'trades' && wantsSelect ? tradeRows : null
+      return Promise.resolve({ error: null, data }).then(resolve)
+    },
+  }
+  return chain as never
+}

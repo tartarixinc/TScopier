@@ -248,21 +248,21 @@ export function looksLikeChannelManagementUpdate(
     || /\bsecure\s+\d+\s*%\s*profit/i.test(t)
     || /\btake\s+profit\s+(?:target\s+)?(?:is\s+)?hit\b/i.test(t)
     || /\bclose\s+(?:half|50%|25%|partials?)\b/i.test(t)
-    || /\b\d{1,3}\s*%\s*(?:of\s+)?(?:the\s+)?(?:position|trade|lot|profit(?:s)?)\b/i.test(t)
+    || /\b\d{1,3}\s*%\s*(?:of\s+)?(?:the\s+)?(?:positions?|trades?|lots?|profits?)\b/i.test(t)
   )
 }
 
 /** Percent partial close when message says e.g. "secure 30% profits". */
 export function partialCloseFractionFromMessage(text: string): number | null {
   const m = String(text ?? '').match(
-    /\b(?:secure|close|take)\s+(\d{1,2}|100)\s*%\s*(?:of\s+)?(?:the\s+)?(?:position|trade|lot|profit(?:s)?)?/i,
+    /\b(?:secure|close|take)\s+(\d{1,2}|100)\s*%\s*(?:of\s+)?(?:the\s+)?(?:positions?|trades?|lots?|profits?)?/i,
   )
   if (m?.[1]) {
     const n = Number(m[1])
     if (Number.isFinite(n) && n > 0 && n <= 100) return n / 100
   }
   const pctOnly = String(text ?? '').match(
-    /\b(\d{1,2}|100)\s*%\s*(?:of\s+)?(?:the\s+)?(?:position|trade|lot|profit(?:s)?)\b/i,
+    /\b(\d{1,2}|100)\s*%\s*(?:of\s+)?(?:the\s+)?(?:positions?|trades?|lots?|profits?)\b/i,
   )
   if (pctOnly?.[1]) {
     const n = Number(pctOnly[1])
