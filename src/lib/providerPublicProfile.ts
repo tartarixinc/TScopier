@@ -21,6 +21,8 @@ export type ProviderPublicProfile = {
   currency: string | null
   snapshotAt: string | null
   joinedAt: string | null
+  /** Public profile photo URL (our profile-photos bucket only), or null. */
+  avatarUrl: string | null
 }
 
 type Row = {
@@ -43,6 +45,7 @@ type Row = {
   currency: string | null
   snapshot_at: string | null
   joined_at: string | null
+  avatar_url?: string | null
 }
 
 const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/
@@ -75,6 +78,7 @@ export function mapProviderPublicProfile(row: Row): ProviderPublicProfile {
     currency: row.currency,
     snapshotAt: row.snapshot_at,
     joinedAt: row.joined_at,
+    avatarUrl: row.avatar_url ?? null,
   }
 }
 
@@ -89,7 +93,7 @@ export async function fetchProviderPublicProfile(client: SupabaseClient, slug: s
 }
 
 // ---------------------------------------------------------------------------
-// Public performance + trade history (anon-readable, gated by share_trade_history)
+// Public performance + trade history (anon-readable; approved providers are always shared)
 // ---------------------------------------------------------------------------
 
 export type ProviderPublicMonth = { month: string; profit: number; trades: number }

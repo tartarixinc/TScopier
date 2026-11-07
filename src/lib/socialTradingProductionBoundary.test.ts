@@ -107,12 +107,14 @@ test("production directory keeps compact ratings in the Name column and copy con
 test("real Copy Trader flow persists through the existing subscription RPC", () => {
   assert.match(copyModal, /createSocialCopySubscription\(supabase/);
   assert.match(copyModal, /destinationBrokerAccountId: selectedBroker\.id/);
-  assert.match(copyModal, /selectedSource\?\.isCopyEligible/);
+  assert.match(copyModal, /sourceAllowsCopy\(selectedSource\)/);
   assert.match(
     copyModal,
     /const createdSubscriptionId = await createSocialCopySubscription/,
   );
   assert.match(copyModal, /maxLot,/);
+  assert.match(copyModal, /manualSettings: filterSettings/);
+  assert.match(copyModal, /SocialCopyFilterSettingsEditor/);
   assert.match(
     copyModal,
     /changeSocialCopySubscription\(supabase, subscriptionId, action\)/,
@@ -181,6 +183,19 @@ test("provider onboarding is wired into routes, the directory and the account sn
   assert.doesNotMatch(page, /localStorage|COPY_PRICE_STORAGE_KEY/);
 });
 
+test("social trading directory is Discover / Your Providers without follow chrome", () => {
+  assert.match(page, /tabProviders/);
+  assert.match(page, /tabYourProviders/);
+  assert.match(page, /fetchMySocialCopySubscriptions/);
+  assert.match(page, /findNewProviders/);
+  assert.match(page, /isApprovedProvider/);
+  assert.match(page, /ProviderCopiersPanel/);
+  assert.doesNotMatch(page, /view=followers|view=following/);
+  assert.doesNotMatch(page, /tabFollowers|tabFollowing/);
+  assert.doesNotMatch(page, /SummaryStat/);
+  assert.doesNotMatch(wizard, /Who can follow you\?/);
+});
+
 test("the provider wizard persists drafts server-side and submits for admin review", () => {
   assert.match(wizard, /useProviderApplication\(\)/);
   assert.match(wizard, /validateProviderStep/);
@@ -222,7 +237,7 @@ test("deposits come from server-written account totals, never from browser-suppl
   assert.match(edge, /fetchCashflowTotals\(/);
   assert.match(edge, /cashflowSyncDue\(/);
   const ownView = readFileSync(new URL("../hooks/useOwnSocialAccountView.ts", import.meta.url), "utf8");
-  assert.match(ownView, /account\.total_deposits \?\? account\.performance_baseline_balance/);
+  assert.match(ownView, /resolveAccountDeposit\(account\)/);
   const select = readFileSync(new URL("../lib/brokerAccountSelect.ts", import.meta.url), "utf8");
   assert.match(select, /'total_deposits'/);
 });

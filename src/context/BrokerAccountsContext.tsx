@@ -34,6 +34,7 @@ import {
   snoozeMigrationPrompt,
   unsnoozeMigrationPrompt,
 } from '../lib/migrationPrompt'
+import { brokerConnectErrorLabelsFromI18n, userFacingBrokerConnectError } from '../lib/brokerConnectError'
 import { fxsocketBroker } from '../lib/fxsocketBroker'
 
 interface BrokerAccountsContextValue {
@@ -201,7 +202,9 @@ export function BrokerAccountsProvider({
     upsertBroker,
     reconnectFailedLabel: bl.reconnectFailed,
     onError: (message) => {
-      routeReconnectError(message, {
+      // Raw bridge text ("MTAPI connect failed: invalid login or password") becomes plain advice.
+      const friendly = userFacingBrokerConnectError(message, brokerConnectErrorLabelsFromI18n(bl))
+      routeReconnectError(friendly, {
         dialog: setReconnectError,
         page: reconnectErrorHandlerRef.current,
       })

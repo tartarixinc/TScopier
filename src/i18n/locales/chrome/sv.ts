@@ -58,7 +58,7 @@ export const chromeSv: AppChromeTranslations = {
       statusPaused: 'Kopieraren pausad',
       statusCopierStopped: 'Kopieraren stoppad',
       stoppedHintSubscription: 'Prenumerera för att starta kopieraren',
-      stoppedHintSetup: 'Anslut Telegram, lägg till kanaler och koppla en mäklare för att starta kopieraren',
+      stoppedHintSetup: 'Koppla en mäklare för att starta kopieraren',
       stopCopier: 'Pausa kopieraren',
       confirmTitle: 'Pausa kopieraren',
       confirmBody: 'Signalkopiering, orderutförande och kopieringsloggar stoppas tills du återupptar.',

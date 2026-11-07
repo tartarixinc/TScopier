@@ -58,7 +58,7 @@ export const chromeJa: AppChromeTranslations = {
       statusPaused: 'コピー一時停止中',
       statusCopierStopped: 'コピー停止中',
       stoppedHintSubscription: 'コピーを開始するにはサブスクライブしてください',
-      stoppedHintSetup: 'Telegramを接続し、チャンネルを追加してブローカーをリンクするとコピーを開始できます',
+      stoppedHintSetup: 'ブローカーをリンクするとコピーを開始できます',
       stopCopier: 'コピーを一時停止',
       confirmTitle: 'コピーを一時停止',
       confirmBody: 'コピーを再開するまで、シグナルコピー、取引執行、コピーログは停止します。',

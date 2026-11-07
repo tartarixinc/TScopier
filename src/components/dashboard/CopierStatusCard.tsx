@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { useSubscription } from '../../context/SubscriptionContext'
 import { useT } from '../../context/LocaleContext'
-import { isBrokerSessionHealthy } from '../../lib/brokerReconnect'
+import { isBrokerSessionConnected, isBrokerSessionHealthy } from '../../lib/brokerReconnect'
 import { hasLinkedBrokerForUi } from '../../lib/brokerLink'
 import {
   fetchCopierHealthStatus,
@@ -244,6 +244,11 @@ export function CopierStatusCard({
     }
   }, [userId, refreshCopierHealth, refreshSources])
 
+  const hasConnectedBroker = useMemo(
+    () => accounts.some(account => account.is_active !== false && isBrokerSessionConnected(account)),
+    [accounts],
+  )
+
   const { brokerConnectionsLabel, brokerConnectionsTone, brokerErrorCount } = useMemo(() => {
     const linked = accounts.filter(hasLinkedBrokerForUi)
     const activeLinked = linked.filter(a => a.is_active !== false)
@@ -293,7 +298,9 @@ export function CopierStatusCard({
     brokerIssue: brokerConnectionsTone === 'bad' || brokerErrorCount > 0,
     links,
   })
-  const processState = !hasActiveSubscription ? 'stopped' : resolveCopierProcessState(links)
+  const processState = !hasActiveSubscription || !hasConnectedBroker
+    ? 'stopped'
+    : resolveCopierProcessState(links)
 
   const sourceLabel = (link: CopierSourceLink): string => {
     if (link === 'connected') return cs.connected
@@ -328,7 +335,7 @@ export function CopierStatusCard({
         ? cs.telegramReconnectingMessage
         : cs.checkingMessage
       : headline === 'no_source'
-        ? cs.noSourceMessage
+        ? ''
         : headline === 'unknown'
           ? cs.unreportedMessage
           : headline === 'ready'
@@ -422,14 +429,16 @@ export function CopierStatusCard({
 
       {expanded ? (
         <div className="divide-y divide-neutral-100 px-5 py-4 dark:divide-neutral-800/80">
-          <div className="pb-3 text-sm text-neutral-900 dark:text-neutral-50">
-            <div>{statusMessage}</div>
-            {lastHealthy ? (
-              <div className="mt-1 text-xs text-neutral-900 dark:text-neutral-50">
-                {cs.lastHealthy}: {lastHealthy}
-              </div>
-            ) : null}
-          </div>
+          {statusMessage || lastHealthy ? (
+            <div className="pb-3 text-sm text-neutral-900 dark:text-neutral-50">
+              {statusMessage ? <div>{statusMessage}</div> : null}
+              {lastHealthy ? (
+                <div className={clsx(statusMessage && 'mt-1', 'text-xs text-neutral-900 dark:text-neutral-50')}>
+                  {cs.lastHealthy}: {lastHealthy}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <div className="py-1">
             <p className="pb-1 text-xs font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
               {cs.signalSources}

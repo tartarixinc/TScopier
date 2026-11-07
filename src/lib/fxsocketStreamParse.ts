@@ -81,13 +81,16 @@ export function resolveFxsocketFloatingOpenPnl(
   snap: FxsocketAccountStreamSnapshot,
   openTrades = 0,
 ): number | undefined {
+  const derived = snap.balance != null && snap.equity != null
+    ? Math.round((snap.equity - snap.balance) * 100) / 100
+    : undefined
   if (shouldApplyAccountStreamOpenPnl(snap, openTrades) && snap.openPnl != null) {
+    // Equity − balance matches the terminal floating P/L (includes swap/commission).
+    // Some bridges send a partial `profit` that disagrees — prefer the derived mark.
+    if (derived != null && Math.abs(derived - snap.openPnl) > 0.05) return derived
     return snap.openPnl
   }
-  if (snap.balance != null && snap.equity != null) {
-    return Math.round((snap.equity - snap.balance) * 100) / 100
-  }
-  return undefined
+  return derived
 }
 
 export interface FxsocketPositionsStreamSnapshot {

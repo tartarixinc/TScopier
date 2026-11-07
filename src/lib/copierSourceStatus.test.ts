@@ -92,7 +92,7 @@ describe('copierSourceStatus', () => {
       brokerIssue: false,
       links,
     })).toBe('no_source')
-    expect(resolveCopierProcessState(links)).toBe('stopped')
+    expect(resolveCopierProcessState(links)).toBe('operational')
   })
 
   it('still flags broker problems when a source is connected', () => {

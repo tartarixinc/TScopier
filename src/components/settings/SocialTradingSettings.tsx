@@ -109,7 +109,9 @@ export function SocialTradingSettings() {
   const isApprovedProvider = provider.status === 'approved'
   const publicPath = isApprovedProvider && profile?.slug
     ? `/p/${profile.slug}`
-    : user?.id ? `/social-trading/${user.id}` : '/social-trading'
+    : isApprovedProvider
+      ? '/social-trading'
+      : '/social-trading/provider'
 
   return (
     <div className="space-y-4">
@@ -118,7 +120,7 @@ export function SocialTradingSettings() {
       <section className="overflow-hidden rounded-2xl border border-neutral-200/65 bg-white dark:border-neutral-800/55 dark:bg-neutral-950">
         <div className="border-b border-neutral-100 px-5 py-4 dark:border-neutral-800 sm:px-6">
           <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">My provider profile</h2>
-          <p className="mt-0.5 text-sm text-neutral-600 dark:text-neutral-300">Profile visibility and account sharing are separate controls.</p>
+          <p className="mt-0.5 text-sm text-neutral-600 dark:text-neutral-300">Manage your public provider profile and which accounts you share for copying.</p>
         </div>
         <div className="space-y-4 p-5 sm:p-6">
           {social.loading ? <p className="text-sm text-neutral-600 dark:text-neutral-300">Loading provider profile…</p> : !profile ? (
@@ -133,35 +135,20 @@ export function SocialTradingSettings() {
               </Link>
             </div>
           ) : (
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-medium text-neutral-900 dark:text-neutral-50">@{profile.username}</p>
-                  <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">Published</span>
-                  <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200">{profile.access}</span>
-                </div>
-                <Link className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-green-600 hover:text-teal-700 dark:text-teal-300" to={publicPath}>
-                  View public profile <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-                </Link>
-                {!isApprovedProvider && !provider.loading ? (
-                  <p className="mt-2 text-xs text-neutral-600 dark:text-neutral-300">
-                    Sharing an account for copying requires an approved provider application.{' '}
-                    <Link className="font-medium text-green-600 dark:text-teal-300" to="/social-trading/provider">{providerEntryLabel(provider.status)}</Link>
-                  </p>
-                ) : null}
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-medium text-neutral-900 dark:text-neutral-50">@{profile.username}</p>
+                <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">Published</span>
               </div>
-              <label className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
-                Who can follow
-                <select
-                  className="mt-1 block rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50"
-                  value={profile.access}
-                  disabled={social.pendingKeys.has('access')}
-                  onChange={event => void social.setAccess(event.target.value as 'open' | 'private')}
-                >
-                  <option value="open">Open</option>
-                  <option value="private">Approval required</option>
-                </select>
-              </label>
+              <Link className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-green-600 hover:text-teal-700 dark:text-teal-300" to={publicPath}>
+                View public profile <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+              </Link>
+              {!isApprovedProvider && !provider.loading ? (
+                <p className="mt-2 text-xs text-neutral-600 dark:text-neutral-300">
+                  Sharing an account for copying requires an approved provider application.{' '}
+                  <Link className="font-medium text-green-600 dark:text-teal-300" to="/social-trading/provider">{providerEntryLabel(provider.status)}</Link>
+                </p>
+              ) : null}
             </div>
           )}
           <div className="flex flex-wrap gap-3 border-t border-neutral-100 pt-4 text-sm dark:border-neutral-800">

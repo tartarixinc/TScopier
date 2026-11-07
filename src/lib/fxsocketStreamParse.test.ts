@@ -167,4 +167,14 @@ describe('resolveFxsocketFloatingOpenPnl', () => {
     }, 3)
     expect(pnl).toBeCloseTo(12.34)
   })
+
+  it('prefers equity minus balance when explicit profit omits swap/commission', () => {
+    const pnl = resolveFxsocketFloatingOpenPnl({
+      balance: 498_282.55,
+      equity: 495_786.55,
+      openPnl: -1_318,
+      openPnlSource: 'explicit',
+    }, 1)
+    expect(pnl).toBeCloseTo(-2_496)
+  })
 })
