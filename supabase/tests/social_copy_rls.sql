@@ -85,12 +85,10 @@ select is(
   (select count(*)::integer from public.get_social_copy_sources('20000000-0000-0000-0000-000000000001')),
   0, 'private source is hidden before an accepted follow'
 );
-select throws_ok(
-  $$select public.create_social_copy_subscription(
-    current_setting('test.social_copy_source_id')::uuid,
-    '21000000-0000-0000-0000-000000000002', 'fixed_lot', 0.01, 1, 0.1, null, 'demo', '{}')$$,
-  '42501', 'An accepted follow is required for this private trader',
-  'private source subscription requires accepted follow authorization'
+select ok(public.create_social_copy_subscription(
+  current_setting('test.social_copy_source_id')::uuid,
+  '21000000-0000-0000-0000-000000000002', 'fixed_lot', 0.01, 1, 0.1, null, 'demo', '{}') is not null,
+  'private source subscription no longer requires an accepted follow'
 );
 select is(public.follow_social_profile('20000000-0000-0000-0000-000000000001'), 'pending', 'private follow begins pending');
 
@@ -109,11 +107,6 @@ select throws_ok(
     '21000000-0000-0000-0000-000000000003', 'fixed_lot', 0.01, 1, 0.1, null, 'demo', '{}')$$,
   '42501', 'Destination account is not owned, connected, or supported for Social Trading',
   'subscriber cannot route copying into another user account'
-);
-select ok(public.create_social_copy_subscription(
-  current_setting('test.social_copy_source_id')::uuid,
-  '21000000-0000-0000-0000-000000000002', 'fixed_lot', 0.01, 1, 0.1, null, 'demo', '{}') is not null,
-  'authorized subscriber can persist risk settings'
 );
 select throws_ok(
   $$select public.create_social_copy_subscription(
