@@ -33,9 +33,9 @@ type AccountCopyLogRow = Pick<
 >
 
 /**
- * Detail view for one account-copy event (mirror or social).
+ * Detail view for one account-copy or manual-execution event (mirror, social, or manual).
  *
- * Separate from CopierLogDetailModal because these copies are not signals: no
+ * Separate from CopierLogDetailModal because these are not channel signals: no
  * Telegram message, no parsed levels, no signal execution timeline.
  */
 export function MirrorLogDetailModal({
@@ -47,12 +47,13 @@ export function MirrorLogDetailModal({
   row: AccountCopyLogRow | null
   status: { variant: StatusVariant; label: string; className?: string }
   onClose: () => void
-  variant?: 'mirror' | 'social'
+  variant?: 'mirror' | 'social' | 'manual'
 }) {
   const t = useT()
   const copierLogs = t.copierLogs
   const panelRef = useRef<HTMLDivElement>(null)
   const isSocial = variant === 'social'
+  const isManual = variant === 'manual'
 
   useEffect(() => {
     if (!row) return
@@ -83,30 +84,46 @@ export function MirrorLogDetailModal({
     minute: '2-digit',
   })
 
-  const title = isSocial
-    ? label(copierLogs.socialDetailTitle, 'Social copy details')
-    : label(copierLogs.mirrorDetailTitle, 'Mirror copy details')
-  const source = isSocial
-    ? label(copierLogs.socialSource, 'Social trading')
-    : label(copierLogs.mirrorSource, 'Mirror copy')
-  const occurred = isSocial
-    ? label(copierLogs.socialOccurred, 'Occurred')
-    : label(copierLogs.mirrorOccurred, 'Occurred')
-  const providerLabel = isSocial
-    ? label(copierLogs.socialProvider, 'Provider')
-    : label(copierLogs.mirrorMasterAccount, 'Master account')
-  const destinationLabel = isSocial
-    ? label(copierLogs.socialDestinationAccount, 'Your account')
-    : label(copierLogs.mirrorSlaveAccount, 'Slave account')
-  const sourceTicketLabel = isSocial
-    ? label(copierLogs.socialProviderTicket, 'Provider ticket')
-    : label(copierLogs.mirrorMasterTicket, 'Master ticket')
-  const copyTicketLabel = isSocial
-    ? label(copierLogs.socialCopyTicket, 'Copy ticket')
-    : label(copierLogs.mirrorCopyTicket, 'Copy ticket')
-  const lotLabel = isSocial
-    ? label(copierLogs.socialLot, 'Lot')
-    : label(copierLogs.mirrorLot, 'Lot')
+  const title = isManual
+    ? label(copierLogs.manualDetailTitle, 'Manual execution details')
+    : isSocial
+      ? label(copierLogs.socialDetailTitle, 'Social copy details')
+      : label(copierLogs.mirrorDetailTitle, 'Mirror copy details')
+  const source = isManual
+    ? label(copierLogs.manualExecutionSource, 'Manual Execution')
+    : isSocial
+      ? label(copierLogs.socialSource, 'Social trading')
+      : label(copierLogs.mirrorSource, 'Mirror copy')
+  const occurred = isManual
+    ? label(copierLogs.manualOccurred, 'Occurred')
+    : isSocial
+      ? label(copierLogs.socialOccurred, 'Occurred')
+      : label(copierLogs.mirrorOccurred, 'Occurred')
+  const providerLabel = isManual
+    ? label(copierLogs.manualAccount, 'Account')
+    : isSocial
+      ? label(copierLogs.socialProvider, 'Provider')
+      : label(copierLogs.mirrorMasterAccount, 'Master account')
+  const destinationLabel = isManual
+    ? label(copierLogs.manualAccount, 'Account')
+    : isSocial
+      ? label(copierLogs.socialDestinationAccount, 'Your account')
+      : label(copierLogs.mirrorSlaveAccount, 'Slave account')
+  const sourceTicketLabel = isManual
+    ? label(copierLogs.manualTicket, 'Ticket')
+    : isSocial
+      ? label(copierLogs.socialProviderTicket, 'Provider ticket')
+      : label(copierLogs.mirrorMasterTicket, 'Master ticket')
+  const copyTicketLabel = isManual
+    ? label(copierLogs.manualTicket, 'Ticket')
+    : isSocial
+      ? label(copierLogs.socialCopyTicket, 'Copy ticket')
+      : label(copierLogs.mirrorCopyTicket, 'Copy ticket')
+  const lotLabel = isManual
+    ? label(copierLogs.manualLot, 'Lot')
+    : isSocial
+      ? label(copierLogs.socialLot, 'Lot')
+      : label(copierLogs.mirrorLot, 'Lot')
 
   return (
     <div
@@ -169,9 +186,13 @@ export function MirrorLogDetailModal({
             <DetailRow label={detailLabel('status', 'Status')} value={status.label} />
             <DetailRow label={occurred} value={time} />
             <DetailRow label={providerLabel} value={row.channelName} />
-            <DetailRow label={destinationLabel} value={row.destinationAccount ?? '—'} />
+            {!isManual ? (
+              <DetailRow label={destinationLabel} value={row.destinationAccount ?? '—'} />
+            ) : null}
             <DetailRow label={sourceTicketLabel} value={row.sourceTicket ?? '—'} mono />
-            <DetailRow label={copyTicketLabel} value={row.destinationTicket ?? '—'} mono />
+            {!isManual ? (
+              <DetailRow label={copyTicketLabel} value={row.destinationTicket ?? '—'} mono />
+            ) : null}
             <DetailRow label={detailLabel('symbol', 'Symbol')} value={row.symbol} />
             {row.lot != null ? (
               <DetailRow label={lotLabel} value={String(row.lot)} />

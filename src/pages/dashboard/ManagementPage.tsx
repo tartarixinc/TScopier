@@ -31,7 +31,9 @@ import {
   type TradeActivityLogRow,
 } from '../../lib/tradeActivities'
 import {
+  buildManualSourceTradeActivities,
   buildSocialCopyTradeActivities,
+  fetchManualSourceTradeLogs,
   fetchSocialCopyLogs,
   type SocialCopyLogRow,
 } from '../../lib/socialCopyLogs'
@@ -53,6 +55,7 @@ export function ManagementPage() {
   const [rawLogs, setRawLogs] = useState<TradeActivityLogRow[]>([])
   const [rawSkippedSignals, setRawSkippedSignals] = useState<SkippedSignalRow[]>([])
   const [socialLogs, setSocialLogs] = useState<SocialCopyLogRow[]>([])
+  const [manualLogs, setManualLogs] = useState<SocialCopyLogRow[]>([])
   const [channelDisplayNames, setChannelDisplayNames] = useState<Record<string, string>>({})
   const [channelSourceKinds, setChannelSourceKinds] = useState<Record<string, SignalSourceKind>>({})
   const [toastMessage, setToastMessage] = useState<string | null>(null)
@@ -72,6 +75,8 @@ export function ManagementPage() {
     if (!userId) {
       setRawLogs([])
       setRawSkippedSignals([])
+      setSocialLogs([])
+      setManualLogs([])
       setLoading(false)
       return
     }
@@ -84,7 +89,7 @@ export function ManagementPage() {
     // background refreshes on other tabs don't scan the signals table needlessly.
     const needSkipped = opts?.skipped === true
     const needChannels = !channelsLoadedRef.current
-    const [channelsRes, logsRes, skippedRes, social] = await Promise.all([
+    const [channelsRes, logsRes, skippedRes, social, manual] = await Promise.all([
       needChannels
         ? supabase
           .from('telegram_channels')
@@ -108,6 +113,7 @@ export function ManagementPage() {
           .limit(TRADE_SKIPPED_SIGNAL_FETCH_LIMIT)
         : Promise.resolve({ data: null, error: null }),
       fetchSocialCopyLogs(supabase, userId),
+      fetchManualSourceTradeLogs(supabase, userId).catch(() => [] as SocialCopyLogRow[]),
     ])
     if (gen !== loadGenRef.current) return
 
@@ -125,6 +131,7 @@ export function ManagementPage() {
     }
 
     setSocialLogs(social)
+    setManualLogs(manual)
 
     if (needSkipped) {
       const skipped = (skippedRes.data ?? []) as SkippedSignalRow[]
@@ -168,7 +175,14 @@ export function ManagementPage() {
       modifyMessage: t.copierLogs.socialModifyMessage ?? 'Social copy of #{ticket} updated',
       otherMessage: t.copierLogs.socialOtherMessage ?? '{action} · social copy of #{ticket}',
     })
-    const merged = [...logActivities, ...socialActivities].sort((a, b) =>
+    const manualActivities = buildManualSourceTradeActivities(manualLogs, t.management, {
+      source: t.copierLogs.manualExecutionSource ?? 'Manual Execution',
+      openMessage: t.copierLogs.manualOpenMessage ?? 'Opened {detail} #{ticket}',
+      closeMessage: t.copierLogs.manualCloseMessage ?? 'Closed #{ticket}',
+      modifyMessage: t.copierLogs.manualModifyMessage ?? 'Updated #{ticket}',
+      otherMessage: t.copierLogs.manualOtherMessage ?? '{action} · #{ticket}',
+    })
+    const merged = [...logActivities, ...socialActivities, ...manualActivities].sort((a, b) =>
       a.row.created_at < b.row.created_at ? 1 : a.row.created_at > b.row.created_at ? -1 : 0,
     )
     if (filter !== 'skipped') return merged
@@ -180,7 +194,7 @@ export function ManagementPage() {
       channelDisplayNames,
       channelSourceKinds,
     )
-  }, [rawLogs, rawSkippedSignals, socialLogs, filter, t.channelWorker, t.management, t.copierLogs, channelDisplayNames, channelSourceKinds])
+  }, [rawLogs, rawSkippedSignals, socialLogs, manualLogs, filter, t.channelWorker, t.management, t.copierLogs, channelDisplayNames, channelSourceKinds])
 
   const filteredActivities = useMemo(
     () => filterTradeActivitiesByTab(allActivities, filter),

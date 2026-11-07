@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
+  buildManualSourceTradeActivities,
   buildSocialCopyTradeActivities,
   countSocialCopyOpensInRange,
+  fetchManualSourceTradeLogs,
   fetchSocialCopyLogs,
   normalizeSocialCopyLogs,
+  normalizeSocialProviderSourceTrades,
   synthesizeSocialCopyLogsFromMappings,
 } from './socialCopyLogs'
 
@@ -130,6 +133,46 @@ describe('buildSocialCopyTradeActivities', () => {
     })
     expect(activities[0]!.message).toContain('BTCUSDm')
     expect(activities[0]!.row.broker_account_id).toBe('dst-1')
+    expect(activities[0]!.row.request_payload).toMatchObject({ source_kind: 'social' })
+  })
+})
+
+describe('buildManualSourceTradeActivities', () => {
+  it('labels provider source trades as Manual Execution', () => {
+    const rows = normalizeSocialProviderSourceTrades(
+      [{
+        id: 't1',
+        broker_account_id: 'src-1',
+        symbol: 'BTCUSDm',
+        direction: 'buy',
+        lot_size: 0.1,
+        status: 'open',
+        opened_at: '2026-11-07T20:00:00Z',
+        closed_at: null,
+        metaapi_order_id: '547044465',
+        broker_position_ticket: '547044465',
+      }],
+      { 'src-1': 'MT5 • 476205231' },
+    )
+    const activities = buildManualSourceTradeActivities(rows, {
+      kindOrder: 'Order',
+      kindClose: 'Close',
+      kindModify: 'Modify',
+      kindOther: 'Other',
+    }, {
+      source: 'Manual Execution',
+      openMessage: 'Opened {detail} #{ticket}',
+      closeMessage: 'Closed #{ticket}',
+      modifyMessage: 'Updated #{ticket}',
+      otherMessage: '{action} · #{ticket}',
+    })
+    expect(activities).toHaveLength(1)
+    expect(activities[0]).toMatchObject({
+      channelName: 'Manual Execution · MT5 • 476205231',
+      message: 'Opened buy BTCUSDm (0.1 lot) #547044465',
+    })
+    expect(activities[0]!.row.id).toBe('manual:provider-trade:t1:open')
+    expect(activities[0]!.row.request_payload).toMatchObject({ source_kind: 'manual' })
   })
 })
 
@@ -151,6 +194,37 @@ function fakeSupabase(tables: Record<string, { data: unknown; error: unknown }>,
     },
   } as unknown as SupabaseClient
 }
+
+describe('normalizeSocialProviderSourceTrades', () => {
+  it('turns a published-source broker trade into an open log row', () => {
+    const rows = normalizeSocialProviderSourceTrades(
+      [{
+        id: 't1',
+        broker_account_id: 'src-1',
+        symbol: 'BTCUSDm',
+        direction: 'buy',
+        lot_size: 0.02,
+        status: 'open',
+        opened_at: '2026-11-07T20:00:00Z',
+        closed_at: null,
+        metaapi_order_id: '547044465',
+        broker_position_ticket: '547044465',
+      }],
+      { 'src-1': 'MT5 • 476205231' },
+    )
+    expect(rows).toEqual([
+      expect.objectContaining({
+        id: 'provider-trade:t1:open',
+        status: 'executed',
+        action: 'open',
+        side: 'buy',
+        symbol: 'BTCUSDm',
+        sourceTicket: '547044465',
+        channelName: 'MT5 • 476205231',
+      }),
+    ])
+  })
+})
 
 describe('countSocialCopyOpensInRange', () => {
   it('returns 0 when the user has no subscriptions', async () => {
@@ -207,5 +281,96 @@ describe('fetchSocialCopyLogs', () => {
     }, [{ profile_user_id: 'trader-1', display_name: 'Amina' }])
     const rows = await fetchSocialCopyLogs(client, 'user-1')
     expect(rows[0]?.id).toBe('mapping:m1:open')
+  })
+
+  it('does not include provider-owned source trades (those are Manual Execution)', async () => {
+    const client = fakeSupabase({
+      social_copy_subscriptions: { data: [], error: null },
+      social_copy_sources: {
+        data: [{ id: 'src', broker_account_id: 'src-1', label: 'Source' }],
+        error: null,
+      },
+      trades: {
+        data: [{
+          id: 't1',
+          broker_account_id: 'src-1',
+          symbol: 'BTCUSDm',
+          direction: 'buy',
+          lot_size: 0.1,
+          status: 'open',
+          opened_at: '2026-11-07T20:00:00Z',
+          closed_at: null,
+          metaapi_order_id: '1',
+          broker_position_ticket: '1',
+        }],
+        error: null,
+      },
+      broker_accounts: { data: [{ id: 'src-1', label: 'MT5', account_login: '1' }], error: null },
+    })
+    const social = await fetchSocialCopyLogs(client, 'user-1')
+    expect(social).toEqual([])
+    expect(social.every(row => !row.id.startsWith('provider-trade:'))).toBe(true)
+  })
+})
+
+describe('fetchManualSourceTradeLogs', () => {
+  it('returns provider-owned published-source trades', async () => {
+    const client = {
+      from(table: string) {
+        if (table === 'social_copy_sources') {
+          return {
+            select: () => ({
+              eq: () => ({
+                in: () => Promise.resolve({
+                  data: [{ id: 'src', broker_account_id: 'src-1', label: 'Source' }],
+                  error: null,
+                }),
+              }),
+            }),
+          }
+        }
+        if (table === 'trades') {
+          const api: Record<string, unknown> = {}
+          for (const method of ['select', 'eq', 'in', 'order', 'limit']) api[method] = () => api
+          api.then = (resolve: (v: unknown) => unknown) =>
+            Promise.resolve({
+              data: [{
+                id: 't1',
+                broker_account_id: 'src-1',
+                symbol: 'BTCUSDm',
+                direction: 'buy',
+                lot_size: 0.1,
+                status: 'open',
+                opened_at: '2026-11-07T20:00:00Z',
+                closed_at: null,
+                metaapi_order_id: '547044465',
+                broker_position_ticket: '547044465',
+              }],
+              error: null,
+            }).then(resolve)
+          return api
+        }
+        if (table === 'broker_accounts') {
+          const api: Record<string, unknown> = {}
+          for (const method of ['select', 'in']) api[method] = () => api
+          api.then = (resolve: (v: unknown) => unknown) =>
+            Promise.resolve({
+              data: [{ id: 'src-1', label: 'MT5 • 476205231', account_login: '476205231' }],
+              error: null,
+            }).then(resolve)
+          return api
+        }
+        return { select: () => chain({ data: [], error: null }) }
+      },
+      rpc: () => Promise.resolve({ data: [], error: null }),
+    } as unknown as SupabaseClient
+
+    const rows = await fetchManualSourceTradeLogs(client, 'user-1')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      id: 'provider-trade:t1:open',
+      symbol: 'BTCUSDm',
+      channelName: 'Source',
+    })
   })
 })

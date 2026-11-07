@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeftRight, ChevronLeft, ChevronRight, Loader2, RefreshCw, Users } from 'lucide-react'
+import { ArrowLeftRight, ChevronLeft, ChevronRight, Hand, Loader2, RefreshCw, Users } from 'lucide-react'
 import clsx from 'clsx'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
@@ -24,7 +24,7 @@ import {
 } from '../../lib/retrySignalDisplay'
 import { formatCopierSkipReasonShort } from '../../lib/copierLogDetail'
 import { fetchMirrorCopyLogs, pageMirrorSlice, type MirrorCopyLogRow } from '../../lib/mirrorCopyLogs'
-import { fetchSocialCopyLogs, type SocialCopyLogRow } from '../../lib/socialCopyLogs'
+import { fetchManualSourceTradeLogs, fetchSocialCopyLogs, type SocialCopyLogRow } from '../../lib/socialCopyLogs'
 import { CopierLogDetailModal } from '../../components/dashboard/CopierLogDetailModal'
 import { MirrorLogDetailModal } from '../../components/dashboard/MirrorLogDetailModal'
 import { SignalSourceLogo } from '../../components/dashboard/SignalSourceLogo'
@@ -64,7 +64,7 @@ function channelLabel(channelId: string | null | undefined, names: Record<string
   return names[channelId] ?? 'Unknown channel'
 }
 
-/** One rendered log line, whatever produced it (a signal, mirror, or social copy). */
+/** One rendered log line, whatever produced it (a signal, mirror, social, or manual trade). */
 type CopierLogView = {
   symbol: string
   status: { variant: StatusVariant; label: string; className?: string }
@@ -73,6 +73,7 @@ type CopierLogView = {
   sourceKind: SignalSourceKind | null
   isMirror: boolean
   isSocial: boolean
+  isManual: boolean
   action: string | null
   messageFull: string
   messagePreview: string
@@ -81,11 +82,12 @@ type CopierLogView = {
   timeLabel: string
 }
 
-/** One row on the list — a signal, mirror copy, or social copy, never more than one. */
+/** One row on the list — a signal, mirror, social, or manual trade, never more than one. */
 type LogViewEntry = { key: string; view: CopierLogView; at: string } & (
-  | { signal: Signal; mirror?: never; social?: never }
-  | { mirror: MirrorCopyLogRow; signal?: never; social?: never }
-  | { social: SocialCopyLogRow; signal?: never; mirror?: never }
+  | { signal: Signal; mirror?: never; social?: never; manual?: never }
+  | { mirror: MirrorCopyLogRow; signal?: never; social?: never; manual?: never }
+  | { social: SocialCopyLogRow; signal?: never; mirror?: never; manual?: never }
+  | { manual: SocialCopyLogRow; signal?: never; mirror?: never; social?: never }
 )
 
 /** Where the loaded signal page sits in time, so mirror rows can be spliced in. */
@@ -141,6 +143,7 @@ function buildSignalLogView(
     sourceKind,
     isMirror: false,
     isSocial: false,
+    isManual: false,
     action: action ?? null,
     messageFull: signal.raw_message ?? messagePreview,
     messagePreview,
@@ -194,6 +197,7 @@ function buildMirrorLogView(
     sourceKind: null,
     isMirror: true,
     isSocial: false,
+    isManual: false,
     action: row.action === 'open' ? (row.side ?? row.action) : row.action,
     messageFull: message,
     messagePreview: message,
@@ -203,7 +207,7 @@ function buildMirrorLogView(
   }
 }
 
-/** Compose a plain-English one-liner for a social-copy event. */
+/** Compose a plain-English one-liner for a follower social-copy event. */
 function socialLogMessage(
   row: SocialCopyLogRow,
   copierLogs: ReturnType<typeof useT>['copierLogs'],
@@ -242,6 +246,56 @@ function buildSocialLogView(
     sourceKind: null,
     isMirror: false,
     isSocial: true,
+    isManual: false,
+    action: row.action === 'open' ? (row.side ?? row.action) : row.action,
+    messageFull: message,
+    messagePreview: message,
+    reason: row.reason,
+    reasonShort: shortenReason(row.reason) ?? '—',
+    timeLabel: formatLogTime(row.createdAt),
+  }
+}
+
+/** Compose a plain-English one-liner for a provider Manual Execution trade. */
+function manualLogMessage(
+  row: SocialCopyLogRow,
+  copierLogs: ReturnType<typeof useT>['copierLogs'],
+): string {
+  const vars = {
+    detail: `${[row.side, row.symbol].filter(Boolean).join(' ')}${row.lot == null ? '' : ` (${row.lot} lot)`}`
+      || row.action
+      || '',
+    ticket: row.sourceTicket || '—',
+    action: row.action ?? '',
+  }
+  switch (row.action) {
+    case 'open':
+      return interpolate(copierLogs.manualOpenMessage ?? 'Opened {detail} #{ticket}', vars)
+    case 'close':
+      return interpolate(copierLogs.manualCloseMessage ?? 'Closed #{ticket}', vars)
+    case 'modify':
+      return interpolate(copierLogs.manualModifyMessage ?? 'Updated #{ticket}', vars)
+    default:
+      return interpolate(copierLogs.manualOtherMessage ?? '{action} · #{ticket}', vars)
+  }
+}
+
+function buildManualLogView(
+  row: SocialCopyLogRow,
+  statusConfig: Record<string, { variant: StatusVariant; label: string; className?: string }>,
+  copierLogs: ReturnType<typeof useT>['copierLogs'],
+): CopierLogView {
+  const sourceLabel = copierLogs.manualExecutionSource
+  const message = manualLogMessage(row, copierLogs)
+  return {
+    symbol: row.symbol,
+    status: statusConfig[row.status] ?? { variant: 'neutral' as const, label: row.status },
+    channelName: `${sourceLabel ?? 'Manual Execution'} · ${row.channelName}`,
+    channelTitle: row.channelName,
+    sourceKind: null,
+    isMirror: false,
+    isSocial: false,
+    isManual: true,
     action: row.action === 'open' ? (row.side ?? row.action) : row.action,
     messageFull: message,
     messagePreview: message,
@@ -255,6 +309,14 @@ function SourceMark({ view, className }: { view: CopierLogView; className?: stri
   if (view.isSocial) {
     return (
       <Users
+        className={clsx('h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50', className)}
+        aria-hidden
+      />
+    )
+  }
+  if (view.isManual) {
+    return (
+      <Hand
         className={clsx('h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50', className)}
         aria-hidden
       />
@@ -446,6 +508,7 @@ export function CopierLogsPage() {
   const [signals, setSignals] = useState<Signal[]>([])
   const [mirrorLogs, setMirrorLogs] = useState<MirrorCopyLogRow[]>([])
   const [socialLogs, setSocialLogs] = useState<SocialCopyLogRow[]>([])
+  const [manualLogs, setManualLogs] = useState<SocialCopyLogRow[]>([])
   const [channelDisplayNames, setChannelDisplayNames] = useState<Record<string, string>>({})
   const [channelSourceKinds, setChannelSourceKinds] = useState<Record<string, SignalSourceKind>>({})
   const [symbolContext, setSymbolContext] = useState<CopierSymbolContext>(() => ({
@@ -455,23 +518,24 @@ export function CopierLogsPage() {
   const [filter, setFilter] = useState<Filter>('all')
   const [loading, setLoading] = useState(true)
   const [totalCount, setTotalCount] = useState(0)
-  // Signals only (mirrors/social are excluded) — pages are laid out on this count.
+  // Signals only (mirrors/social/manual are excluded) — pages are laid out on this count.
   const [signalRowCount, setSignalRowCount] = useState(0)
   // Monotonic token so a slower, older load can never commit over a newer one.
   const loadSeqRef = useRef(0)
   // Where the last loaded signal page ended in time, and the bound inherited
   // from the page before it. Held in state (not a ref) so the render that splices
-  // mirror/social rows sees a tracked value rather than a ref read during render.
+  // mirror/social/manual rows sees a tracked value rather than a ref read during render.
   const [signalWindow, setSignalWindow] = useState<SignalWindow | null>(null)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<PageSizeOption>(25)
   const [retryingSignalIds, setRetryingSignalIds] = useState<Set<string>>(() => new Set())
   const [toast, setToast] = useState<string | null>(null)
-  // One slot for the open detail view. A row is a signal, mirror, or social copy.
+  // One slot for the open detail view. A row is a signal, mirror, social, or manual trade.
   const [detail, setDetail] = useState<LogViewEntry | null>(null)
   const detailSignal = detail?.signal ?? null
   const detailMirror = detail?.mirror ?? null
   const detailSocial = detail?.social ?? null
+  const detailManual = detail?.manual ?? null
   // Stable identity: MirrorLogDetailModal re-runs its scroll-lock/focus effect
   // whenever this changes, which would yank focus back to the panel.
   const closeDetail = useCallback(() => setDetail(null), [])
@@ -501,19 +565,21 @@ export function CopierLogsPage() {
     const seq = ++loadSeqRef.current
 
     try {
-      // Mirror/social copies carry no signal, so they are read from their own
+      // Mirror/social/manual rows carry no signal, so they are read from their own
       // ledgers and spliced into the page that owns their time span.
       const channelsQuery = supabase
         .from('telegram_channels')
         .select('id,display_name,channel_username,source_kind')
         .eq('user_id', user.id)
-      const [mirror, social, channelsRes] = await Promise.all([
+      const [mirror, social, manual, channelsRes] = await Promise.all([
         fetchMirrorCopyLogs(supabase, user.id),
         fetchSocialCopyLogs(supabase, user.id),
+        fetchManualSourceTradeLogs(supabase, user.id).catch(() => [] as SocialCopyLogRow[]),
         channelsQuery,
       ])
       const visibleMirror = filter === 'all' ? mirror : mirror.filter(row => row.status === filter)
       const visibleSocial = filter === 'all' ? social : social.filter(row => row.status === filter)
+      const visibleManual = filter === 'all' ? manual : manual.filter(row => row.status === filter)
 
       const from = (page - 1) * pageSize
       const to = from + pageSize - 1
@@ -560,7 +626,8 @@ export function CopierLogsPage() {
       setSignalRowCount(signalTotal)
       setMirrorLogs(visibleMirror)
       setSocialLogs(visibleSocial)
-      setTotalCount(signalTotal + visibleMirror.length + visibleSocial.length)
+      setManualLogs(visibleManual)
+      setTotalCount(signalTotal + visibleMirror.length + visibleSocial.length + visibleManual.length)
       setChannelDisplayNames(buildChannelDisplayNames(channelRows))
       setChannelSourceKinds(buildChannelSourceKinds(channelRows))
       setSymbolContext(nextSymbolContext)
@@ -634,7 +701,7 @@ export function CopierLogsPage() {
   const viewDetailsLabel = t.copierLogs.detailModal?.viewDetails ?? DEFAULT_DETAIL_MODAL.viewDetails
 
   /**
-   * One page of the log: this page's signals, with the mirror/social events that
+   * One page of the log: this page's signals, with the mirror/social/manual events that
    * share their time span spliced in, newest first. Extra events never sit in
    * front of every signal — they appear in the page that owns their moment.
    */
@@ -642,6 +709,7 @@ export function CopierLogsPage() {
     const bound = signalWindow && signalWindow.page === page ? signalWindow.previousOldest : null
     const mirrorRows = pageMirrorSlice(mirrorLogs, signals, page, bound, isLastSignalPage)
     const socialRows = pageMirrorSlice(socialLogs, signals, page, bound, isLastSignalPage)
+    const manualRows = pageMirrorSlice(manualLogs, signals, page, bound, isLastSignalPage)
     const entries: LogViewEntry[] = [
       ...mirrorRows.map(row => ({
         key: row.id,
@@ -654,6 +722,12 @@ export function CopierLogsPage() {
         at: row.createdAt,
         view: buildSocialLogView(row, statusConfig, t.copierLogs),
         social: row,
+      })),
+      ...manualRows.map(row => ({
+        key: row.id,
+        at: row.createdAt,
+        view: buildManualLogView(row, statusConfig, t.copierLogs),
+        manual: row,
       })),
       ...signals.map(signal => ({
         key: signal.id,
@@ -671,7 +745,7 @@ export function CopierLogsPage() {
       })),
     ]
     return entries.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
-  }, [mirrorLogs, socialLogs, signals, page, signalWindow, isLastSignalPage, statusConfig, channelDisplayNames, channelSourceKinds, symbolContext, t])
+  }, [mirrorLogs, socialLogs, manualLogs, signals, page, signalWindow, isLastSignalPage, statusConfig, channelDisplayNames, channelSourceKinds, symbolContext, t])
 
   // Positions are counted in signal rows, but a page can carry more rows than
   // the page size once mirror events splice in, so the end of the range comes
@@ -871,6 +945,15 @@ export function CopierLogsPage() {
           status={statusConfig[detailSocial.status] ?? { variant: 'neutral' as const, label: detailSocial.status }}
           onClose={closeDetail}
           variant="social"
+        />
+      ) : null}
+
+      {detailManual ? (
+        <MirrorLogDetailModal
+          row={detailManual}
+          status={statusConfig[detailManual.status] ?? { variant: 'neutral' as const, label: detailManual.status }}
+          onClose={closeDetail}
+          variant="manual"
         />
       ) : null}
     </PageShell>

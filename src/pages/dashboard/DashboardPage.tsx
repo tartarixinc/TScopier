@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from 'react'
 import { Link, Outlet, useNavigate } from 'react-router-dom'
-import { ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, Plus, RefreshCw } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, Hand, Plus, RefreshCw, Users } from 'lucide-react'
 import clsx from 'clsx'
 import { SubscriptionReminderModal } from '../../components/billing/SubscriptionReminderModal'
 import { supabase } from '../../lib/supabase'
@@ -62,8 +62,10 @@ import {
 } from '../../lib/copierLogDisplay'
 import { buildDisplayableTradeActivities, buildChannelDisplayNames, dedupePipelineParseAttempts, TRADE_ACTIVITY_FETCH_LIMIT, type TradeActivityLogRow } from '../../lib/tradeActivities'
 import {
+  buildManualSourceTradeActivities,
   buildSocialCopyTradeActivities,
   countSocialCopyOpensInRange,
+  fetchManualSourceTradeLogs,
   fetchSocialCopyLogs,
   type SocialCopyLogRow,
 } from '../../lib/socialCopyLogs'
@@ -1032,6 +1034,7 @@ export function DashboardPage() {
   const [channelSourceKinds, setChannelSourceKinds] = useState<Record<string, SignalSourceKind>>({})
   const [aiExpertLogs, setAiExpertLogs] = useState<AiExpertLogRow[]>(() => bootCache?.aiExpertLogs ?? [])
   const [socialCopyLogs, setSocialCopyLogs] = useState<SocialCopyLogRow[]>([])
+  const [manualSourceLogs, setManualSourceLogs] = useState<SocialCopyLogRow[]>([])
   const [linkedAccountBalances, setLinkedAccountBalances] = useState<Record<string, BrokerBalanceSnapshot>>(
     () => bootCache?.linkedAccountBalances ?? {},
   )
@@ -1324,10 +1327,76 @@ export function DashboardPage() {
       modifyMessage: t.copierLogs.socialModifyMessage ?? 'Social copy of #{ticket} updated',
       otherMessage: t.copierLogs.socialOtherMessage ?? '{action} · social copy of #{ticket}',
     })
-    return [...channelActivities, ...socialActivities]
+    const manualActivities = buildManualSourceTradeActivities(manualSourceLogs, t.management, {
+      source: t.copierLogs.manualExecutionSource ?? 'Manual Execution',
+      openMessage: t.copierLogs.manualOpenMessage ?? 'Opened {detail} #{ticket}',
+      closeMessage: t.copierLogs.manualCloseMessage ?? 'Closed #{ticket}',
+      modifyMessage: t.copierLogs.manualModifyMessage ?? 'Updated #{ticket}',
+      otherMessage: t.copierLogs.manualOtherMessage ?? '{action} · #{ticket}',
+    })
+    return [...channelActivities, ...socialActivities, ...manualActivities]
       .sort((a, b) => (a.row.created_at < b.row.created_at ? 1 : a.row.created_at > b.row.created_at ? -1 : 0))
       .slice(0, 20)
-  }, [aiExpertLogs, socialCopyLogs, channelDisplayNames, channelSourceKinds, t.channelWorker, t.management, t.copierLogs])
+  }, [aiExpertLogs, socialCopyLogs, manualSourceLogs, channelDisplayNames, channelSourceKinds, t.channelWorker, t.management, t.copierLogs])
+
+  /** Dashboard Copier Logs strip: channel signals + follower social copies + manual source trades. */
+  const visibleCopierLogRows = useMemo(() => {
+    const socialLabel = t.copierLogs.socialSource ?? 'Social trading'
+    const manualLabel = t.copierLogs.manualExecutionSource ?? 'Manual Execution'
+    const signalRows: DashboardCopierLogRow[] = copierLogs.map(signal => {
+      const parsed = signal.parsed_data as Record<string, unknown> | null
+      const action = typeof parsed?.action === 'string' ? parsed.action : null
+      const sourceKind = signal.channel_id
+        ? (channelSourceKinds[signal.channel_id] ?? 'telegram')
+        : null
+      const channelName = channelLabel(signal.channel_id, channelDisplayNames)
+      return {
+        key: signal.id,
+        at: signal.created_at,
+        status: signal.status,
+        channelName,
+        channelTitle: sourceKind ? `${SIGNAL_SOURCE_MARKS[sourceKind].label} · ${channelName}` : channelName,
+        symbol: copierLogSymbols[signal.id] ?? '—',
+        action,
+        sourceKind,
+        isSocial: false,
+        isManual: false,
+      }
+    })
+    const socialRows: DashboardCopierLogRow[] = socialCopyLogs.map(row => {
+      const channelName = `${socialLabel} · ${row.channelName}`
+      return {
+        key: `social:${row.id}`,
+        at: row.createdAt,
+        status: row.status,
+        channelName,
+        channelTitle: channelName,
+        symbol: row.symbol,
+        action: row.action === 'open' ? (row.side ?? row.action) : row.action,
+        sourceKind: null,
+        isSocial: true,
+        isManual: false,
+      }
+    })
+    const manualRows: DashboardCopierLogRow[] = manualSourceLogs.map(row => {
+      const channelName = `${manualLabel} · ${row.channelName}`
+      return {
+        key: `manual:${row.id}`,
+        at: row.createdAt,
+        status: row.status,
+        channelName,
+        channelTitle: channelName,
+        symbol: row.symbol,
+        action: row.action === 'open' ? (row.side ?? row.action) : row.action,
+        sourceKind: null,
+        isSocial: false,
+        isManual: true,
+      }
+    })
+    return [...signalRows, ...socialRows, ...manualRows]
+      .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
+      .slice(0, 10)
+  }, [copierLogs, socialCopyLogs, manualSourceLogs, channelDisplayNames, channelSourceKinds, copierLogSymbols, t.copierLogs.socialSource, t.copierLogs.manualExecutionSource])
 
   const [linkedAccountSortKey, setLinkedAccountSortKey] = useState<LinkedAccountSortKey | null>(null)
   const [linkedAccountSortDir, setLinkedAccountSortDir] = useState<SortDirection>('asc')
@@ -1454,7 +1523,7 @@ export function DashboardPage() {
       mtTradesPromise = Promise.resolve([] as MtTrade[])
     }
 
-    const [channelsRes, tradesRes, todaySignalsRes, yesterdaySignalsRes, logsRes, allSignalsRes, channelsMetaRes, attributionRes, aiLogsRes, prefetchedMtTrades, socialLogs, socialCopiedToday] = await Promise.all([
+    const [channelsRes, tradesRes, todaySignalsRes, yesterdaySignalsRes, logsRes, allSignalsRes, channelsMetaRes, attributionRes, aiLogsRes, prefetchedMtTrades, socialLogs, manualLogs, socialCopiedToday] = await Promise.all([
       supabase.from('telegram_channels').select('id').eq('user_id', user!.id).eq('is_active', true),
       supabase
         .from('trades')
@@ -1498,6 +1567,7 @@ export function DashboardPage() {
         .limit(TRADE_ACTIVITY_FETCH_LIMIT),
       mtTradesPromise,
       fetchSocialCopyLogs(supabase, user!.id),
+      fetchManualSourceTradeLogs(supabase, user!.id).catch(() => [] as SocialCopyLogRow[]),
       countSocialCopyOpensInRange(
         supabase,
         user!.id,
@@ -1843,6 +1913,7 @@ export function DashboardPage() {
     setLinkedAccountBalances(mergedBalances)
     setAiExpertLogs(aiLogs)
     setSocialCopyLogs(socialLogs)
+    setManualSourceLogs(manualLogs)
 
     if (mtBrokerConnected && (syncLive || fresh)) {
       await refreshMtTrades(brokerAccounts, { force: true, preloadedTrades: prefetchedMtTrades })
@@ -2632,7 +2703,7 @@ export function DashboardPage() {
             </button>
           </div>
 
-          {visibleTradeActivities.length === 0 && chartsEmpty && aiExpertLogs.length === 0 && socialCopyLogs.length === 0 ? (
+          {visibleTradeActivities.length === 0 && chartsEmpty && aiExpertLogs.length === 0 && socialCopyLogs.length === 0 && manualSourceLogs.length === 0 ? (
             <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
               {[...Array(5)].map((_, i) => (
                 <div key={i} className="px-5 py-3">
@@ -2681,7 +2752,7 @@ export function DashboardPage() {
             <span className="text-right">{t.copierLogs.colTime}</span>
           </div>
 
-          {copierLogs.length === 0 && chartsEmpty ? (
+          {visibleCopierLogRows.length === 0 && chartsEmpty ? (
             <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
               {[...Array(4)].map((_, i) => (
                 <div key={i} className={`${DASHBOARD_COPIER_LOG_GRID} px-5 py-3`}>
@@ -2691,20 +2762,14 @@ export function DashboardPage() {
                 </div>
               ))}
             </div>
-          ) : copierLogs.length === 0 ? (
+          ) : visibleCopierLogRows.length === 0 ? (
             <div className="flex flex-col items-center justify-center px-5 py-16 text-center">
               <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{t.dashboard.noData}</p>
             </div>
           ) : (
             <div className="divide-y divide-neutral-100 dark:divide-neutral-800 max-h-80 overflow-y-auto min-w-md">
-              {copierLogs.map(log => (
-                <LogRow
-                  key={log.id}
-                  signal={log}
-                  channelName={channelLabel(log.channel_id, channelDisplayNames)}
-                  symbol={copierLogSymbols[log.id] ?? '—'}
-                  sourceKind={log.channel_id ? (channelSourceKinds[log.channel_id] ?? 'telegram') : null}
-                />
+              {visibleCopierLogRows.map(row => (
+                <LogRow key={row.key} row={row} />
               ))}
             </div>
           )}
@@ -2934,10 +2999,22 @@ function OverviewStat({
   )
 }
 
-function LogRow({ signal, channelName, symbol, sourceKind }: { signal: Signal; channelName: string; symbol: string; sourceKind?: SignalSourceKind | null }) {
+type DashboardCopierLogRow = {
+  key: string
+  at: string
+  status: string
+  channelName: string
+  channelTitle: string
+  symbol: string
+  action: string | null
+  sourceKind: SignalSourceKind | null
+  isSocial: boolean
+  isManual: boolean
+}
+
+function LogRow({ row }: { row: DashboardCopierLogRow }) {
   const t = useT()
-  const parsed = signal.parsed_data as Record<string, unknown> | null
-  const action = parsed?.action as string | undefined
+  const action = row.action
 
   const statusConfig: Record<string, { color: string; label: string }> = {
     executed: { color: 'bg-green-100 text-neutral-950 dark:bg-green-100 dark:text-neutral-950', label: t.copierLogs.statusExecuted },
@@ -2947,22 +3024,27 @@ function LogRow({ signal, channelName, symbol, sourceKind }: { signal: Signal; c
     parsed:   { color: 'text-green-500 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60', label: t.copierLogs.statusParsed },
   }
 
-  const s = statusConfig[signal.status] ?? { color: 'text-neutral-900 dark:text-neutral-50 bg-neutral-100 dark:bg-neutral-800', label: signal.status }
+  const s = statusConfig[row.status] ?? { color: 'text-neutral-900 dark:text-neutral-50 bg-neutral-100 dark:bg-neutral-800', label: row.status }
   const isBuy = action === 'buy'
 
   const typeLabel = action ? action.replace(/_/g, ' ') : '—'
-  const channelTitle = sourceKind ? `${SIGNAL_SOURCE_MARKS[sourceKind].label} · ${channelName}` : channelName
 
   return (
     <div className={`${DASHBOARD_COPIER_LOG_GRID} px-5 py-3 transition-colors hover:bg-[#F7F8FA] dark:hover:bg-white/3`}>
       <span className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-sm font-regular ${s.color}`}>
         {s.label}
       </span>
-      <span className="flex min-w-0 items-center gap-2 text-sm font-regular text-neutral-900 dark:text-neutral-50" title={channelTitle}>
-        {sourceKind ? <SignalSourceLogo kind={sourceKind} /> : null}
-        <span className="truncate">{channelName}</span>
+      <span className="flex min-w-0 items-center gap-2 text-sm font-regular text-neutral-900 dark:text-neutral-50" title={row.channelTitle}>
+        {row.isSocial ? (
+          <Users className="h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50" aria-hidden />
+        ) : row.isManual ? (
+          <Hand className="h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50" aria-hidden />
+        ) : row.sourceKind ? (
+          <SignalSourceLogo kind={row.sourceKind} />
+        ) : null}
+        <span className="truncate">{row.channelName}</span>
       </span>
-      <span className="min-w-0 text-base font-regular text-neutral-900 dark:text-neutral-50 truncate" title={symbol}>{symbol}</span>
+      <span className="min-w-0 text-base font-regular text-neutral-900 dark:text-neutral-50 truncate" title={row.symbol}>{row.symbol}</span>
       <span
         className={`min-w-0 text-sm font-regular uppercase truncate ${
           isBuy ? 'text-green-500 dark:text-green-400' : action === 'sell' ? 'text-error-600' : 'text-neutral-900 dark:text-neutral-50'
@@ -2972,8 +3054,8 @@ function LogRow({ signal, channelName, symbol, sourceKind }: { signal: Signal; c
         {typeLabel}
       </span>
       <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50 text-right whitespace-nowrap">
-        {signal.created_at
-          ? new Date(signal.created_at).toLocaleString([], {
+        {row.at
+          ? new Date(row.at).toLocaleString([], {
               month: 'short',
               day: 'numeric',
               hour: '2-digit',

@@ -627,6 +627,16 @@ export interface CopierLogsTranslations {
   socialProviderTicket?: string
   socialCopyTicket?: string
   socialLot?: string
+  manualExecutionSource?: string
+  manualOpenMessage?: string
+  manualCloseMessage?: string
+  manualModifyMessage?: string
+  manualOtherMessage?: string
+  manualDetailTitle?: string
+  manualOccurred?: string
+  manualAccount?: string
+  manualTicket?: string
+  manualLot?: string
   skipReasons: Record<string, string>
   skipReasonDetails?: Record<string, string>
   detailModal?: {

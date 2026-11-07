@@ -263,17 +263,126 @@ async function loadProviderNames(
   return out
 }
 
+type ProviderTradeRow = {
+  id: string
+  broker_account_id: string | null
+  symbol: string
+  direction: string
+  lot_size: number | null
+  status: string
+  opened_at: string
+  closed_at: string | null
+  metaapi_order_id: string | null
+  broker_position_ticket: string | null
+}
+
 /**
- * Read the user's social-copy events, newest first. Fail-soft: empty list on
- * any read error so the copier-logs page keeps working.
+ * Trades on the user's published social source MT accounts (manual broker opens).
+ * Shown as Manual Execution — never as Social trading (that label is follower-only).
  */
-export async function fetchSocialCopyLogs(
+export function normalizeSocialProviderSourceTrades(
+  trades: ProviderTradeRow[],
+  accountLabels: Record<string, string>,
+): SocialCopyLogRow[] {
+  const rows: SocialCopyLogRow[] = []
+  for (const trade of trades) {
+    const side = normalizeSide(trade.direction)
+    const ticket = textOrNull(trade.metaapi_order_id ?? trade.broker_position_ticket)
+    const symbol = String(trade.symbol ?? '').trim() || '—'
+    const lot = numberOrNull(trade.lot_size)
+    const accountLabel = (trade.broker_account_id && accountLabels[trade.broker_account_id]) || 'Source account'
+    const closed = Boolean(trade.closed_at) || String(trade.status).toLowerCase() === 'closed'
+
+    rows.push({
+      id: `provider-trade:${trade.id}:open`,
+      createdAt: trade.opened_at,
+      status: 'executed',
+      action: 'open',
+      side,
+      symbol,
+      sourceTicket: ticket,
+      lot,
+      channelName: accountLabel,
+      destinationAccount: null,
+      destinationTicket: null,
+      destinationBrokerAccountId: trade.broker_account_id,
+      reason: null,
+    })
+    if (closed && trade.closed_at) {
+      rows.push({
+        id: `provider-trade:${trade.id}:close`,
+        createdAt: trade.closed_at,
+        status: 'executed',
+        action: 'close',
+        side: null,
+        symbol,
+        sourceTicket: ticket,
+        lot,
+        channelName: accountLabel,
+        destinationAccount: null,
+        destinationTicket: null,
+        destinationBrokerAccountId: trade.broker_account_id,
+        reason: null,
+      })
+    }
+  }
+  return rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))
+}
+
+/** Provider's published-source broker trades as Manual Execution log rows. */
+export async function fetchSocialProviderSourceTradeLogs(
   supabase: SupabaseClient,
   userId: string,
-  limit = 200,
+  limit = 100,
 ): Promise<SocialCopyLogRow[]> {
   if (!userId) return []
 
+  const { data: sources, error: sourceError } = await supabase
+    .from('social_copy_sources')
+    .select('id,broker_account_id,label')
+    .eq('trader_user_id', userId)
+    .in('status', ['published', 'paused'])
+  if (sourceError || !sources?.length) return []
+
+  const sourceRows = sources as Array<{ id: string; broker_account_id: string; label: string | null }>
+  const accountIds = [...new Set(sourceRows.map(row => row.broker_account_id))]
+
+  const [tradesRes, brokersRes] = await Promise.all([
+    supabase
+      .from('trades')
+      .select('id,broker_account_id,symbol,direction,lot_size,status,opened_at,closed_at,metaapi_order_id,broker_position_ticket')
+      .eq('user_id', userId)
+      .in('broker_account_id', accountIds)
+      .order('opened_at', { ascending: false })
+      .limit(limit),
+    supabase
+      .from('broker_accounts')
+      .select('id,label,account_login')
+      .in('id', accountIds),
+  ])
+  if (tradesRes.error || !tradesRes.data?.length) return []
+
+  const accountLabels: Record<string, string> = {}
+  for (const source of sourceRows) {
+    const label = String(source.label ?? '').trim()
+    if (label) accountLabels[source.broker_account_id] = label
+  }
+  for (const broker of (brokersRes.data ?? []) as BrokerRow[]) {
+    if (accountLabels[broker.id]) continue
+    accountLabels[broker.id] = brokerLabel(broker)
+  }
+
+  return normalizeSocialProviderSourceTrades(
+    tradesRes.data as unknown as ProviderTradeRow[],
+    accountLabels,
+  )
+}
+
+async function fetchSubscriberSocialCopyLogs(
+  supabase: SupabaseClient,
+  userId: string,
+  limit: number,
+): Promise<SocialCopyLogRow[]> {
   const { data: subs, error: subError } = await supabase
     .from('social_copy_subscriptions')
     .select('id,source_trader_user_id,destination_broker_account_id')
@@ -317,12 +426,33 @@ export async function fetchSocialCopyLogs(
     return normalizeSocialCopyLogs(events, eventMappings, subscriptions, brokers, providerNames)
   }
 
-  // Edge opens historically wrote mappings without events — still show them.
   if (!mappingsRes.error && mappings.length) {
     return synthesizeSocialCopyLogsFromMappings(mappings, subscriptions, brokers, providerNames)
   }
 
   return []
+}
+
+/**
+ * Follower-only social trading activity for Copier Logs / Trade Activities.
+ * Provider-owned broker trades use {@link fetchManualSourceTradeLogs} instead.
+ */
+export async function fetchSocialCopyLogs(
+  supabase: SupabaseClient,
+  userId: string,
+  limit = 200,
+): Promise<SocialCopyLogRow[]> {
+  if (!userId) return []
+  return fetchSubscriberSocialCopyLogs(supabase, userId, limit).catch(() => [] as SocialCopyLogRow[])
+}
+
+/** Alias: provider published-source MT trades labeled Manual Execution in the UI. */
+export async function fetchManualSourceTradeLogs(
+  supabase: SupabaseClient,
+  userId: string,
+  limit = 100,
+): Promise<SocialCopyLogRow[]> {
+  return fetchSocialProviderSourceTradeLogs(supabase, userId, limit)
 }
 
 function activityStatus(status: SocialCopyLogStatus): NormalizedActivityStatus | null {
@@ -375,17 +505,19 @@ export async function countSocialCopyOpensInRange(
   return mappingCount
 }
 
-/** Turn social-copy log rows into the same shape /activities already renders. */
-export function buildSocialCopyTradeActivities(
+type ActivityMessageLabels = {
+  source: string
+  openMessage: string
+  closeMessage: string
+  modifyMessage: string
+  otherMessage: string
+}
+
+function buildCopyStyleTradeActivities(
   rows: SocialCopyLogRow[],
   mgmt: Pick<ManagementTranslations, 'kindOrder' | 'kindClose' | 'kindModify' | 'kindOther'>,
-  labels: {
-    source: string
-    openMessage: string
-    closeMessage: string
-    modifyMessage: string
-    otherMessage: string
-  },
+  labels: ActivityMessageLabels,
+  options: { idPrefix: string; sourceKind: 'social' | 'manual' },
 ): DisplayableTradeActivity[] {
   const out: DisplayableTradeActivity[] = []
   for (const row of rows) {
@@ -426,13 +558,13 @@ export function buildSocialCopyTradeActivities(
     const logStatus = status === 'successful' ? 'success' : status
     out.push({
       row: {
-        id: `social:${row.id}`,
+        id: `${options.idPrefix}:${row.id}`,
         created_at: row.createdAt,
         action: row.action === 'close' ? 'mgmt_close' : 'order_send',
         status: logStatus,
         request_payload: {
           symbol: row.symbol,
-          source_kind: 'social',
+          source_kind: options.sourceKind,
           provider_name: row.channelName,
         },
         response_payload: null,
@@ -451,4 +583,22 @@ export function buildSocialCopyTradeActivities(
     })
   }
   return out
+}
+
+/** Turn follower social-copy log rows into the same shape /activities already renders. */
+export function buildSocialCopyTradeActivities(
+  rows: SocialCopyLogRow[],
+  mgmt: Pick<ManagementTranslations, 'kindOrder' | 'kindClose' | 'kindModify' | 'kindOther'>,
+  labels: ActivityMessageLabels,
+): DisplayableTradeActivity[] {
+  return buildCopyStyleTradeActivities(rows, mgmt, labels, { idPrefix: 'social', sourceKind: 'social' })
+}
+
+/** Provider-owned published-source trades as Manual Execution activities. */
+export function buildManualSourceTradeActivities(
+  rows: SocialCopyLogRow[],
+  mgmt: Pick<ManagementTranslations, 'kindOrder' | 'kindClose' | 'kindModify' | 'kindOther'>,
+  labels: ActivityMessageLabels,
+): DisplayableTradeActivity[] {
+  return buildCopyStyleTradeActivities(rows, mgmt, labels, { idPrefix: 'manual', sourceKind: 'manual' })
 }

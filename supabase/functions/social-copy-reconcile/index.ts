@@ -5,9 +5,10 @@ import { isMtapiConfigured, MtapiClient } from "../_shared/mtapiClient.ts"
 /**
  * Migration-preview social copy reconciler.
  *
- * Railway trade workers for this branch still default SOCIAL_COPY_EXECUTION_ENABLED
- * off and mark subscriptions EXECUTION_DISABLED. This function uses Edge MTAPI
- * secrets (which already keep broker sessions healthy) to open/close copies.
+ * Opens new source positions, syncs SL/TP (and partial closes) on existing
+ * mappings, and closes follower tickets when the provider position disappears.
+ * Workers with SOCIAL_COPY_EXECUTION_ENABLED may also claim the same
+ * subscriptions; lease skip-locked prevents double work.
  */
 
 const WORKER_ID = "social-copy-edge"
@@ -43,6 +44,11 @@ type MappingRow = {
   source_ticket: string
   destination_ticket: string | null
   state: string
+  source_volume: number | null
+  destination_volume: number | null
+  source_stop_loss: number | null
+  source_take_profit: number | null
+  broker_comment: string | null
 }
 
 function json(data: unknown, status = 200) {
@@ -97,6 +103,82 @@ function sizedVolume(sub: SubRow, sourceVolume: number): number {
   return Math.max(0.01, Math.floor(requested * 100 + 1e-9) / 100)
 }
 
+/**
+ * Persist the provider's live MT position into `trades` so Social Trading
+ * history / Copier Logs can show manual broker opens (not only channel signals).
+ */
+async function upsertSourceTrade(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  input: {
+    traderUserId: string
+    brokerAccountId: string
+    position: {
+      ticket: string
+      symbol: string
+      side: "buy" | "sell"
+      volume: number
+      stopLoss: number | null
+      takeProfit: number | null
+    }
+  },
+): Promise<void> {
+  const ticket = input.position.ticket
+  const { data: existing } = await supabase
+    .from("trades")
+    .select("id,status")
+    .eq("broker_account_id", input.brokerAccountId)
+    .eq("metaapi_order_id", ticket)
+    .maybeSingle()
+  if (existing?.id) {
+    if (String(existing.status).toLowerCase() !== "open") {
+      await supabase.from("trades").update({
+        status: "open",
+        closed_at: null,
+        symbol: input.position.symbol,
+        direction: input.position.side,
+        lot_size: input.position.volume,
+        sl: input.position.stopLoss,
+        tp: input.position.takeProfit,
+        broker_position_ticket: ticket,
+      }).eq("id", existing.id)
+    }
+    return
+  }
+  const { error } = await supabase.from("trades").insert({
+    user_id: input.traderUserId,
+    broker_account_id: input.brokerAccountId,
+    signal_id: null,
+    metaapi_order_id: ticket,
+    broker_position_ticket: ticket,
+    symbol: input.position.symbol,
+    direction: input.position.side,
+    lot_size: input.position.volume,
+    status: "open",
+    opened_at: new Date().toISOString(),
+    sl: input.position.stopLoss,
+    tp: input.position.takeProfit,
+  })
+  if (error && !String(error.message).toLowerCase().includes("duplicate")) {
+    console.warn("[social-copy-reconcile] source trade upsert failed", error.message)
+  }
+}
+
+async function closeSourceTrade(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  brokerAccountId: string,
+  sourceTicket: string,
+): Promise<void> {
+  const { error } = await supabase.from("trades").update({
+    status: "closed",
+    closed_at: new Date().toISOString(),
+  }).eq("broker_account_id", brokerAccountId).eq("metaapi_order_id", sourceTicket).eq("status", "open")
+  if (error) {
+    console.warn("[social-copy-reconcile] source trade close failed", error.message)
+  }
+}
+
 /** Persist an audit row so Copier Logs / Activities can show the copy. */
 async function writeExecutionEvent(
   // deno-lint-ignore no-explicit-any
@@ -105,7 +187,7 @@ async function writeExecutionEvent(
     subscriptionId: string
     mappingId: string | null
     sourceTicket: string
-    action: "open" | "close"
+    action: "open" | "close" | "modify"
     idempotencyKey: string
     status: "succeeded" | "failed" | "uncertain"
     request: Record<string, unknown>
@@ -235,10 +317,11 @@ Deno.serve(async (req) => {
       }
 
       const { data: source } = await supabase.from("social_copy_sources")
-        .select("id,broker_account_id,status")
+        .select("id,broker_account_id,status,trader_user_id")
         .eq("id", sub.source_id)
         .single()
       if (!source || source.status !== "published") throw new Error("SOURCE_NOT_PUBLISHED")
+      const traderUserId = String(source.trader_user_id ?? "").trim()
 
       const [{ data: sourceBroker }, { data: destBroker }] = await Promise.all([
         supabase.from("broker_accounts")
@@ -265,17 +348,119 @@ Deno.serve(async (req) => {
       const sourceOrders = await mtapi.openedOrders(srcSession, srcPlatform)
       const positions = sourceOrders.map(normalizePosition).filter((row): row is NonNullable<typeof row> => row != null)
 
+      // Mirror every live source position into `trades` so manual MT opens show in
+      // Social Trading activities and Copier Logs — not only channel-copier fills.
+      if (traderUserId) {
+        for (const position of positions) {
+          await upsertSourceTrade(supabase, {
+            traderUserId,
+            brokerAccountId: source.broker_account_id,
+            position,
+          })
+        }
+      }
+
       const { data: mappings } = await supabase.from("social_copy_trade_mappings")
-        .select("id,source_ticket,destination_ticket,state")
+        .select("id,source_ticket,destination_ticket,state,source_volume,destination_volume,source_stop_loss,source_take_profit,broker_comment")
         .eq("subscription_id", sub.id)
         .in("state", ["opening", "open", "closing", "uncertain", "error"])
       const bySource = new Map(((mappings ?? []) as MappingRow[]).map((row) => [row.source_ticket, row]))
 
       let opened = 0
+      let modified = 0
       let closed = 0
       for (const position of positions) {
         const existing = bySource.get(position.ticket)
-        if (existing) continue
+        if (existing) {
+          // Sync SL/TP and partial closes onto the follower ticket.
+          const destTicket = Number(existing.destination_ticket)
+          if (!(Number.isFinite(destTicket) && destTicket > 0)) continue
+
+          const mappedSourceVolume = Number(existing.source_volume ?? 0)
+          const mappedDestVolume = Number(existing.destination_volume ?? 0)
+          const volumeTolerance = Math.max(0.000001, Math.abs(mappedSourceVolume) * 0.0001)
+          if (mappedSourceVolume > 0 && position.volume < mappedSourceVolume - volumeTolerance && mappedDestVolume > 0) {
+            const targetDest = mappedDestVolume * (position.volume / mappedSourceVolume)
+            const closeLots = Math.max(0.01, Math.floor((mappedDestVolume - targetDest) * 100 + 1e-9) / 100)
+            if (closeLots > 0 && closeLots < mappedDestVolume) {
+              try {
+                await mtapi.orderCloseSafe(dstSession, { ticket: destTicket, lots: closeLots }, dstPlatform)
+                const nextDest = Math.max(0.01, Math.floor((mappedDestVolume - closeLots) * 100 + 1e-9) / 100)
+                await supabase.from("social_copy_trade_mappings").update({
+                  source_volume: position.volume,
+                  destination_volume: nextDest,
+                }).eq("id", existing.id)
+                existing.source_volume = position.volume
+                existing.destination_volume = nextDest
+                await writeExecutionEvent(supabase, {
+                  subscriptionId: sub.id,
+                  mappingId: existing.id,
+                  sourceTicket: position.ticket,
+                  action: "modify",
+                  idempotencyKey: `resize:${position.ticket}:${position.volume}`,
+                  status: "succeeded",
+                  request: { closeVolume: closeLots },
+                })
+                modified += 1
+              } catch (resizeError) {
+                const detail = resizeError instanceof Error ? resizeError.message : String(resizeError)
+                await writeExecutionEvent(supabase, {
+                  subscriptionId: sub.id,
+                  mappingId: existing.id,
+                  sourceTicket: position.ticket,
+                  action: "modify",
+                  idempotencyKey: `resize:${position.ticket}:${position.volume}`,
+                  status: "uncertain",
+                  request: { closeVolume: closeLots },
+                  errorDetail: detail.slice(0, 500),
+                })
+              }
+            }
+          }
+
+          const mappedSl = existing.source_stop_loss == null ? null : Number(existing.source_stop_loss)
+          const mappedTp = existing.source_take_profit == null ? null : Number(existing.source_take_profit)
+          const slChanged = (mappedSl ?? null) !== (position.stopLoss ?? null)
+          const tpChanged = (mappedTp ?? null) !== (position.takeProfit ?? null)
+          if (slChanged || tpChanged) {
+            try {
+              await mtapi.orderModifySafe(dstSession, {
+                ticket: destTicket,
+                stoploss: position.stopLoss,
+                takeprofit: position.takeProfit,
+              }, dstPlatform)
+              await supabase.from("social_copy_trade_mappings").update({
+                source_stop_loss: position.stopLoss,
+                source_take_profit: position.takeProfit,
+              }).eq("id", existing.id)
+              existing.source_stop_loss = position.stopLoss
+              existing.source_take_profit = position.takeProfit
+              await writeExecutionEvent(supabase, {
+                subscriptionId: sub.id,
+                mappingId: existing.id,
+                sourceTicket: position.ticket,
+                action: "modify",
+                idempotencyKey: `modify:${position.ticket}:${position.stopLoss ?? 0}:${position.takeProfit ?? 0}`,
+                status: "succeeded",
+                request: { stopLoss: position.stopLoss, takeProfit: position.takeProfit },
+              })
+              modified += 1
+            } catch (modifyError) {
+              const detail = modifyError instanceof Error ? modifyError.message : String(modifyError)
+              await writeExecutionEvent(supabase, {
+                subscriptionId: sub.id,
+                mappingId: existing.id,
+                sourceTicket: position.ticket,
+                action: "modify",
+                idempotencyKey: `modify:${position.ticket}:${position.stopLoss ?? 0}:${position.takeProfit ?? 0}`,
+                status: "failed",
+                request: { stopLoss: position.stopLoss, takeProfit: position.takeProfit },
+                errorDetail: detail.slice(0, 500),
+              })
+            }
+          }
+          continue
+        }
         const volume = sizedVolume(sub, position.volume)
         const comment = `sc:${sub.id.slice(0, 8)}:${position.ticket}`.slice(0, 31)
         const { data: mappingInsert, error: mappingError } = await supabase.from("social_copy_trade_mappings").insert({
@@ -367,6 +552,7 @@ Deno.serve(async (req) => {
           state: "closed",
           closed_at: new Date().toISOString(),
         }).eq("id", mapping.id)
+        await closeSourceTrade(supabase, source.broker_account_id, mapping.source_ticket)
         await writeExecutionEvent(supabase, {
           subscriptionId: sub.id,
           mappingId: mapping.id,
@@ -388,7 +574,7 @@ Deno.serve(async (req) => {
         last_reconciled_at: new Date().toISOString(),
         worker_acknowledged_at: new Date().toISOString(),
       }).eq("id", sub.id)
-      results.push({ id: sub.id, status: "active", opened, closed, sourceOpen: positions.length })
+      results.push({ id: sub.id, status: "active", opened, modified, closed, sourceOpen: positions.length })
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : String(cause)
       const code = detail.includes("SOCIAL_ACCESS_REVOKED")
