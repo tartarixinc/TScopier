@@ -178,7 +178,7 @@ describe('buildManualSourceTradeActivities', () => {
 
 function chain(result: { data: unknown; error: unknown }) {
   const api: Record<string, unknown> = {}
-  for (const method of ['select', 'in', 'order', 'limit', 'eq']) api[method] = () => api
+  for (const method of ['select', 'in', 'order', 'limit', 'eq', 'not']) api[method] = () => api
   api.then = (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) =>
     Promise.resolve(result).then(resolve, reject)
   return api
@@ -256,12 +256,30 @@ describe('countSocialCopyOpensInRange', () => {
 
 describe('fetchSocialCopyLogs', () => {
   it('returns [] when the user has no subscriptions', async () => {
-    const client = fakeSupabase({ social_copy_subscriptions: { data: [], error: null } })
+    const client = fakeSupabase({
+      social_copy_subscriptions: { data: [], error: null },
+      social_copy_sources: { data: [], error: null },
+    })
+    expect(await fetchSocialCopyLogs(client, 'user-1')).toEqual([])
+  })
+
+  it('hides Social trading rows for published providers', async () => {
+    const client = fakeSupabase({
+      social_copy_sources: {
+        data: [{ id: 'src', broker_account_id: 'src-1', label: 'Source' }],
+        error: null,
+      },
+      social_copy_subscriptions: { data: subscriptions, error: null },
+      social_copy_execution_events: { data: [openEvent], error: null },
+      social_copy_trade_mappings: { data: [mapping], error: null },
+      broker_accounts: { data: brokers, error: null },
+    }, [{ profile_user_id: 'trader-1', display_name: 'Amina' }])
     expect(await fetchSocialCopyLogs(client, 'user-1')).toEqual([])
   })
 
   it('normalises events when the ledger has rows', async () => {
     const client = fakeSupabase({
+      social_copy_sources: { data: [], error: null },
       social_copy_subscriptions: { data: subscriptions, error: null },
       social_copy_execution_events: { data: [openEvent], error: null },
       social_copy_trade_mappings: { data: [mapping], error: null },
@@ -274,6 +292,7 @@ describe('fetchSocialCopyLogs', () => {
 
   it('falls back to mappings when events are empty', async () => {
     const client = fakeSupabase({
+      social_copy_sources: { data: [], error: null },
       social_copy_subscriptions: { data: subscriptions, error: null },
       social_copy_execution_events: { data: [], error: null },
       social_copy_trade_mappings: { data: [mapping], error: null },

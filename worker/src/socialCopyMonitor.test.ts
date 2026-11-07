@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { BrokerProvider } from './brokerProvider'
-import { constrainedCopyVolume, normalizeSourcePosition, SocialCopyMonitor, type SocialCopySubscriptionRow } from './socialCopyMonitor'
+import {
+  constrainedCopyVolume,
+  isCopyEngineFillComment,
+  normalizeSourcePosition,
+  SocialCopyMonitor,
+  type SocialCopySubscriptionRow,
+} from './socialCopyMonitor'
 
 const subscription = (patch: Partial<SocialCopySubscriptionRow> = {}): SocialCopySubscriptionRow => ({
   id: 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
@@ -18,7 +24,7 @@ type Row = Record<string, unknown>
 
 class Query implements PromiseLike<{ data: unknown; error: Row | null }> {
   private filters: Array<(row: Row) => boolean> = []
-  private mutation: 'insert' | 'update' | null = null
+  private mutation: 'insert' | 'update' | 'delete' | null = null
   private payload: Row = {}
   private wantsSingle = false
   private selectedColumns = '*'
@@ -34,6 +40,7 @@ class Query implements PromiseLike<{ data: unknown; error: Row | null }> {
   single(): this { this.wantsSingle = true; return this }
   insert(payload: Row): this { this.mutation = 'insert'; this.payload = payload; return this }
   update(payload: Row): this { this.mutation = 'update'; this.payload = payload; return this }
+  delete(): this { this.mutation = 'delete'; return this }
   then<TResult1 = { data: unknown; error: Row | null }, TResult2 = never>(resolve?: ((value: { data: unknown; error: Row | null }) => TResult1 | PromiseLike<TResult1>) | null, reject?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null): Promise<TResult1 | TResult2> {
     return Promise.resolve(this.execute()).then(resolve, reject)
   }
@@ -42,6 +49,11 @@ class Query implements PromiseLike<{ data: unknown; error: Row | null }> {
     const matches = rows.filter(row => this.filters.every(filter => filter(row)))
     if (this.mutation === 'update') {
       for (const row of matches) Object.assign(row, this.payload)
+      return { data: matches, error: null }
+    }
+    if (this.mutation === 'delete') {
+      const keep = rows.filter(row => !this.filters.every(filter => filter(row)))
+      this.db.tables[this.table] = keep
       return { data: matches, error: null }
     }
     if (this.mutation === 'insert') {
@@ -113,6 +125,60 @@ test('normalizes only supported market positions and constrains volume to broker
   assert.equal(normalizeSourcePosition({ ...sourcePosition, operation: 'BuyLimit' }), null)
   assert.equal(constrainedCopyVolume(0.127, { min: 0.01, max: 1, step: 0.01 }, 0.2), 0.12)
   assert.equal(constrainedCopyVolume(0.001, { min: 0.01, max: 1, step: 0.01 }, 0.2), null)
+  assert.equal(isCopyEngineFillComment({ ...sourcePosition, comment: 'sc:abcdef12:42' }), true)
+  assert.equal(isCopyEngineFillComment({ ...sourcePosition, comment: 'manual' }), false)
+})
+
+test('clears a dead null-destination mapping so a still-live source ticket can open', async () => {
+  const db = new FakeDb()
+  const sub = subscription({ status: 'active' })
+  db.claimed = [sub]
+  db.tables.social_copy_subscriptions = [{ ...sub }]
+  db.tables.social_copy_trade_mappings = [{
+    id: 'map-dead',
+    subscription_id: sub.id,
+    source_ticket: '42',
+    destination_ticket: null,
+    source_symbol: 'EURUSD',
+    destination_symbol: 'EURUSD',
+    source_side: 'buy',
+    source_volume: 0.3,
+    destination_volume: 0.12,
+    source_stop_loss: 1.05,
+    source_take_profit: 1.2,
+    state: 'error',
+    broker_comment: `sc:${sub.id.slice(0, 8)}:42`,
+    last_error_code: 'STUCK_OPENING',
+  }]
+  const source = provider({ orders: [sourcePosition] })
+  const destination = provider()
+  const monitor = new SocialCopyMonitor(db as never, {
+    executionEnabled: true,
+    providerFor: row => String((row as Row).id) === 'src' ? source : destination,
+  })
+  await monitor.tick()
+  assert.equal(destination.sends, 1, 'dead mapping must be cleared and the open retried')
+  assert.equal(db.tables.social_copy_trade_mappings.some(row => row.id === 'map-dead'), false)
+  assert.equal(db.tables.social_copy_trade_mappings[0]?.state, 'open')
+  assert.equal(db.tables.social_copy_subscriptions[0]?.status, 'active')
+})
+
+test('skips source positions that are already social/mirror copy fills', async () => {
+  const db = new FakeDb()
+  const sub = subscription({ status: 'active' })
+  db.claimed = [sub]
+  db.tables.social_copy_subscriptions = [{ ...sub }]
+  const source = provider({
+    orders: [{ ...sourcePosition, comment: 'sc:other000:99' }],
+  })
+  const destination = provider()
+  const monitor = new SocialCopyMonitor(db as never, {
+    executionEnabled: true,
+    providerFor: row => String((row as Row).id) === 'src' ? source : destination,
+  })
+  await monitor.tick()
+  assert.equal(destination.sends, 0)
+  assert.equal(db.tables.social_copy_trade_mappings.length, 0)
 })
 
 test('source disconnection fails closed with an actionable persisted error', async () => {

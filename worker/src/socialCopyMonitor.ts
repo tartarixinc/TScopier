@@ -30,6 +30,14 @@ export type { NormalizedSourcePosition }
 
 type Json = Record<string, unknown>
 
+/** Positions already opened by social/mirror copy engines — do not re-copy. */
+export function isCopyEngineFillComment(raw: unknown): boolean {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false
+  const row = raw as Json
+  const comment = String(row.comment ?? row.Comment ?? row.clientOrderId ?? '').trim().toLowerCase()
+  return comment.startsWith('sc:') || comment.startsWith('mc:')
+}
+
 export type SocialCopySubscriptionRow = {
   id: string
   source_id: string
@@ -253,20 +261,59 @@ export class SocialCopyMonitor {
     if (!await destinationApi.verifyTradingReady(sessionId(context.destinationBroker))) throw new Error('DESTINATION_DISCONNECTED')
 
     const sourceRaw = await sourceApi.openedOrders(sessionId(context.sourceBroker))
-    const sourcePositions = sourceRaw.map(normalizeSourcePosition).filter((row): row is NormalizedSourcePosition => row != null)
+    // Mirror every market position on the published source account. Skip fills
+    // already written by social/mirror copy (`sc:` / `mc:` comments) so a
+    // published destination is not re-copied as provider intent.
+    const sourcePositions = sourceRaw
+      .filter(row => !isCopyEngineFillComment(row))
+      .map(normalizeSourcePosition)
+      .filter((row): row is NormalizedSourcePosition => row != null)
     const destinationOrders = await destinationApi.openedOrders(sessionId(context.destinationBroker))
     const { data: mappings, error } = await this.supabase.from('social_copy_trade_mappings').select('*')
       .eq('subscription_id', subscription.id).in('state', ['opening', 'open', 'closing', 'uncertain', 'error'])
     if (error) throw error
     const bySource = new Map(((mappings ?? []) as MappingRow[]).map(row => [row.source_ticket, row]))
 
+    // Dead opens (null destination) permanently blocked retries via the unique
+    // (subscription_id, source_ticket) key. Clear error/opening rows while the
+    // source ticket is still live so openPosition can rematerialize. Leave
+    // `uncertain` alone — a broker fill may already exist (comment recovery).
+    const liveTickets = new Set(sourcePositions.map(position => position.ticket))
+    for (const [ticket, mapping] of [...bySource.entries()]) {
+      if (mapping.destination_ticket) continue
+      if (mapping.state !== 'error' && mapping.state !== 'opening') continue
+      if (!liveTickets.has(ticket)) continue
+      await this.supabase.from('social_copy_trade_mappings').delete().eq('id', mapping.id)
+      bySource.delete(ticket)
+    }
+
     for (const position of sourcePositions) {
       const mapping = bySource.get(position.ticket)
-      if (!mapping) await this.openPosition(subscription, context, destinationApi, destinationOrders, position)
-      else await this.syncPosition(subscription, context.destinationBroker, destinationApi, destinationOrders, mapping, position)
+      try {
+        if (!mapping) await this.openPosition(subscription, context, destinationApi, destinationOrders, position)
+        else await this.syncPosition(subscription, context.destinationBroker, destinationApi, destinationOrders, mapping, position)
+      } catch (error) {
+        const code = brokerErrorCode(error)
+        // Hard account/config failures still suspend; per-ticket broker errors do not.
+        if (
+          code === 'UNSUPPORTED_SYMBOL'
+          || code === 'SYMBOL_LIMITS_UNAVAILABLE'
+          || code === 'EQUITY_UNAVAILABLE'
+          || code === 'SOURCE_DISCONNECTED'
+          || code === 'DESTINATION_DISCONNECTED'
+          || code === 'BROKER_DISCONNECTED'
+        ) {
+          throw error
+        }
+        console.warn(
+          `[social-copy] position ${position.ticket} failed:`,
+          error instanceof Error ? error.message : String(error),
+        )
+      }
     }
     const openTickets = new Set(sourcePositions.map(position => position.ticket))
     for (const raw of sourceRaw) {
+      if (isCopyEngineFillComment(raw)) continue
       if (normalizeSourcePosition(raw)) continue
       if (!raw || typeof raw !== 'object' || rawOrderTicket(raw as Json) <= 0) continue
       const ticket = String(rawOrderTicket(raw as Json))
@@ -275,7 +322,14 @@ export class SocialCopyMonitor {
     }
     for (const mapping of bySource.values()) {
       if (!openTickets.has(mapping.source_ticket) && mapping.state !== 'closed') {
-        await this.closeMapping(subscription, context.destinationBroker, destinationApi, destinationOrders, mapping)
+        try {
+          await this.closeMapping(subscription, context.destinationBroker, destinationApi, destinationOrders, mapping)
+        } catch (error) {
+          console.warn(
+            `[social-copy] close ${mapping.source_ticket} failed:`,
+            error instanceof Error ? error.message : String(error),
+          )
+        }
       }
     }
     await this.patchSubscription(subscription.id, {
@@ -507,7 +561,11 @@ export class SocialCopyMonitor {
         .eq('subscription_id', subscriptionId)
         .eq('idempotency_key', idempotencyKey)
         .single()
-      if (readError || !existing || (existing as { status?: string }).status !== 'failed') return null
+      // Rematerialize after a cleared dead mapping: prior open attempts often
+      // finished as uncertain (timeout) rather than failed.
+      const priorStatus = String((existing as { status?: string } | null)?.status ?? '')
+      const retryable = priorStatus === 'failed' || priorStatus === 'uncertain'
+      if (readError || !existing || !retryable) return null
       const row = existing as { id: string; attempt_count?: number }
       const { error: retryError } = await this.supabase.from('social_copy_execution_events').update({
         status: 'claimed', attempt_count: Number(row.attempt_count ?? 1) + 1,

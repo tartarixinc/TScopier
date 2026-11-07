@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { BarChart3, ChevronRight, LineChart, Wallet, X } from 'lucide-react'
+import { BarChart3, ChevronRight, LineChart, Settings, Wallet, X } from 'lucide-react'
 import {
   changeSocialCopySubscription,
   fetchMySocialCopySubscriptions,
@@ -14,6 +14,7 @@ import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis
 import clsx from 'clsx'
 import { AccountGrowthChart } from '../../components/dashboard/AccountGrowthChart'
 import { PageHeader } from '../../components/layout/PageHeader'
+import { ConfigureCopyModal } from '../../components/social/ConfigureCopyModal'
 import { CopyTraderModal } from '../../components/social/CopyTraderModal'
 import { SocialTraderProfileSkeleton } from '../../components/social/SocialTraderProfileSkeleton'
 import { TraderReviews } from '../../components/social/TraderReviews'
@@ -140,6 +141,10 @@ export function SocialTradingPage() {
   const social = useSocialTradingPreview()
   const provider = useProviderStatus()
   const [setupTrader, setSetupTrader] = useState<SocialTrader | null>(null)
+  const [configureTarget, setConfigureTarget] = useState<{
+    trader: SocialTrader
+    subscription: MySocialCopySubscription
+  } | null>(null)
   const [mySubscriptions, setMySubscriptions] = useState<MySocialCopySubscription[]>([])
   const [subscriptionsLoaded, setSubscriptionsLoaded] = useState(false)
   const [stoppingTraderId, setStoppingTraderId] = useState<string | null>(null)
@@ -387,8 +392,15 @@ export function SocialTradingPage() {
                           {trader.isYou ? null : subscribedProviderIds.has(trader.id) ? (
                             <ActiveCopyActions
                               currentlyCopyingLabel={copy.currentlyCopying}
+                              configureLabel={copy.configureCopy ?? 'Configure'}
+                              configureAria={copy.configureCopyAria ?? 'Configure copy settings'}
                               stopLabel={copy.stopCopying}
                               stopping={stoppingTraderId === trader.id}
+                              onConfigure={() => {
+                                const subscription = mySubscriptions.find(row => row.sourceTraderUserId === trader.id)
+                                if (!subscription) return
+                                setConfigureTarget({ trader, subscription })
+                              }}
                               onStop={() => void stopCopyingTrader(trader.id)}
                             />
                           ) : (
@@ -422,6 +434,17 @@ export function SocialTradingPage() {
         onConnectBroker={() => {
           setSetupTrader(null)
           openAddTradingAccount({ asDestination: true })
+        }}
+      />
+    ) : null}
+    {configureTarget ? (
+      <ConfigureCopyModal
+        trader={configureTarget.trader}
+        subscription={configureTarget.subscription}
+        copy={copy}
+        onClose={() => setConfigureTarget(null)}
+        onSaved={() => {
+          void refreshMySubscriptions()
         }}
       />
     ) : null}
@@ -496,13 +519,19 @@ function CopyActionButton({
 
 function ActiveCopyActions({
   currentlyCopyingLabel,
+  configureLabel,
+  configureAria,
   stopLabel,
   stopping,
+  onConfigure,
   onStop,
 }: {
   currentlyCopyingLabel: string
+  configureLabel: string
+  configureAria: string
   stopLabel: string
   stopping?: boolean
+  onConfigure: () => void
   onStop: () => void
 }) {
   return (
@@ -510,20 +539,37 @@ function ActiveCopyActions({
       <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300" role="status">
         {currentlyCopyingLabel}
       </p>
-      <Button
-        type="button"
-        size="sm"
-        variant="secondary"
-        loading={stopping}
-        disabled={stopping}
-        onClick={event => {
-          event.stopPropagation()
-          onStop()
-        }}
-        onKeyDown={event => event.stopPropagation()}
-      >
-        {stopLabel}
-      </Button>
+      <div className="flex items-center gap-1.5">
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className="!px-2"
+          aria-label={configureAria}
+          title={configureLabel}
+          onClick={event => {
+            event.stopPropagation()
+            onConfigure()
+          }}
+          onKeyDown={event => event.stopPropagation()}
+        >
+          <Settings className="h-4 w-4" aria-hidden />
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          loading={stopping}
+          disabled={stopping}
+          onClick={event => {
+            event.stopPropagation()
+            onStop()
+          }}
+          onKeyDown={event => event.stopPropagation()}
+        >
+          {stopLabel}
+        </Button>
+      </div>
     </div>
   )
 }
@@ -727,6 +773,7 @@ export function SocialTraderActivityPage() {
   const rawTrader = ownAccountView.trader
   const trader = rawTrader
   const [copyModalOpen, setCopyModalOpen] = useState(false)
+  const [configureSubscription, setConfigureSubscription] = useState<MySocialCopySubscription | null>(null)
   const [activeSubscriptions, setActiveSubscriptions] = useState<MySocialCopySubscription[]>([])
   const [stoppingCopy, setStoppingCopy] = useState(false)
   const [profileParams, setProfileParams] = useSearchParams()
@@ -883,8 +930,15 @@ export function SocialTraderActivityPage() {
             {viewerIsApprovedProvider ? null : isCurrentlyCopying ? (
               <ActiveCopyActions
                 currentlyCopyingLabel={copy.currentlyCopying}
+                configureLabel={copy.configureCopy ?? 'Configure'}
+                configureAria={copy.configureCopyAria ?? 'Configure copy settings'}
                 stopLabel={copy.stopCopying}
                 stopping={stoppingCopy}
+                onConfigure={() => {
+                  const subscription = activeSubscriptions[0]
+                  if (!subscription) return
+                  setConfigureSubscription(subscription)
+                }}
                 onStop={() => void stopCopying()}
               />
             ) : (
@@ -981,6 +1035,17 @@ export function SocialTraderActivityPage() {
         onConnectBroker={() => {
           setCopyModalOpen(false)
           openAddTradingAccount({ asDestination: true })
+        }}
+      />
+    ) : null}
+    {configureSubscription && trader ? (
+      <ConfigureCopyModal
+        trader={trader}
+        subscription={configureSubscription}
+        copy={copy}
+        onClose={() => setConfigureSubscription(null)}
+        onSaved={() => {
+          void refreshActiveSubscriptions()
         }}
       />
     ) : null}

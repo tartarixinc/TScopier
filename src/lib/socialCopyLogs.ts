@@ -433,9 +433,26 @@ async function fetchSubscriberSocialCopyLogs(
   return []
 }
 
+/** True when the user has a published/paused Social Trading source account. */
+export async function userIsPublishedSocialProvider(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<boolean> {
+  if (!userId) return false
+  const { data, error } = await supabase
+    .from('social_copy_sources')
+    .select('id')
+    .eq('trader_user_id', userId)
+    .in('status', ['published', 'paused'])
+    .limit(1)
+  if (error) return false
+  return (data?.length ?? 0) > 0
+}
+
 /**
  * Follower-only social trading activity for Copier Logs / Trade Activities.
- * Provider-owned broker trades use {@link fetchManualSourceTradeLogs} instead.
+ * Published providers never see Social trading rows here — their own broker
+ * activity uses {@link fetchManualSourceTradeLogs} (Manual Execution).
  */
 export async function fetchSocialCopyLogs(
   supabase: SupabaseClient,
@@ -443,7 +460,39 @@ export async function fetchSocialCopyLogs(
   limit = 200,
 ): Promise<SocialCopyLogRow[]> {
   if (!userId) return []
-  return fetchSubscriberSocialCopyLogs(supabase, userId, limit).catch(() => [] as SocialCopyLogRow[])
+  try {
+    if (await userIsPublishedSocialProvider(supabase, userId)) return []
+    return await fetchSubscriberSocialCopyLogs(supabase, userId, limit)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Destination tickets filled by this user's social subscriptions.
+ * Those positions are copy fills, not Manual Execution on a published source.
+ */
+async function loadSubscriberDestinationTickets(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<Set<string>> {
+  const out = new Set<string>()
+  const { data: subs, error: subError } = await supabase
+    .from('social_copy_subscriptions')
+    .select('id')
+    .eq('subscriber_user_id', userId)
+  if (subError || !subs?.length) return out
+  const subscriptionIds = (subs as Array<{ id: string }>).map(row => row.id)
+  const { data: mappings } = await supabase
+    .from('social_copy_trade_mappings')
+    .select('destination_ticket')
+    .in('subscription_id', subscriptionIds)
+    .not('destination_ticket', 'is', null)
+  for (const row of (mappings ?? []) as Array<{ destination_ticket: string | null }>) {
+    const ticket = String(row.destination_ticket ?? '').trim()
+    if (ticket) out.add(ticket)
+  }
+  return out
 }
 
 /** Alias: provider published-source MT trades labeled Manual Execution in the UI. */
@@ -452,7 +501,16 @@ export async function fetchManualSourceTradeLogs(
   userId: string,
   limit = 100,
 ): Promise<SocialCopyLogRow[]> {
-  return fetchSocialProviderSourceTradeLogs(supabase, userId, limit)
+  const [rows, socialDestTickets] = await Promise.all([
+    fetchSocialProviderSourceTradeLogs(supabase, userId, limit),
+    loadSubscriberDestinationTickets(supabase, userId).catch(() => new Set<string>()),
+  ])
+  if (socialDestTickets.size === 0) return rows
+  // Drop copy-destination fills so they are not branded Manual Execution.
+  return rows.filter(row => {
+    const ticket = String(row.sourceTicket ?? '').trim()
+    return !ticket || !socialDestTickets.has(ticket)
+  })
 }
 
 function activityStatus(status: SocialCopyLogStatus): NormalizedActivityStatus | null {
