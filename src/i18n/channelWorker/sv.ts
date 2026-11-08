@@ -196,6 +196,7 @@ export const channelWorkerSv: ChannelWorkerTranslations = {
     delete_pendings_requires_reply:
       'avbrottsinstructioner måste skickas som svar på ursprungliga signaldmeddelandet',
     delete_pendings_none: 'inga väntande order hittades att avbryta för denna affär',
+    delete_pendings_cancel_failed: 'väntande orders hittades, men ingen kunde avbrytas (mäklaren avvisade eller var inte tillgänglig) — försök igen, eller stäng dem från Trades-sidan',
   },
   dispatchSkipped: 'Kopierade inte den här signalen ({reason}).',
   rangeRebalanceSkippedNamed: 'Hoppade över take-profit-ombalansering av {symbol} ({reason})',

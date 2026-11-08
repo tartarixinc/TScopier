@@ -370,14 +370,17 @@ async function forceCloseChannelOnBroker(
     if (!result.failure_detail) result.failure_detail = failure.slice(0, 200)
   }
 
-  // += : the per-trade pending branch above already counted the trades-row
-  // cancels; this sweep only adds the signal_entry_pending_orders ones.
+  // += : the per-trade pending branch above already settled the trades-row
+  // cancels it could handle; this sweep adds the signal_entry_pending_orders
+  // ones and retries any trades-pending row the branch left behind (the
+  // counters can overlap for a row retried within the same run).
   result.pending_cancelled += await cancelChannelBrokerPendingOrders({
     supabase,
     userId: args.userId,
     channelId: args.channelId,
     brokerAccountIds: [broker.id],
     apiFor: () => api,
+    resolve: brokerAccountId => (brokerAccountId === broker.id ? { api, sessionId: uuid } : null),
     reason: 'user_force_close',
   })
 

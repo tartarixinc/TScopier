@@ -14,6 +14,8 @@ import {
   rawOrderTicket,
   type SignalEntryPendingRow,
 } from './signalEntryPendingHelpers'
+import { type PendingCancelApi } from './pendingOrderCancel'
+import { cancelTradesPendingOrders } from './tradesPendingCancel'
 import { sanitizeChannelCommentSlug } from './tradeComment'
 import type { BrokerRow } from './tradeExecutor/types'
 import { brokerSessionUuid } from './tradeExecutor/helpers'
@@ -198,9 +200,15 @@ export async function cancelChannelBrokerPendingOrders(args: {
   channelId: string
   brokerAccountIds: string[]
   apiFor: (metaapiAccountId: string) => FxsocketBrokerClient | null
+  /**
+   * Broker access keyed by `trades.broker_account_id`. Required so the sweep
+   * can also cancel resting `trades`-pending orders (explicit LIMIT/STOP
+   * entries), which have no `signal_entry_pending_orders` row.
+   */
+  resolve: (brokerAccountId: string) => { api: PendingCancelApi; sessionId: string } | null
   reason: string
 }): Promise<number> {
-  const { supabase, userId, channelId, brokerAccountIds, apiFor, reason } = args
+  const { supabase, userId, channelId, brokerAccountIds, apiFor, resolve, reason } = args
   if (!channelId || !brokerAccountIds.length) return 0
 
   const { data: channelSignals } = await supabase
@@ -227,5 +235,8 @@ export async function cancelChannelBrokerPendingOrders(args: {
       if (result.ok) cancelled += 1
     }
   }
+  // Resting explicit LIMIT/STOP entries live only in `trades` (status pending).
+  const trades = await cancelTradesPendingOrders({ supabase, signalIds, brokerAccountIds, resolve })
+  cancelled += trades.cancelled
   return cancelled
 }

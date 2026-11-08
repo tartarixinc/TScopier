@@ -24,6 +24,7 @@ import {
   selectWorseImmediateLegsForCweInstruction,
 } from '../closeWorseEntries'
 import { tryBrokerFallbackClose, cancelChannelBrokerPendingOrders } from '../managementBrokerClose'
+import { cancelTradesPendingOrders } from '../tradesPendingCancel'
 import {
   livePositionVolume,
   persistCanonicalPositionTicket,
@@ -227,6 +228,13 @@ function deferMgmtCloseCleanup(args: {
             if (brokerSessionUuid(broker) === uuid) return ctx.apiFor(broker)
           }
           return null
+        },
+        resolve: brokerAccountId => {
+          const broker = brokers.find(b => b.id === brokerAccountId)
+          if (!broker) return null
+          const sessionId = brokerSessionUuid(broker)
+          const api = ctx.apiFor(broker)
+          return sessionId && api ? { api, sessionId } : null
         },
         reason: 'signal_closed',
       })
@@ -555,6 +563,23 @@ export async function applyManagement(
         return emptyMgmtResult(legConcurrency)
       }
       const eligibleIds = eligibleBrokers.map(b => b.id)
+      // Resting explicit LIMIT/STOP entries for the parent live only in
+      // `trades` (status pending) and have no signal_entry_pending_orders row —
+      // cancel them here, otherwise a reply-scoped "Cancel pending orders"
+      // reports `delete_pendings_none` while orders are still resting
+      // (seen live 2026-11-07 with four of them).
+      const trades = await cancelTradesPendingOrders({
+        supabase: ctx.supabase,
+        signalIds: [parentId],
+        brokerAccountIds: eligibleIds,
+        resolve: brokerAccountId => {
+          const broker = eligibleBrokers.find(b => b.id === brokerAccountId)
+          if (!broker) return null
+          const sessionId = brokerSessionUuid(broker)
+          const api = ctx.apiFor(broker)
+          return sessionId && api ? { api, sessionId } : null
+        },
+      })
       const [{ data: seRows }, { data: rangeRows }] = await Promise.all([
         ctx.supabase
           .from('signal_entry_pending_orders')
@@ -571,12 +596,32 @@ export async function applyManagement(
           .in('status', ['pending', 'claimed', 'broker_pending'])
           .limit(1),
       ])
-      if (!(seRows?.length) && !(rangeRows?.length)) {
-        await skipMgmtSignalWithLog(ctx, signal, 'delete_pendings_none', {
+      if (!(seRows?.length) && !(rangeRows?.length) && trades.cancelled === 0) {
+        if (trades.found === 0) {
+          await skipMgmtSignalWithLog(ctx, signal, 'delete_pendings_none', {
+            action: 'delete_pendings',
+            reply_scoped: true,
+            parent_signal_id: parentId,
+            mgmt_scope: 'reply_basket',
+          })
+          return emptyMgmtResult(legConcurrency)
+        }
+        // Resting orders exist but none could be cancelled (broker refused,
+        // session unavailable, or the broker snapshot could not be read).
+        // Report that instead of the false "none found" reported before
+        // 2026-11-07, and carry the counts so the reason is diagnosable.
+        await skipMgmtSignalWithLog(ctx, signal, 'delete_pendings_cancel_failed', {
           action: 'delete_pendings',
           reply_scoped: true,
           parent_signal_id: parentId,
           mgmt_scope: 'reply_basket',
+          trades_pending_found: trades.found,
+          trades_pending_cancelled: trades.cancelled,
+          trades_pending_failed: trades.failed,
+          trades_pending_filled: trades.filled,
+          trades_pending_absent: trades.absent,
+          trades_pending_unresolvable: trades.unresolvable,
+          trades_pending_unverifiable: trades.unverifiable,
         })
         return emptyMgmtResult(legConcurrency)
       }
@@ -603,6 +648,9 @@ export async function applyManagement(
           brokers: eligibleIds.length,
           had_entry_pending: Boolean(seRows?.length),
           had_range_pending: Boolean(rangeRows?.length),
+          trades_pending_found: trades.found,
+          trades_pending_cancelled: trades.cancelled,
+          trades_pending_failed: trades.failed,
         } as unknown as Record<string, unknown>,
       })
       try {
@@ -2183,6 +2231,13 @@ export async function applyManagement(
             if (brokerSessionUuid(broker) === uuid) return ctx.apiFor(broker)
           }
           return null
+        },
+        resolve: brokerAccountId => {
+          const broker = brokers.find(b => b.id === brokerAccountId)
+          if (!broker) return null
+          const sessionId = brokerSessionUuid(broker)
+          const api = ctx.apiFor(broker)
+          return sessionId && api ? { api, sessionId } : null
         },
         reason: 'signal_closed',
       })

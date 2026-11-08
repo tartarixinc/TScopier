@@ -196,6 +196,7 @@ export const channelWorkerNl: ChannelWorkerTranslations = {
     delete_pendings_requires_reply:
       'annuleringsinstructies moeten worden verzonden als een reactie op het originele signaalbericht',
     delete_pendings_none: 'geen openstaande orders gevonden om te annuleren voor deze transactie',
+    delete_pendings_cancel_failed: 'er zijn openstaande orders gevonden, maar geen kon worden geannuleerd (de broker weigerde of was niet beschikbaar) — probeer het opnieuw, of annuleer ze vanaf de Trades-pagina',
   },
   dispatchSkipped: 'Dit signaal is niet gekopieerd ({reason}).',
   rangeRebalanceSkippedNamed: 'Take-profit-herverdeling voor {symbol} overgeslagen ({reason})',

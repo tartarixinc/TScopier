@@ -197,6 +197,7 @@ export const channelWorkerRu: ChannelWorkerTranslations = {
     delete_pendings_requires_reply:
       'инструкции по отмене должны отправляться в ответ на исходное сообщение сигнала',
     delete_pendings_none: 'не найдено ожидающих ордеров для отмены в этой сделке',
+    delete_pendings_cancel_failed: 'ожидающие ордера найдены, но ни один не удалось отменить (брокер отклонил запрос или был недоступен) — повторите попытку или закройте их на странице сделок',
   },
   dispatchSkipped: 'Этот сигнал не был скопирован ({reason}).',
   rangeRebalanceSkippedNamed: 'Пропущен ребаланс тейк-профита {symbol} ({reason})',

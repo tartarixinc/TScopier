@@ -46,6 +46,8 @@ function makeSupabase(opts: {
   rangePending?: boolean
   signalUpdates?: Array<Record<string, unknown>>
   logs?: Array<Record<string, unknown>>
+  tradesPending?: Array<{ id: string; broker_account_id: string; metaapi_order_id: string | null }>
+  tradeUpdates?: Array<Record<string, unknown>>
 }) {
   const signalUpdates = opts.signalUpdates ?? []
   const logs = opts.logs ?? []
@@ -123,6 +125,38 @@ function makeSupabase(opts: {
                   },
                 }
               },
+            }
+          },
+        }
+      }
+      if (table === 'trades') {
+        // Lookup: select().in(signal).in(broker).eq(status).order().limit()
+        // Settle: update(payload).eq(id).eq(status).select(id)
+        return {
+          select: () => ({
+            in: () => ({
+              in: () => ({
+                eq: () => ({
+                  order: () => ({
+                    limit: () =>
+                      Promise.resolve({ data: opts.tradesPending ?? [], error: null }),
+                  }),
+                }),
+              }),
+            }),
+          }),
+          update: (payload: Record<string, unknown>) => {
+            opts.tradeUpdates?.push(payload)
+            return {
+              eq: () => ({
+                eq: () => ({
+                  select: () =>
+                    Promise.resolve({
+                      error: null,
+                      data: [{ id: opts.tradesPending?.[0]?.id ?? 'tr-1' }],
+                    }),
+                }),
+              }),
             }
           },
         }
@@ -239,6 +273,114 @@ describe('applyManagement delete_pendings', () => {
     assert.equal(
       (logs.find(l => l.action === 'mgmt_skip')?.request_payload as { skip_reason?: string })?.skip_reason,
       'delete_pendings_none',
+    )
+  })
+
+  it('cancels resting trades-pending orders when no sep or range rows exist', async () => {
+    process.env.FXSOCKET_API_KEY = 'test-key'
+    const logs: Array<Record<string, unknown>> = []
+    const signalUpdates: Array<Record<string, unknown>> = []
+    const tradeUpdates: Array<Record<string, unknown>> = []
+    const apiCalls: Array<{ endpoint: string; sessionId: string; ticket: number }> = []
+    const api = {
+      async orderCancel(sessionId: string, args: { ticket: number }) {
+        apiCalls.push({ endpoint: 'orderCancel', sessionId, ticket: args.ticket })
+        return {}
+      },
+      async orderClose(sessionId: string, args: { ticket: number }) {
+        apiCalls.push({ endpoint: 'orderClose', sessionId, ticket: args.ticket })
+        return {}
+      },
+    }
+    const ctx = {
+      supabase: makeSupabase({
+        logs,
+        signalUpdates,
+        tradeUpdates,
+        tradesPending: [
+          { id: 'tr-1', broker_account_id: 'broker-1', metaapi_order_id: '2067348975' },
+        ],
+      }),
+      cancelRangePendingLegsForScopes: async () => undefined,
+      apiFor: () => api,
+    } as unknown as TradeExecutorContext
+
+    await applyManagement(
+      ctx,
+      makeSignal(),
+      { action: 'delete_pendings' } as never,
+      // brokerSessionUuid only accepts a real MT uuid, otherwise resolve() is
+      // null and nothing can be cancelled.
+      [makeBroker({ metaapi_account_id: '00000000-0000-4000-8000-000000000001' })],
+    )
+
+    // Not skipped: the trades-pending order alone is enough to act.
+    assert.ok(
+      !logs.some(
+        l =>
+          l.action === 'mgmt_skip' &&
+          (l.request_payload as { skip_reason?: string })?.skip_reason === 'delete_pendings_none',
+      ),
+      'must not report delete_pendings_none when a resting order was cancelled',
+    )
+    assert.deepEqual(apiCalls, [
+      { endpoint: 'orderCancel', sessionId: '00000000-0000-4000-8000-000000000001', ticket: 2067348975 },
+    ])
+    assert.equal(tradeUpdates.length, 1)
+    assert.equal(tradeUpdates[0]!.status, 'cancelled')
+    assert.ok(typeof tradeUpdates[0]!.closed_at === 'string')
+    const success = logs.find(l => l.action === 'delete_pendings' && l.status === 'success')
+    assert.ok(success, 'must write the delete_pendings success log')
+    assert.equal(
+      (success!.request_payload as { trades_pending_cancelled?: number })?.trades_pending_cancelled,
+      1,
+    )
+    assert.ok(signalUpdates.some(u => u.status === 'executed'))
+  })
+
+  it('reports cancel_failed (not none) when resting orders exist but the broker refuses', async () => {
+    process.env.FXSOCKET_API_KEY = 'test-key'
+    const logs: Array<Record<string, unknown>> = []
+    const api = {
+      async orderClose() {
+        throw new Error('Invalid request')
+      },
+      async orderCancel() {
+        throw new Error('Invalid request')
+      },
+    }
+    const ctx = {
+      supabase: makeSupabase({
+        logs,
+        tradesPending: [
+          { id: 'tr-1', broker_account_id: 'broker-1', metaapi_order_id: '2067348975' },
+        ],
+      }),
+      cancelRangePendingLegsForScopes: async () => undefined,
+      apiFor: () => api,
+    } as unknown as TradeExecutorContext
+
+    await applyManagement(
+      ctx,
+      makeSignal(),
+      { action: 'delete_pendings' } as never,
+      [makeBroker({ metaapi_account_id: '00000000-0000-4000-8000-000000000001' })],
+    )
+
+    const skip = logs.find(l => l.action === 'mgmt_skip')
+    assert.ok(skip, 'must skip with a reason')
+    const payload = skip!.request_payload as Record<string, unknown>
+    assert.equal(payload.skip_reason, 'delete_pendings_cancel_failed')
+    assert.equal(payload.trades_pending_found, 1)
+    assert.equal(payload.trades_pending_cancelled, 0)
+    assert.equal(payload.trades_pending_failed, 1)
+    assert.ok(
+      !logs.some(
+        l =>
+          l.action === 'mgmt_skip' &&
+          (l.request_payload as { skip_reason?: string })?.skip_reason === 'delete_pendings_none',
+      ),
+      'must not claim "none found" when orders were found',
     )
   })
 })
