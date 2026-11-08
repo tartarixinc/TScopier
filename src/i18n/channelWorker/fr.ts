@@ -196,6 +196,7 @@ export const channelWorkerFr: ChannelWorkerTranslations = {
     delete_pendings_requires_reply:
       'les instructions d\'annulation doivent être envoyées en réponse au message du signal original',
     delete_pendings_none: 'aucun ordre en attente à annuler pour ce trade',
+    delete_pendings_cancel_failed: 'des ordres en attente ont été trouvés, mais aucun n’a pu être annulé (le courtier a refusé ou était indisponible) — réessayez, ou fermez-les depuis la page Trades',
   },
   dispatchSkipped: 'Signal non copié ({reason}).',
   rangeRebalanceSkippedNamed: 'Rééquilibrage du take profit {symbol} ignoré ({reason})',

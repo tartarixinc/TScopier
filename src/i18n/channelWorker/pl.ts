@@ -197,6 +197,7 @@ export const channelWorkerPl: ChannelWorkerTranslations = {
     delete_pendings_requires_reply:
       'instrukcje anulowania muszą być wysyłane jako odpowiedź na oryginalną wiadomość sygnału',
     delete_pendings_none: 'nie znaleziono oczekujących zleceń do anulowania dla tej transakcji',
+    delete_pendings_cancel_failed: 'znaleziono oczekujące zlecenia, ale nie udało się anulować żadnego (broker odmówił lub był niedostępny) — spróbuj ponownie albo zamknij je na stronie Trades',
   },
   dispatchSkipped: 'Nie skopiowano tego sygnału ({reason}).',
   rangeRebalanceSkippedNamed: 'Pominięto zmianę take profit {symbol} ({reason})',

@@ -47,6 +47,7 @@ export const COPIER_SKIP_REASON_LABELS: Record<string, string> = {
   delete_pendings_no_parent: 'Original trade not found for this reply',
   delete_pendings_requires_reply: 'Must be a reply to the original signal',
   delete_pendings_none: 'No pending orders to cancel',
+  delete_pendings_cancel_failed: 'Pending orders found but none could be cancelled',
   mgmt_no_open_trades: 'No matching open trade',
   mgmt_no_open_trades_db: 'No open trade in copier',
   mgmt_no_open_trades_broker: 'No open position on broker',
@@ -115,6 +116,8 @@ export const COPIER_SKIP_REASON_DETAILS: Record<string, string> = {
     'Cancel-pending instructions must be sent as a reply to the original signal message, not as a standalone message.',
   delete_pendings_none:
     'The copier understood the cancel-pending instruction, but there were no pending orders to cancel for this trade.',
+  delete_pendings_cancel_failed:
+    'The copier found resting pending orders for this trade, but none could be cancelled — the broker refused the request, the order already filled or expired, or the broker was unavailable. Try again, or close them from the Trades page.',
   mgmt_no_open_trades:
     'This management instruction (close, modify, breakeven, etc.) did not match any open trade from this channel.',
   mgmt_no_open_trades_db:

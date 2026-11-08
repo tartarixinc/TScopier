@@ -196,6 +196,8 @@ export const channelWorkerEn: ChannelWorkerTranslations = {
     delete_pendings_requires_reply:
       'cancel-pending instructions must be sent as a reply to the original signal message',
     delete_pendings_none: 'no pending orders found to cancel for this trade',
+    delete_pendings_cancel_failed:
+      'pending orders were found but none could be cancelled (the broker refused or was unavailable) — try again, or close them from the Trades page',
   },
   dispatchSkipped: 'Did not copy this signal ({reason}).',
   rangeRebalanceSkippedNamed: 'Skipped {symbol} take-profit rebalance ({reason})',

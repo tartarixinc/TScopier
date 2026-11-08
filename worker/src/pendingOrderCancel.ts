@@ -19,6 +19,13 @@ export type PendingCancelApi = {
   orderClose(id: string, args: { ticket: number }): Promise<unknown>
   /** Provider-native pending cancel. Absent on older/simulated providers. */
   orderCancel?(id: string, args: { ticket: number }): Promise<unknown>
+  /**
+   * Snapshot of live orders and positions. Present on the real providers
+   * (FxSocket, MTAPI) and used to verify a ticket is still a *resting* order
+   * before cancelling it — a filled ticket must never be sent to the cancel
+   * endpoint (see `tradesPendingCancel.ts`).
+   */
+  openedOrders?(id: string): Promise<unknown[]>
 }
 
 /** Cancel a resting pending order, preferring the provider's cancel endpoint. */
