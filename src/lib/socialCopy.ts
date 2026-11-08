@@ -1,13 +1,26 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { normalizeEligibilityDiagnostics, type SocialEligibilityDiagnostic } from './socialEligibility'
 import {
+  copyRiskForEditor,
+  manualSettingsFromCopyRisk,
+  type CopyRiskSettings,
+  type CopySizingMode,
+} from './copyRiskTypes'
+import {
   DEFAULT_SOCIAL_COPY_FILTER_SETTINGS,
+  composeSocialCopyManualSettings,
   normalizeSocialCopyFilterSettings,
+  symbolMapFromSocialManualSettings,
   type SocialCopyFilterSettings,
 } from './socialCopyFilterSettings'
 
 export type { SocialCopyFilterSettings }
-export { DEFAULT_SOCIAL_COPY_FILTER_SETTINGS, normalizeSocialCopyFilterSettings }
+export {
+  DEFAULT_SOCIAL_COPY_FILTER_SETTINGS,
+  composeSocialCopyManualSettings,
+  normalizeSocialCopyFilterSettings,
+  symbolMapFromSocialManualSettings,
+}
 
 export type SocialCopySource = {
   sourceId: string
@@ -37,7 +50,11 @@ export type SocialCopySubscription = {
   sourceAccountMode: 'demo' | 'live' | 'unknown'
   destinationAccountMode: 'demo' | 'live' | 'unknown'
   executionPath: 'broker' | 'synthetic_simulation'
+  /** Symbols/Filters subset used by the social worker open filters. */
   manualSettings: SocialCopyFilterSettings
+  /** Full Mirror-parity risk profile when present on manual_settings.copy_risk. */
+  copyRisk: CopyRiskSettings
+  symbolMap: Record<string, string>
   status: SocialCopySubscriptionStatus
   desiredStatus: 'active' | 'paused' | 'stopped'
   errorCode: string | null
@@ -49,6 +66,59 @@ export type SocialCopySubscription = {
 /** Current user's copy subscription, including the provider they copy. */
 export type MySocialCopySubscription = SocialCopySubscription & {
   sourceTraderUserId: string
+}
+
+/** Map Mirror copy-risk sizing onto the social subscription columns the worker understands today. */
+export function socialSizingColumnsFromCopyRisk(risk: CopyRiskSettings): {
+  sizingMode: SocialCopySubscription['sizingMode']
+  fixedLot: number | null
+  lotMultiplier: number
+  maxLot: number
+} {
+  const sizing = risk.sizing
+  const maxLot = sizing.max_lot != null && sizing.max_lot > 0
+    ? sizing.max_lot
+    : Math.max(sizing.fixed_lot || 0.01, sizing.min_lot || 0.01, 0.01)
+  const mode: CopySizingMode = sizing.mode
+  if (mode === 'fixed_lot') {
+    return {
+      sizingMode: 'fixed_lot',
+      fixedLot: sizing.fixed_lot > 0 ? sizing.fixed_lot : 0.01,
+      lotMultiplier: 1,
+      maxLot: Math.max(maxLot, sizing.fixed_lot || 0.01),
+    }
+  }
+  if (mode === 'equity_ratio' || mode === 'balance_ratio') {
+    const multiplier = mode === 'equity_ratio'
+      ? (sizing.equity_multiplier > 0 ? sizing.equity_multiplier : 1)
+      : (sizing.balance_multiplier > 0 ? sizing.balance_multiplier : 1)
+    return {
+      sizingMode: 'equity_ratio',
+      fixedLot: null,
+      lotMultiplier: multiplier,
+      maxLot,
+    }
+  }
+  return {
+    sizingMode: 'lot_multiplier',
+    fixedLot: null,
+    lotMultiplier: sizing.lot_multiplier > 0 ? sizing.lot_multiplier : 1,
+    maxLot,
+  }
+}
+
+export function buildSocialCopyManualPayload(input: {
+  copyRisk: CopyRiskSettings
+  symbolMap?: Record<string, string>
+  filters?: Partial<SocialCopyFilterSettings>
+}): Record<string, unknown> {
+  const legacy = manualSettingsFromCopyRisk(input.copyRisk)
+  return composeSocialCopyManualSettings({
+    filters: input.filters,
+    copyRisk: legacy.copy_risk,
+    symbolMap: input.symbolMap,
+    legacy,
+  })
 }
 
 export function isCurrentSocialCopySubscription(subscription: Pick<SocialCopySubscription, 'status' | 'desiredStatus'>): boolean {
@@ -102,6 +172,32 @@ type SubscriptionRow = {
 const SUBSCRIPTION_SELECT = 'id,source_id,destination_broker_account_id,sizing_mode,fixed_lot,lot_multiplier,max_lot,requested_account_mode,source_account_mode,destination_account_mode,execution_path,manual_settings,status,desired_status,error_code,error_detail,worker_acknowledged_at,updated_at'
 
 function mapSubscriptionRow(row: SubscriptionRow): SocialCopySubscription {
+  const manualRaw = row.manual_settings
+  const filters = normalizeSocialCopyFilterSettings(manualRaw)
+  const copyRisk = copyRiskForEditor(
+    manualRaw && typeof manualRaw === 'object'
+      ? manualRaw as {
+        copy_risk?: CopyRiskSettings | null
+        risk_mode?: 'fixed_lot' | 'dynamic_balance_percent'
+        fixed_lot?: number
+        dynamic_balance_percent?: number
+      }
+      : {},
+  )
+  // Prefer dedicated subscription columns when copy_risk was never saved.
+  if (!(manualRaw && typeof manualRaw === 'object' && 'copy_risk' in (manualRaw as object))) {
+    if (row.sizing_mode === 'fixed_lot') {
+      copyRisk.sizing.mode = 'fixed_lot'
+      copyRisk.sizing.fixed_lot = row.fixed_lot == null ? copyRisk.sizing.fixed_lot : Number(row.fixed_lot)
+    } else if (row.sizing_mode === 'lot_multiplier') {
+      copyRisk.sizing.mode = 'lot_multiplier'
+      copyRisk.sizing.lot_multiplier = Number(row.lot_multiplier) || 1
+    } else {
+      copyRisk.sizing.mode = 'equity_ratio'
+      copyRisk.sizing.equity_multiplier = Number(row.lot_multiplier) || 1
+    }
+    copyRisk.sizing.max_lot = Number(row.max_lot) || copyRisk.sizing.max_lot
+  }
   return {
     id: row.id,
     sourceId: row.source_id,
@@ -114,7 +210,9 @@ function mapSubscriptionRow(row: SubscriptionRow): SocialCopySubscription {
     sourceAccountMode: row.source_account_mode,
     destinationAccountMode: row.destination_account_mode,
     executionPath: row.execution_path,
-    manualSettings: normalizeSocialCopyFilterSettings(row.manual_settings),
+    manualSettings: filters,
+    copyRisk,
+    symbolMap: symbolMapFromSocialManualSettings(manualRaw),
     status: row.status,
     desiredStatus: row.desired_status,
     errorCode: row.error_code,
@@ -216,7 +314,19 @@ export async function createSocialCopySubscription(client: SupabaseClient, input
   maxLot: number
   accountMode: 'demo' | 'live'
   manualSettings?: SocialCopyFilterSettings | Record<string, unknown>
+  copyRisk?: CopyRiskSettings
+  symbolMap?: Record<string, string>
 }): Promise<string> {
+  const payload = input.copyRisk
+    ? buildSocialCopyManualPayload({
+      copyRisk: input.copyRisk,
+      symbolMap: input.symbolMap,
+      filters: input.manualSettings,
+    })
+    : composeSocialCopyManualSettings({
+      filters: input.manualSettings as Partial<SocialCopyFilterSettings> | undefined,
+      symbolMap: input.symbolMap,
+    })
   const { data, error } = await client.rpc('create_social_copy_subscription', {
     p_source_id: input.sourceId,
     p_destination_broker_account_id: input.destinationBrokerAccountId,
@@ -226,8 +336,8 @@ export async function createSocialCopySubscription(client: SupabaseClient, input
     p_max_lot: input.maxLot,
     p_max_daily_loss: null,
     p_requested_account_mode: input.accountMode,
-    p_symbol_map: {},
-    p_manual_settings: normalizeSocialCopyFilterSettings(input.manualSettings),
+    p_symbol_map: input.symbolMap ?? {},
+    p_manual_settings: payload,
   })
   if (error) throw failure(error)
   return String(data)
@@ -239,15 +349,27 @@ export async function updateSocialCopySubscriptionSettings(client: SupabaseClien
   fixedLot: number | null
   lotMultiplier: number
   maxLot: number
-  manualSettings: SocialCopyFilterSettings | Record<string, unknown>
+  manualSettings?: SocialCopyFilterSettings | Record<string, unknown>
+  copyRisk?: CopyRiskSettings
+  symbolMap?: Record<string, string>
 }): Promise<void> {
+  const payload = input.copyRisk
+    ? buildSocialCopyManualPayload({
+      copyRisk: input.copyRisk,
+      symbolMap: input.symbolMap,
+      filters: input.manualSettings,
+    })
+    : composeSocialCopyManualSettings({
+      filters: input.manualSettings as Partial<SocialCopyFilterSettings> | undefined,
+      symbolMap: input.symbolMap,
+    })
   const { error } = await client.rpc('update_social_copy_subscription_settings', {
     p_subscription_id: input.subscriptionId,
     p_sizing_mode: input.sizingMode,
     p_fixed_lot: input.sizingMode === 'fixed_lot' ? input.fixedLot : null,
     p_lot_multiplier: input.lotMultiplier,
     p_max_lot: input.maxLot,
-    p_manual_settings: normalizeSocialCopyFilterSettings(input.manualSettings),
+    p_manual_settings: payload,
   })
   if (error) throw failure(error)
 }

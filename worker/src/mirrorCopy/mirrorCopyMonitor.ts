@@ -188,6 +188,9 @@ export class MirrorCopyMonitor {
   private readonly uncertainRetryMs: number
   private readonly staleClaimMs: number
   private readonly symbolListBySession = new Map<string, { set: Set<string>; list: string[]; loadedAt: number }>()
+  private readonly reconcilingMasters = new Set<string>()
+  private readonly pokeQueued = new Set<string>()
+  private pokeDraining = false
 
   constructor(private readonly supabase: SupabaseClient, private readonly options: MirrorCopyMonitorOptions = {}) {
     this.workerId = options.workerId ?? `mirror-copy-${process.env.HOSTNAME ?? 'local'}-${process.pid}`
@@ -212,6 +215,48 @@ export class MirrorCopyMonitor {
   stop(): void {
     if (this.timer) clearInterval(this.timer)
     this.timer = null
+    this.pokeQueued.clear()
+  }
+
+  /**
+   * Immediate wake from MTAPI OnOrderUpdate for links whose source broker
+   * account matches. Interval tick remains the safety net.
+   */
+  pokeSourceBrokerAccount(brokerAccountId: string): void {
+    const id = String(brokerAccountId ?? '').trim()
+    if (!id) return
+    this.pokeQueued.add(id)
+    void this.drainPokes()
+  }
+
+  private async drainPokes(): Promise<void> {
+    if (this.pokeDraining) return
+    this.pokeDraining = true
+    try {
+      while (this.pokeQueued.size > 0) {
+        const ids = [...this.pokeQueued]
+        this.pokeQueued.clear()
+        for (const brokerAccountId of ids) {
+          await this.reconcileMasterGuarded({
+            broker_account_id: brokerAccountId,
+            status: 'active',
+          }).catch(error => this.failMaster(brokerAccountId, error))
+        }
+      }
+    } finally {
+      this.pokeDraining = false
+    }
+  }
+
+  private async reconcileMasterGuarded(master: MirrorCopyMasterRow): Promise<void> {
+    const masterId = master.broker_account_id
+    if (this.reconcilingMasters.has(masterId)) return
+    this.reconcilingMasters.add(masterId)
+    try {
+      await this.reconcileMaster(master)
+    } finally {
+      this.reconcilingMasters.delete(masterId)
+    }
   }
 
   async tick(): Promise<void> {
@@ -225,7 +270,7 @@ export class MirrorCopyMonitor {
       })
       if (error) throw error
       for (const master of (data ?? []) as MirrorCopyMasterRow[]) {
-        await this.reconcileMaster(master).catch(error => this.failMaster(master.broker_account_id, error))
+        await this.reconcileMasterGuarded(master).catch(error => this.failMaster(master.broker_account_id, error))
       }
     } catch (error) {
       console.warn('[mirror-copy] claim failed:', error instanceof Error ? error.message : String(error))

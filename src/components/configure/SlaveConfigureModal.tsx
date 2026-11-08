@@ -383,8 +383,22 @@ export function SlaveConfigureModal({
   onSymbolMapChange,
   onChange,
   onClose,
+  title,
+  sourceName,
+  destinationOptions,
+  selectedDestinationId,
+  onSelectDestination,
+  onConnectDestination,
+  loadingDestinations,
+  emptyDestinationsTitle,
+  emptyDestinationsBody,
+  connectDestinationLabel,
+  primaryLabel,
+  onPrimary,
+  primaryLoading,
+  primaryDisabled,
 }: {
-  slave: BrokerAccount
+  slave: BrokerAccount | null
   source: BrokerAccount | null
   settings: CopyRiskSettings
   labels: CopyRiskTranslations
@@ -397,11 +411,33 @@ export function SlaveConfigureModal({
   onSymbolMapChange: (next: Record<string, string>) => void
   onChange: (next: CopyRiskSettings) => void
   onClose: () => void
+  /** Optional title override (social copy uses trader-facing titles). */
+  title?: string
+  /** Display name for the master/provider when `source` is unavailable. */
+  sourceName?: string
+  /** When set, the destination account section becomes a selectable list. */
+  destinationOptions?: BrokerAccount[]
+  selectedDestinationId?: string
+  onSelectDestination?: (id: string) => void
+  onConnectDestination?: () => void
+  loadingDestinations?: boolean
+  emptyDestinationsTitle?: string
+  emptyDestinationsBody?: string
+  connectDestinationLabel?: string
+  primaryLabel?: string
+  onPrimary?: () => void | Promise<void>
+  primaryLoading?: boolean
+  primaryDisabled?: boolean
 }) {
   const { formatMoney } = useFormatMoney()
   const sizing = settings.sizing
   const [advanced, setAdvanced] = useState(() => startsAdvanced(settings))
   const activeSimple = simpleMethod(sizing.mode)
+  const selectableDestinations = destinationOptions != null
+  const activeSlave = slave
+    ?? destinationOptions?.find(row => row.id === selectedDestinationId)
+    ?? destinationOptions?.[0]
+    ?? null
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -418,9 +454,9 @@ export function SlaveConfigureModal({
 
   const patch = (next: CopyRiskSettings) => onChange({ ...next, advanced: { ...next.advanced, preset: null } })
   const masterBalance = source ? positive(resolveBrokerTotalBalance(source)) : null
-  const slaveBalance = positive(resolveBrokerTotalBalance(slave))
+  const slaveBalance = activeSlave ? positive(resolveBrokerTotalBalance(activeSlave)) : null
   const masterEquity = positive(source?.last_equity) ?? masterBalance
-  const slaveEquity = positive(slave.last_equity) ?? slaveBalance
+  const slaveEquity = activeSlave ? (positive(activeSlave.last_equity) ?? slaveBalance) : null
   const copiedLot = estimateSlaveLot(settings, masterBalance, slaveBalance, masterEquity, slaveEquity)
   const lotValue = copiedLot == null ? setup.estimateUnavailable : `${copiedLot.toFixed(2)} ${setup.lots}`
   const groups = previewGroups(settings, labels, setup.estimatedLot, lotValue)
@@ -456,8 +492,12 @@ export function SlaveConfigureModal({
       },
     })
   }
-  const login = resolveAccountLogin(slave)
-  const sourceName = source ? getBrokerDisplayLabel(source) : null
+  const login = activeSlave ? resolveAccountLogin(activeSlave) : ''
+  const resolvedSourceName = sourceName?.trim() || (source ? getBrokerDisplayLabel(source) : null)
+  const modalTitle = title?.trim()
+    || (activeSlave
+      ? interpolate(setup.title, { account: getBrokerDisplayLabel(activeSlave) })
+      : setup.title.replace('{account}', 'account'))
   const symbolLabels: SymbolMappingLabels = {
     title: setup.symbolMapping?.title ?? 'Symbol mapping',
     hint: setup.symbolMapping?.hint
@@ -482,7 +522,7 @@ export function SlaveConfigureModal({
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h2 id="slave-configure-title" className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">
-                {interpolate(setup.title, { account: getBrokerDisplayLabel(slave) })}
+                {modalTitle}
               </h2>
               <span className="rounded-full bg-teal-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-green-500 dark:bg-teal-950/40 dark:text-teal-300">
                 {setup.preview}
@@ -490,11 +530,13 @@ export function SlaveConfigureModal({
             </div>
             <p className="mt-0.5 text-sm text-neutral-900 dark:text-neutral-50">{setup.subtitle}</p>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-900 dark:text-neutral-50">
-              {sourceName ? <span>{sourceName}</span> : null}
+              {resolvedSourceName ? <span>{resolvedSourceName}</span> : null}
               {slaveBalance != null ? (
                 <span>{balanceLabel} <strong className="font-semibold text-neutral-900 dark:text-neutral-50">{formatMoney(slaveBalance)}</strong></span>
               ) : null}
-              <span className="font-semibold text-neutral-900 dark:text-neutral-50">{slave.platform.toUpperCase()}</span>
+              {activeSlave ? (
+                <span className="font-semibold text-neutral-900 dark:text-neutral-50">{activeSlave.platform.toUpperCase()}</span>
+              ) : null}
             </div>
           </div>
           <button
@@ -524,18 +566,72 @@ export function SlaveConfigureModal({
 
               <section aria-labelledby="slave-account-heading">
                 <h3 id="slave-account-heading" className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{setup.slaveAccount}</h3>
-                <div className="mt-2 flex items-center gap-3 rounded-xl border border-green-400 bg-teal-50/60 px-3 py-3 ring-1 ring-green-400 dark:bg-teal-950/20">
-                  <AccountLogo platform={slave.platform} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">{getBrokerDisplayLabel(slave)}</span>
-                    <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-neutral-900 dark:text-neutral-50">
-                      {slave.broker_name?.trim() ? <span>{slave.broker_name.trim()}</span> : null}
-                      <span>{slave.platform.toUpperCase()}</span>
-                      {login ? <span>{loginLabel} {login}</span> : null}
+                {selectableDestinations ? (
+                  loadingDestinations ? (
+                    <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-300">Loading accounts…</p>
+                  ) : (destinationOptions?.length ?? 0) === 0 ? (
+                    <div className="mt-2 rounded-xl border border-dashed border-neutral-300 px-3 py-3 dark:border-neutral-700">
+                      <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                        {emptyDestinationsTitle ?? 'No accounts connected'}
+                      </p>
+                      <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-300">
+                        {emptyDestinationsBody ?? 'Connect a broker account before copying.'}
+                      </p>
+                      {onConnectDestination ? (
+                        <Button type="button" size="sm" className="mt-3" onClick={onConnectDestination}>
+                          {connectDestinationLabel ?? 'Connect a broker'}
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="mt-2 max-h-52 space-y-1.5 overflow-y-auto pr-0.5">
+                      {(destinationOptions ?? []).map(account => {
+                        const accountLogin = resolveAccountLogin(account)
+                        const selected = account.id === (selectedDestinationId || activeSlave?.id)
+                        return (
+                          <button
+                            key={account.id}
+                            type="button"
+                            className={clsx(
+                              'flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-start transition-colors',
+                              selected
+                                ? 'border-green-400 bg-teal-50/60 ring-1 ring-green-400 dark:bg-teal-950/20'
+                                : 'border-neutral-200 hover:border-neutral-300 dark:border-neutral-800 dark:hover:border-neutral-700',
+                            )}
+                            aria-pressed={selected}
+                            onClick={() => onSelectDestination?.(account.id)}
+                          >
+                            <AccountLogo platform={account.platform} />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">
+                                {getBrokerDisplayLabel(account)}
+                              </span>
+                              <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-neutral-900 dark:text-neutral-50">
+                                {account.broker_name?.trim() ? <span>{account.broker_name.trim()}</span> : null}
+                                <span>{account.platform.toUpperCase()}</span>
+                                {accountLogin ? <span>{loginLabel} {accountLogin}</span> : null}
+                              </span>
+                            </span>
+                            {selected ? <Check className="h-5 w-5 shrink-0 text-green-400 dark:text-green-400" aria-hidden /> : null}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )
+                ) : activeSlave ? (
+                  <div className="mt-2 flex items-center gap-3 rounded-xl border border-green-400 bg-teal-50/60 px-3 py-3 ring-1 ring-green-400 dark:bg-teal-950/20">
+                    <AccountLogo platform={activeSlave.platform} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">{getBrokerDisplayLabel(activeSlave)}</span>
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-neutral-900 dark:text-neutral-50">
+                        {activeSlave.broker_name?.trim() ? <span>{activeSlave.broker_name.trim()}</span> : null}
+                        <span>{activeSlave.platform.toUpperCase()}</span>
+                        {login ? <span>{loginLabel} {login}</span> : null}
+                      </span>
                     </span>
-                  </span>
-                  <Check className="h-5 w-5 shrink-0 text-green-400 dark:text-green-400" aria-hidden />
-                </div>
+                    <Check className="h-5 w-5 shrink-0 text-green-400 dark:text-green-400" aria-hidden />
+                  </div>
+                ) : null}
               </section>
 
               <section aria-labelledby="slave-method-heading">
@@ -733,7 +829,7 @@ export function SlaveConfigureModal({
                       settings={settings}
                       labels={labels}
                       saveError={null}
-                      currency={slave.last_currency}
+                      currency={activeSlave?.last_currency}
                       omitSizing
                       onChange={onChange}
                     />
@@ -751,20 +847,26 @@ export function SlaveConfigureModal({
                 <div className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-950">
                   <p className="text-[10px] font-semibold uppercase tracking-widest text-neutral-900 dark:text-neutral-50">{setup.exampleTrade}</p>
                   <div className="mt-1 flex items-center justify-between gap-3">
-                    <p className="text-base font-semibold text-neutral-900 dark:text-neutral-50">{sourceName ?? setup.exampleTrade}</p>
+                    <p className="text-base font-semibold text-neutral-900 dark:text-neutral-50">{resolvedSourceName ?? setup.exampleTrade}</p>
                     <p className="text-xs font-semibold text-green-500 dark:text-teal-300">{setup.masterSize}: {EXAMPLE_LOT.toFixed(2)}</p>
                   </div>
                 </div>
                 <div className="flex justify-center py-2 text-green-400 dark:text-green-400"><ArrowDown className="h-5 w-5" aria-hidden /></div>
                 <div className="rounded-xl border border-teal-200 bg-white p-4 dark:border-teal-900 dark:bg-neutral-950">
                   <p className="text-[10px] font-semibold uppercase tracking-widest text-green-500 dark:text-teal-300">{setup.slaveAccount}</p>
+                  {activeSlave ? (
                   <div className="mt-2 flex items-center gap-3">
-                    <AccountLogo platform={slave.platform} />
+                    <AccountLogo platform={activeSlave.platform} />
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">{accountRouteLabel(slave)}</p>
+                      <p className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">{accountRouteLabel(activeSlave)}</p>
                       {login ? <p className="truncate text-xs text-neutral-900 dark:text-neutral-50">{loginLabel} {login}</p> : null}
                     </div>
                   </div>
+                  ) : (
+                    <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-300">
+                      {emptyDestinationsBody ?? 'Connect a broker account before copying.'}
+                    </p>
+                  )}
                   {advanced ? (
                     <div className="mt-4 space-y-4 border-t border-neutral-100 pt-3 dark:border-neutral-800">
                       {groups.map(group => (
@@ -788,11 +890,11 @@ export function SlaveConfigureModal({
                     </dl>
                   )}
                 </div>
-                {sourceName ? (
+                {resolvedSourceName && activeSlave ? (
                   <div className="mt-3 flex items-center justify-center gap-2 text-xs font-medium text-neutral-900 dark:text-neutral-50">
-                    <span className="truncate">{sourceName}</span>
+                    <span className="truncate">{resolvedSourceName}</span>
                     <ArrowRight className="h-3.5 w-3.5 shrink-0 text-green-400 dark:text-green-400" aria-hidden />
-                    <span className="truncate">{accountRouteLabel(slave)}</span>
+                    <span className="truncate">{accountRouteLabel(activeSlave)}</span>
                   </div>
                 ) : null}
               </div>
@@ -801,8 +903,18 @@ export function SlaveConfigureModal({
         </div>
 
         <footer className="flex shrink-0 flex-col-reverse gap-2 border-t border-neutral-100 bg-white px-5 py-4 dark:border-neutral-800 dark:bg-neutral-950 sm:flex-row sm:justify-end sm:px-6">
-          <Button type="button" variant="secondary" onClick={onClose}>{closeLabel}</Button>
-          <Button type="button" onClick={onClose}>{setup.done}</Button>
+          <Button type="button" variant="secondary" disabled={primaryLoading} onClick={onClose}>{closeLabel}</Button>
+          <Button
+            type="button"
+            loading={primaryLoading}
+            disabled={primaryDisabled || primaryLoading}
+            onClick={() => {
+              if (onPrimary) void onPrimary()
+              else onClose()
+            }}
+          >
+            {primaryLabel ?? setup.done}
+          </Button>
         </footer>
       </div>
     </div>,
