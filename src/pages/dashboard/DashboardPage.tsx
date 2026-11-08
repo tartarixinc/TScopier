@@ -2571,7 +2571,7 @@ export function DashboardPage() {
       <SubscriptionReminderModal />
       <PageHeader
         title={dashboardGreeting}
-        titleClassName="text-3xl"
+        titleClassName="text-2xl"
       />
       {showDashboardLoader ? (
         <DashboardMetricsSkeleton message={t.dashboard.loadingMetrics} />
@@ -2949,7 +2949,7 @@ function StatBlock({ label, labelHint, value, sub, subColor, valueColor = 'text-
         {label}
         {labelHint ? <InfoTooltip text={labelHint} /> : null}
       </p>
-      <p className={clsx('mt-2 text-3xl font-semibold tracking-tight', valueColor)}>{value}</p>
+      <p className={clsx('mt-2 text-2xl font-semibold tracking-tight', valueColor)}>{value}</p>
       {sub === '' ? null : typeof sub === 'string' ? (
         <p className={clsx('mt-1.5 text-xs leading-5', subColor)}>{sub}</p>
       ) : (

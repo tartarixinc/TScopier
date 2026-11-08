@@ -555,7 +555,7 @@ broker: {
     configureCopy: 'Configure',
     configureCopyAria: 'Configure copy settings',
     stopCopying: 'Stop copying',
-    stopCopyingConfirm: 'Stop copying this provider? Open copied trades will be closed.',
+    stopCopyingConfirm: 'Open copied trades from this provider will be closed. You can start copying again later.',
     monthlyPrice: 'Monthly copy price',
     priceFree: 'Free',
     pricePaid: 'Paid',

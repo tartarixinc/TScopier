@@ -538,7 +538,7 @@ export const es: Translations = {
     configureCopy: 'Configurar',
     configureCopyAria: 'Configurar ajustes de copia',
     stopCopying: 'Dejar de copiar',
-    stopCopyingConfirm: '¿Dejar de copiar a este proveedor? Se cerrarán las operaciones copiadas abiertas.',
+    stopCopyingConfirm: 'Se cerrarán las operaciones copiadas abiertas de este proveedor. Podrás volver a copiar más adelante.',
     monthlyPrice: 'Precio mensual de copia',
     priceFree: 'Gratis',
     pricePaid: 'De pago',

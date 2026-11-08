@@ -52,8 +52,12 @@ Google OAuth and email confirmation links must redirect to the **app** subdomain
 npm run dev
 
 # Marketing landing preview
-VITE_DEV_SITE=marketing npm run dev
+npm run dev:marketing
+# equivalent: VITE_DEV_SITE=marketing npm run dev
 # or open http://localhost:5173/?site=marketing
+#
+# Note: `npm run dev VITE_DEV_SITE=marketing` does NOT set the env var
+# (npm passes it as a Vite CLI arg). Use the forms above.
 ```
 
 On localhost, `appUrl()` / `marketingUrl()` stay on the same Vite origin and set `site=app` / `site=marketing` so Subscribe does **not** jump to `https://app.tscopier.ai`.

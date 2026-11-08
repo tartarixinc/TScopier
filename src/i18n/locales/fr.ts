@@ -538,7 +538,7 @@ export const fr: Translations = {
     configureCopy: 'Configurer',
     configureCopyAria: 'Configurer les paramètres de copie',
     stopCopying: 'Arrêter la copie',
-    stopCopyingConfirm: 'Arrêter de copier ce fournisseur ? Les positions copiées ouvertes seront clôturées.',
+    stopCopyingConfirm: 'Les positions copiées ouvertes de ce fournisseur seront clôturées. Vous pourrez recommencer la copie plus tard.',
     monthlyPrice: 'Prix mensuel de copie',
     priceFree: 'Gratuit',
     pricePaid: 'Payant',
