@@ -1618,6 +1618,8 @@ broker: {
     closeCopyErrorFallback: 'Could not close the copy. Try again.',
     execNotesTitle: 'Execution notes',
     execNoteTpSplit: 'Some partial take-profits were skipped — this lot is too small to split (those slices would be below the broker minimum). The remaining take-profits still apply.',
+    execNotePartialCloseTooSmall:
+      'A requested partial close could not be executed — this position was too small to split (the requested part would fall below the broker minimum lot), so that instruction closed nothing and the trade was left at its full size.',
     execNoteStaleEntry: 'The signal entry was {entry} but the trade opened at {fill} — price had already moved when the order was sent.',
     execNoteTpStripped: 'Take-profits {levels} were stripped — the trade opened at {fill}, past the take-profit price, so applying them would have closed the trade immediately.',
     imageSignal: '(image signal)',

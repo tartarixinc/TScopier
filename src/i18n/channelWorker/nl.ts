@@ -197,6 +197,7 @@ export const channelWorkerNl: ChannelWorkerTranslations = {
       'annuleringsinstructies moeten worden verzonden als een reactie op het originele signaalbericht',
     delete_pendings_none: 'geen openstaande orders gevonden om te annuleren voor deze transactie',
     delete_pendings_cancel_failed: 'er zijn openstaande orders gevonden, maar geen kon worden geannuleerd (de broker weigerde of was niet beschikbaar) — probeer het opnieuw, of annuleer ze vanaf de Trades-pagina',
+    partial_close_unavailable_for_position_size: 'partiële afsluiting niet mogelijk — deze positie is te klein om te splitsen (het gevraagde deel zou onder de minimumlot van de broker vallen); er is niets gesloten en de trade bleef open op volledige grootte',
   },
   dispatchSkipped: 'Dit signaal is niet gekopieerd ({reason}).',
   rangeRebalanceSkippedNamed: 'Take-profit-herverdeling voor {symbol} overgeslagen ({reason})',

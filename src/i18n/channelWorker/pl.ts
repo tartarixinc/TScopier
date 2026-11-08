@@ -198,6 +198,7 @@ export const channelWorkerPl: ChannelWorkerTranslations = {
       'instrukcje anulowania muszą być wysyłane jako odpowiedź na oryginalną wiadomość sygnału',
     delete_pendings_none: 'nie znaleziono oczekujących zleceń do anulowania dla tej transakcji',
     delete_pendings_cancel_failed: 'znaleziono oczekujące zlecenia, ale nie udało się anulować żadnego (broker odmówił lub był niedostępny) — spróbuj ponownie albo zamknij je na stronie Trades',
+    partial_close_unavailable_for_position_size: 'zamknięcie częściowe niemożliwe — ta pozycja jest zbyt mała do podziału (żądana część byłaby poniżej minimalnego lotu brokera); nie zamknięto niczego i transakcja pozostała otwarta w pełnym rozmiarze',
   },
   dispatchSkipped: 'Nie skopiowano tego sygnału ({reason}).',
   rangeRebalanceSkippedNamed: 'Pominięto zmianę take profit {symbol} ({reason})',

@@ -198,6 +198,7 @@ export const channelWorkerEn: ChannelWorkerTranslations = {
     delete_pendings_none: 'no pending orders found to cancel for this trade',
     delete_pendings_cancel_failed:
       'pending orders were found but none could be cancelled (the broker refused or was unavailable) — try again, or close them from the Trades page',
+    partial_close_unavailable_for_position_size: 'partial close not possible — this position is too small to split: the requested part would fall below the broker minimum lot, so nothing was closed and the trade stayed open at its full size',
   },
   dispatchSkipped: 'Did not copy this signal ({reason}).',
   rangeRebalanceSkippedNamed: 'Skipped {symbol} take-profit rebalance ({reason})',
