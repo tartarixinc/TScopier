@@ -1,7 +1,46 @@
+import type { CopyRiskTranslations } from '../i18n/locales/copyRiskLabels'
 import type { MirrorTradingPageTranslations, SocialTradingPageTranslations } from '../i18n/locales/types'
 
 type SetupCopy = MirrorTradingPageTranslations['setup']
 type SocialCopySetup = SocialTradingPageTranslations['copySetup']
+
+/** Social UI says "provider"; Mirror keeps "source". */
+function sourceNounToProvider(text: string): string {
+  let next = text
+    .replace(/\bde origen\b/gi, 'del proveedor')
+    .replace(/\bel origen\b/gi, 'el proveedor')
+    .replace(/\borigen\b/gi, 'proveedor')
+  if (!/\bsource\b/i.test(next)) return next
+  const french = /[àâéèêëïôùûçœ’']|Clôturer|Copier le|Âge max/i.test(next)
+  if (french) {
+    return next
+      .replace(/\bla source\b/gi, 'le fournisseur')
+      .replace(/\bSource\b/g, 'Fournisseur')
+      .replace(/\bsource\b/g, 'fournisseur')
+  }
+  return next
+    .replace(/\bSource\b/g, 'Provider')
+    .replace(/\bsource\b/g, 'provider')
+}
+
+/** Remap Mirror copy-risk labels so Social config says provider instead of source. */
+export function copyRiskLabelsForSocial(labels: CopyRiskTranslations): CopyRiskTranslations {
+  return {
+    ...labels,
+    stops: {
+      ...labels.stops,
+      copySl: sourceNounToProvider(labels.stops.copySl),
+      copyTp: sourceNounToProvider(labels.stops.copyTp),
+      closeOnExit: sourceNounToProvider(labels.stops.closeOnExit),
+    },
+    filters: {
+      ...labels.filters,
+      minVolume: sourceNounToProvider(labels.filters.minVolume),
+      maxVolume: sourceNounToProvider(labels.filters.maxVolume),
+      maxPositionAge: sourceNounToProvider(labels.filters.maxPositionAge),
+    },
+  }
+}
 
 /** Map social copy-setup copy onto the Mirror configure modal setup shape. */
 export function socialCopySetupToMirrorSetup(c: SocialCopySetup): SetupCopy {

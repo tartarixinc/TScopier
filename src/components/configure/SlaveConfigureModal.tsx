@@ -17,6 +17,7 @@ import type {
   CopyRiskSettings,
   CopySizingMode,
 } from '../../lib/copyRiskTypes'
+import { platformIconSrc } from '../../lib/activityRoute'
 import { resolveBrokerTotalBalance } from '../../lib/effectiveBrokerBalance'
 import type { BrokerAccount } from '../../types/database'
 
@@ -128,7 +129,6 @@ function previewGroups(
       rows: [
         { label: labels.protection.action, value: actionLabel(protection.action, labels) },
         { label: labels.protection.emergency, value: onOff(protection.emergency_stop, labels) },
-        { label: labels.protection.recovery, value: onOff(protection.recovery_mode, labels) },
         { label: labels.protection.maxDrawdown, value: unitValue(protection.drawdown_value_type, protection.max_drawdown_percent, protection.max_drawdown_cash, off) },
         { label: labels.protection.dailyLoss, value: unitValue(protection.daily_loss_value_type, protection.max_daily_loss_percent, protection.max_daily_loss_cash, off) },
         { label: labels.protection.weeklyLoss, value: unitValue(protection.weekly_loss_value_type, protection.max_weekly_loss_percent, protection.max_weekly_loss_cash, off) },
@@ -201,9 +201,7 @@ function previewGroups(
         { label: labels.provider.maxPositions, value: shownNumber(provider.max_open_positions, off) },
         { label: labels.provider.maxLots, value: shownNumber(provider.max_lots, off) },
         { label: labels.provider.maxDailyTrades, value: shownNumber(provider.max_daily_trades, off) },
-        { label: labels.provider.riskMultiplier, value: String(provider.risk_multiplier) },
         { label: labels.provider.consecutiveLosses, value: shownNumber(provider.max_consecutive_losses, off) },
-        { label: labels.provider.suspended, value: onOff(provider.suspended, labels) },
       ],
     },
     {
@@ -282,17 +280,18 @@ function estimateSlaveLot(
 function AccountLogo({ platform }: { platform: string }) {
   const [failed, setFailed] = useState(false)
   const normalized = platform.trim().toUpperCase()
-  if (failed || (normalized !== 'MT4' && normalized !== 'MT5')) {
+  const iconSrc = platformIconSrc(platform)
+  if (failed || !iconSrc) {
     return (
       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-neutral-100 text-[11px] font-semibold text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50">
-        {normalized || 'MT'}
+        {normalized.slice(0, 3) || 'MT'}
       </span>
     )
   }
   return (
     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white shadow-xs ring-1 ring-neutral-100 dark:bg-neutral-900 dark:ring-neutral-800">
       <img
-        src={`/${normalized}.png`}
+        src={iconSrc}
         alt=""
         aria-hidden
         className="h-7 w-7 object-contain"
@@ -801,12 +800,6 @@ export function SlaveConfigureModal({
                     label={labels.stops.closeOnExit}
                     checked={settings.stops.close_on_source_exit}
                     onChange={checked => patch({ ...settings, stops: { ...settings.stops, close_on_source_exit: checked } })}
-                  />
-                  <SettingToggle
-                    label={labels.protection.recovery}
-                    checked={settings.protection.recovery_mode}
-                    onChange={checked => patch({ ...settings, protection: { ...settings.protection, recovery_mode: checked } })}
-                    safety
                   />
                 </div>
               </section>

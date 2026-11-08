@@ -18,7 +18,7 @@ import {
   subscribeSocialCopyIntent,
 } from '../../lib/socialCopy'
 import { DEFAULT_SOCIAL_COPY_FILTER_SETTINGS } from '../../lib/socialCopyFilterSettings'
-import { socialCopySetupToMirrorSetup } from '../../lib/socialCopySetupLabels'
+import { copyRiskLabelsForSocial, socialCopySetupToMirrorSetup } from '../../lib/socialCopySetupLabels'
 import { isSocialDestinationEligible, resolveSocialAccountMode } from '../../lib/socialAccount'
 import { sourceAllowsCopy } from '../../lib/socialCopyAvailability'
 import { eligibilityDiagnosticForReason } from '../../lib/socialEligibility'
@@ -275,7 +275,7 @@ export function CopyTraderModal({
       slave={selectedBroker}
       source={null}
       settings={settings}
-      labels={t.copyRisk}
+      labels={copyRiskLabelsForSocial(t.copyRisk)}
       setup={socialCopySetupToMirrorSetup(c)}
       loginLabel={c.login}
       balanceLabel={c.balance}
