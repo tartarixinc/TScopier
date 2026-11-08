@@ -53,6 +53,13 @@ import {
   upsertInvoicePaymentFromStripe,
   markInvoicePaymentRefunded,
 } from "../_shared/invoicePayments.ts";
+import {
+  isSocialCopyKind,
+  upsertSocialCopyBillingFromSubscription,
+  settleSocialCopyLedgerFromInvoice,
+  pauseSocialCopyForBillingFailure,
+  mapSocialCopyBillingStatus,
+} from "../_shared/socialCopyBilling.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -247,10 +254,24 @@ Deno.serve(async (req: Request) => {
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
-        const userId = session.metadata?.supabase_user_id;
         const customerId =
           typeof session.customer === "string" ? session.customer : session.customer?.id ?? null;
 
+        if (isSocialCopyKind(session.metadata) && session.subscription) {
+          const subscription = await stripe.subscriptions.retrieve(
+            session.subscription as string,
+            { expand: ["items.data.price"] },
+          );
+          await upsertSocialCopyBillingFromSubscription(supabase, subscription, {
+            payerUserId: session.metadata?.payer_user_id ?? null,
+            providerUserId: session.metadata?.provider_user_id ?? null,
+            walletLedgerId: session.metadata?.wallet_ledger_id ?? null,
+            customerId,
+          });
+          break;
+        }
+
+        const userId = session.metadata?.supabase_user_id;
         if (userId && session.subscription && customerId) {
           const subscription = await stripe.subscriptions.retrieve(
             session.subscription as string,
@@ -289,6 +310,19 @@ Deno.serve(async (req: Request) => {
 
       case "customer.subscription.updated": {
         const subscription = event.data.object as Stripe.Subscription;
+        if (isSocialCopyKind(subscription.metadata)) {
+          const row = await upsertSocialCopyBillingFromSubscription(supabase, subscription);
+          if (row && (row.status === "past_due" || row.status === "canceled")) {
+            await pauseSocialCopyForBillingFailure(
+              supabase,
+              row.payerUserId,
+              row.providerUserId,
+              row.status === "canceled" ? "stop" : "pause",
+            );
+          }
+          break;
+        }
+
         const userId = await resolveUserIdFromSubscription(stripe, subscription, supabase);
         const customerId =
           typeof subscription.customer === "string"
@@ -342,6 +376,22 @@ Deno.serve(async (req: Request) => {
 
       case "customer.subscription.deleted": {
         const subscription = event.data.object as Stripe.Subscription;
+        if (isSocialCopyKind(subscription.metadata)) {
+          const row = await upsertSocialCopyBillingFromSubscription(supabase, {
+            ...subscription,
+            status: "canceled",
+          });
+          if (row) {
+            await pauseSocialCopyForBillingFailure(
+              supabase,
+              row.payerUserId,
+              row.providerUserId,
+              "stop",
+            );
+          }
+          break;
+        }
+
         const userId = await resolveUserIdFromSubscription(stripe, subscription, supabase);
         const customerId =
           typeof subscription.customer === "string"
@@ -389,6 +439,34 @@ Deno.serve(async (req: Request) => {
 
       case "invoice.payment_failed": {
         const invoice = event.data.object as Stripe.Invoice;
+        const subscriptionId = typeof invoice.subscription === "string"
+          ? invoice.subscription
+          : invoice.subscription?.id ?? null;
+        if (subscriptionId) {
+          const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+          if (isSocialCopyKind(subscription.metadata)) {
+            const row = await upsertSocialCopyBillingFromSubscription(supabase, subscription);
+            if (row) {
+              await supabase
+                .from("social_copy_billing")
+                .update({
+                  status: mapSocialCopyBillingStatus(subscription.status) === "canceled"
+                    ? "canceled"
+                    : "past_due",
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("payer_user_id", row.payerUserId)
+                .eq("provider_user_id", row.providerUserId);
+              await pauseSocialCopyForBillingFailure(
+                supabase,
+                row.payerUserId,
+                row.providerUserId,
+                "pause",
+              );
+            }
+            break;
+          }
+        }
         await handleInvoicePaymentIssue(stripe, supabase, invoice, "failed");
         break;
       }
@@ -408,6 +486,18 @@ Deno.serve(async (req: Request) => {
           const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
             expand: ["items.data.price"],
           });
+          if (isSocialCopyKind(subscription.metadata)) {
+            const row = await upsertSocialCopyBillingFromSubscription(supabase, subscription);
+            if (row) {
+              await settleSocialCopyLedgerFromInvoice(
+                supabase,
+                invoice,
+                row.payerUserId,
+                row.providerUserId,
+              );
+            }
+            break;
+          }
           const userId = await resolveUserIdFromSubscription(
             stripe,
             subscription,

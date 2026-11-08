@@ -163,6 +163,8 @@ export interface SocialProfileRow {
   user_id: string
   access_mode: 'open' | 'private'
   is_listed: boolean
+  stripe_connect_account_id?: string | null
+  stripe_connect_charges_enabled?: boolean
   created_at: string
   updated_at: string
 }
@@ -214,7 +216,24 @@ export interface WalletLedgerRow {
   currency: string
   status: 'pending' | 'paid' | 'reversed'
   description: string
+  stripe_invoice_id?: string | null
+  stripe_payment_intent_id?: string | null
   created_at: string
+}
+
+export interface SocialCopyBillingRow {
+  id: string
+  payer_user_id: string
+  provider_user_id: string
+  status: 'incomplete' | 'active' | 'past_due' | 'canceled'
+  stripe_customer_id: string | null
+  stripe_subscription_id: string | null
+  stripe_price_id: string | null
+  current_period_end: string | null
+  cancel_at_period_end: boolean
+  wallet_ledger_id: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface CommissionLedgerRow {

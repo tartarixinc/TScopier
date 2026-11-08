@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { CheckCircle2, Clock, Plus, XCircle } from 'lucide-react'
 import clsx from 'clsx'
@@ -7,7 +7,11 @@ import { PageShell } from '../../components/layout/PageShell'
 import { AccountKindBadge } from '../../components/social/AccountKindBadge'
 import { ProviderShareCard } from '../../components/social/ProviderShareCard'
 import { SocialBrandIcon } from '../../components/social/SocialProfileLinks'
-import { fetchMySocialCopySubscriptions, isCurrentSocialCopySubscription } from '../../lib/socialCopy'
+import {
+  fetchMySocialCopySubscriptions,
+  isCurrentSocialCopySubscription,
+  startProviderConnectOnboarding,
+} from '../../lib/socialCopy'
 import { supabase } from '../../lib/supabase'
 import { Alert } from '../../components/ui/Alert'
 import { Button } from '../../components/ui/Button'
@@ -234,9 +238,69 @@ function AccountStep({
   )
 }
 
+function ProviderPayoutConnectCard({
+  chargesEnabled,
+  onRefresh,
+}: {
+  chargesEnabled: boolean
+  onRefresh: () => void
+}) {
+  const { session } = useAuth()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const startConnect = async () => {
+    const token = session?.access_token
+    if (!token) {
+      setError('Sign in again to connect payouts.')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      const result = await startProviderConnectOnboarding(token)
+      if (result.chargesEnabled) {
+        onRefresh()
+        return
+      }
+      if (result.url) {
+        window.location.assign(result.url)
+        return
+      }
+      setError('Unable to open Stripe Connect onboarding.')
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to start payout onboarding.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-800 dark:bg-neutral-900/60">
+      <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Payout setup</h3>
+      <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+        {chargesEnabled
+          ? 'Stripe Connect is ready. Paid copy subscriptions can settle to your account.'
+          : 'Connect Stripe payouts before publishing a paid monthly copy price.'}
+      </p>
+      {error ? <Alert className="mt-3" variant="error">{error}</Alert> : null}
+      {!chargesEnabled ? (
+        <Button className="mt-3" size="sm" loading={busy} onClick={() => void startConnect()}>
+          Connect Stripe payouts
+        </Button>
+      ) : null}
+    </div>
+  )
+}
+
 function PricingStep({
-  draft, setDraft,
-}: { draft: ProviderDraft; setDraft: (patch: Partial<ProviderDraft>) => void }) {
+  draft, setDraft, chargesEnabled, onRefreshConnect,
+}: {
+  draft: ProviderDraft
+  setDraft: (patch: Partial<ProviderDraft>) => void
+  chargesEnabled: boolean
+  onRefreshConnect: () => void
+}) {
   const [mode, setMode] = useState<'free' | 'paid' | null>(() => {
     if (draft.priceUsd.trim() === '') return null
     return priceInputToCents(draft.priceUsd) === 0 ? 'free' : 'paid'
@@ -250,9 +314,10 @@ function PricingStep({
       <div>
         <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">Set your price</h2>
         <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-          The price is displayed on your profile. Billing between you and your copiers is not handled by TScopier yet.
+          Paid prices are billed monthly through Stripe Checkout and paid out via your Connect account.
         </p>
       </div>
+      <ProviderPayoutConnectCard chargesEnabled={chargesEnabled} onRefresh={onRefreshConnect} />
       <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Pricing">
         {(['free', 'paid'] as const).map(value => (
           <button key={value} type="button" role="radio" aria-checked={mode === value}
@@ -270,8 +335,14 @@ function PricingStep({
             value={draft.priceUsd}
             onChange={event => setDraft({ priceUsd: event.target.value })}
             placeholder="50"
-            className="mt-1 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-base md:text-sm dark:border-neutral-700 dark:bg-neutral-900"
+            disabled={!chargesEnabled}
+            className="mt-1 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-base md:text-sm disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-900"
           />
+          {!chargesEnabled ? (
+            <span className="mt-1 block text-xs text-amber-700 dark:text-amber-300">
+              Finish Stripe Connect before saving a paid price.
+            </span>
+          ) : null}
         </label>
       )}
       <label className="block text-sm">
@@ -385,6 +456,7 @@ function ReviewStep({
 
 function StatusScreen({
   status, rejectionReason, slug, name, onEdit, onCloseProfile, closing, closeError,
+  chargesEnabled, onRefreshConnect,
 }: {
   status: 'pending' | 'approved' | 'rejected' | 'suspended'
   rejectionReason: string | null
@@ -394,6 +466,8 @@ function StatusScreen({
   onCloseProfile?: () => void
   closing?: boolean
   closeError?: string | null
+  chargesEnabled: boolean
+  onRefreshConnect: () => void
 }) {
   const content = {
     pending: { icon: Clock, tone: 'text-amber-600', title: 'Application under review', body: 'An administrator is reviewing your application. You will get a notification as soon as it is decided.' },
@@ -415,6 +489,9 @@ function StatusScreen({
           {onEdit && <Button className="mt-3" size="sm" onClick={onEdit}>{status === 'rejected' ? 'Edit and resubmit' : 'Edit profile'}</Button>}
         </div>
       </div>
+      {status === 'approved' ? (
+        <ProviderPayoutConnectCard chargesEnabled={chargesEnabled} onRefresh={onRefreshConnect} />
+      ) : null}
       {status === 'approved' && slug && <ProviderShareCard slug={slug} name={name} shareTradeHistory={sharing} manageHref="/social-trading" />}
       {status === 'approved' && onCloseProfile ? (
         <div className="rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
@@ -436,6 +513,7 @@ export function ProviderApplyPage() {
   const app = useProviderApplication()
   const { brokers } = useBrokerAccounts()
   const { profile } = useUserProfile()
+  const { user, session } = useAuth()
   const confirm = useConfirm()
   const navigate = useNavigate()
   const [step, setStep] = useState<ProviderStep>(1)
@@ -443,10 +521,44 @@ export function ProviderApplyPage() {
   const [stepError, setStepError] = useState<string | null>(null)
   const [editingApproved, setEditingApproved] = useState(false)
   const [forceWizard, setForceWizard] = useState(false)
+  const [chargesEnabled, setChargesEnabled] = useState(false)
 
   const account = brokers.find(item => item.id === app.draft.brokerAccountId) ?? null
   const displayName = profile.display_name?.trim() || profile.username?.trim() || 'Provider'
   const status = app.application?.status ?? null
+
+  const refreshConnect = () => {
+    if (!user?.id) {
+      setChargesEnabled(false)
+      return
+    }
+    void supabase
+      .from('social_profiles')
+      .select('stripe_connect_charges_enabled')
+      .eq('user_id', user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        setChargesEnabled(data?.stripe_connect_charges_enabled === true)
+      })
+  }
+
+  useEffect(() => {
+    refreshConnect()
+    // Refresh Connect flags after Stripe Account Link return.
+    if (typeof window !== 'undefined' && session?.access_token) {
+      const params = new URLSearchParams(window.location.search)
+      if (params.get('connect') === 'return') {
+        void startProviderConnectOnboarding(session.access_token)
+          .then(result => {
+            setChargesEnabled(result.chargesEnabled)
+            const url = new URL(window.location.href)
+            url.searchParams.delete('connect')
+            window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
+          })
+          .catch(() => refreshConnect())
+      }
+    }
+  }, [user?.id, session?.access_token])
 
   const requestCloseProfile = () => {
     void confirm({
@@ -513,7 +625,12 @@ export function ProviderApplyPage() {
   } else if (status === 'approved' && editingApproved) {
     body = (
       <div className="space-y-6">
-        <PricingStep draft={app.draft} setDraft={app.setDraft} />
+        <PricingStep
+          draft={app.draft}
+          setDraft={app.setDraft}
+          chargesEnabled={chargesEnabled}
+          onRefreshConnect={refreshConnect}
+        />
         <LinksStep draft={app.draft} setDraft={app.setDraft} />
         <div className="flex gap-2">
           <Button loading={app.submitting} onClick={() => void saveApproved()}>Save changes</Button>
@@ -532,6 +649,8 @@ export function ProviderApplyPage() {
         onCloseProfile={status === 'approved' ? requestCloseProfile : undefined}
         closing={status === 'approved' ? app.submitting : false}
         closeError={status === 'approved' ? app.saveError : null}
+        chargesEnabled={chargesEnabled}
+        onRefreshConnect={refreshConnect}
       />
     )
   } else {
@@ -545,7 +664,14 @@ export function ProviderApplyPage() {
         }} />
         <div className="rounded-2xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900/50">
           {step === 1 && <AccountStep draft={app.draft} setDraft={app.setDraft} />}
-          {step === 2 && <PricingStep draft={app.draft} setDraft={app.setDraft} />}
+          {step === 2 && (
+            <PricingStep
+              draft={app.draft}
+              setDraft={app.setDraft}
+              chargesEnabled={chargesEnabled}
+              onRefreshConnect={refreshConnect}
+            />
+          )}
           {step === 3 && <LinksStep draft={app.draft} setDraft={app.setDraft} />}
           {step === 4 && <ReviewStep draft={app.draft} account={account} accepted={accepted} onAccept={setAccepted} />}
         </div>

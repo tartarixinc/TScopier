@@ -374,13 +374,132 @@ export async function updateSocialCopySubscriptionSettings(client: SupabaseClien
   if (error) throw failure(error)
 }
 
-/** Records a pending wallet ledger row for a paid provider copy (UI paywall). No charge yet. */
+/** Records a pending wallet ledger row for a paid provider copy (legacy soft intent). */
 export async function subscribeSocialCopyIntent(client: SupabaseClient, providerUserId: string): Promise<string> {
   const { data, error } = await client.rpc('subscribe_social_copy_intent', {
     p_provider_user_id: providerUserId,
   })
   if (error) throw failure(error)
   return String(data)
+}
+
+export type SocialCopyBillingStatus = 'incomplete' | 'active' | 'past_due' | 'canceled'
+
+export type SocialCopyBilling = {
+  id: string
+  status: SocialCopyBillingStatus
+  currentPeriodEnd: string | null
+  cancelAtPeriodEnd: boolean
+  stripeSubscriptionId: string | null
+}
+
+export function isActiveSocialCopyBilling(billing: SocialCopyBilling | null | undefined, now = Date.now()): boolean {
+  if (!billing || billing.status !== 'active') return false
+  if (!billing.currentPeriodEnd) return true
+  return new Date(billing.currentPeriodEnd).getTime() > now
+}
+
+export async function fetchSocialCopyBillingForProvider(
+  client: SupabaseClient,
+  providerUserId: string,
+): Promise<SocialCopyBilling | null> {
+  const { data, error } = await client.rpc('get_social_copy_billing_for_provider', {
+    p_provider_user_id: providerUserId,
+  })
+  if (error) throw failure(error)
+  const row = ((data ?? []) as Array<{
+    id: string
+    status: string
+    current_period_end: string | null
+    cancel_at_period_end: boolean
+    stripe_subscription_id: string | null
+  }>)[0]
+  if (!row) return null
+  return {
+    id: String(row.id),
+    status: row.status as SocialCopyBillingStatus,
+    currentPeriodEnd: row.current_period_end,
+    cancelAtPeriodEnd: Boolean(row.cancel_at_period_end),
+    stripeSubscriptionId: row.stripe_subscription_id,
+  }
+}
+
+export async function startSocialCopyCheckout(params: {
+  accessToken: string
+  providerUserId: string
+  successUrl?: string
+  cancelUrl?: string
+}): Promise<string> {
+  const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-social-copy-checkout`
+  const res = await fetch(apiUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${params.accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      provider_user_id: params.providerUserId,
+      success_url: params.successUrl,
+      cancel_url: params.cancelUrl,
+    }),
+  })
+  const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string; code?: string }
+  if (!res.ok || !data.url) {
+    throw new Error(data.error || 'Unable to start copy checkout')
+  }
+  return data.url
+}
+
+export async function startSocialCopyBillingPortal(params: {
+  accessToken: string
+  providerUserId: string
+  returnUrl?: string
+}): Promise<string> {
+  const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/social-copy-portal`
+  const res = await fetch(apiUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${params.accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      provider_user_id: params.providerUserId,
+      return_url: params.returnUrl,
+    }),
+  })
+  const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string }
+  if (!res.ok || !data.url) {
+    throw new Error(data.error || 'Unable to open billing portal')
+  }
+  return data.url
+}
+
+export async function startProviderConnectOnboarding(accessToken: string): Promise<{
+  url: string | null
+  chargesEnabled: boolean
+}> {
+  const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/provider-connect`
+  const res = await fetch(apiUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      refresh_url: `${window.location.origin}/provider/apply`,
+      return_url: `${window.location.origin}/provider/apply?connect=return`,
+    }),
+  })
+  const data = (await res.json().catch(() => ({}))) as {
+    url?: string | null
+    charges_enabled?: boolean
+    error?: string
+  }
+  if (!res.ok) throw new Error(data.error || 'Unable to start payout onboarding')
+  return {
+    url: data.url ?? null,
+    chargesEnabled: data.charges_enabled === true,
+  }
 }
 
 export async function changeSocialCopySubscription(client: SupabaseClient, id: string, action: 'pause' | 'resume' | 'stop' | 'emergency_stop'): Promise<void> {

@@ -755,9 +755,9 @@ broker: {
       done: 'Done',
       close: 'Close',
       paywallTitle: 'Subscribe to copy {trader}',
-      paywallBody: 'This provider charges a monthly fee to copy their trades. Confirm to continue to your copy preview.',
-      paywallSubscribe: 'Subscribe for {amount}/Month',
-      paywallPendingNote: 'Nothing is charged until payments are connected. Your intent is saved as pending.',
+      paywallBody: 'This provider charges a monthly fee to copy their trades. Pay with Stripe to unlock copy setup.',
+      paywallSubscribe: 'Pay {amount}/Month',
+      paywallPendingNote: 'You will be redirected to Stripe Checkout. After payment succeeds, you can configure sizing and start copying.',
     },
   },
   configurationsPage: {

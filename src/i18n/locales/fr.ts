@@ -740,7 +740,7 @@ export const fr: Translations = {
       paywallTitle: 'Abonnez-vous pour copier {trader}',
       paywallBody: 'Ce fournisseur facture un abonnement mensuel pour copier ses trades. Confirmez pour continuer vers l’aperçu.',
       paywallSubscribe: 'S’abonner pour {amount}/mois',
-      paywallPendingNote: 'Rien n’est débité tant que les paiements ne sont pas connectés. Votre intention est enregistrée en attente.',
+      paywallPendingNote: 'Vous serez redirigé vers Stripe Checkout. Après le paiement, vous pourrez configurer le sizing et démarrer la copie.',
     }
   },
   configurationsPage: {
