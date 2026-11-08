@@ -60,6 +60,13 @@ function num(value: unknown): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+function isCopyEngineFillComment(raw: unknown): boolean {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false
+  const row = raw as Record<string, unknown>
+  const comment = String(row.comment ?? row.Comment ?? row.clientOrderId ?? "").trim().toLowerCase()
+  return comment.startsWith("sc:") || comment.startsWith("mc:")
+}
+
 function normalizePosition(raw: unknown): {
   ticket: string
   symbol: string
@@ -69,6 +76,7 @@ function normalizePosition(raw: unknown): {
   takeProfit: number | null
 } | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
+  if (isCopyEngineFillComment(raw)) return null
   const row = raw as Record<string, unknown>
   const ticket = num(row.ticket ?? row.Ticket ?? row.order ?? row.Order)
   const symbol = String(row.symbol ?? row.Symbol ?? row.symbolName ?? "").trim()
@@ -195,6 +203,7 @@ async function writeExecutionEvent(
     errorDetail?: string | null
   },
 ): Promise<void> {
+  let eventId: string | undefined
   const { data, error } = await supabase.from("social_copy_execution_events").insert({
     subscription_id: input.subscriptionId,
     mapping_id: input.mappingId,
@@ -205,14 +214,32 @@ async function writeExecutionEvent(
     request_payload: input.request,
   }).select("id").single()
 
-  if (error) {
-    // Unique conflict: skip — the original claim owns this key.
-    if (error.code !== "23505") {
-      console.warn("[social-copy-reconcile] event insert failed", error.message)
-    }
+  if (error?.code === "23505") {
+    // Rematerialize after a cleared dead mapping — prior attempts often finished
+    // as failed/uncertain and must not permanently block a successful retry.
+    const { data: existing } = await supabase.from("social_copy_execution_events")
+      .select("id,status,attempt_count")
+      .eq("subscription_id", input.subscriptionId)
+      .eq("idempotency_key", input.idempotencyKey)
+      .maybeSingle()
+    const prior = String(existing?.status ?? "")
+    if (!existing?.id || (prior !== "failed" && prior !== "uncertain")) return
+    eventId = String(existing.id)
+    await supabase.from("social_copy_execution_events").update({
+      status: "claimed",
+      attempt_count: Number(existing.attempt_count ?? 1) + 1,
+      mapping_id: input.mappingId,
+      request_payload: input.request,
+      error_code: null,
+      error_detail: null,
+      completed_at: null,
+    }).eq("id", eventId)
+  } else if (error) {
+    console.warn("[social-copy-reconcile] event insert failed", error.message)
     return
+  } else {
+    eventId = data?.id as string | undefined
   }
-  const eventId = data?.id as string | undefined
   if (!eventId) return
 
   const { error: updateError } = await supabase.from("social_copy_execution_events").update({
@@ -365,6 +392,18 @@ Deno.serve(async (req) => {
         .eq("subscription_id", sub.id)
         .in("state", ["opening", "open", "closing", "uncertain", "error"])
       const bySource = new Map(((mappings ?? []) as MappingRow[]).map((row) => [row.source_ticket, row]))
+
+      // Clear dead opens (null destination) while the source ticket is still live
+      // so manual broker opens can rematerialize after a failed first attempt.
+      // Leave `uncertain` alone — a broker fill may already exist.
+      const liveTickets = new Set(positions.map((p) => p.ticket))
+      for (const [ticket, mapping] of [...bySource.entries()]) {
+        if (mapping.destination_ticket) continue
+        if (mapping.state !== "error" && mapping.state !== "opening") continue
+        if (!liveTickets.has(ticket)) continue
+        await supabase.from("social_copy_trade_mappings").delete().eq("id", mapping.id)
+        bySource.delete(ticket)
+      }
 
       let opened = 0
       let modified = 0
@@ -533,7 +572,10 @@ Deno.serve(async (req) => {
             },
             errorDetail: detail.slice(0, 500),
           })
-          throw openError
+          // Keep reconciling other tickets — next tick clears this dead mapping
+          // while the source position is still open and retries the open.
+          console.warn("[social-copy-reconcile] open failed", position.ticket, detail)
+          continue
         }
       }
 

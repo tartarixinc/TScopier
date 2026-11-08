@@ -93,6 +93,45 @@ export function normalizeSocialCopyFilterSettings(value: unknown): SocialCopyFil
   }
 }
 
+/** Keep Mirror-parity keys when composing the jsonb payload for RPC normalize. */
+export function composeSocialCopyManualSettings(input: {
+  filters?: Partial<SocialCopyFilterSettings> | null
+  copyRisk?: unknown
+  symbolMap?: Record<string, string> | null
+  legacy?: Record<string, unknown> | null
+}): Record<string, unknown> {
+  const filters = normalizeSocialCopyFilterSettings({
+    ...DEFAULT_SOCIAL_COPY_FILTER_SETTINGS,
+    ...(input.filters ?? {}),
+  })
+  const payload: Record<string, unknown> = { ...filters }
+  if (input.copyRisk && typeof input.copyRisk === 'object') {
+    payload.copy_risk = input.copyRisk
+  }
+  if (input.symbolMap && typeof input.symbolMap === 'object') {
+    payload.symbol_mapping = input.symbolMap
+  }
+  if (input.legacy) {
+    for (const key of ['risk_mode', 'fixed_lot', 'dynamic_balance_percent'] as const) {
+      if (key in input.legacy) payload[key] = input.legacy[key]
+    }
+  }
+  return payload
+}
+
+export function symbolMapFromSocialManualSettings(value: unknown): Record<string, string> {
+  const row = value && typeof value === 'object' ? value as Record<string, unknown> : {}
+  const raw = row.symbol_mapping
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const out: Record<string, string> = {}
+  for (const [from, to] of Object.entries(raw as Record<string, unknown>)) {
+    const key = String(from ?? '').trim()
+    const mapped = String(to ?? '').trim()
+    if (key && mapped) out[key] = mapped
+  }
+  return out
+}
+
 export function symbolListToText(value: string | string[] | null | undefined): string {
   if (Array.isArray(value)) return value.join(', ')
   return value?.trim() ?? ''

@@ -1136,6 +1136,8 @@ export interface SocialTradingPageTranslations {
   copyForFree: string
   copyForAmount: string
   currentlyCopying: string
+  configureCopy?: string
+  configureCopyAria?: string
   stopCopying: string
   stopCopyingConfirm: string
   monthlyPrice: string
@@ -1281,6 +1283,7 @@ export interface SocialTradingPageTranslations {
   copySetup: {
     action: string
     title: string
+    configureTitle?: string
     subtitle: string
     previewLabel: string
     destinationAccount: string
@@ -1299,6 +1302,7 @@ export interface SocialTradingPageTranslations {
     riskMultiplier: string
     riskMultiplierDescription: string
     lots: string
+    maxLot?: string
     protections: string
     copyStopLoss: string
     copyTakeProfit: string
@@ -1322,6 +1326,7 @@ export interface SocialTradingPageTranslations {
     estimateUnavailable: string
     noOpenTrade: string
     startCopying: string
+    saveSettings?: string
     cancel: string
     successTitle: string
     successBody: string
