@@ -114,8 +114,8 @@ function StatTile({
   valueClassName?: string
 }) {
   return (
-    <div className="rounded-xl border border-neutral-200 bg-neutral-50/80 p-3 dark:border-neutral-800 dark:bg-neutral-800/40">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400" title={hint}>
+    <div className="rounded-xl border border-neutral-200/65 bg-neutral-50/80 p-3 dark:border-neutral-800/55 dark:bg-neutral-800/40">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50" title={hint}>
         {label}
       </p>
       <p className={clsx('mt-1 text-lg font-semibold tabular-nums', valueClassName ?? 'text-neutral-900 dark:text-neutral-50')}>
@@ -128,9 +128,9 @@ function StatTile({
 function HeaderSkeleton() {
   return (
     <div className="min-w-0 space-y-2 animate-pulse">
-      <div className="h-5 w-40 rounded bg-neutral-200 dark:bg-neutral-700" />
-      <div className="h-3 w-28 rounded bg-neutral-100 dark:bg-neutral-800" />
-      <div className="h-3 w-56 rounded bg-neutral-100 dark:bg-neutral-800" />
+      <div className="h-5 w-40 rounded-sm bg-neutral-200 dark:bg-neutral-700" />
+      <div className="h-3 w-28 rounded-sm bg-neutral-100 dark:bg-neutral-800" />
+      <div className="h-3 w-56 rounded-sm bg-neutral-100 dark:bg-neutral-800" />
     </div>
   )
 }
@@ -324,15 +324,15 @@ export function BrokerStatsOverlay() {
         aria-label={bs.close}
         onClick={close}
       />
-      <div className="relative w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-2xl">
+      <div className="relative w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 shadow-2xl">
         <div className="sticky top-0 z-10 flex items-start justify-between gap-3 px-5 py-4 border-b border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900">
           {headerReady ? (
             <div className="min-w-0">
               <h2 id="broker-stats-title" className="text-lg font-semibold text-neutral-900 dark:text-neutral-50 truncate">
                 {accountLabel}
               </h2>
-              <p className="text-xs text-primary-600 font-medium uppercase tabular-nums">{platformLine}</p>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+              <p className="text-xs text-green-400 font-medium uppercase tabular-nums">{platformLine}</p>
+              <p className="text-xs text-neutral-900 dark:text-neutral-50 mt-0.5">
                 {brokerLabel}
                 {account ? (
                   <>
@@ -340,7 +340,7 @@ export function BrokerStatsOverlay() {
                     <span
                       className={clsx(
                         'font-semibold',
-                        accountType === 'Live' && 'text-teal-700 dark:text-teal-300',
+                        accountType === 'Live' && 'text-green-500 dark:text-teal-300',
                         accountType === 'Demo' && 'text-amber-700 dark:text-amber-300',
                       )}
                     >
@@ -374,7 +374,7 @@ export function BrokerStatsOverlay() {
             </Button>
             <button
               type="button"
-              className="p-2 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+              className="p-2 rounded-lg text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
               aria-label={bs.close}
               onClick={close}
             >
@@ -389,7 +389,7 @@ export function BrokerStatsOverlay() {
           ) : null}
 
           {!account && !loading ? (
-            <p className="text-sm text-neutral-500 dark:text-neutral-400 py-8 text-center">{bs.notFound}</p>
+            <p className="text-sm text-neutral-900 dark:text-neutral-50 py-8 text-center">{bs.notFound}</p>
           ) : null}
 
           {showBodySkeleton ? (
@@ -460,11 +460,11 @@ export function BrokerStatsOverlay() {
 
               <section>
                 <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{bs.connectedChannels}</h3>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{bs.connectedChannelsHint}</p>
+                <p className="text-xs text-neutral-900 dark:text-neutral-50 mt-0.5">{bs.connectedChannelsHint}</p>
                 {stats.profitByChannel.length === 0 ? (
-                  <p className="mt-3 text-sm text-neutral-400 dark:text-neutral-500">{bs.noChannels}</p>
+                  <p className="mt-3 text-sm text-neutral-900 dark:text-neutral-50">{bs.noChannels}</p>
                 ) : (
-                  <ul className="mt-3 divide-y divide-neutral-100 dark:divide-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+                  <ul className="mt-3 divide-y divide-neutral-100 dark:divide-neutral-800 rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 overflow-hidden">
                     {stats.profitByChannel.map(row => (
                       <li
                         key={row.key}
@@ -472,7 +472,7 @@ export function BrokerStatsOverlay() {
                       >
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50 truncate">{row.label}</p>
-                          <p className="text-xs text-neutral-400">{interpolate(bs.tradesCount, { count: String(row.count) })}</p>
+                          <p className="text-xs text-neutral-900 dark:text-neutral-50">{interpolate(bs.tradesCount, { count: String(row.count) })}</p>
                         </div>
                         <span className={clsx('text-sm font-semibold tabular-nums shrink-0', pnlColor(row.pnl))}>
                           {formatSignedMoney(row.pnl)}
@@ -483,7 +483,7 @@ export function BrokerStatsOverlay() {
                 )}
               </section>
 
-              <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-4">
+              <section className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 p-4">
                 {stats ? (
                   <ActiveSignalTradesSection
                     rows={stats.activeSignalTrades}
@@ -518,15 +518,15 @@ export function BrokerStatsOverlay() {
                 ) : null}
               </section>
 
-              <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-4">
+              <section className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{bs.lastSignalTrade}</h3>
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{bs.lastSignalTradeHint}</p>
+                    <p className="text-xs text-neutral-900 dark:text-neutral-50 mt-0.5">{bs.lastSignalTradeHint}</p>
                   </div>
                   <Link
                     to="/account-trades"
-                    className="shrink-0 text-xs font-semibold text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
+                    className="shrink-0 text-xs font-semibold text-green-400 hover:text-green-500 dark:text-green-400 dark:hover:text-teal-300"
                   >
                     {bs.seeAll}
                   </Link>
@@ -534,23 +534,23 @@ export function BrokerStatsOverlay() {
                 {stats.lastSignalTrade ? (
                   <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                     <div>
-                      <p className="text-xs text-neutral-400">{bs.channel}</p>
+                      <p className="text-xs text-neutral-900 dark:text-neutral-50">{bs.channel}</p>
                       <p className="font-medium text-neutral-900 dark:text-neutral-50 truncate">
                         {stats.lastSignalTrade.channelLabel}
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs text-neutral-400">{bs.symbol}</p>
+                      <p className="text-xs text-neutral-900 dark:text-neutral-50">{bs.symbol}</p>
                       <p className="font-medium text-neutral-900 dark:text-neutral-50">{stats.lastSignalTrade.symbol}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-neutral-400">{bs.lastSignalTotalProfit}</p>
+                      <p className="text-xs text-neutral-900 dark:text-neutral-50">{bs.lastSignalTotalProfit}</p>
                       <p className={clsx('font-semibold tabular-nums', pnlColor(stats.lastSignalTrade.pnl))}>
                         {formatSignedMoney(stats.lastSignalTrade.pnl)}
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs text-neutral-400">{bs.closedAt}</p>
+                      <p className="text-xs text-neutral-900 dark:text-neutral-50">{bs.closedAt}</p>
                       <p className="font-medium text-neutral-900 dark:text-neutral-50 tabular-nums">
                         {new Date(stats.lastSignalTrade.closedAt).toLocaleString([], {
                           day: '2-digit',
@@ -563,7 +563,7 @@ export function BrokerStatsOverlay() {
                     </div>
                   </div>
                 ) : (
-                  <p className="mt-3 text-sm text-neutral-400 dark:text-neutral-500">{bs.noLastSignalTrade}</p>
+                  <p className="mt-3 text-sm text-neutral-900 dark:text-neutral-50">{bs.noLastSignalTrade}</p>
                 )}
               </section>
             </>
@@ -584,7 +584,7 @@ export function BrokerStatsOverlay() {
       {toastMessage ? (
         <div
           role="status"
-          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] max-w-md px-4 py-3 rounded-xl bg-neutral-900 text-white text-sm shadow-lg dark:bg-neutral-100 dark:text-neutral-900"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-60 max-w-md px-4 py-3 rounded-xl bg-neutral-900 text-white text-sm shadow-lg dark:bg-neutral-100 dark:text-neutral-900"
         >
           {toastMessage}
         </div>

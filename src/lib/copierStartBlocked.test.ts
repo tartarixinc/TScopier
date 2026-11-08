@@ -5,12 +5,10 @@ import { resolveCopierStartBlocked } from './copierStartBlocked'
 const ready = {
   hasActiveSubscription: true,
   hasConnectedBroker: true,
-  hasTelegramSession: true,
-  hasChannels: true,
 }
 
 describe('resolveCopierStartBlocked', () => {
-  it('allows start when subscription and setup are complete', () => {
+  it('allows start when subscription and a broker are connected', () => {
     assert.deepEqual(resolveCopierStartBlocked(ready), { blocked: false, reason: null })
   })
 
@@ -21,17 +19,9 @@ describe('resolveCopierStartBlocked', () => {
     )
   })
 
-  it('blocks when broker, telegram, or channels are missing', () => {
+  it('blocks when no broker is connected', () => {
     assert.deepEqual(
       resolveCopierStartBlocked({ ...ready, hasConnectedBroker: false }),
-      { blocked: true, reason: 'setup' },
-    )
-    assert.deepEqual(
-      resolveCopierStartBlocked({ ...ready, hasTelegramSession: false }),
-      { blocked: true, reason: 'setup' },
-    )
-    assert.deepEqual(
-      resolveCopierStartBlocked({ ...ready, hasChannels: false }),
       { blocked: true, reason: 'setup' },
     )
   })

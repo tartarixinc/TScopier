@@ -185,7 +185,7 @@ export const channelWorkerRu: ChannelWorkerTranslations = {
     channel_filter_ignored:
       'эта инструкция канала установлена как Ignore в Configure Trading',
     telegram_listener_not_live:
-      'слушатель Telegram не подключен — откройте Copier Engine и переподключите Telegram',
+      'слушатель Telegram не подключен — откройте Copier Process и переподключите Telegram',
     explicit_stops_required_when_add_to_existing_off:
       'этот канал работает в режиме одного слота (Add to Existing Trades отключен), поэтому новые входы должны включать параметры TP/SL',
     entry_requires_imperative_or_labeled_stops:
@@ -197,6 +197,8 @@ export const channelWorkerRu: ChannelWorkerTranslations = {
     delete_pendings_requires_reply:
       'инструкции по отмене должны отправляться в ответ на исходное сообщение сигнала',
     delete_pendings_none: 'не найдено ожидающих ордеров для отмены в этой сделке',
+    delete_pendings_cancel_failed: 'ожидающие ордера найдены, но ни один не удалось отменить (брокер отклонил запрос или был недоступен) — повторите попытку или закройте их на странице сделок',
+    partial_close_unavailable_for_position_size: 'частичное закрытие невозможно: позиция слишком мала для разделения (запрошенная часть была бы меньше минимального лота брокера) — ничего не закрыто, сделка осталась открытой в полном объёме',
   },
   dispatchSkipped: 'Этот сигнал не был скопирован ({reason}).',
   rangeRebalanceSkippedNamed: 'Пропущен ребаланс тейк-профита {symbol} ({reason})',

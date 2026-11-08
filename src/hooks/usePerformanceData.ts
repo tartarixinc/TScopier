@@ -26,7 +26,7 @@ import {
   EMPTY_CHANNEL_LINK_MAPS,
   type PerformanceChannelLinkMaps,
 } from '../lib/performanceInsights'
-import { BROKER_ACCOUNT_CLIENT_SELECT } from '../lib/brokerAccountSelect'
+import { selectBrokerAccountColumns } from '../lib/brokerAccountSelect'
 import { filterMtTradesSinceConnect } from '../lib/tradesSinceConnect'
 import type { BrokerAccount } from '../types/database'
 
@@ -38,10 +38,12 @@ function hasStaleEmptyBrokerHistory(payload: PerformanceCachePayload): boolean {
 
 async function fetchPerformancePayload(userId: string): Promise<PerformanceCachePayload> {
   const [brokerRes, channelsRes, dbTradesRes, attributionRes, signalsRes] = await Promise.all([
-    supabase
-      .from('broker_accounts')
-      .select(BROKER_ACCOUNT_CLIENT_SELECT)
-      .eq('user_id', userId),
+    selectBrokerAccountColumns(columns =>
+      supabase
+        .from('broker_accounts')
+        .select(columns)
+        .eq('user_id', userId),
+    ),
     supabase
       .from('telegram_channels')
       .select('id, display_name, channel_username')

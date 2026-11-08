@@ -18,6 +18,7 @@ export const RESERVED_REFERRAL_PATH_SEGMENTS = new Set([
   'reset-password',
   'email-unsubscribe',
   'pricing',
+  'providers',
   'verify-email',
   'auth',
   'welcome',

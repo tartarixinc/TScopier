@@ -16,10 +16,11 @@ import type { BrokerAccount } from '../types/database'
 import { useBrokerAccountsRealtime } from '../hooks/useBrokerAccountsRealtime'
 import { useBrokerReconnect } from '../hooks/useBrokerReconnect'
 import {
-  BROKER_ACCOUNT_CLIENT_SELECT,
+  selectBrokerAccountColumns,
   sortBrokerAccountsNewestFirst,
 } from '../lib/brokerAccountSelect'
 import { planLimitErrorMessage } from '../lib/telegramChannelApi'
+import { resolveProvider } from '../lib/brokerLink'
 import { useT } from './LocaleContext'
 import { interpolate } from '../i18n/interpolate'
 import { BrokerReconnectPasswordModal } from '../components/broker/BrokerReconnectPasswordModal'
@@ -33,6 +34,7 @@ import {
   snoozeMigrationPrompt,
   unsnoozeMigrationPrompt,
 } from '../lib/migrationPrompt'
+import { brokerConnectErrorLabelsFromI18n, userFacingBrokerConnectError } from '../lib/brokerConnectError'
 import { fxsocketBroker } from '../lib/fxsocketBroker'
 
 interface BrokerAccountsContextValue {
@@ -105,11 +107,13 @@ export function BrokerAccountsProvider({
     const silent = options?.silent || initialLoadDoneRef.current
     if (!silent) setLoading(true)
     setLoadError(null)
-    const { data, error } = await supabase
-      .from('broker_accounts')
-      .select(BROKER_ACCOUNT_CLIENT_SELECT)
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
+    const { data, error } = await selectBrokerAccountColumns(columns =>
+      supabase
+        .from('broker_accounts')
+        .select(columns)
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false }),
+    )
     if (error) {
       setLoadError(error.message)
       if (!silent) setLoading(false)
@@ -198,7 +202,9 @@ export function BrokerAccountsProvider({
     upsertBroker,
     reconnectFailedLabel: bl.reconnectFailed,
     onError: (message) => {
-      routeReconnectError(message, {
+      // Raw bridge text ("MTAPI connect failed: invalid login or password") becomes plain advice.
+      const friendly = userFacingBrokerConnectError(message, brokerConnectErrorLabelsFromI18n(bl))
+      routeReconnectError(friendly, {
         dialog: setReconnectError,
         page: reconnectErrorHandlerRef.current,
       })
@@ -319,7 +325,7 @@ export function BrokerAccountsProvider({
     // prompt for an account that is about to disappear.
     if (passwordPromptBrokerRef.current) cancelPasswordPrompt()
     try {
-      await fxsocketBroker.delete(active.id, active.provider as 'fxsocket' | 'mtapi' | undefined)
+      await fxsocketBroker.delete(active.id, resolveProvider(active))
     } catch (err) {
       setReconnectError(err instanceof Error ? err.message : bl.deleteFailed)
       return

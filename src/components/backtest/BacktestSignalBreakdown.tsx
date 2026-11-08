@@ -25,6 +25,8 @@ const OUTCOME_DETAIL: Record<string, string> = {
   no_data: 'No market data for this window',
   skipped: 'Signal skipped (missing SL/TP or invalid)',
   open: 'Still open at end of data',
+  market_data_mismatch:
+    'Market price disagrees with every level the signal carries — wrong instrument resolved or no usable data',
 }
 
 interface MonthGroup {
@@ -107,7 +109,7 @@ export function BacktestSignalBreakdown({ trades, channelNames }: BacktestSignal
 
   if (groups.length === 0) {
     return (
-      <p className="px-5 py-8 text-center text-sm text-neutral-500">No simulated signals in this run.</p>
+      <p className="px-5 py-8 text-center text-sm text-neutral-900 dark:text-neutral-50">No simulated signals in this run.</p>
     )
   }
 
@@ -126,18 +128,18 @@ export function BacktestSignalBreakdown({ trades, channelNames }: BacktestSignal
               className="flex w-full items-center gap-3 bg-neutral-50/80 px-4 py-3 text-left transition-colors hover:bg-neutral-100/80 dark:bg-neutral-800/40 dark:hover:bg-neutral-800/70 sm:px-5"
             >
               {open ? (
-                <ChevronDown className="h-4 w-4 shrink-0 text-neutral-400" />
+                <ChevronDown className="h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50" />
               ) : (
-                <ChevronRight className="h-4 w-4 shrink-0 text-neutral-400" />
+                <ChevronRight className="h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50" />
               )}
               <div className="min-w-0 flex-1">
                 <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{group.label}</span>
-                <span className="ml-2 text-xs text-neutral-500 dark:text-neutral-400">
+                <span className="ml-2 text-xs text-neutral-900 dark:text-neutral-50">
                   {group.trades.length} signal{group.trades.length === 1 ? '' : 's'}
                 </span>
               </div>
               <div className="flex shrink-0 items-center gap-3 text-xs tabular-nums">
-                <span className="text-neutral-500 dark:text-neutral-400">
+                <span className="text-neutral-900 dark:text-neutral-50">
                   <span className={profitTextClass}>{group.wins}W</span>
                   {' / '}
                   <span className={lossTextClass}>{group.losses}L</span>
@@ -197,10 +199,10 @@ function SignalRow({
 
   const badgeClass =
     tone === 'good'
-      ? 'border-teal-200 text-teal-700 dark:border-teal-800 dark:text-teal-300'
+      ? 'border-teal-200 text-green-500 dark:border-teal-800 dark:text-teal-300'
       : tone === 'bad'
         ? lossBadgeOutlineClass
-        : 'border-neutral-200 text-neutral-600 dark:border-neutral-700 dark:text-neutral-400'
+        : 'border-neutral-200 text-neutral-900 dark:border-neutral-700 dark:text-neutral-50'
 
   return (
     <li>
@@ -213,7 +215,7 @@ function SignalRow({
           className={clsx(
             'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
             isBuy
-              ? 'bg-teal-50 text-teal-600 dark:bg-teal-950/50 dark:text-teal-400'
+              ? 'bg-teal-50 text-green-400 dark:bg-teal-950/50 dark:text-green-400'
               : lossIconWrapClass,
           )}
         >
@@ -233,11 +235,11 @@ function SignalRow({
             >
               {isBuy ? 'BUY' : 'SELL'}
             </span>
-            <span className="text-neutral-400 dark:text-neutral-500">
+            <span className="text-neutral-900 dark:text-neutral-50">
               {' '}@ {formatEntryPrice(trade.entry_price)}
             </span>
           </p>
-          <p className="mt-0.5 text-[11px] text-neutral-400 dark:text-neutral-500">
+          <p className="mt-0.5 text-[11px] text-neutral-900 dark:text-neutral-50">
             {formatSignalTimestamp(trade.signal_at)}
             {tpCount > 0 ? ` · ${tpCount} TP${tpCount === 1 ? '' : 's'}` : null}
             {trade.tps_hit > 0 ? ` · ${trade.tps_hit} hit` : null}
@@ -258,7 +260,7 @@ function SignalRow({
           </span>
           <ChevronRight
             className={clsx(
-              'h-4 w-4 text-neutral-300 transition-transform dark:text-neutral-600',
+              'h-4 w-4 text-neutral-900 transition-transform dark:text-neutral-50',
               expanded && 'rotate-90',
             )}
           />
@@ -266,7 +268,7 @@ function SignalRow({
       </button>
 
       {expanded ? (
-        <div className="border-t border-neutral-100 bg-neutral-50/50 px-4 py-4 text-xs dark:border-neutral-800 dark:bg-neutral-800/30 sm:px-5 sm:pl-[4.25rem]">
+        <div className="border-t border-neutral-100 bg-neutral-50/50 px-4 py-4 text-xs dark:border-neutral-800 dark:bg-neutral-800/30 sm:px-5 sm:pl-17">
           <div className="mb-3 rounded-lg border border-teal-200 bg-teal-50/80 px-3 py-2 font-medium text-teal-800 dark:border-teal-900 dark:bg-teal-950/40 dark:text-teal-200">
             {outcomeLabel === 'All TPs' ? 'All TPs Hit' : outcomeLabel}
           </div>
@@ -290,17 +292,17 @@ function SignalRow({
           </div>
           {tpEvents.length > 0 ? (
             <div>
-              <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400 mb-2">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50 mb-2">
                 Event timeline
               </p>
               <ul className="space-y-2 border-l-2 border-neutral-200 dark:border-neutral-700 pl-3">
                 {tpEvents.map((ev) => (
                   <li key={ev.index} className="relative">
-                    <span className="absolute -left-[1.15rem] top-1 h-2 w-2 rounded-full bg-teal-500" />
-                    <p className="font-medium text-teal-700 dark:text-teal-300">
+                    <span className="absolute left-[-1.15rem] top-1 h-2 w-2 rounded-full bg-green-400" />
+                    <p className="font-medium text-green-500 dark:text-teal-300">
                       TP{ev.index} Hit → {formatEntryPrice(ev.price)}
                     </p>
-                    <p className="text-neutral-500 dark:text-neutral-400">
+                    <p className="text-neutral-900 dark:text-neutral-50">
                       {new Date(ev.ts).toLocaleString()}
                     </p>
                   </li>
@@ -325,8 +327,8 @@ function Detail({
 }) {
   return (
     <div className={className}>
-      <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">{label}</p>
-      <p className="mt-0.5 text-neutral-700 dark:text-neutral-300">{value}</p>
+      <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50">{label}</p>
+      <p className="mt-0.5 text-neutral-900 dark:text-neutral-50">{value}</p>
     </div>
   )
 }

@@ -184,7 +184,7 @@ export const channelWorkerJa: ChannelWorkerTranslations = {
     channel_filter_ignored:
       'このチャネル指示は Configure Trading で Ignore に設定されています',
     telegram_listener_not_live:
-      'Telegram listener が未接続です — Copier Engine を開いて Telegram を再接続してください',
+      'Telegram listener が未接続です — Copier Process を開いて Telegram を再接続してください',
     explicit_stops_required_when_add_to_existing_off:
       'このチャネルは single-slot モードです（Add to Existing Trades がオフ）。新規エントリーには TP/SL パラメータが必要です',
     entry_requires_imperative_or_labeled_stops:
@@ -196,6 +196,8 @@ export const channelWorkerJa: ChannelWorkerTranslations = {
     delete_pendings_requires_reply:
       'キャンセル指示は元のシグナルメッセージへの返信として送信する必要があります',
     delete_pendings_none: 'この取引でキャンセルする保留中の注文が見つかりませんでした',
+    delete_pendings_cancel_failed: '保留中の注文は見つかりましたが、キャンセルできませんでした（ブローカーが拒否したか利用できませんでした）。再試行するか、Tradesページからキャンセルしてください',
+    partial_close_unavailable_for_position_size: '部分決済は実行できません — このポジションは小さすぎて分割できません（希望した数量がブローカーの最小ロットを下回ります）。何も閉じられず、取引は全量のまま残りました',
   },
   dispatchSkipped: 'このシグナルはコピーされませんでした（{reason}）。',
   rangeRebalanceSkippedNamed: '{symbol}の利益確定リバランスをスキップしました（{reason}）',

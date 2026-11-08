@@ -273,11 +273,11 @@ function useAppSearchController(headerEl: HTMLElement | null) {
   }, [activeIndex, showSuggestions])
 
   const inputClassName =
-    'w-full rounded-lg border border-neutral-200 bg-neutral-50 py-2 ps-9 pe-3 text-base md:text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 lg:pe-14'
+    'w-full rounded-lg border border-neutral-200 bg-neutral-50 py-2 ps-9 pe-3 text-base md:text-sm text-neutral-900 placeholder:text-neutral-500 dark:placeholder:text-neutral-400 focus:border-transparent focus:outline-hidden focus:ring-2 focus:ring-green-400 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 lg:pe-14'
 
   const renderInput = (opts: { showShortcut: boolean }) => (
     <>
-      <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+      <Search className="pointer-events-none absolute inset-s-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-900 dark:text-neutral-50" />
       <input
         ref={inputRef}
         type="search"
@@ -301,7 +301,7 @@ function useAppSearchController(headerEl: HTMLElement | null) {
         className={inputClassName}
       />
       {opts.showShortcut ? (
-        <kbd className="pointer-events-none absolute end-2 top-1/2 hidden -translate-y-1/2 rounded border border-neutral-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-neutral-400 lg:inline dark:border-neutral-600 dark:bg-neutral-900">
+        <kbd className="pointer-events-none absolute inset-e-2 top-1/2 hidden -translate-y-1/2 rounded-sm border border-neutral-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-neutral-900 dark:text-neutral-50 lg:inline dark:border-neutral-600 dark:bg-neutral-900">
           {shortcutLabel}
         </kbd>
       ) : null}
@@ -312,7 +312,7 @@ function useAppSearchController(headerEl: HTMLElement | null) {
     if (!showSuggestions) return null
     const positionClass =
       anchor === 'mobile'
-        ? 'fixed inset-x-3 top-[calc(env(safe-area-inset-top)+3.5rem)] z-[60] sm:top-16'
+        ? 'fixed inset-x-3 top-[calc(env(safe-area-inset-top)+3.5rem)] z-60 sm:top-16'
         : 'absolute inset-x-0 top-[calc(100%+6px)] z-50'
 
     return (
@@ -326,13 +326,13 @@ function useAppSearchController(headerEl: HTMLElement | null) {
         )}
       >
         {flatResults.length === 0 ? (
-          <p className="px-3 py-6 text-center text-sm text-neutral-500 dark:text-neutral-400">{gs.noResults}</p>
+          <p className="px-3 py-6 text-center text-sm text-neutral-900 dark:text-neutral-50">{gs.noResults}</p>
         ) : (
           (() => {
             let flatIdx = -1
             return grouped.map(group => (
               <div key={group.kind}>
-                <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+                <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-neutral-900 dark:text-neutral-50">
                   {group.label}
                 </p>
                 {group.items.map(item => {
@@ -357,15 +357,15 @@ function useAppSearchController(headerEl: HTMLElement | null) {
                         'flex w-full items-center gap-3 px-3 py-2.5 text-start text-sm transition-colors',
                         isActive
                           ? 'bg-teal-50 text-teal-900 dark:bg-teal-950/50 dark:text-teal-100'
-                          : 'text-neutral-800 hover:bg-neutral-50 dark:text-neutral-200 dark:hover:bg-neutral-800/80',
+                          : 'text-neutral-900 hover:bg-neutral-50 dark:text-neutral-50 dark:hover:bg-neutral-800/80',
                       )}
                     >
                       <span
                         className={clsx(
                           'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
                           isActive
-                            ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/60 dark:text-teal-300'
-                            : 'bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400',
+                            ? 'bg-teal-100 text-green-500 dark:bg-teal-900/60 dark:text-teal-300'
+                            : 'bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50',
                         )}
                       >
                         <Icon className="h-4 w-4" />
@@ -373,7 +373,7 @@ function useAppSearchController(headerEl: HTMLElement | null) {
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-medium">{item.title}</span>
                         {(item.subtitle || item.sectionLabel) && (
-                          <span className="block truncate text-xs text-neutral-500 dark:text-neutral-400">
+                          <span className="block truncate text-xs text-neutral-900 dark:text-neutral-50">
                             {item.subtitle ?? item.sectionLabel}
                           </span>
                         )}
@@ -398,8 +398,8 @@ function useAppSearchController(headerEl: HTMLElement | null) {
       className={clsx(
         'shrink-0 rounded-lg p-1.5 transition-colors sm:p-2 lg:hidden',
         mobileExpanded
-          ? 'text-teal-600 bg-teal-50 dark:text-teal-400 dark:bg-teal-950/50'
-          : 'text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+          ? 'text-green-400 bg-teal-50 dark:text-green-400 dark:bg-teal-950/50'
+          : 'text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800',
       )}
     >
       <Search className="h-5 w-5" />
@@ -415,8 +415,8 @@ function useAppSearchController(headerEl: HTMLElement | null) {
         className={clsx(
           'absolute inset-y-0 z-50 flex items-center gap-2 border-neutral-100 bg-white px-2 transition-[inset-inline-start,opacity] duration-200 ease-out dark:border-neutral-800 dark:bg-neutral-900',
           mobileExpanded
-            ? 'start-12 end-0 border-b opacity-100'
-            : 'pointer-events-none start-full end-0 opacity-0',
+            ? 'inset-s-12 inset-e-0 border-b opacity-100'
+            : 'pointer-events-none inset-s-full inset-e-0 opacity-0',
         )}
         aria-hidden={!mobileExpanded}
       >
@@ -427,7 +427,7 @@ function useAppSearchController(headerEl: HTMLElement | null) {
           type="button"
           onClick={collapseMobile}
           aria-label={t.nav.closeMenu}
-          className="shrink-0 rounded-lg p-2 text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+          className="shrink-0 rounded-lg p-2 text-neutral-900 hover:bg-neutral-100 dark:text-neutral-50 dark:hover:bg-neutral-800"
         >
           <X className="h-5 w-5" />
         </button>

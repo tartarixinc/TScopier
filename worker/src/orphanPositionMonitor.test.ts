@@ -70,6 +70,18 @@ test('foreign or missing comments are ignored', () => {
   assert.equal(positionFromBrokerRow('not an object'), null)
 })
 
+test('orphan adoption rejects malformed and non-positive MT broker tickets', () => {
+  for (const ticket of ['NaN', 'Infinity', '0', '-1', '1.5', 0, -1, 1.5]) {
+    assert.equal(positionFromBrokerRow({
+      ticket,
+      symbol: 'BTCUSDm',
+      type: 0,
+      lots: 0.01,
+      comment: 'TScopier:TestSignal:4bfb255e',
+    }), null, String(ticket))
+  }
+})
+
 test('broker timestamps in seconds, milliseconds and garbage all resolve', () => {
   const sec = brokerRowOpenedAt({ time: 1792700000 })
   const ms = brokerRowOpenedAt({ openTime: 1792700000000 })

@@ -14,11 +14,13 @@ export const chromeRu: AppChromeTranslations = {
     },
     items: {
       dashboard: 'Панель',
-      configuration: 'Конфигурация',
-      brokers: 'Брокеры',
+      configuration: 'Конфигурации',
+      brokers: 'Настройка торговли',
+      mirrorTrading: 'Зеркальный счёт',
+      socialTrading: 'Социальный трейдинг',
       trades: 'Сделки',
       management: 'Активности',
-      channels: 'Каналы',
+      channels: 'Источник сигналов',
       popularChannels: 'Популярные каналы',
       backtest: 'Бэктест',
       copierLogs: 'Логи копирования',
@@ -42,6 +44,7 @@ export const chromeRu: AppChromeTranslations = {
     expandSidebar: 'Развернуть боковую панель',
     collapseSidebar: 'Свернуть боковую панель',
     openTradesActive: 'Активные открытые сделки',
+    openTradesCount: '{count} открыто',
     highImpactNewsToday: 'Новости высокой важности сегодня',
     planFree: 'Бесплатно',
     settings: 'Настройки',
@@ -55,7 +58,7 @@ export const chromeRu: AppChromeTranslations = {
       statusPaused: 'Копир приостановлен',
       statusCopierStopped: 'Копир остановлен',
       stoppedHintSubscription: 'Оформите подписку, чтобы запустить копир',
-      stoppedHintSetup: 'Подключите Telegram, добавьте каналы и привяжите брокера, чтобы запустить копир',
+      stoppedHintSetup: 'Привяжите брокера, чтобы запустить копир',
       stopCopier: 'Приостановить копир',
       confirmTitle: 'Приостановить копир',
       confirmBody:
@@ -63,6 +66,7 @@ export const chromeRu: AppChromeTranslations = {
       setupBroker: 'подключите брокера',
       setupTelegram: 'подключите Telegram',
       setupChannels: 'добавьте канал',
+      setupSource: 'подключите источник сигналов',
       bannerAction: 'Перейти к настройкам',
       bannerText: 'Чтобы запустить копир, {items}.',
       bannerLastSep: ' и ',
@@ -86,6 +90,7 @@ export const chromeRu: AppChromeTranslations = {
       profileSettings: 'Профиль и настройки',
       subscriptionBilling: 'Подписка и биллинг',
       affiliateProgram: 'Партнерская программа',
+      wallet: 'Кошелёк',
       rateUs: 'Оцените нас',
       signOut: 'Выйти',
     },
@@ -103,7 +108,7 @@ export const chromeRu: AppChromeTranslations = {
     },
     updatesPage: {
       title: 'Updates',
-      subtitle: 'Recent changes, fixes, and improvements to TScopier.',
+      subtitle: 'Recent changes, fixes, and improvements to UniCopier.',
       empty: 'No updates yet. Check back soon.',
       typeFeature: 'Feature',
       typeFix: 'Fix',
@@ -112,7 +117,7 @@ export const chromeRu: AppChromeTranslations = {
 
 
     assistant: {
-      title: 'TScopier Assistant',
+      title: 'UniCopier Assistant',
       subtitle: 'Ask questions or get help taking action',
       ariaLabel: 'Open AI assistant',
       close: 'Close assistant',
@@ -121,12 +126,12 @@ export const chromeRu: AppChromeTranslations = {
       newChat: 'New chat',
       historyEmpty: 'No past conversations yet.',
       deleteChat: 'Delete conversation',
-      placeholder: 'Ask anything about TScopier…',
+      placeholder: 'Ask anything about UniCopier…',
       send: 'Send',
       thinking: 'Thinking…',
       confirm: 'Confirm',
       cancel: 'Cancel',
-      welcomeTitle: 'I can help you set up and run TScopier.',
+      welcomeTitle: 'I can help you set up and run UniCopier.',
       suggestions: [
         'Is my Telegram linked?',
         'Pause the copier',
@@ -156,11 +161,11 @@ export const chromeRu: AppChromeTranslations = {
         twoFaPlaceholder: 'Cloud password',
         submitPassword: 'Continue',
         restart: 'Start over',
-        openQrInstead: 'Prefer QR code? Open Copier Engine',
+        openQrInstead: 'Prefer QR code? Open Copier Process',
         invalidPhone: 'Enter a valid phone number with country code (e.g. +1…).',
         codeSent: 'Great — a code has been sent to Telegram. Enter it in the secure field below to continue.',
         twoFaNeeded: 'Telegram needs your two-step verification password. Enter it in the secure field below.',
-        linkedSuccess: 'Telegram is linked. You can add channels next on Copier Engine.',
+        linkedSuccess: 'Telegram is linked. You can add channels next on Copier Process.',
         useSecureCodeField: 'Enter the code in the secure field above — don’t send it in chat.',
         sessionExpired: 'Login session expired. Request a new verification code.',
         composerPhoneHint: 'Type your number here or use the field above…',
@@ -251,7 +256,7 @@ export const chromeRu: AppChromeTranslations = {
   },
   pages: {
     accountConfiguration: {
-      title: 'Брокеры',
+      title: 'Настройка торговли',
       description: 'Подключайте счета MetaTrader и настраивайте, как каждый из них копирует сигналы.',
     },
     brokers: {
@@ -260,7 +265,7 @@ export const chromeRu: AppChromeTranslations = {
     },
     contactSupport: {
       title: 'Поддержка',
-      description: 'Получите помощь команды TScopier по аккаунту, настройке копира или техническим проблемам.',
+      description: 'Получите помощь команды UniCopier по аккаунту, настройке копира или техническим проблемам.',
     },
     riskDisclaimer: {
       title: 'Предупреждение о рисках',
@@ -268,7 +273,7 @@ export const chromeRu: AppChromeTranslations = {
     },
     termsOfService: {
       title: 'Условия использования',
-      description: 'Условия, регулирующие использование TScopier.',
+      description: 'Условия, регулирующие использование UniCopier.',
     },
     privacyPolicy: {
       title: 'Политика конфиденциальности',
@@ -276,7 +281,7 @@ export const chromeRu: AppChromeTranslations = {
     },
     cookiePolicy: {
       title: 'Политика cookie',
-      description: 'Как TScopier использует cookie и похожие технологии.',
+      description: 'Как UniCopier использует cookie и похожие технологии.',
     },
     featureRequest: {
       title: 'Запрос функции',
@@ -289,6 +294,10 @@ export const chromeRu: AppChromeTranslations = {
     affiliateProgram: {
       title: 'Партнерская программа',
       description: 'Приглашайте трейдеров и зарабатывайте 10% пожизненной комиссии с платных подписок.',
+    },
+    wallet: {
+      title: 'Кошелёк',
+      description: 'Баланс и история платежей за копирование сигналов.',
     },
     billing: {
       title: 'Биллинг',
@@ -323,7 +332,7 @@ export const chromeRu: AppChromeTranslations = {
       description: 'Просматривайте распознанные сигналы, связанные с вашим аккаунтом. Фильтруйте по каналу и диапазону дат.',
     },
     copierEngine: {
-      title: 'Каналы',
+      title: 'Источник сигналов',
       description: 'Управляйте сигнальными каналами Telegram и настройками копира.',
     },
     settings: {

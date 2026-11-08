@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { capturePostAuthRedirectFromUrl } from '../../lib/postAuthRedirect'
 import clsx from 'clsx'
 import { AlertCircle, Check, Circle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
@@ -10,14 +11,12 @@ import { Alert } from '../../components/ui/Alert'
 import { AuthBackHome } from '../../components/auth/AuthBackHome'
 import { useLocale } from '../../context/LocaleContext'
 import { EMPTY_USER_PROFILE, saveUserProfile } from '../../lib/userProfile'
-import { sendVerificationEmail } from '../../lib/sendVerificationEmail'
 import {
   captureReferralFromUrl,
   loadStoredReferralCode,
   normalizeReferralCode,
   referralCodeLooksValid,
 } from '../../lib/referralCapture'
-import { isEmailVerified } from '../../lib/emailVerification'
 import { marketingUrl } from '../../lib/site'
 import {
   capturePendingPlanFromUrl,
@@ -128,6 +127,7 @@ export function SignupPage() {
     const stored = fromUrl ?? loadStoredReferralCode()
     if (stored) setReferralCode(stored)
     capturePendingPlanFromUrl(location.search)
+    capturePostAuthRedirectFromUrl(location.search)
   }, [location.search])
 
   const handleGoogleSignIn = async () => {
@@ -199,7 +199,9 @@ export function SignupPage() {
       redirectUrl.searchParams.set('ref', normalizedRef)
     }
     const redirectTo = redirectUrl.toString()
-    const { data, error: signUpError } = await supabase.auth.signUp({
+    let signUpResult
+    try {
+      signUpResult = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -212,6 +214,14 @@ export function SignupPage() {
         },
       },
     })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create your account. Please try again.')
+      turnstileRef.current?.reset()
+      setCaptchaToken(null)
+      setLoading(false)
+      return
+    }
+    const { data, error: signUpError } = signUpResult
     if (signUpError) {
       const policyCode = signupErrorPolicyCode(signUpError.message)
       setError(
@@ -224,6 +234,12 @@ export function SignupPage() {
       )
       turnstileRef.current?.reset()
       setCaptchaToken(null)
+      setLoading(false)
+      return
+    }
+
+    if (!data.user) {
+      setError('Account creation did not return a user. Please try again.')
       setLoading(false)
       return
     }
@@ -246,28 +262,22 @@ export function SignupPage() {
 
       }
 
-      const sent = await sendVerificationEmail({
-        email: data.user.email ?? email,
-        accessToken: data.session?.access_token,
-        redirectTo,
-        captchaToken,
-      })
-      if (!sent.ok) {
-        // Do not treat rate_limited/cooldown as success — that fakes "email sent"
-        // when Resend was never called (e.g. global flood cap).
-        setError(sent.error)
-        turnstileRef.current?.reset()
-        setCaptchaToken(null)
-        setLoading(false)
-        return
-      }
     }
 
-    if (data.user && !isEmailVerified(data.user, null)) {
-      await supabase.auth.signOut()
+    if (!data.session) {
+      // Confirm-email projects deliberately return a user without a session.
+      // signUp has already requested the confirmation email, so do not hold the
+      // form spinner on the optional branded resend endpoint.
+      setLoading(false)
+      navigate(`/verify-email?email=${encodeURIComponent(email)}&registered=1`, { replace: true })
+      return
     }
 
-    navigate(`/verify-email?email=${encodeURIComponent(email)}`)
+    // This branch is for an already-authenticated registration response. It is
+    // retained for compatibility, but normal email/password registration waits
+    // for email confirmation and takes the branch above.
+    setLoading(false)
+    navigate(postAuthAppPath(), { replace: true })
   }
 
   return (
@@ -276,11 +286,11 @@ export function SignupPage() {
       <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-3xl">
         {signupT.heading}
       </h1>
-      <p className="mt-2 mb-8 text-sm text-neutral-500 dark:text-neutral-400">
+      <p className="mt-2 mb-8 text-sm text-neutral-900 dark:text-neutral-50">
         {signupT.hasAccount}{' '}
         <a
           href="/login"
-          className="font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
+          className="font-medium text-green-400 hover:text-green-500 dark:text-green-400 dark:hover:text-teal-300"
         >
           {signupT.signInLink}
         </a>
@@ -293,9 +303,9 @@ export function SignupPage() {
         onClick={handleGoogleSignIn}
         disabled={googleLoading || loading}
         className={clsx(
-          'flex w-full items-center justify-center gap-3 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-neutral-700 transition-colors',
+          'flex w-full items-center justify-center gap-3 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-neutral-900 dark:text-neutral-50 transition-colors',
           'hover:bg-neutral-50 active:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60',
-          'dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-750 dark:active:bg-neutral-700',
+          'dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-50 dark:hover:bg-neutral-750 dark:active:bg-neutral-700',
         )}
       >
         <GoogleIcon className="h-5 w-5" />
@@ -307,7 +317,7 @@ export function SignupPage() {
           <div className="w-full border-t border-neutral-200 dark:border-neutral-700" />
         </div>
         <div className="relative flex justify-center text-xs">
-          <span className="bg-white px-3 text-neutral-400 dark:bg-neutral-950 dark:text-neutral-500">
+          <span className="bg-white px-3 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-50">
             {auth.oauth.orDivider}
           </span>
         </div>
@@ -371,7 +381,7 @@ export function SignupPage() {
             aria-label="Password requirements"
             className="-mt-1 rounded-lg border border-neutral-200 bg-neutral-50/70 px-3 py-2.5 dark:border-neutral-700 dark:bg-neutral-900/70"
           >
-            <p className="mb-2 text-xs font-medium text-neutral-700 dark:text-neutral-300">
+            <p className="mb-2 text-xs font-medium text-neutral-900 dark:text-neutral-50">
               Password requirements
             </p>
             <ul className="grid grid-cols-1 gap-x-3 gap-y-1.5 sm:grid-cols-2">
@@ -381,8 +391,8 @@ export function SignupPage() {
                   className={clsx(
                     'flex items-center gap-1.5 text-xs',
                     requirement.satisfied
-                      ? 'text-teal-700 dark:text-teal-300'
-                      : 'text-neutral-500 dark:text-neutral-400',
+                      ? 'text-green-500 dark:text-teal-300'
+                      : 'text-neutral-900 dark:text-neutral-50',
                   )}
                 >
                   {requirement.satisfied ? (
@@ -436,7 +446,7 @@ export function SignupPage() {
             role="status"
             aria-live="polite"
             aria-atomic="true"
-            className="rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2.5 text-neutral-700 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-neutral-300"
+            className="rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2.5 text-neutral-900 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-neutral-50"
           >
             <div className="flex items-start gap-2">
               <AlertCircle
@@ -447,7 +457,7 @@ export function SignupPage() {
                 <p className="text-xs font-medium">
                   Complete the following to create your account:
                 </p>
-                <ul className="mt-1 list-disc space-y-0.5 ps-4 text-xs text-neutral-600 dark:text-neutral-400">
+                <ul className="mt-1 list-disc space-y-0.5 ps-4 text-xs text-neutral-900 dark:text-neutral-50">
                   {unmetConditions.map(condition => (
                     <li key={condition}>{unmetConditionMessage(condition)}</li>
                   ))}
@@ -461,20 +471,20 @@ export function SignupPage() {
           type="submit"
           loading={loading}
           disabled={isCreateAccountDisabled(validationInput)}
-          className="w-full !mt-6"
+          className="w-full mt-6!"
           size="lg"
         >
           {signupT.submit}
         </Button>
       </form>
 
-      <p className="mt-4 text-center text-xs leading-relaxed text-neutral-400 dark:text-neutral-500">
+      <p className="mt-4 text-center text-xs leading-relaxed text-neutral-900 dark:text-neutral-50">
         {signupT.terms.prefix}{' '}
         <a
           href={marketingUrl('/terms')}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-teal-600 hover:underline dark:text-teal-400"
+          className="text-green-400 hover:underline dark:text-green-400"
         >
           {signupT.terms.termsOfService}
         </a>
@@ -483,7 +493,7 @@ export function SignupPage() {
           href={marketingUrl('/privacy')}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-teal-600 hover:underline dark:text-teal-400"
+          className="text-green-400 hover:underline dark:text-green-400"
         >
           {signupT.terms.privacyPolicy}
         </a>

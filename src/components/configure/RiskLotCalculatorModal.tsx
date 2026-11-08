@@ -380,7 +380,7 @@ function RiskLotCalculatorModalInner({
   const modal = (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-3 sm:p-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+      className="fixed inset-0 z-110 flex items-end sm:items-center justify-center p-3 sm:p-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
       onClick={e => { if (e.target === overlayRef.current) onClose() }}
     >
       <div className="absolute inset-0 bg-neutral-950/55" aria-hidden />
@@ -389,18 +389,18 @@ function RiskLotCalculatorModalInner({
         role="dialog"
         aria-modal="true"
         aria-labelledby="risk-lot-calculator-title"
-        className="relative flex max-h-[min(92vh,900px)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-2xl dark:border-neutral-800 dark:bg-neutral-900 animate-modal-in"
+        className="relative flex max-h-[min(92vh,900px)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-neutral-200/65 bg-white shadow-2xl dark:border-neutral-800/55 dark:bg-neutral-900 animate-modal-in"
       >
         <div className="shrink-0 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
           <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-teal-50 text-teal-600 dark:bg-teal-950/40 dark:text-teal-400">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-teal-50 text-green-400 dark:bg-teal-950/40 dark:text-green-400">
               <Calculator className="h-5 w-5" aria-hidden />
             </div>
             <div className="min-w-0 flex-1">
               <h2 id="risk-lot-calculator-title" className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
                 {copy.title}
               </h2>
-              <p className="mt-1 text-sm leading-relaxed text-neutral-500 dark:text-neutral-400">
+              <p className="mt-1 text-sm leading-relaxed text-neutral-900 dark:text-neutral-50">
                 {copy.intro}
               </p>
             </div>
@@ -408,7 +408,7 @@ function RiskLotCalculatorModalInner({
               type="button"
               onClick={onClose}
               aria-label={copy.close}
-              className="shrink-0 rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+              className="shrink-0 rounded-lg p-2 text-neutral-900 dark:text-neutral-50 transition-colors hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-neutral-50"
             >
               <X className="h-4 w-4" />
             </button>
@@ -416,7 +416,7 @@ function RiskLotCalculatorModalInner({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto md:flex md:overflow-hidden">
-          <div className="space-y-4 border-b border-neutral-100 p-5 md:min-h-0 md:flex-[3] md:overflow-y-auto md:border-b-0 md:border-r dark:border-neutral-800">
+          <div className="space-y-4 border-b border-neutral-100 p-5 md:min-h-0 md:flex-3 md:overflow-y-auto md:border-b-0 md:border-r dark:border-neutral-800">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <ConfigureInput
                   label={copy.accountBalance}
@@ -475,13 +475,13 @@ function RiskLotCalculatorModalInner({
               />
 
               {form.tradeStyle === 'multi' && (
-                <div className="space-y-3 rounded-lg border border-neutral-200 p-3 dark:border-neutral-800">
+                <div className="space-y-3 rounded-lg border border-neutral-200/65 p-3 dark:border-neutral-800/55">
                   <ConfigureInput
                     label={copy.perLegSize}
                     {...numberField('legPercent', form.legPercent)}
                   />
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm text-neutral-800 dark:text-neutral-100">{copy.rangeLayering}</span>
+                    <span className="text-sm text-neutral-900 dark:text-neutral-100">{copy.rangeLayering}</span>
                     <Toggle
                       checked={form.rangeTrading}
                       onChange={v => patchForm({ rangeTrading: v })}
@@ -530,13 +530,13 @@ function RiskLotCalculatorModalInner({
 
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                  <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                     {copy.slPips}
                   </span>
-                  <label className="flex shrink-0 items-center gap-2 text-sm text-neutral-700 dark:text-neutral-300">
+                  <label className="flex shrink-0 items-center gap-2 text-sm text-neutral-900 dark:text-neutral-50">
                     <input
                       type="checkbox"
-                      className="h-4 w-4 rounded border-neutral-300 text-teal-600 focus:ring-teal-500"
+                      className="h-4 w-4 rounded-sm border-neutral-300 text-green-400 focus:ring-green-400"
                       checked={form.usePredefinedSl}
                       onChange={e => patchForm({ usePredefinedSl: e.target.checked })}
                     />
@@ -548,27 +548,27 @@ function RiskLotCalculatorModalInner({
                 />
               </div>
 
-              <div className="space-y-2 rounded-lg border border-neutral-200 p-3 dark:border-neutral-800">
+              <div className="space-y-2 rounded-lg border border-neutral-200/65 p-3 dark:border-neutral-800/55">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{copy.tpLevelsTitle}</p>
-                    <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">{copy.tpLevelsHint}</p>
+                    <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{copy.tpLevelsTitle}</p>
+                    <p className="mt-0.5 text-xs text-neutral-900 dark:text-neutral-50">{copy.tpLevelsHint}</p>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center">
-                    <label className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-300">
+                    <label className="flex items-center gap-2 text-sm text-neutral-900 dark:text-neutral-50">
                       <input
                         type="checkbox"
-                        className="h-4 w-4 rounded border-neutral-300 text-teal-600 focus:ring-teal-500"
+                        className="h-4 w-4 rounded-sm border-neutral-300 text-green-400 focus:ring-green-400"
                         checked={form.usePredefinedTp}
                         onChange={e => patchForm({ usePredefinedTp: e.target.checked })}
                       />
-                      <span className="max-w-[9rem] leading-snug sm:max-w-none">{copy.usePredefinedTp}</span>
+                      <span className="max-w-36 leading-snug sm:max-w-none">{copy.usePredefinedTp}</span>
                     </label>
                     <Button variant="ghost" size="sm" onClick={addTpRow}>{copy.addTp}</Button>
                   </div>
                 </div>
 
-                <div className="hidden sm:grid sm:grid-cols-12 sm:gap-2 sm:px-1 text-xs font-medium text-neutral-500 dark:text-neutral-400">
+                <div className="hidden sm:grid sm:grid-cols-12 sm:gap-2 sm:px-1 text-xs font-medium text-neutral-900 dark:text-neutral-50">
                   <span className="col-span-2">{copy.tpLabel.replace('{index}', '')}</span>
                   <span className="col-span-3">{copy.tpPipsCol}</span>
                   <span className="col-span-3">{copy.tpPercentCol}</span>
@@ -585,7 +585,7 @@ function RiskLotCalculatorModalInner({
                   }
                   return (
                     <div key={`calc-tp-${idx}`} className="grid grid-cols-12 items-end gap-2">
-                      <span className="col-span-12 sm:col-span-2 pb-2 text-xs font-medium text-neutral-700 dark:text-neutral-300 sm:pb-0 sm:self-center">
+                      <span className="col-span-12 sm:col-span-2 pb-2 text-xs font-medium text-neutral-900 dark:text-neutral-50 sm:pb-0 sm:self-center">
                         {row.label || interpolate(copy.tpLabel, { index: String(idx + 1) })}
                       </span>
                       <div className="col-span-5 sm:col-span-3">
@@ -645,7 +645,7 @@ function RiskLotCalculatorModalInner({
                 })}
 
                 <div className="flex flex-wrap items-center justify-between gap-2 border-t border-neutral-200 pt-2 text-xs dark:border-neutral-700">
-                  <span className="text-neutral-600 dark:text-neutral-400">
+                  <span className="text-neutral-900 dark:text-neutral-50">
                     {copy.tpPercentTotal}{' '}
                     <strong className={clsx(
                       'font-semibold',
@@ -665,17 +665,17 @@ function RiskLotCalculatorModalInner({
                 </div>
               </div>
 
-              <div className="rounded-lg border border-neutral-200 dark:border-neutral-800">
+              <div className="rounded-lg border border-neutral-200/65 dark:border-neutral-800/55">
                 <button
                   type="button"
-                  className="flex w-full items-center justify-between px-3 py-2.5 text-sm font-medium text-neutral-800 dark:text-neutral-100"
+                  className="flex w-full items-center justify-between px-3 py-2.5 text-sm font-medium text-neutral-900 dark:text-neutral-100"
                   onClick={() => setAdvancedOpen(v => !v)}
                 >
                   {copy.advanced}
                   {advancedOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                 </button>
                 {advancedOpen && (
-                  <div className="border-t border-neutral-200 px-3 py-3 dark:border-neutral-800">
+                  <div className="border-t border-neutral-200/65 px-3 py-3 dark:border-neutral-800/55">
                     <ConfigureInput
                       label={copy.winRate}
                       hint={copy.winRateHint}
@@ -686,7 +686,7 @@ function RiskLotCalculatorModalInner({
               </div>
             </div>
 
-            <aside className="flex flex-col bg-neutral-50 dark:bg-neutral-800/30 md:min-h-0 md:flex-[2] md:overflow-hidden">
+            <aside className="flex flex-col bg-neutral-50 dark:bg-neutral-800/30 md:min-h-0 md:flex-2 md:overflow-hidden">
               <h3 className="shrink-0 border-b border-neutral-200 px-5 py-3 text-sm font-semibold text-neutral-900 dark:border-neutral-700 dark:text-neutral-50">
                 {copy.resultsTitle}
               </h3>
@@ -702,26 +702,26 @@ function RiskLotCalculatorModalInner({
 
               {result.riskImmediateOnly != null && (
                 <div className="rounded-lg border border-neutral-200 bg-white px-3 py-2.5 dark:border-neutral-700 dark:bg-neutral-900">
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400">{copy.riskImmediate}</p>
+                  <p className="text-xs text-neutral-900 dark:text-neutral-50">{copy.riskImmediate}</p>
                   <p className="text-sm font-semibold tabular-nums">{fmtMoney(result.riskImmediateOnly)}</p>
                   {result.riskPctImmediate != null && (
-                    <p className="text-xs text-neutral-500">{result.riskPctImmediate.toFixed(2)}%</p>
+                    <p className="text-xs text-neutral-900 dark:text-neutral-50">{result.riskPctImmediate.toFixed(2)}%</p>
                   )}
                 </div>
               )}
 
               <div className="rounded-lg border border-neutral-200 bg-white px-3 py-2.5 dark:border-neutral-700 dark:bg-neutral-900">
-                <p className="text-xs text-neutral-500 dark:text-neutral-400">{copy.rewardTotal}</p>
+                <p className="text-xs text-neutral-900 dark:text-neutral-50">{copy.rewardTotal}</p>
                 <p className="text-sm font-semibold tabular-nums">{fmtMoney(result.totalReward)}</p>
                 {result.rewardRiskRatio != null && (
-                  <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-300">
+                  <p className="mt-1 text-xs text-neutral-900 dark:text-neutral-50">
                     {copy.rewardRiskRatio}: 1:{result.rewardRiskRatio.toFixed(2)}
                   </p>
                 )}
               </div>
 
               <div className="rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
-                <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{copy.legSummary}</p>
+                <p className="text-xs font-medium text-neutral-900 dark:text-neutral-50">{copy.legSummary}</p>
                 {result.legs.fallsBackSingle || form.tradeStyle === 'single' ? (
                   <p className="mt-1">
                     {interpolate(copy.legSummarySingle, { lot: String(form.fixedLot) })}
@@ -737,7 +737,7 @@ function RiskLotCalculatorModalInner({
                       })}
                     </p>
                     {form.rangeTrading && result.legs.effectiveRangeSpanPips != null && (
-                      <p className="mt-1 text-xs text-neutral-500">
+                      <p className="mt-1 text-xs text-neutral-900 dark:text-neutral-50">
                         {interpolate(copy.legSummaryRange, {
                           distance: String(result.legs.effectiveRangeSpanPips),
                           pending: String(result.legs.pendingLegs),
@@ -751,21 +751,21 @@ function RiskLotCalculatorModalInner({
 
               {result.lossesToRuin != null && (
                 <div className="rounded-lg border border-neutral-200 bg-white px-3 py-2.5 dark:border-neutral-700 dark:bg-neutral-900">
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400">{copy.lossesToRuin}</p>
+                  <p className="text-xs text-neutral-900 dark:text-neutral-50">{copy.lossesToRuin}</p>
                   <p className={clsx('text-lg font-semibold tabular-nums', lossTextClass)}>{result.lossesToRuin}</p>
                 </div>
               )}
 
               {result.riskOfRuinPct != null && (
                 <div className="rounded-lg border border-neutral-200 bg-white px-3 py-2.5 dark:border-neutral-700 dark:bg-neutral-900">
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400">{copy.riskOfRuin}</p>
+                  <p className="text-xs text-neutral-900 dark:text-neutral-50">{copy.riskOfRuin}</p>
                   <p className="text-lg font-semibold tabular-nums">{result.riskOfRuinPct.toFixed(1)}%</p>
                 </div>
               )}
 
               {result.rewardRows.length > 0 && (
                 <div className="rounded-lg border border-neutral-200 bg-white px-3 py-2.5 dark:border-neutral-700 dark:bg-neutral-900">
-                  <p className="mb-2 text-xs font-medium text-neutral-500 dark:text-neutral-400">{copy.perTpReward}</p>
+                  <p className="mb-2 text-xs font-medium text-neutral-900 dark:text-neutral-50">{copy.perTpReward}</p>
                   <ul className="space-y-1 text-xs">
                     {result.rewardRows.map(row => (
                       <li key={`${row.label}-${row.pips}-${row.percent}`} className="flex justify-between gap-2 tabular-nums">
@@ -782,7 +782,7 @@ function RiskLotCalculatorModalInner({
               {result.notes.includes('multi_trade_fallback_min_lot') && (
                 <p className="text-xs text-amber-700 dark:text-amber-300">{copy.fallbackSingleNote}</p>
               )}
-              <p className="text-xs text-neutral-500 dark:text-neutral-400">{copy.brokerPreviewNote}</p>
+              <p className="text-xs text-neutral-900 dark:text-neutral-50">{copy.brokerPreviewNote}</p>
               </div>
             </aside>
         </div>

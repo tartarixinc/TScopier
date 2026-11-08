@@ -14,10 +14,10 @@ export const authEn: AuthTranslations = {
     captchaRequired: 'Please complete the security check before continuing.',
   },
   login: {
-    heading: 'Log in to TScopier',
+    heading: 'Log in to UniCopier',
     noAccount: "Don't have an account?",
     signUpLink: 'Sign up',
-    footerPrompt: 'New to TScopier?',
+    footerPrompt: 'New to UniCopier?',
     footerLink: 'Create a free account',
     email: 'Email',
     emailPlaceholder: 'you@example.com',
@@ -42,7 +42,7 @@ export const authEn: AuthTranslations = {
   },
   resetPassword: {
     heading: 'Set a new password',
-    subtitle: 'Choose a strong password for your TScopier account.',
+    subtitle: 'Choose a strong password for your UniCopier account.',
     verifyingHeading: 'Verifying your reset link…',
     verifyingSubtitle: 'Please wait while we securely validate your link.',
     securityNote: 'You will be signed out everywhere after updating. Sign in again with your new password.',
@@ -96,7 +96,7 @@ export const authEn: AuthTranslations = {
     heading: 'Check your email',
     subtitle: 'We just sent a verification link to {email}.',
     instructions:
-      'Open the link in that email to activate your account. You cannot use TScopier until verification is complete.',
+      'Open the link in that email to activate your account. You cannot use UniCopier until verification is complete.',
     resend: 'Resend email',
     resendIn: 'Resend in {seconds}s',
     resendCooldown: 'Please wait {seconds}s before requesting another email.',
@@ -108,14 +108,14 @@ export const authEn: AuthTranslations = {
     confirmLinkExpired: 'This confirmation link expired or was already used. Sign in or request a new email.',
   },
   welcome: {
-    title: 'Welcome to TScopier',
+    title: 'Welcome to UniCopier',
     subtitle: 'Your account is ready. Connect Telegram and start copying signals to your broker.',
     steps: [
       'Connect Telegram and choose signal channels',
       'Link your MT4/MT5 broker account',
       'Copy trades automatically with your risk settings',
     ],
-    startUsing: 'Start Using TScopier',
+    startUsing: 'Start Using UniCopier',
     exploreDashboard: 'Explore dashboard first',
     errorFallback: 'Could not continue. Please try again.',
   },

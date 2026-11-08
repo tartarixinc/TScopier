@@ -184,7 +184,7 @@ export const channelWorkerSv: ChannelWorkerTranslations = {
     channel_filter_ignored:
       'den här kanalinstruktionen är inställd på Ignore i Configure Trading',
     telegram_listener_not_live:
-      'Telegram-lyssnaren är inte ansluten — öppna Copier Engine och återanslut Telegram',
+      'Telegram-lyssnaren är inte ansluten — öppna Copier Process och återanslut Telegram',
     explicit_stops_required_when_add_to_existing_off:
       'den här kanalen är i single-slot-läge (Add to Existing Trades är av), så nya ingångar måste innehålla TP/SL-parametrar',
     entry_requires_imperative_or_labeled_stops:
@@ -196,6 +196,8 @@ export const channelWorkerSv: ChannelWorkerTranslations = {
     delete_pendings_requires_reply:
       'avbrottsinstructioner måste skickas som svar på ursprungliga signaldmeddelandet',
     delete_pendings_none: 'inga väntande order hittades att avbryta för denna affär',
+    delete_pendings_cancel_failed: 'väntande orders hittades, men ingen kunde avbrytas (mäklaren avvisade eller var inte tillgänglig) — försök igen, eller stäng dem från Trades-sidan',
+    partial_close_unavailable_for_position_size: 'delvis stängning ej möjlig — denna position är för liten att dela (den begärda delen skulle ligga under brokerns minimumlot); inget stängdes och affären förblev öppen i sin fulla storlek',
   },
   dispatchSkipped: 'Kopierade inte den här signalen ({reason}).',
   rangeRebalanceSkippedNamed: 'Hoppade över take-profit-ombalansering av {symbol} ({reason})',

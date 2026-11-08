@@ -184,7 +184,7 @@ export const channelWorkerFr: ChannelWorkerTranslations = {
     channel_filter_ignored:
       'cette instruction du canal est réglée sur Ignorer dans Configurer le trading',
     telegram_listener_not_live:
-      'écoute Telegram inactive — ouvrez Copier Engine et reconnectez Telegram',
+      'écoute Telegram inactive — ouvrez Copier Process et reconnectez Telegram',
     explicit_stops_required_when_add_to_existing_off:
       'ce canal est en mode position unique (Ajouter aux trades existants désactivé), les nouvelles entrées doivent inclure TP/SL',
     entry_requires_imperative_or_labeled_stops:
@@ -196,6 +196,8 @@ export const channelWorkerFr: ChannelWorkerTranslations = {
     delete_pendings_requires_reply:
       'les instructions d\'annulation doivent être envoyées en réponse au message du signal original',
     delete_pendings_none: 'aucun ordre en attente à annuler pour ce trade',
+    delete_pendings_cancel_failed: 'des ordres en attente ont été trouvés, mais aucun n’a pu être annulé (le courtier a refusé ou était indisponible) — réessayez, ou fermez-les depuis la page Trades',
+    partial_close_unavailable_for_position_size: 'clôture partielle impossible — cette position est trop petite pour être fractionnée (la partie demandée passerait sous le lot minimum du broker) ; rien n’a été fermé et le trade est resté ouvert à sa taille complète',
   },
   dispatchSkipped: 'Signal non copié ({reason}).',
   rangeRebalanceSkippedNamed: 'Rééquilibrage du take profit {symbol} ignoré ({reason})',

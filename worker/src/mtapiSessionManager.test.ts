@@ -86,6 +86,7 @@ test('bridge outage codes reach the customer in plain English', () => {
   assert.equal(mtapiFailureSummary('HTTP_503'), 'broker bridge temporarily unavailable')
   assert.equal(mtapiFailureSummary('HTTP_504'), 'broker bridge temporarily unavailable')
   assert.equal(mtapiFailureSummary('TRANSPORT_ERROR'), 'broker bridge unreachable')
+  assert.equal(mtapiFailureSummary('CONNECT_ERROR'), 'broker connection temporarily unavailable')
   // Rate limiting keeps its original wording — it was deliberately not remapped.
   assert.equal(mtapiFailureSummary('HTTP_429'), 'HTTP_429')
   assert.equal(mtapiFailureSummary('RATE_LIMITED'), 'RATE_LIMITED')
@@ -93,7 +94,7 @@ test('bridge outage codes reach the customer in plain English', () => {
 
 test('only bridge-side failures are treated as transient provision failures', () => {
   for (const code of ['HTTP_502', 'HTTP_503', 'HTTP_504', 'HTTP_500', 'HTTP_429',
-    'TRANSPORT_ERROR', 'INVALID_RESPONSE', 'TIMEOUT', 'RATE_LIMITED']) {
+    'TRANSPORT_ERROR', 'CONNECT_ERROR', 'INVALID_RESPONSE', 'TIMEOUT', 'RATE_LIMITED']) {
     assert.equal(isTransientProvisionError(code), true, `${code} should be transient`)
   }
   for (const code of ['INVALID_ACCOUNT', 'HTTP_403', 'NOT_CONFIGURED', 'UNKNOWN', '']) {
@@ -769,4 +770,48 @@ test('a permanent rejection still moves the account to error straight away', asy
   const stored = updates.find((u) => typeof u.connection_error === 'string')
   assert.equal(stored?.connection_error, 'MTAPI connect failed: invalid login or password')
   assert.equal(stored?.connection_status, 'error')
+})
+
+test('health sweep parks an account whose stored credentials are rejected, so it stops claiming "connected"', async () => {
+  process.env.MTAPI_BASE_URL = 'https://mtapi.test'
+  process.env.MTAPI_SESSION_HEALTH_GAP_MS = '0'
+  const rows = sweepRows(2)
+  const updates: Array<Record<string, unknown>> = []
+  const filters: Array<[string, unknown]> = []
+  const query = {
+    select() { return this },
+    eq(column: string, value: unknown) { filters.push([column, value]); return this },
+    is() { return this },
+    not() { return this },
+    update(patch: Record<string, unknown>) { updates.push(patch); return this },
+    then(resolve: (value: unknown) => unknown) {
+      return Promise.resolve({ data: rows, error: null }).then(resolve)
+    },
+  }
+  const supabase = { from: () => query } as unknown as SupabaseClient
+  const provider = {
+    setRecoveryHandler() {},
+    seedPlatformCache() {},
+    async ensureConnected(id: string) {
+      // broker-0: bridge says the login is wrong; broker-1: bridge merely times out.
+      if (id === 'token-0') throw new MtapiApiError('rejected', 201, 'INVALID_ACCOUNT')
+      throw new MtapiApiError('slow', 504, 'HTTP_504')
+    },
+    async disconnectOrphans() {},
+  } as unknown as MtapiProvider
+
+  const manager = new MtapiSessionManager(supabase, provider)
+  await manager.start()
+  await waitFor(() => updates.length >= 1).catch(() => undefined)
+  manager.stop()
+
+  assert.equal(updates.length, 1, 'only the rejected-credentials account is parked')
+  assert.deepEqual(updates[0], {
+    mtapi_session_id: null,
+    mtapi_status: 'error',
+    connection_status: 'error',
+    connection_error: 'MTAPI connect failed: invalid login or password',
+  })
+  assert.ok(filters.some(([c, v]) => c === 'id' && v === 'broker-0'))
+  assert.ok(filters.some(([c, v]) => c === 'mtapi_session_id' && v === 'token-0'))
 })

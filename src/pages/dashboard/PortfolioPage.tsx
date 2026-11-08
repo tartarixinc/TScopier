@@ -3,5 +3,5 @@ import { useT } from '../../context/LocaleContext'
 
 export function PortfolioPage() {
   const t = useT()
-  return <PlaceholderPage title={t.pages.portfolio.title} description={t.pages.portfolio.description} />
+  return <PlaceholderPage title={t.pages.portfolio.title} />
 }

@@ -59,7 +59,7 @@ export function PerformanceInsightsSection({
         <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
           {labels.sectionTitle}
         </h2>
-        <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{labels.sectionSubtitle}</p>
+        <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-50">{labels.sectionSubtitle}</p>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

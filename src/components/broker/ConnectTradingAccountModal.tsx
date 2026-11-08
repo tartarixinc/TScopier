@@ -6,6 +6,53 @@ import { interpolate } from '../../i18n/interpolate'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
 import { useSubscription } from '../../context/SubscriptionContext'
 import { fxsocketBroker } from '../../lib/fxsocketBroker'
+import { startCtraderConnect } from '../../lib/ctraderBroker'
+import {
+  BINANCE_API_MANAGEMENT_URL,
+  DEFAULT_BINANCE_SETTINGS_DRAFT,
+  linkBinanceAccount,
+  parseBinanceSettingsDraft,
+  type BinanceEnvironment,
+  type BinanceSettingsDraft,
+} from '../../lib/binanceBroker'
+import {
+  DEFAULT_BYBIT_SETTINGS_DRAFT,
+  linkBybitAccount,
+  parseBybitSettingsDraft,
+  type BybitEnvironment,
+  type BybitSettingsDraft,
+  BYBIT_API_MANAGEMENT_URL,
+} from '../../lib/bybitBroker'
+import {
+  DEFAULT_KUCOIN_SETTINGS_DRAFT,
+  linkKucoinAccount,
+  parseKucoinSettingsDraft,
+  type KucoinSettingsDraft,
+  KUCOIN_API_MANAGEMENT_URL,
+} from '../../lib/kucoinBroker'
+import {
+  DEFAULT_DXTRADE_DRAFT,
+  linkDxtradeAccount,
+  parseDxtradeDraft,
+  type DxtradeDraftError,
+  type DxtradeLoginDraft,
+} from '../../lib/dxtradeBroker'
+import {
+  DEFAULT_TRADELOCKER_DRAFT,
+  linkTradelockerAccount,
+  parseTradelockerDraft,
+  type TradelockerDraftError,
+  type TradelockerLoginDraft,
+} from '../../lib/tradelockerBroker'
+import {
+  DEFAULT_MATCHTRADER_DRAFT,
+  linkMatchtraderAccount,
+  parseMatchtraderDraft,
+  type MatchtraderDraftError,
+  type MatchtraderLoginDraft,
+} from '../../lib/matchtraderBroker'
+import { ApiKeyHelp } from './ApiKeyHelp'
+import { BinanceSettingsFields } from './BinanceSettingsFields'
 import {
   emptyConnectTradingAccountForm,
   type ConnectTradingAccountForm,
@@ -41,6 +88,10 @@ type ConnectTradingAccountModalProps = {
   onClose: () => void
   onSuccess?: (broker: BrokerAccount) => void
   onBatchSuccess?: (result: BulkConnectResult) => void
+  /** Platform chosen in the Add account picker. Applied each time the modal opens. */
+  initialPlatform?: TradingPlatform | null
+  /** Go back to the platform picker. The button is hidden when omitted. */
+  onChangePlatform?: () => void
 }
 
 type ConnectStep = 0 | 1 | 2
@@ -54,6 +105,8 @@ export function ConnectTradingAccountModal({
   onClose,
   onSuccess,
   onBatchSuccess,
+  initialPlatform,
+  onChangePlatform,
 }: ConnectTradingAccountModalProps) {
   const t = useT()
   const cf = t.accountConfig.connectForm
@@ -75,6 +128,30 @@ export function ConnectTradingAccountModal({
   const [connectStep, setConnectStep] = useState<ConnectStep>(0)
   const [batchRows, setBatchRows] = useState<BulkConnectRowProgress[]>([])
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false)
+  const [binanceKey, setBinanceKey] = useState('')
+  const [binanceSecret, setBinanceSecret] = useState('')
+  const [binanceLabel, setBinanceLabel] = useState('')
+  const [binanceEnv, setBinanceEnv] = useState<BinanceEnvironment>('live')
+  const [binanceDraft, setBinanceDraft] = useState<BinanceSettingsDraft>(DEFAULT_BINANCE_SETTINGS_DRAFT)
+  const [binanceFieldError, setBinanceFieldError] = useState<'margin' | 'leverage' | null>(null)
+  const [bybitKey, setBybitKey] = useState('')
+  const [bybitSecret, setBybitSecret] = useState('')
+  const [bybitLabel, setBybitLabel] = useState('')
+  const [bybitEnv, setBybitEnv] = useState<BybitEnvironment>('live')
+  const [bybitDraft, setBybitDraft] = useState<BybitSettingsDraft>(DEFAULT_BYBIT_SETTINGS_DRAFT)
+  const [bybitFieldError, setBybitFieldError] = useState<'margin' | 'leverage' | null>(null)
+  const [kucoinKey, setKucoinKey] = useState('')
+  const [kucoinSecret, setKucoinSecret] = useState('')
+  const [kucoinPassphrase, setKucoinPassphrase] = useState('')
+  const [kucoinLabel, setKucoinLabel] = useState('')
+  const [kucoinDraft, setKucoinDraft] = useState<KucoinSettingsDraft>(DEFAULT_KUCOIN_SETTINGS_DRAFT)
+  const [kucoinFieldError, setKucoinFieldError] = useState<'margin' | 'leverage' | null>(null)
+  const [dxtradeDraft, setDxtradeDraft] = useState<DxtradeLoginDraft>(DEFAULT_DXTRADE_DRAFT)
+  const [dxtradeFieldError, setDxtradeFieldError] = useState<DxtradeDraftError | null>(null)
+  const [tradelockerDraft, setTradelockerDraft] = useState<TradelockerLoginDraft>(DEFAULT_TRADELOCKER_DRAFT)
+  const [tradelockerFieldError, setTradelockerFieldError] = useState<TradelockerDraftError | null>(null)
+  const [matchtraderDraft, setMatchtraderDraft] = useState<MatchtraderLoginDraft>(DEFAULT_MATCHTRADER_DRAFT)
+  const [matchtraderFieldError, setMatchtraderFieldError] = useState<MatchtraderDraftError | null>(null)
 
   const reset = useCallback(() => {
     setRows(emptyConnectRows())
@@ -83,6 +160,30 @@ export function ConnectTradingAccountModal({
     setConnectStep(0)
     setBatchRows([])
     setBulkUploadOpen(false)
+    setBinanceKey('')
+    setBinanceSecret('')
+    setBinanceLabel('')
+    setBinanceEnv('live')
+    setBinanceDraft(DEFAULT_BINANCE_SETTINGS_DRAFT)
+    setBinanceFieldError(null)
+    setBybitKey('')
+    setBybitSecret('')
+    setBybitLabel('')
+    setBybitEnv('live')
+    setBybitDraft(DEFAULT_BYBIT_SETTINGS_DRAFT)
+    setBybitFieldError(null)
+    setKucoinKey('')
+    setKucoinSecret('')
+    setKucoinPassphrase('')
+    setKucoinLabel('')
+    setKucoinDraft(DEFAULT_KUCOIN_SETTINGS_DRAFT)
+    setKucoinFieldError(null)
+    setDxtradeDraft(DEFAULT_DXTRADE_DRAFT)
+    setDxtradeFieldError(null)
+    setTradelockerDraft(DEFAULT_TRADELOCKER_DRAFT)
+    setTradelockerFieldError(null)
+    setMatchtraderDraft(DEFAULT_MATCHTRADER_DRAFT)
+    setMatchtraderFieldError(null)
   }, [])
 
   const handleClose = useCallback(() => {
@@ -110,8 +211,14 @@ export function ConnectTradingAccountModal({
   }, [open])
 
   useEffect(() => {
-    if (!open) reset()
-  }, [open, reset])
+    if (!open) {
+      reset()
+      return
+    }
+    if (initialPlatform) {
+      setRows(prev => prev.map(row => ({ ...row, platform: initialPlatform })))
+    }
+  }, [open, reset, initialPlatform])
 
   useEffect(() => {
     if (!saving) return
@@ -151,7 +258,242 @@ export function ConnectTradingAccountModal({
     setRows(prev => prev.map(row => ({ ...row, platform })))
   }, [])
 
+  const startCtrader = async () => {
+    setError('')
+    if (!hasActiveSubscription) {
+      setError(pw.subscriptionRequired)
+      return
+    }
+    if (!isAdmin && activeBrokerCount >= limits.maxBrokerAccounts) {
+      setError(interpolate(pw.brokerLimit, { limit: String(limits.maxBrokerAccounts) }))
+      return
+    }
+    setSaving(true)
+    try {
+      const { authorizeUrl } = await startCtraderConnect()
+      window.location.assign(authorizeUrl)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : cf.ctraderNotConfigured
+      setError(message)
+      setSaving(false)
+    }
+  }
+
+  const startBinance = async () => {
+    setError('')
+    setBinanceFieldError(null)
+    if (!hasActiveSubscription) {
+      setError(pw.subscriptionRequired)
+      return
+    }
+    if (!isAdmin && activeBrokerCount >= limits.maxBrokerAccounts) {
+      setError(interpolate(pw.brokerLimit, { limit: String(limits.maxBrokerAccounts) }))
+      return
+    }
+    if (!binanceKey.trim() || !binanceSecret.trim()) {
+      setError(cf.binanceKeysRequired)
+      return
+    }
+    const parsed = parseBinanceSettingsDraft(binanceDraft)
+    if (!parsed.ok) {
+      setBinanceFieldError(parsed.field === 'margin' ? 'margin' : parsed.field === 'leverage' ? 'leverage' : null)
+      return
+    }
+    setSaving(true)
+    try {
+      const { account } = await linkBinanceAccount({
+        apiKey: binanceKey,
+        apiSecret: binanceSecret,
+        environment: binanceEnv,
+        label: binanceLabel,
+        settings: parsed.settings,
+      })
+      upsertBroker(account)
+      reset()
+      if (onSuccess) onSuccess(account)
+      else onClose()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : cf.connectFailed
+      setError(message || cf.connectFailed)
+      setSaving(false)
+    }
+  }
+
+  const startBybit = async () => {
+    setError('')
+    setBybitFieldError(null)
+    if (!hasActiveSubscription) {
+      setError(pw.subscriptionRequired)
+      return
+    }
+    if (!isAdmin && activeBrokerCount >= limits.maxBrokerAccounts) {
+      setError(interpolate(pw.brokerLimit, { limit: String(limits.maxBrokerAccounts) }))
+      return
+    }
+    if (!bybitKey.trim() || !bybitSecret.trim()) {
+      setError(cf.binanceKeysRequired)
+      return
+    }
+    const parsed = parseBybitSettingsDraft(bybitDraft)
+    if (!parsed.ok) {
+      setBybitFieldError(parsed.field)
+      return
+    }
+    setSaving(true)
+    try {
+      const { account } = await linkBybitAccount({
+        apiKey: bybitKey,
+        apiSecret: bybitSecret,
+        environment: bybitEnv,
+        label: bybitLabel,
+        settings: parsed.settings,
+      })
+      upsertBroker(account)
+      reset()
+      if (onSuccess) onSuccess(account)
+      else onClose()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : cf.connectFailed
+      setError(message || cf.connectFailed)
+      setSaving(false)
+    }
+  }
+
+  const startKucoin = async () => {
+    setError('')
+    setKucoinFieldError(null)
+    if (!hasActiveSubscription) {
+      setError(pw.subscriptionRequired)
+      return
+    }
+    if (!isAdmin && activeBrokerCount >= limits.maxBrokerAccounts) {
+      setError(interpolate(pw.brokerLimit, { limit: String(limits.maxBrokerAccounts) }))
+      return
+    }
+    if (!kucoinKey.trim() || !kucoinSecret.trim() || !kucoinPassphrase.trim()) {
+      setError(cf.kucoinKeysRequired)
+      return
+    }
+    const parsed = parseKucoinSettingsDraft(kucoinDraft)
+    if (!parsed.ok) {
+      setKucoinFieldError(parsed.field === 'margin' || parsed.field === 'leverage' ? parsed.field : null)
+      return
+    }
+    setSaving(true)
+    try {
+      const { account } = await linkKucoinAccount({
+        apiKey: kucoinKey,
+        apiSecret: kucoinSecret,
+        passphrase: kucoinPassphrase,
+        label: kucoinLabel,
+        settings: parsed.settings,
+      })
+      upsertBroker(account)
+      reset()
+      if (onSuccess) onSuccess(account)
+      else onClose()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : cf.connectFailed
+      setError(message || cf.connectFailed)
+      setSaving(false)
+    }
+  }
+
+  const startTradelocker = async () => {
+    setError('')
+    setTradelockerFieldError(null)
+    if (!hasActiveSubscription) {
+      setError(pw.subscriptionRequired)
+      return
+    }
+    if (!isAdmin && activeBrokerCount >= limits.maxBrokerAccounts) {
+      setError(interpolate(pw.brokerLimit, { limit: String(limits.maxBrokerAccounts) }))
+      return
+    }
+    const parsed = parseTradelockerDraft(tradelockerDraft)
+    if (!parsed.ok) {
+      setTradelockerFieldError(parsed.field)
+      if (parsed.field === 'password') setError(cf.tradelockerLoginRequired)
+      return
+    }
+    setSaving(true)
+    try {
+      const { account } = await linkTradelockerAccount(parsed.login)
+      upsertBroker(account)
+      reset()
+      if (onSuccess) onSuccess(account)
+      else onClose()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : cf.connectFailed
+      setError(message || cf.connectFailed)
+      setSaving(false)
+    }
+  }
+
+  const startMatchtrader = async () => {
+    setError('')
+    setMatchtraderFieldError(null)
+    if (!hasActiveSubscription) {
+      setError(pw.subscriptionRequired)
+      return
+    }
+    if (!isAdmin && activeBrokerCount >= limits.maxBrokerAccounts) {
+      setError(interpolate(pw.brokerLimit, { limit: String(limits.maxBrokerAccounts) }))
+      return
+    }
+    const parsed = parseMatchtraderDraft(matchtraderDraft)
+    if (!parsed.ok) {
+      setMatchtraderFieldError(parsed.field)
+      if (parsed.field === 'password') setError(cf.matchtraderLoginRequired)
+      return
+    }
+    setSaving(true)
+    try {
+      const { account } = await linkMatchtraderAccount(parsed.login)
+      upsertBroker(account)
+      reset()
+      if (onSuccess) onSuccess(account)
+      else onClose()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : cf.connectFailed
+      setError(message || cf.connectFailed)
+      setSaving(false)
+    }
+  }
+
+  const startDxtrade = async () => {
+    setError('')
+    setDxtradeFieldError(null)
+    if (!hasActiveSubscription) {
+      setError(pw.subscriptionRequired)
+      return
+    }
+    if (!isAdmin && activeBrokerCount >= limits.maxBrokerAccounts) {
+      setError(interpolate(pw.brokerLimit, { limit: String(limits.maxBrokerAccounts) }))
+      return
+    }
+    const parsed = parseDxtradeDraft(dxtradeDraft)
+    if (!parsed.ok) {
+      setDxtradeFieldError(parsed.field)
+      if (parsed.field === 'password') setError(cf.dxtradeLoginRequired)
+      return
+    }
+    setSaving(true)
+    try {
+      const { account } = await linkDxtradeAccount(parsed.login)
+      upsertBroker(account)
+      reset()
+      if (onSuccess) onSuccess(account)
+      else onClose()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : cf.connectFailed
+      setError(message || cf.connectFailed)
+      setSaving(false)
+    }
+  }
+
   const connectSingle = async (row: ConnectTradingAccountForm) => {
+    if (row.platform === 'cTrader' || row.platform === 'Binance' || row.platform === 'Bybit' || row.platform === 'KuCoin' || row.platform === 'DXtrade' || row.platform === 'TradeLocker' || row.platform === 'MatchTrader') return
     const login = row.account_number.trim()
     const server = row.broker_server.trim()
     const platform = row.platform
@@ -179,6 +521,34 @@ export function ConnectTradingAccountModal({
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
+    if (rows[0]?.platform === 'cTrader') {
+      await startCtrader()
+      return
+    }
+    if (rows[0]?.platform === 'Binance') {
+      await startBinance()
+      return
+    }
+    if (rows[0]?.platform === 'Bybit') {
+      await startBybit()
+      return
+    }
+    if (rows[0]?.platform === 'KuCoin') {
+      await startKucoin()
+      return
+    }
+    if (rows[0]?.platform === 'DXtrade') {
+      await startDxtrade()
+      return
+    }
+    if (rows[0]?.platform === 'TradeLocker') {
+      await startTradelocker()
+      return
+    }
+    if (rows[0]?.platform === 'MatchTrader') {
+      await startMatchtrader()
+      return
+    }
     setError('')
 
     if (!hasActiveSubscription) {
@@ -210,7 +580,7 @@ export function ConnectTradingAccountModal({
       try {
         const ready = await connectSingle(row)
         reset()
-        if (onSuccess) onSuccess(ready)
+        if (ready && onSuccess) onSuccess(ready)
         else onClose()
       } catch (err) {
         const message = err instanceof Error ? err.message : cf.connectFailed
@@ -250,6 +620,14 @@ export function ConnectTradingAccountModal({
   if (!open) return null
 
   const selectedPlatform = rows[0]?.platform ?? 'MT5'
+  const binanceSelected = selectedPlatform === 'Binance'
+  const bybitSelected = selectedPlatform === 'Bybit'
+  const kucoinSelected = selectedPlatform === 'KuCoin'
+  const dxtradeSelected = selectedPlatform === 'DXtrade'
+  const tradelockerSelected = selectedPlatform === 'TradeLocker'
+  const matchtraderSelected = selectedPlatform === 'MatchTrader'
+  const ctraderSelected = selectedPlatform === 'cTrader'
+  const mtFormHidden = ctraderSelected || binanceSelected || bybitSelected || kucoinSelected || dxtradeSelected || tradelockerSelected || matchtraderSelected
   const title = interpolate(cf.title, { platform: selectedPlatform })
   const validCount = countValidRows(rows)
   const isMulti = rows.length > 1 || validCount > 1
@@ -295,6 +673,7 @@ export function ConnectTradingAccountModal({
                 </h2>
               </div>
               <div className="flex shrink-0 items-center gap-2">
+                {mtFormHidden ? null : (
                 <Button
                   type="button"
                   variant="secondary"
@@ -304,12 +683,13 @@ export function ConnectTradingAccountModal({
                 >
                   {cf.uploadAccountsButton}
                 </Button>
+                )}
                 <button
                   type="button"
                   onClick={handleClose}
                   disabled={saving}
                   aria-label={t.common.cancel}
-                  className="rounded-xl p-3 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 disabled:opacity-40 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+                  className="rounded-xl p-3 text-neutral-900 dark:text-neutral-50 transition-colors hover:bg-neutral-100 hover:text-neutral-900 disabled:opacity-40 dark:hover:bg-neutral-800 dark:hover:text-neutral-50"
                 >
                   <X className="h-6 w-6" />
                 </button>
@@ -323,31 +703,427 @@ export function ConnectTradingAccountModal({
             {error ? <PaywallErrorAlert message={error} className="mb-4" /> : null}
 
             <form onSubmit={handleSubmit} className={clsx('space-y-4', saving && 'pointer-events-none opacity-60')}>
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                  {cf.platformLabel}
-                </p>
+              {ctraderSelected ? (
+                <div className="space-y-4 rounded-2xl border border-neutral-100 p-4 dark:border-neutral-800">
+                  <p className="text-sm text-neutral-900 dark:text-neutral-50">{cf.ctraderConnectHint}</p>
+                  <div className="flex gap-2">
+                    <Button type="button" size="sm" loading={saving} onClick={() => void startCtrader()}>
+                      {cf.ctraderConnectButton}
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={handleClose} disabled={saving}>
+                      {t.common.cancel}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              {binanceSelected ? (
+                <div className="space-y-4 rounded-2xl border border-neutral-100 p-4 dark:border-neutral-800">
+                  <p className="text-sm text-neutral-900 dark:text-neutral-50">{cf.binanceConnectHint}</p>
+                  <Input
+                    label={cf.accountLabel}
+                    placeholder={interpolate(cf.accountLabelPlaceholder, { platform: 'Binance' })}
+                    value={binanceLabel}
+                    onChange={event => setBinanceLabel(event.target.value)}
+                  />
+                  <Input
+                    label={cf.binanceApiKeyLabel}
+                    labelAddon={
+                      <ApiKeyHelp
+                        title={cf.binanceApiHelpTitle}
+                        steps={cf.binanceApiHelpSteps}
+                        linkLabel={cf.binanceApiHelpLink}
+                        href={BINANCE_API_MANAGEMENT_URL}
+                      />
+                    }
+                    value={binanceKey}
+                    autoComplete="off"
+                    spellCheck={false}
+                    onChange={event => setBinanceKey(event.target.value)}
+                    required
+                  />
+                  <PasswordInput
+                    label={cf.binanceApiSecretLabel}
+                    value={binanceSecret}
+                    hint={cf.binanceApiSecretHint}
+                    onChange={event => setBinanceSecret(event.target.value)}
+                    required
+                  />
+                  <div className="space-y-1.5">
+                    <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{cf.binanceEnvironmentLabel}</p>
                 <div className="grid grid-cols-2 gap-2">
-                  {(['MT5', 'MT4'] as const).map(option => (
+                      {(['live', 'demo'] as const).map(env => (
                     <button
-                      key={option}
+                          key={env}
                       type="button"
-                      onClick={() => setPlatform(option)}
-                      aria-pressed={selectedPlatform === option}
+                          aria-pressed={binanceEnv === env}
+                          onClick={() => setBinanceEnv(env)}
                       className={clsx(
-                        'rounded-xl border px-3 py-2.5 text-left text-sm transition-colors',
-                        selectedPlatform === option
-                          ? 'border-teal-500 bg-teal-50 text-teal-900 dark:border-teal-400 dark:bg-teal-950/40 dark:text-teal-100'
-                          : 'border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:border-neutral-700',
+                            'rounded-xl border px-3 py-2 text-left text-sm transition-colors',
+                            binanceEnv === env
+                          ? 'border-green-400 bg-teal-50 text-teal-900 dark:border-green-400 dark:bg-teal-950/40 dark:text-teal-100'
+                          : 'border-neutral-200/65 bg-white text-neutral-900 hover:border-neutral-300 dark:border-neutral-800/55 dark:bg-neutral-900 dark:text-neutral-50 dark:hover:border-neutral-700',
                       )}
                     >
-                      {option === 'MT5' ? cf.platformMt5 : cf.platformMt4}
+                          {env === 'live' ? cf.binanceLive : cf.binanceDemo}
                     </button>
                   ))}
                 </div>
               </div>
+                  <BinanceSettingsFields
+                    value={binanceDraft}
+                    onChange={setBinanceDraft}
+                    marginError={binanceFieldError === 'margin' ? cf.binanceInvalidMargin : undefined}
+                    leverageError={binanceFieldError === 'leverage' ? cf.binanceInvalidLeverage : undefined}
+                  />
+                  <div className="flex gap-2">
+                    <Button type="submit" size="sm" loading={saving}>
+                      {cf.binanceConnectButton}
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={handleClose} disabled={saving}>
+                      {t.common.cancel}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
 
-              {serverPlatformMismatch ? (
+              {bybitSelected ? (
+                <div className="space-y-4 rounded-2xl border border-neutral-100 p-4 dark:border-neutral-800">
+                  <p className="text-sm text-neutral-900 dark:text-neutral-50">{cf.bybitConnectHint}</p>
+                  <Input
+                    label={cf.accountLabel}
+                    placeholder={interpolate(cf.accountLabelPlaceholder, { platform: 'Bybit' })}
+                    value={bybitLabel}
+                    onChange={event => setBybitLabel(event.target.value)}
+                  />
+                  <Input
+                    label={cf.binanceApiKeyLabel}
+                    labelAddon={
+                      <ApiKeyHelp
+                        title={cf.binanceApiHelpTitle}
+                        steps={cf.bybitApiHelpSteps}
+                        linkLabel={cf.bybitApiHelpLink}
+                        href={BYBIT_API_MANAGEMENT_URL}
+                      />
+                    }
+                    value={bybitKey}
+                    autoComplete="off"
+                    spellCheck={false}
+                    onChange={event => setBybitKey(event.target.value)}
+                    required
+                  />
+                  <PasswordInput
+                    label={cf.binanceApiSecretLabel}
+                    value={bybitSecret}
+                    hint={cf.binanceApiSecretHint}
+                    onChange={event => setBybitSecret(event.target.value)}
+                    required
+                  />
+                  <div className="space-y-1.5">
+                    <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{cf.binanceEnvironmentLabel}</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(['live', 'demo'] as const).map(env => (
+                        <button
+                          key={env}
+                          type="button"
+                          aria-pressed={bybitEnv === env}
+                          onClick={() => setBybitEnv(env)}
+                          className={clsx(
+                            'rounded-xl border px-3 py-2 text-left text-sm transition-colors',
+                            bybitEnv === env
+                              ? 'border-green-400 bg-teal-50 text-teal-900 dark:border-green-400 dark:bg-teal-950/40 dark:text-teal-100'
+                              : 'border-neutral-200/65 bg-white text-neutral-900 hover:border-neutral-300 dark:border-neutral-800/55 dark:bg-neutral-900 dark:text-neutral-50 dark:hover:border-neutral-700',
+                          )}
+                        >
+                          {env === 'live' ? cf.binanceLive : cf.binanceDemo}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <BinanceSettingsFields
+                    value={bybitDraft}
+                    onChange={setBybitDraft}
+                    marginError={bybitFieldError === 'margin' ? cf.binanceInvalidMargin : undefined}
+                    leverageError={bybitFieldError === 'leverage' ? cf.binanceInvalidLeverage : undefined}
+                    showMarginMode={false}
+                  />
+                  <p className="text-xs text-neutral-900 dark:text-neutral-50">{cf.bybitMarginModeNote}</p>
+                  <div className="flex gap-2">
+                    <Button type="submit" size="sm" loading={saving}>
+                      {cf.bybitConnectButton}
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={handleClose} disabled={saving}>
+                      {t.common.cancel}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              {kucoinSelected ? (
+                <div className="space-y-4 rounded-2xl border border-neutral-100 p-4 dark:border-neutral-800">
+                  <p className="text-sm text-neutral-900 dark:text-neutral-50">{cf.kucoinConnectHint}</p>
+                  <Input
+                    label={cf.accountLabel}
+                    placeholder={interpolate(cf.accountLabelPlaceholder, { platform: 'KuCoin' })}
+                    value={kucoinLabel}
+                    onChange={event => setKucoinLabel(event.target.value)}
+                  />
+                  <Input
+                    label={cf.binanceApiKeyLabel}
+                    labelAddon={
+                      <ApiKeyHelp
+                        title={cf.binanceApiHelpTitle}
+                        steps={cf.kucoinApiHelpSteps}
+                        linkLabel={cf.kucoinApiHelpLink}
+                        href={KUCOIN_API_MANAGEMENT_URL}
+                      />
+                    }
+                    value={kucoinKey}
+                    autoComplete="off"
+                    spellCheck={false}
+                    onChange={event => setKucoinKey(event.target.value)}
+                    required
+                  />
+                  <PasswordInput
+                    label={cf.binanceApiSecretLabel}
+                    value={kucoinSecret}
+                    hint={cf.binanceApiSecretHint}
+                    onChange={event => setKucoinSecret(event.target.value)}
+                    required
+                  />
+                  <PasswordInput
+                    label={cf.kucoinApiPassphraseLabel}
+                    value={kucoinPassphrase}
+                    hint={cf.kucoinApiPassphraseHint}
+                    onChange={event => setKucoinPassphrase(event.target.value)}
+                    required
+                  />
+                  <BinanceSettingsFields
+                    value={kucoinDraft}
+                    onChange={setKucoinDraft}
+                    marginError={kucoinFieldError === 'margin' ? cf.binanceInvalidMargin : undefined}
+                    leverageError={kucoinFieldError === 'leverage' ? cf.binanceInvalidLeverage : undefined}
+                  />
+                  <div className="flex gap-2">
+                    <Button type="submit" size="sm" loading={saving}>
+                      {cf.kucoinConnectButton}
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={handleClose} disabled={saving}>
+                      {t.common.cancel}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              {dxtradeSelected ? (
+                <div className="space-y-4 rounded-2xl border border-neutral-100 p-4 dark:border-neutral-800">
+                  <p className="text-sm text-neutral-900 dark:text-neutral-50">{cf.dxtradeConnectHint}</p>
+                  <Input
+                    label={cf.accountLabel}
+                    placeholder={interpolate(cf.accountLabelPlaceholder, { platform: 'DXtrade' })}
+                    value={dxtradeDraft.label}
+                    onChange={event => setDxtradeDraft(prev => ({ ...prev, label: event.target.value }))}
+                  />
+                  <Input
+                    label={cf.dxtradeServerUrlLabel}
+                    placeholder="https://trade.your-broker.com"
+                    value={dxtradeDraft.serverUrl}
+                    hint={cf.dxtradeServerUrlHint}
+                    error={dxtradeFieldError === 'server' ? cf.dxtradeInvalidServer : undefined}
+                    autoComplete="off"
+                    spellCheck={false}
+                    inputMode="url"
+                    onChange={event => setDxtradeDraft(prev => ({ ...prev, serverUrl: event.target.value }))}
+                    required
+                  />
+                  <Input
+                    label={cf.dxtradeUsernameLabel}
+                    value={dxtradeDraft.username}
+                    error={dxtradeFieldError === 'username' ? cf.dxtradeInvalidUsername : undefined}
+                    autoComplete="off"
+                    spellCheck={false}
+                    onChange={event => setDxtradeDraft(prev => ({ ...prev, username: event.target.value }))}
+                    required
+                  />
+                  <Input
+                    label={cf.dxtradeDomainLabel}
+                    value={dxtradeDraft.domain}
+                    hint={cf.dxtradeDomainHint}
+                    autoComplete="off"
+                    spellCheck={false}
+                    onChange={event => setDxtradeDraft(prev => ({ ...prev, domain: event.target.value }))}
+                  />
+                  <PasswordInput
+                    label={cf.dxtradePasswordLabel}
+                    value={dxtradeDraft.password}
+                    hint={cf.dxtradePasswordHint}
+                    onChange={event => setDxtradeDraft(prev => ({ ...prev, password: event.target.value }))}
+                    required
+                  />
+                  <Input
+                    label={cf.dxtradeAccountCodeLabel}
+                    value={dxtradeDraft.accountCode}
+                    hint={cf.dxtradeAccountCodeHint}
+                    autoComplete="off"
+                    spellCheck={false}
+                    onChange={event => setDxtradeDraft(prev => ({ ...prev, accountCode: event.target.value }))}
+                  />
+                  <div className="flex gap-2">
+                    <Button type="submit" size="sm" loading={saving}>
+                      {cf.dxtradeConnectButton}
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={handleClose} disabled={saving}>
+                      {t.common.cancel}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              {tradelockerSelected ? (
+                <div className="space-y-4 rounded-2xl border border-neutral-100 p-4 dark:border-neutral-800">
+                  <p className="text-sm text-neutral-900 dark:text-neutral-50">{cf.tradelockerConnectHint}</p>
+                  <Input
+                    label={cf.accountLabel}
+                    placeholder={interpolate(cf.accountLabelPlaceholder, { platform: 'TradeLocker' })}
+                    value={tradelockerDraft.label}
+                    onChange={event => setTradelockerDraft(prev => ({ ...prev, label: event.target.value }))}
+                  />
+                  <div className="space-y-1.5">
+                    <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{cf.binanceEnvironmentLabel}</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(['demo', 'live'] as const).map(env => (
+                        <button
+                          key={env}
+                          type="button"
+                          aria-pressed={tradelockerDraft.environment === env}
+                          onClick={() => setTradelockerDraft(prev => ({ ...prev, environment: env }))}
+                          className={clsx(
+                            'rounded-xl border px-3 py-2 text-left text-sm transition-colors',
+                            tradelockerDraft.environment === env
+                              ? 'border-green-400 bg-teal-50 text-teal-900 dark:border-green-400 dark:bg-teal-950/40 dark:text-teal-100'
+                              : 'border-neutral-200/65 bg-white text-neutral-900 hover:border-neutral-300 dark:border-neutral-800/55 dark:bg-neutral-900 dark:text-neutral-50 dark:hover:border-neutral-700',
+                          )}
+                        >
+                          {env === 'live' ? cf.binanceLive : cf.binanceDemo}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <Input
+                    label={cf.tradelockerServerLabel}
+                    value={tradelockerDraft.server}
+                    hint={cf.tradelockerServerHint}
+                    error={tradelockerFieldError === 'server' ? cf.tradelockerInvalidServer : undefined}
+                    autoComplete="off"
+                    spellCheck={false}
+                    onChange={event => setTradelockerDraft(prev => ({ ...prev, server: event.target.value }))}
+                    required
+                  />
+                  <Input
+                    label={cf.tradelockerEmailLabel}
+                    type="email"
+                    value={tradelockerDraft.email}
+                    error={tradelockerFieldError === 'email' ? cf.tradelockerInvalidEmail : undefined}
+                    autoComplete="off"
+                    spellCheck={false}
+                    onChange={event => setTradelockerDraft(prev => ({ ...prev, email: event.target.value }))}
+                    required
+                  />
+                  <PasswordInput
+                    label={cf.tradelockerPasswordLabel}
+                    value={tradelockerDraft.password}
+                    hint={cf.tradelockerPasswordHint}
+                    onChange={event => setTradelockerDraft(prev => ({ ...prev, password: event.target.value }))}
+                    required
+                  />
+                  <Input
+                    label={cf.tradelockerAccountIdLabel}
+                    value={tradelockerDraft.accountId}
+                    hint={cf.tradelockerAccountIdHint}
+                    error={tradelockerFieldError === 'accountId' ? cf.tradelockerInvalidAccountId : undefined}
+                    autoComplete="off"
+                    spellCheck={false}
+                    inputMode="numeric"
+                    onChange={event => setTradelockerDraft(prev => ({ ...prev, accountId: event.target.value }))}
+                  />
+                  <div className="flex gap-2">
+                    <Button type="submit" size="sm" loading={saving}>
+                      {cf.tradelockerConnectButton}
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={handleClose} disabled={saving}>
+                      {t.common.cancel}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              {matchtraderSelected ? (
+                <div className="space-y-4 rounded-2xl border border-neutral-100 p-4 dark:border-neutral-800">
+                  <p className="text-sm text-neutral-900 dark:text-neutral-50">{cf.matchtraderConnectHint}</p>
+                  <Input
+                    label={cf.accountLabel}
+                    placeholder={interpolate(cf.accountLabelPlaceholder, { platform: 'MatchTrader' })}
+                    value={matchtraderDraft.label}
+                    onChange={event => setMatchtraderDraft(prev => ({ ...prev, label: event.target.value }))}
+                  />
+                  <Input
+                    label={cf.matchtraderUrlLabel}
+                    value={matchtraderDraft.serverUrl}
+                    hint={cf.matchtraderUrlHint}
+                    error={matchtraderFieldError === 'serverUrl' ? cf.matchtraderInvalidUrl : undefined}
+                    autoComplete="off"
+                    spellCheck={false}
+                    inputMode="url"
+                    onChange={event => setMatchtraderDraft(prev => ({ ...prev, serverUrl: event.target.value }))}
+                    required
+                  />
+                  <Input
+                    label={cf.matchtraderEmailLabel}
+                    type="email"
+                    value={matchtraderDraft.email}
+                    error={matchtraderFieldError === 'email' ? cf.matchtraderInvalidEmail : undefined}
+                    autoComplete="off"
+                    spellCheck={false}
+                    onChange={event => setMatchtraderDraft(prev => ({ ...prev, email: event.target.value }))}
+                    required
+                  />
+                  <PasswordInput
+                    label={cf.matchtraderPasswordLabel}
+                    value={matchtraderDraft.password}
+                    hint={cf.matchtraderPasswordHint}
+                    onChange={event => setMatchtraderDraft(prev => ({ ...prev, password: event.target.value }))}
+                    required
+                  />
+                  <Input
+                    label={cf.matchtraderAccountIdLabel}
+                    value={matchtraderDraft.accountId}
+                    hint={cf.matchtraderAccountIdHint}
+                    error={matchtraderFieldError === 'accountId' ? cf.matchtraderInvalidAccountId : undefined}
+                    autoComplete="off"
+                    spellCheck={false}
+                    onChange={event => setMatchtraderDraft(prev => ({ ...prev, accountId: event.target.value }))}
+                  />
+                  <Input
+                    label={cf.matchtraderBrokerIdLabel}
+                    value={matchtraderDraft.brokerId}
+                    hint={cf.matchtraderBrokerIdHint}
+                    error={matchtraderFieldError === 'brokerId' ? cf.matchtraderInvalidBrokerId : undefined}
+                    autoComplete="off"
+                    spellCheck={false}
+                    onChange={event => setMatchtraderDraft(prev => ({ ...prev, brokerId: event.target.value }))}
+                  />
+                  <div className="flex gap-2">
+                    <Button type="submit" size="sm" loading={saving}>
+                      {cf.matchtraderConnectButton}
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={handleClose} disabled={saving}>
+                      {t.common.cancel}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              {serverPlatformMismatch && !mtFormHidden ? (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
                   <p>
                     {serverPlatformMismatch === 'MT4'
@@ -357,20 +1133,20 @@ export function ConnectTradingAccountModal({
                   <button
                     type="button"
                     onClick={() => setPlatform(serverPlatformMismatch)}
-                    className="mt-2 font-medium text-teal-700 underline underline-offset-2 hover:text-teal-800 dark:text-teal-300 dark:hover:text-teal-200"
+                    className="mt-2 font-medium text-green-500 underline underline-offset-2 hover:text-teal-800 dark:text-teal-300 dark:hover:text-teal-200"
                   >
                     {serverPlatformMismatch === 'MT4' ? cf.platformMt4 : cf.platformMt5}
                   </button>
                 </div>
               ) : null}
 
-              {rows.map((row, index) => (
+              {mtFormHidden ? null : rows.map((row, index) => (
                 <div
                   key={index}
                   className="space-y-3 rounded-2xl border border-neutral-100 p-4 dark:border-neutral-800"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                    <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                       {interpolate(cf.accountRowTitle, { index: String(index + 1) })}
                     </p>
                     {rows.length > 1 ? (
@@ -378,7 +1154,7 @@ export function ConnectTradingAccountModal({
                         type="button"
                         onClick={() => removeRow(index)}
                         aria-label={cf.removeRowAria}
-                        className="rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-error-600 dark:hover:bg-neutral-800"
+                        className="rounded-lg p-1.5 text-neutral-900 dark:text-neutral-50 transition-colors hover:bg-neutral-100 hover:text-error-600 dark:hover:bg-neutral-800"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -413,13 +1189,15 @@ export function ConnectTradingAccountModal({
                   <MtCompanyServerPicker
                     value={row.broker_server}
                     onChange={next => setRowField(index, 'broker_server', next)}
-                    platform={selectedPlatform}
+                    platform={selectedPlatform === 'MT4' ? 'MT4' : 'MT5'}
                     hint={index === 0 ? cf.brokerServerHint : undefined}
                     required
                   />
                 </div>
               ))}
 
+              {mtFormHidden ? null : (
+                <>
               <div className="flex flex-wrap gap-2">
                 <Button type="button" variant="secondary" size="sm" onClick={addRow} disabled={saving}>
                   <Plus className="mr-1.5 h-4 w-4" />
@@ -435,6 +1213,8 @@ export function ConnectTradingAccountModal({
                   {t.common.cancel}
                 </Button>
               </div>
+                </>
+              )}
             </form>
 
             {saving && batchRows.length > 0 ? (
@@ -447,18 +1227,26 @@ export function ConnectTradingAccountModal({
                 role="status"
                 aria-live="polite"
               >
-                <Loader2 className="h-10 w-10 animate-spin text-teal-600 dark:text-teal-400" />
+                <Loader2 className="h-10 w-10 animate-spin text-green-400 dark:text-green-400" />
                 <div>
                   <p className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
                     {cf.connectingTitle}
                   </p>
-                  <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+                  <p className="mt-2 text-sm text-neutral-900 dark:text-neutral-50">
                     {connectStepMessage}
                   </p>
                 </div>
               </div>
             ) : null}
           </div>
+
+          {onChangePlatform ? (
+            <div className="flex shrink-0 justify-end border-t border-neutral-100 px-6 py-4 dark:border-neutral-800 sm:px-8">
+              <Button type="button" variant="secondary" size="sm" onClick={onChangePlatform} disabled={saving}>
+                {cf.selectAnotherPlatform}
+              </Button>
+            </div>
+          ) : null}
         </div>
       </div>
 

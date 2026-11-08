@@ -14,15 +14,18 @@ import { LanguageSwitcher } from '../auth/LanguageSwitcher'
 import { HelpSidebarNav } from './HelpSidebarNav'
 import { NotificationBell } from './NotificationBell'
 import { CopierPauseToggle } from './CopierPauseToggle'
-import { AppCopierSetupBanner } from './AppCopierSetupBanner'
 import { UserMenuDropdown } from './UserMenuDropdown'
 import { UserAvatar } from './UserAvatar'
 import { DashboardKeepAlive } from './DashboardKeepAlive'
 import { useUserProfile } from '../../context/UserProfileContext'
 import { useSubscription } from '../../context/SubscriptionContext'
-import { useHasOpenTrades } from '../../hooks/useHasOpenTrades'
+import { useOpenTradeCount } from '../../hooks/useHasOpenTrades'
+import { interpolate } from '../../i18n/interpolate'
 import { useHasHighImpactNewsToday } from '../../hooks/useHasHighImpactNewsToday'
 import { useNeedsWelcome } from '../../hooks/useNeedsWelcome'
+import { CopierLogToasts } from '../dashboard/CopierLogToasts'
+import { consumePostAuthRedirect } from '../../lib/postAuthRedirect'
+import { buildFlags } from '../../lib/featureFlags'
 
 type NavItem = {
   to: string
@@ -69,7 +72,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
     const timer = window.setTimeout(enable, 3000)
     return () => window.clearTimeout(timer)
   }, [deferAppBootstrap])
-  const hasOpenTrades = useHasOpenTrades(deferAppBootstrap ? undefined : user?.id)
+  const openTradeCount = useOpenTradeCount(deferAppBootstrap ? undefined : user?.id)
   const hasHighImpactNewsToday = useHasHighImpactNewsToday(
     deferAppBootstrap ? false : calendarCheckEnabled,
   )
@@ -114,6 +117,10 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
         items: [
           { to: '/dashboard', label: t.nav.items.dashboard },
           { to: '/brokers', label: t.nav.items.brokers },
+          { to: '/mirror-trading', label: t.nav.items.mirrorTrading },
+          ...(buildFlags.hideSocialTrading ? [] : [{ to: '/social-trading', label: t.nav.items.socialTrading }]),
+          // Configurations menu hidden for now.
+          // { to: '/configurations', label: t.nav.items.configuration },
           { to: '/account-trades', label: t.nav.items.trades, showOpenTradesIndicator: true },
         ],
       },
@@ -147,6 +154,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
         items: [
           { to: '/billing', label: t.nav.userMenu.subscriptionBilling },
           { to: '/affiliate-program', label: t.nav.userMenu.affiliateProgram },
+          { to: '/wallet', label: t.nav.userMenu.wallet },
         ],
       },
     ],
@@ -166,7 +174,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
   useEffect(() => {
     if (!checkoutSyncPending) return
     if (location.pathname !== '/pricing') return
-    navigate('/dashboard', { replace: true })
+    navigate(consumePostAuthRedirect() ?? '/dashboard', { replace: true })
   }, [checkoutSyncPending, location.pathname, navigate])
 
   useEffect(() => {
@@ -206,10 +214,10 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
         'flex items-center px-3 py-2.5 rounded-xl text-sm transition-colors min-h-[20px]',
         isCollapsed ? 'justify-center' : 'gap-2',
         disabled
-          ? 'cursor-pointer font-medium text-neutral-400 opacity-45 hover:bg-neutral-50 hover:text-neutral-600 hover:opacity-80 dark:text-neutral-500 dark:hover:bg-neutral-800 dark:hover:text-neutral-300'
+          ? 'cursor-pointer font-medium text-neutral-900 opacity-45 hover:bg-white hover:text-neutral-900 hover:opacity-80 dark:text-neutral-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-50'
           : isActive
-            ? 'bg-teal-50 text-teal-800 font-semibold dark:bg-teal-950/60 dark:text-teal-400'
-            : 'text-neutral-800 font-medium hover:bg-neutral-50 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
+            ? 'bg-green-400 text-neutral-950 font-semibold dark:bg-green-400 dark:text-neutral-950'
+            : 'text-neutral-900 font-medium hover:bg-white hover:text-neutral-900 dark:text-neutral-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
       )
 
   const renderNavItemContent = (
@@ -228,36 +236,35 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
       showHighImpactNewsIndicator?: boolean
     },
   ) => {
-    const showOpenIndicator = Boolean(showOpenTradesIndicator && hasOpenTrades)
+    const showOpenIndicator = Boolean(showOpenTradesIndicator && openTradeCount > 0)
     const showFireIndicator = Boolean(showHighImpactNewsIndicator && hasHighImpactNewsToday)
+    const openTradesTag = interpolate(t.nav.openTradesCount, { count: openTradeCount })
     return (
       <>
         <span className="relative inline-flex shrink-0">
           <Icon
             className={clsx(
               'w-4 h-4',
-              isActive ? 'text-teal-600 dark:text-teal-400' : '',
+              isActive ? 'text-neutral-950' : '',
             )}
           />
           {showOpenIndicator && opts.collapsed ? (
-            <span
-              className="absolute -end-0.5 -top-0.5 h-2 w-2 rounded-full bg-teal-500 ring-2 ring-white dark:ring-neutral-900"
-              aria-hidden
-            />
+            <span className="absolute -inset-e-2.5 -top-1.5 min-w-4 rounded-full bg-green-400 px-1 text-center text-[9px] font-semibold leading-4 text-neutral-950 tabular-nums">
+              {openTradeCount}
+            </span>
           ) : null}
           {showFireIndicator && opts.collapsed && !showOpenIndicator ? (
             <Flame
-              className="absolute -end-1 -top-1 h-2.5 w-2.5 text-orange-500"
+              className="absolute -inset-e-1 -top-1 h-2.5 w-2.5 text-orange-500"
               aria-hidden
             />
           ) : null}
         </span>
         <span className={clsx(opts.collapsed && 'lg:hidden')}>{label}</span>
         {showOpenIndicator && !opts.collapsed ? (
-          <span
-            className="ms-auto h-2 w-2 shrink-0 rounded-full bg-teal-500"
-            aria-hidden
-          />
+          <span className="ms-auto inline-flex shrink-0 items-center rounded-md border border-green-200 bg-green-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums leading-none text-neutral-950 dark:border-green-200 dark:bg-green-100 dark:text-neutral-950">
+            {openTradesTag}
+          </span>
         ) : null}
         {showFireIndicator && !opts.collapsed && !showOpenIndicator ? (
           <Flame className="ms-auto h-3.5 w-3.5 shrink-0 text-orange-500" aria-hidden />
@@ -278,7 +285,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
         <div key={section.label}>
           <p
             className={clsx(
-              'px-3 text-[10px] font-semibold text-neutral-400 dark:text-neutral-500 tracking-widest mb-1.5',
+              'px-3 text-[10px] font-semibold text-neutral-900 dark:text-neutral-50 tracking-widest mb-1.5',
               opts.collapsed && 'hidden',
             )}
           >
@@ -287,8 +294,8 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
           <div className="space-y-0.5">
             {sectionItems.map(({ to, label, showOpenTradesIndicator, showHighImpactNewsIndicator, disabled }) => {
               const Icon = getAppRouteIcon(to)
-              const ariaExtra = showOpenTradesIndicator && hasOpenTrades
-                ? t.nav.openTradesActive
+              const ariaExtra = showOpenTradesIndicator && openTradeCount > 0
+                ? interpolate(t.nav.openTradesCount, { count: openTradeCount })
                 : showHighImpactNewsIndicator && hasHighImpactNewsToday
                   ? t.nav.highImpactNewsToday
                   : null
@@ -346,7 +353,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
   )
 
   return (
-    <div className="flex h-full min-h-0 w-full overflow-hidden overscroll-none bg-neutral-50 dark:bg-neutral-950">
+    <div className="flex h-full min-h-0 w-full overflow-hidden overscroll-none bg-[#F7F8FA] dark:bg-neutral-950">
       {mobileNavOpen && (
         <button
           type="button"
@@ -358,7 +365,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
 
       <aside
         className={clsx(
-          'fixed inset-y-0 left-0 z-50 flex h-full min-h-0 flex-col overflow-hidden border-e border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900 transition-transform duration-200 ease-out max-lg:overflow-visible rtl:left-auto rtl:right-0',
+          'fixed inset-y-0 left-0 z-50 flex h-full min-h-0 flex-col overflow-hidden border-e border-neutral-100 dark:border-neutral-800 bg-[#F7F8FA] dark:bg-neutral-950 transition-transform duration-200 ease-out max-lg:overflow-visible rtl:left-auto rtl:right-0',
           'w-64 max-w-[85vw]',
           mobileNavOpen ? 'translate-x-0' : 'max-lg:-translate-x-full max-lg:rtl:translate-x-full',
           'lg:sticky lg:top-0 lg:z-30 lg:max-w-none lg:translate-x-0',
@@ -378,7 +385,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
             onClick={() => setMobileNavOpen(false)}
           >
 
-            <TscopierLogo className="h-6 w-auto" />
+            <TscopierLogo brand="unicopier" className="h-6 w-auto" />
           </Link>
           <div className="flex shrink-0 items-center gap-0.5 lg:hidden">
             <LanguageSwitcher compact className="max-lg:[&>button]:gap-0 max-lg:[&>button]:px-2" />
@@ -396,14 +403,15 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
               aria-label={t.nav.items.dashboard}
             >
               <TscopierLogo
+                brand="unicopier"
                 collapsed={!sidebarExpanded}
-                className={sidebarExpanded ? 'h-6 w-auto' : undefined}
+                className={sidebarExpanded ? 'h-12 w-auto' : undefined}
               />
             </Link>
           </div>
           <button
             type="button"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800 lg:hidden"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-neutral-900 hover:bg-neutral-100 dark:text-neutral-50 dark:hover:bg-neutral-800 lg:hidden"
             aria-label={t.nav.closeMenu}
             onClick={() => setMobileNavOpen(false)}
           >
@@ -428,15 +436,15 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
         <header
           ref={setHeaderEl}
           className={clsx(
-            'z-30 flex shrink-0 touch-none items-center gap-1 border-b border-neutral-100 bg-white px-1.5 dark:border-neutral-800 dark:bg-neutral-900 sm:gap-4 sm:px-6',
-            'fixed inset-x-0 top-[var(--app-banner-h,0px)] h-[calc(3.5rem+env(safe-area-inset-top,0px))] pt-[env(safe-area-inset-top,0px)] sm:h-[calc(4rem+env(safe-area-inset-top,0px))]',
+            'z-30 flex shrink-0 touch-none items-center gap-1 border-b border-neutral-100 bg-white px-1.5 dark:border-neutral-800 dark:bg-neutral-950 sm:gap-4 sm:px-6',
+            'fixed inset-x-0 top-(--app-banner-h,0px) h-[calc(3.5rem+env(safe-area-inset-top,0px))] pt-[env(safe-area-inset-top,0px)] sm:h-[calc(4rem+env(safe-area-inset-top,0px))]',
             'lg:static lg:z-20 lg:h-16 lg:min-h-0 lg:pt-0 lg:touch-auto',
           )}
         >
           <button
             type="button"
             onClick={() => setMobileNavOpen(true)}
-            className="shrink-0 p-1.5 rounded-lg text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800 transition-colors sm:p-2 lg:hidden"
+            className="shrink-0 p-1.5 rounded-lg text-neutral-900 hover:bg-neutral-100 dark:text-neutral-50 dark:hover:bg-neutral-800 transition-colors sm:p-2 lg:hidden"
             aria-label={t.nav.openMenu}
           >
             <Menu className="w-5 h-5" />
@@ -446,7 +454,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
             type="button"
             onClick={() => setIsSidebarCollapsed(prev => !prev)}
             title={isSidebarCollapsed ? t.nav.expandSidebar : t.nav.collapseSidebar}
-            className="hidden lg:block p-1.5 rounded-lg text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+            className="hidden lg:block p-1.5 rounded-lg text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
           >
             {isSidebarCollapsed ? <DirectionalIcon icon={PanelLeftOpen} className="w-5 h-5" /> : <DirectionalIcon icon={PanelLeftClose} className="w-5 h-5" />}
           </button>
@@ -460,7 +468,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
               <button
                 type="button"
                 onClick={() => openUpgrade('advanced')}
-                className="hidden sm:inline-flex items-center rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700 transition-colors hover:bg-teal-100 dark:border-teal-800 dark:bg-teal-950/40 dark:text-teal-300 dark:hover:bg-teal-950/60"
+                className="hidden sm:inline-flex items-center rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold text-green-500 transition-colors hover:bg-teal-100 dark:border-teal-800 dark:bg-teal-950/40 dark:text-teal-300 dark:hover:bg-teal-950/60"
               >
                 {subscribeCta}
               </button>
@@ -472,8 +480,8 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
               aria-label={t.nav.assistant.ariaLabel}
               title={t.nav.assistant.title}
               className={clsx(
-                'inline-flex h-9 w-9 items-center justify-center rounded-lg text-teal-700 transition-colors sm:h-10 sm:w-10',
-                'hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 focus:ring-offset-white',
+                'inline-flex h-9 w-9 items-center justify-center rounded-lg text-green-500 transition-colors sm:h-10 sm:w-10',
+                'hover:bg-teal-50 focus:outline-hidden focus:ring-2 focus:ring-green-400 focus:ring-offset-2 focus:ring-offset-white',
                 'dark:text-teal-300 dark:hover:bg-teal-950/50 dark:focus:ring-offset-neutral-900',
               )}
             >
@@ -517,14 +525,14 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
               >
               <UserAvatar user={user} profile={profile} email={user?.email} size="sm" />
               <div className="hidden md:block text-start">
-                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 leading-tight truncate max-w-[8rem]">
+                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 leading-tight truncate max-w-32">
                   {displayName}
                 </p>
-                <p className="text-xs text-neutral-400 leading-tight">{planName || t.nav.planFree}</p>
+                <p className="text-xs text-neutral-900 dark:text-neutral-50 leading-tight">{planName || t.nav.planFree}</p>
               </div>
                 <ChevronDown
                   className={clsx(
-                    'hidden md:block w-3.5 h-3.5 text-neutral-400 shrink-0 transition-transform',
+                    'hidden md:block w-3.5 h-3.5 text-neutral-900 dark:text-neutral-50 shrink-0 transition-transform',
                     userMenuOpen && 'rotate-180',
                   )}
                 />
@@ -541,16 +549,16 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
 
         <main
           className={clsx(
-            'min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain bg-neutral-50 dark:bg-neutral-950',
+            'min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain bg-[#F7F8FA] dark:bg-neutral-950',
             'pt-[calc(3.5rem+env(safe-area-inset-top,0px))] sm:pt-[calc(4rem+env(safe-area-inset-top,0px))]',
             'lg:pt-0',
           )}
         >
-          {!deferAppBootstrap && <AppCopierSetupBanner />}
           <DashboardKeepAlive />
           {!deferAppBootstrap && !onDashboardRoute && <Outlet />}
         </main>
       </div>
+      {!deferAppBootstrap ? <CopierLogToasts userId={user?.id} /> : null}
     </div>
   )
 }

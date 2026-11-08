@@ -52,6 +52,7 @@ Deno.serve(async (req: Request) => {
     "update_alert_rule",
     "upsert_alert_recipient",
     "delete_alert_recipient",
+    "grant_subscription_extension",
   ]);
   const reason = requireReasonActions.has(action) ? requireReason(body) : String(body.reason ?? "").trim() || null;
   if (requireReasonActions.has(action) && !reason) {
@@ -110,6 +111,79 @@ Deno.serve(async (req: Request) => {
       correlation_id: correlationId,
     });
     return Response.json({ ok: true, profile: data }, { headers: corsHeaders });
+  }
+
+  if (action === "grant_subscription_extension") {
+    const userId = String(body.target_user_id ?? "").trim();
+    if (!userId) return bad(400, "target_user_id is required");
+    const days = Number(body.days);
+    if (![3, 7, 14, 30].includes(days)) {
+      return bad(400, "days must be one of 3, 7, 14 or 30");
+    }
+
+    const { data: existing, error: listErr } = await supabase
+      .from("subscription_extensions")
+      .select("days")
+      .eq("user_id", userId);
+    if (listErr) return bad(400, listErr.message);
+    const alreadyGranted = (existing ?? []).reduce(
+      (sum, row) => sum + Number(row.days ?? 0),
+      0,
+    );
+    if (alreadyGranted + days > 30) {
+      return bad(
+        400,
+        `extension cap reached: ${alreadyGranted} of 30 days already granted`,
+      );
+    }
+
+    const { data: row, error } = await supabase
+      .from("subscription_extensions")
+      .insert({
+        user_id: userId,
+        days,
+        reason,
+        granted_by: adminUser.id,
+      })
+      .select("*")
+      .maybeSingle();
+    if (error) return bad(400, error.message);
+    if (!row) return bad(500, "extension not saved");
+
+    // Resume a billing-driven pause right away; a pause the user set stays as it is.
+    const { data: resumed } = await supabase
+      .from("user_profiles")
+      .update({
+        copier_paused: false,
+        copier_pause_reason: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", userId)
+      .eq("copier_paused", true)
+      .in("copier_pause_reason", [
+        "trial_expired",
+        "subscription_ended",
+        "payment_failed",
+        "unknown",
+      ])
+      .select("user_id")
+      .maybeSingle();
+
+    await writeAdminAudit(supabase, {
+      actor_user_id: adminUser.id,
+      target_user_id: userId,
+      action,
+      entity_type: "subscription_extensions",
+      entity_id: String(row.id),
+      reason,
+      request_payload: { days },
+      after_state: row as Record<string, unknown>,
+      correlation_id: correlationId,
+    });
+    return Response.json(
+      { ok: true, extension: row, copier_resumed: Boolean(resumed) },
+      { headers: corsHeaders },
+    );
   }
 
   if (action === "ban_user") {

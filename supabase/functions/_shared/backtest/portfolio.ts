@@ -66,7 +66,7 @@ export function runPortfolioSimulation(
   pushPoint(sorted[0]?.signalAt ?? new Date(config.dateFrom), 0)
 
   for (const t of sorted) {
-    if (t.outcome === "skipped" || t.outcome === "no_data") continue
+    if (t.outcome === "skipped" || t.outcome === "no_data" || t.outcome === "market_data_mismatch") continue
     traded++
 
     const sizedLot = computeLotSize(config, equity, t.entryPrice, t.sl)

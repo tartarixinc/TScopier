@@ -3,6 +3,10 @@ import type { CopierEngineBundleTranslations } from './types'
 export const copierEngineNl: CopierEngineBundleTranslations = {
   copierEnginePage: {
     connectTelegram: 'Telegram verbinden',
+    newSignalSource: 'Nieuwe signaalbron',
+    chooseSignalSource: 'Kies een signaalbron',
+    noSignalSourcesTitle: 'Nog geen signaalbronnen',
+    noSignalSourcesBody: 'Voeg een signaalbron toe om te beginnen met kopiëren.',
     telegramNotConnectedTitle: 'Telegram is niet verbonden.',
     telegramNotConnectedBody: 'Verbind Telegram hier om je kanaallijst te laden en beheren.',
     tgConnectHeroTitle: 'Koppel je Telegram-account',
@@ -24,7 +28,7 @@ export const copierEngineNl: CopierEngineBundleTranslations = {
     tgConnectHowItWorks2: 'Voer de code in die naar de Telegram-app is gestuurd',
     tgConnectHowItWorks3: 'Kies signaalkanalen om te volgen en te kopiëren',
     tgConnectPhoneWarning:
-      'TScopier heeft geen toegang tot en leest je berichten niet. Door Telegram te verbinden geef je de app alleen toegang tot kanalen waarvan je lid bent.',
+      'UniCopier heeft geen toegang tot en leest je berichten niet. Door Telegram te verbinden geef je de app alleen toegang tot kanalen waarvan je lid bent.',
     tgConnectMethodTitle: 'Choose how to sign in',
     tgConnectMethodSubtitle: 'Use your phone number or scan a QR code with the Telegram app on your phone.',
     tgConnectMethodPhone: 'Phone number',
@@ -60,7 +64,7 @@ export const copierEngineNl: CopierEngineBundleTranslations = {
     failedSendCode: 'Code verzenden mislukt',
     verificationFailed: 'Verificatie mislukt',
     telegramAlreadyLinked:
-      'Dit Telegram-account is al gekoppeld aan een ander TScopier-account. Log in op dat account of neem contact op met support.',
+      'Dit Telegram-account is al gekoppeld aan een ander UniCopier-account. Log in op dat account of neem contact op met support.',
     failedLoadTgChannels: 'Telegram-kanalen laden mislukt',
     telegramSessionExpired: 'Je Telegram-sessie is verlopen. Verbind opnieuw — je geconfigureerde kanalen blijven behouden.',
     telegramConnectionBusy: 'Telegram is reconnecting after a backtest or another task. Wait 30 seconds, then press Refresh — or use Reconnect Telegram.',

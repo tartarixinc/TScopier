@@ -62,7 +62,7 @@ export function WelcomeModal() {
 
   const modal = (
     <div
-      className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-4 sm:p-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+      className="fixed inset-0 z-100 flex items-end sm:items-center justify-center p-4 sm:p-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
       aria-hidden={false}
     >
       <div className="absolute inset-0 bg-neutral-950/40" aria-hidden />
@@ -71,11 +71,11 @@ export function WelcomeModal() {
         role="dialog"
         aria-modal="true"
         aria-labelledby="welcome-modal-title"
-        className="relative w-full max-w-md rounded-2xl border border-neutral-200 bg-white shadow-2xl dark:border-neutral-800 dark:bg-neutral-900 animate-modal-in overflow-hidden"
+        className="relative w-full max-w-md rounded-2xl border border-neutral-200/65 bg-white shadow-2xl dark:border-neutral-800/55 dark:bg-neutral-900 animate-modal-in overflow-hidden"
       >
         <div className="px-6 py-8 text-center">
           <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-teal-50 dark:bg-teal-950/40">
-            <CheckCircle2 className="h-8 w-8 text-teal-600 dark:text-teal-400" />
+            <CheckCircle2 className="h-8 w-8 text-green-400 dark:text-green-400" />
           </div>
 
           <h2
@@ -84,12 +84,12 @@ export function WelcomeModal() {
           >
             {welcomeT.title}
           </h2>
-          <p className="mt-3 text-sm text-neutral-500 dark:text-neutral-400">{welcomeT.subtitle}</p>
+          <p className="mt-3 text-sm text-neutral-900 dark:text-neutral-50">{welcomeT.subtitle}</p>
 
-          <ul className="mt-6 space-y-2.5 text-left text-sm text-neutral-600 dark:text-neutral-400">
+          <ul className="mt-6 space-y-2.5 text-left text-sm text-neutral-900 dark:text-neutral-50">
             {welcomeT.steps.map(step => (
               <li key={step} className="flex items-start gap-2.5">
-                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400" aria-hidden />
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-400 dark:text-green-400" aria-hidden />
                 <span>{step}</span>
               </li>
             ))}
@@ -113,7 +113,7 @@ export function WelcomeModal() {
             type="button"
             onClick={() => void exploreDashboard()}
             disabled={saving}
-            className="mt-4 text-sm font-medium text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 disabled:opacity-50"
+            className="mt-4 text-sm font-medium text-neutral-900 hover:text-neutral-900 dark:text-neutral-50 dark:hover:text-neutral-50 disabled:opacity-50"
           >
             {welcomeT.exploreDashboard}
           </button>

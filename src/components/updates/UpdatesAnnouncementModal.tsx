@@ -157,7 +157,7 @@ export function UpdatesAnnouncementModal() {
             <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
               {current.title}
             </h3>
-            <p className="mt-1.5 text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">
+            <p className="mt-1.5 whitespace-pre-line text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">
               {current.description}
             </p>
           </div>

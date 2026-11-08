@@ -2,27 +2,55 @@ import { testimonialsSv } from '../../testimonials/sv'
 import type { LandingTranslations } from './types'
 
 export const landingSv: LandingTranslations = {
+  promo: {
+    regionLabel: 'Kampanj',
+    days: 'Dagar',
+    hours: 'Timmar',
+    minutes: 'Min',
+    seconds: 'Sek',
+    endsIn: 'Erbjudandet slutar om',
+    couponLabel: 'Kuponkod',
+    copyCoupon: 'Kopiera kuponkod',
+    copied: 'Kopierad',
+    dismiss: 'Stäng kampanjen',
+  },
   nav: {
     product: 'Produkt',
     features: 'Drag',
     pricing: 'Prissättning',
     faq: 'FAQ',
     docs: 'Dokument',
+    forTraders: 'För traders',
+    forProviders: 'För leverantörer',
     signIn: 'Logga in',
     getStarted: 'Registrera dig',
     dashboard: 'Instrumentbräda',
     menuOpen: 'Öppna menyn',
     menuClose: 'Stäng menyn',
+    productMenu: {
+      heading: 'Produkter',
+      signalCopier: { title: 'Signalkopierare', description: 'Kopiera signaler från Telegram, WhatsApp, Discord och TradingView direkt till din mäklare.' },
+      socialTrading: { title: 'Social trading', description: 'Utforska toppnoterade traders efter ROI och vinstandel och kopiera dem gratis eller mot en månadsavgift.' },
+      accountMirroring: { title: 'Kontospegling', description: 'Spegla ett huvudkontos affärer till dina andra konton i realtid.' },
+      featuredTitle: 'Fungerar med 8+ plattformar',
+      featuredBody: 'MT4, MT5, cTrader, Binance, Bybit och KuCoin. Ingen VPS behövs.',
+      socialPanel: { title: 'Kopiera beprövade traders', body: 'Jämför prestanda och följ de traders du litar på.' },
+      mirrorPanel: { title: 'Ett huvudkonto, många konton', body: 'Anslut ett huvudkonto så följer varje slavkonto dess affärer automatiskt.' },
+      labels: { roi: 'ROI', winRate: 'Vinstandel', following: 'Följer', copyTrader: 'Kopiera trader', master: 'Huvud', slave: 'Slav' },
+      exploreFeatures: 'Se alla funktioner',
+      viewPricing: 'Se priser',
+    },
   },
   hero: {
-    headline: 'Telegram-signaler. Kopieras automatiskt.',
+    headline: 'Kopieringsplattform nr 1 för alla forex- och kryptotraders',
+    headlinePhrases: [],
     subheadline:
-      'TScopier är en allt-i-ett-plattform för Telegram-signalkopiering som kopplar Telegram och kopierar handelssignaler direkt till MT4/MT5 — inga komplicerade inställningar, ingen EA och ingen VPS krävs.',
-    socialProof: 'Rankad #1 molnbaserad Telegram-signalkopierare',
-    primaryCta: 'Starta din 5-dagars gratis provperiod',
-    secondaryCta: 'Logga in',
+      'Automatisera dina affärer från Telegram, WhatsApp, Discord, TradingView eller ett masterkonto till 8+ mäklarplattformar på under 50 ms. Ingen VPS krävs.',
+    socialProof: 'TScopier.ai är nu UniCopier',
+    primaryCta: 'Välj din plan',
+    secondaryCta: 'Se hur det fungerar',
     imageAlt:
-      'TScopier instrumentpanel med balans, daglig vinst, handelsresultat och kontotillväxtdiagram',
+      'UniCopier instrumentpanel med balans, daglig vinst, handelsresultat och kontotillväxtdiagram',
     previewUrl: 'app.tscopier.ai/dashboard',
     dashboard: {
       headlineStats: [
@@ -102,6 +130,34 @@ export const landingSv: LandingTranslations = {
       ],
     },
   },
+  integrations: {
+    eyebrow: 'Integrationer',
+    title: 'Fungerar med ledande plattformar',
+  },
+  supportedPlatforms: {
+    title: 'Plattformar för signaler och handel som stöds',
+  },
+  completePicture: {
+    eyebrow: 'Helheten',
+    title: 'Byggt för seriösa copytraders.',
+    description: 'Allt du behöver för att kopiera signaler pålitligt, från första meddelandet till sista stängningen.',
+    cards: [
+      { title: 'Flera signalkällor', description: 'Kopiera affärer från den signalkälla som din leverantör redan använder.' },
+      { title: 'Stöd för 8+ plattformar', description: 'UniCopier stöder alla populära plattformar, från forex till krypto.' },
+      { title: 'Sömlös TradingView-integration', description: 'Bygg dina strategier i TradingView och koppla dem till UniCopier via webhook.' },
+      { title: 'AI ingår', description: 'Vår AI föreslår inte bara, den utför riktiga åtgärder, hjälper dig med installationen, analyserar dina affärer och förbättrar din copytrading.' },
+    ],
+  },
+  showcase: {
+    eyebrow: 'UniCopier',
+    title: 'Byggt för att minska komplexiteten i modern trading och stödja smartare beslut',
+    cta: 'Läs mer',
+    cards: [
+      { headline: 'Anslut alla konton och ställ in dina regler en gång.', description: 'Länka dina MT4-, MT5-, cTrader-, Binance-, Bybit- och KuCoin-konton och välj lotstorlek, risk, mål och signalkällor för varje konto.' },
+      { headline: 'Spegla affärer direkt från huvud- till slavkonton.', description: 'Välj ett huvudkonto och låt dina andra konton följa det med fasta lots, multiplikatorer eller saldobaserad storlek, plus skyddsalternativ.' },
+      { headline: 'Följ toppnoterade traders och kopiera dem med några klick.', description: 'Jämför ROI, vinstandel och betyg och kopiera leverantörer gratis eller mot en månadsavgift, eller dela din egen prestation.' },
+    ],
+  },
   whyChoose: {
     statsCaption: 'Används av traders från de mest populära Telegram-signalleverantörerna',
     stats: [
@@ -112,13 +168,13 @@ export const landingSv: LandingTranslations = {
     ],
     eyebrow: 'Smartare kopiering börjar med smartare verktyg',
     title:
-      'Varje funktion i TScopier är byggd för att ge dig kontroll, tydlighet och mätbara resultat.',
+      'Äntligen en signalkopierare som fungerar för alla typer av signaler',
     cards: [
       {
         label: 'Utförandehastighet',
-        metric: '<150 ms',
+        metric: '<50 ms',
         metricVariant: 'teal',
-        description: 'Latens under 150 ms från signalanalys till mäklarutskick på vår molnpipeline.',
+        description: 'Latens under 50 ms från signalanalys till mäklarutskick på vår molnpipeline.',
         layout: 'tall',
         icon: 'zap',
       },
@@ -198,6 +254,16 @@ export const landingSv: LandingTranslations = {
       },
     ],
   },
+  providers: {
+    eyebrow: 'För signalleverantörer',
+    title: 'Sälj din signaltjänst med UniCopier.',
+    description: 'Sätt ditt eget pris, bygg din community och låt andra traders kopiera dina affärer mot en månadsavgift. Du behåller 100 % av vinsten.',
+    points: [
+      { title: 'Sätt ditt pris', description: 'Ta en månadsavgift eller erbjud kopiering gratis.' },
+      { title: 'Bygg din community', description: 'Samla traders som kopierar dig automatiskt.' },
+      { title: 'Behåll 100 %', description: 'Allt dina kopierare betalar är ditt.' },
+    ],
+  },
   features: {
     eyebrow: 'Plattformsfunktioner',
     title: 'Byggd för seriös signalkopiering',
@@ -208,14 +274,14 @@ export const landingSv: LandingTranslations = {
         eyebrow: 'Signal kopiator',
         title: 'Kopiera Telegram-signaler till MT4 & MT5 med precision',
         description:
-          'Spegla betrodda kanaler till dina mäklarkonton. TScopier analyserar poster, take-profits, intervallben och hanteringsinstruktioner - körs sedan med dina lotsregler, multi-handelsdelning och intervallskiktning på varje anslutet konto.',
+          'Spegla betrodda kanaler till dina mäklarkonton. UniCopier analyserar poster, take-profits, intervallben och hanteringsinstruktioner - körs sedan med dina lotsregler, multi-handelsdelning och intervallskiktning på varje anslutet konto.',
         visual: 'copier',
       },
       {
         eyebrow: 'Flerspråkiga signaler',
         title: 'Stödjer signaler på flera språk',
         description:
-          'Kopiera kanaler som publicerar på engelska, spanska, franska, ryska, polska, japanska med mera. TScopier känner igen köp/sälj, SL, TP och managementfraser på varje språk, plus per-kanalträning för din leverantörs exakta formuleringar.',
+          'Kopiera kanaler som publicerar på engelska, spanska, franska, ryska, polska, japanska med mera. UniCopier känner igen köp/sälj, SL, TP och managementfraser på varje språk, plus per-kanalträning för din leverantörs exakta formuleringar.',
         visual: 'multilingual',
       },
       {
@@ -229,7 +295,7 @@ export const landingSv: LandingTranslations = {
         eyebrow: 'Meddelanderedigeringar',
         title: 'Signalmodifiering från redigerade meddelanden',
         description:
-          'När en leverantör redigerar ett Telegram-meddelande för att ändra stop loss- eller take-profit-nivåer, plockar TScopier upp revisionen och uppdaterar din öppna korg på mäklaren – inga nya poster, bara synkroniserad SL/TP över varje ben.',
+          'När en leverantör redigerar ett Telegram-meddelande för att ändra stop loss- eller take-profit-nivåer, plockar UniCopier upp revisionen och uppdaterar din öppna korg på mäklaren – inga nya poster, bara synkroniserad SL/TP över varje ben.',
         visual: 'signalEdit',
       },
       {
@@ -259,7 +325,7 @@ export const landingSv: LandingTranslations = {
         telegramLabel: 'Signalkanal',
         channelName: 'Gold Signals Pro',
         channelMeta: '3 nya signaler · just nu',
-        hubLabel: 'TScopier',
+        hubLabel: 'UniCopier',
         mt4Label: 'MT4 konto',
         mt4Meta: 'Kopiering · 0,10 lotsregler',
         mt5Label: 'MT5 konto',
@@ -555,20 +621,20 @@ export const landingSv: LandingTranslations = {
   faq: {
     eyebrow: 'FAQ',
     title: 'Vanliga frågor',
-    subtitle: 'Snabba svar om installation, kopiering och vad som gör TScopier annorlunda.',
+    subtitle: 'Snabba svar om installation, kopiering och vad som gör UniCopier annorlunda.',
     items: [
       {
         question: 'Behöver jag ladda ner en EA eller köra en VPS?',
         answer:
-          'Nej. TScopier är helt molnbaserad. Du loggar in från din webbläsare, ansluter Telegram och dina MT4/MT5 konton, och kopiatorn körs på vår infrastruktur – ingen expertrådgivare eller VPS att underhålla.',
+          'Nej. UniCopier är helt molnbaserad. Du loggar in från din webbläsare, ansluter Telegram och dina MT4/MT5 konton, och kopiatorn körs på vår infrastruktur – ingen expertrådgivare eller VPS att underhålla.',
       },
       {
-        question: 'Fungerar TScopier med prop firms som förbjuder EA?',
+        question: 'Fungerar UniCopier med prop firms som förbjuder EA?',
         answer:
-          'Ja. TScopier körs helt i molnet—inget installeras på din MT4/MT5-terminal. Du kan kopiera signaler till vilket prop-firmkonto som helst, oavsett om de tillåter Expert Advisors eller inte.',
+          'Ja. UniCopier körs helt i molnet—inget installeras på din MT4/MT5-terminal. Du kan kopiera signaler till vilket prop-firmkonto som helst, oavsett om de tillåter Expert Advisors eller inte.',
       },
       {
-        question: 'Vilka plattformar stöder TScopier?',
+        question: 'Vilka plattformar stöder UniCopier?',
         answer:
           'Du ansluter Telegram signalkanaler och kopierar till MetaTrader 4- och MetaTrader 5-konton. Länka flera mäklare och dirigera varje kanal till de konton du väljer.',
       },
@@ -583,9 +649,9 @@ export const landingSv: LandingTranslations = {
           'Du kan länka upp till 100 MT4/MT5 anslutningar per användare, beroende på din plan. Varje Telegram kanal kan kopplas till ett eller flera mäklarkonton från sidan Kanaler.',
       },
       {
-        question: 'Läser TScopier mina privata Telegram-meddelanden?',
+        question: 'Läser UniCopier mina privata Telegram-meddelanden?',
         answer:
-          'TScopier läser inte dina personliga chattar. Att ansluta Telegram ger endast åtkomst till kanaler och grupper du är medlem i så att kopiatorn kan ta emot signalmeddelanden från källor du lägger till.',
+          'UniCopier läser inte dina personliga chattar. Att ansluta Telegram ger endast åtkomst till kanaler och grupper du är medlem i så att kopiatorn kan ta emot signalmeddelanden från källor du lägger till.',
       },
       {
         question: 'Kan jag testa en kanal innan jag går live?',
@@ -595,7 +661,7 @@ export const landingSv: LandingTranslations = {
       {
         question: 'Stöder du sortimentsaffärer, skiktning och ledningssignaler?',
         answer:
-          'Ja. TScopier hanterar enkel- och intervallposter, multi-TP-lotdelning, skiktning, nära-värre-poster, break-even-drag, partiella vinster och andra hanteringsinstruktioner - med tillåt/ignorera filter per kanal.',
+          'Ja. UniCopier hanterar enkel- och intervallposter, multi-TP-lotdelning, skiktning, nära-värre-poster, break-even-drag, partiella vinster och andra hanteringsinstruktioner - med tillåt/ignorera filter per kanal.',
       },
       {
         question: 'Vad ingår i Basic vs Advanced?',
@@ -611,10 +677,10 @@ export const landingSv: LandingTranslations = {
   },
   comparison: {
     eyebrow: 'Varför handlare byter',
-    title: 'Gå upp i nivå med TScopier',
+    title: 'Gå upp i nivå med UniCopier',
     subtitle: 'Typiska Telegram kopiatorer kontra en molnplattform byggd för hastighet, tydlighet och skala.',
     otherLabel: 'Andra kopiatorer',
-    tscopierLabel: 'TScopier',
+    tscopierLabel: 'UniCopier',
     cta: 'Starta din 5-dagars gratis provperiod',
     rows: [
       {
@@ -855,6 +921,6 @@ export const landingSv: LandingTranslations = {
     platforms: 'Fungerar med',
     copyright: '© {year} Tartarix Inc. Med ensamrätt.',
     disclaimer:
-      'Handel innebär risk. TScopier är ett kopieringsverktyg â inte finansiell rådgivning.',
+      'Handel innebär risk. UniCopier är ett kopieringsverktyg â inte finansiell rådgivning.',
   },
 }

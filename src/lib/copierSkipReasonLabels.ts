@@ -1,5 +1,6 @@
 /** Default English labels when a locale bundle omits a skip-reason key (shallow locale merge). */
 import { normalizeCopierSkipReasonKey } from './brokerBridgeErrorDisplay'
+import { COPY_RISK_REASON_LABELS } from './copyRiskReasons'
 
 export function resolveCopierSkipReasonKey(reason: string | null | undefined): string {
   const raw = String(reason ?? '').trim()
@@ -11,6 +12,7 @@ export function resolveCopierSkipReasonKey(reason: string | null | undefined): s
 }
 
 export const COPIER_SKIP_REASON_LABELS: Record<string, string> = {
+  ...COPY_RISK_REASON_LABELS,
   ai_classified_as_non_actionable: 'AI found no trade signal in this message',
   ai_classified_as_non_entry: 'AI found no entry instruction in this message',
   modification_no_open_trade: 'No open trade to modify',
@@ -45,6 +47,8 @@ export const COPIER_SKIP_REASON_LABELS: Record<string, string> = {
   delete_pendings_no_parent: 'Original trade not found for this reply',
   delete_pendings_requires_reply: 'Must be a reply to the original signal',
   delete_pendings_none: 'No pending orders to cancel',
+  delete_pendings_cancel_failed: 'Pending orders found but none could be cancelled',
+  partial_close_unavailable_for_position_size: 'Partial close refused — position too small to split',
   mgmt_no_open_trades: 'No matching open trade',
   mgmt_no_open_trades_db: 'No open trade in copier',
   mgmt_no_open_trades_broker: 'No open position on broker',
@@ -86,9 +90,9 @@ export const COPIER_SKIP_REASON_DETAILS: Record<string, string> = {
   no_broker_channel_match:
     'No active broker account is linked to this channel. Open Account Configuration → select your broker → Channels tab → enable this channel → Save.',
   copier_paused:
-    'Signal copying is paused for your account. Resume the copier from the dashboard or Copier Engine.',
+    'Signal copying is paused for your account. Resume the copier from the dashboard or Copier Process.',
   telegram_listener_not_live:
-    'Telegram was not connected when this signal arrived. Open Copier Engine and reconnect Telegram.',
+    'Telegram was not connected when this signal arrived. Open Copier Process and reconnect Telegram.',
   subscription_inactive:
     'Your subscription is inactive. Renew your plan to resume signal copying.',
   plan_advanced_feature_required:
@@ -113,6 +117,10 @@ export const COPIER_SKIP_REASON_DETAILS: Record<string, string> = {
     'Cancel-pending instructions must be sent as a reply to the original signal message, not as a standalone message.',
   delete_pendings_none:
     'The copier understood the cancel-pending instruction, but there were no pending orders to cancel for this trade.',
+  delete_pendings_cancel_failed:
+    'The copier found resting pending orders for this trade, but none could be cancelled — the broker refused the request, the order already filled or expired, or the broker was unavailable. Try again, or close them from the Trades page.',
+  partial_close_unavailable_for_position_size:
+    'The copier understood the partial-close instruction, but this position is too small to divide: the requested part would fall below the broker’s minimum lot size. That instruction closed nothing — the trade stayed at its full size. Percentage partial closes need a larger position (raise the channel’s lot size).',
   mgmt_no_open_trades:
     'This management instruction (close, modify, breakeven, etc.) did not match any open trade from this channel.',
   mgmt_no_open_trades_db:

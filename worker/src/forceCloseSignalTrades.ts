@@ -10,6 +10,8 @@ import { normalizeSignalChannelIds } from './brokerChannelFilter'
 import { apiForBrokerAccount } from './providerResolver'
 import { authorityFromBrokerRow } from './brokerWriteAuthority'
 import { closeWithVerification } from './managementClose'
+import { cancelPendingOrderAtBroker } from './pendingOrderCancel'
+import { resolveCanonicalOpenPosition } from './livePositionIdentity'
 import { isMarketClosedMessage } from './brokerTradeError'
 import { rawOrderTicket } from './signalEntryPendingHelpers'
 import {
@@ -25,6 +27,30 @@ import {
 import { brokerHasLinkedSession, brokerSessionUuid } from './tradeExecutor/helpers'
 import type { BrokerRow as ExecutorBrokerRow } from './tradeExecutor/types'
 import { writeExecutionLog } from './observability/executionLog'
+
+/**
+ * True when the broker now holds a live POSITION for this ticket — i.e. the
+ * resting pending order filled before its cancel could land. Resting orders do
+ * not resolve as positions (`resolveCanonicalOpenPosition` filters them), so
+ * this separates "cancelled" from "filled" without trusting bridge wording.
+ */
+async function pendingFilledToPosition(
+  api: { openedOrders(id: string): Promise<unknown[] | null> },
+  sessionId: string,
+  ticket: number,
+): Promise<boolean> {
+  try {
+    const fresh = (await api.openedOrders(sessionId)) ?? []
+    const resolved = resolveCanonicalOpenPosition({
+      trade: { id: 'pending-fill-race', metaapi_order_id: String(ticket) },
+      openedOrders: fresh,
+    })
+    return resolved.status === 'resolved'
+  } catch {
+    return false
+  }
+}
+
 export type ForceCloseSignalTradesResult = {
   ok: boolean
   closed: number
@@ -186,7 +212,7 @@ async function insertForceCloseLog(
     broker_account_id: args.brokerAccountId,
     action: 'user_force_close',
     status,
-    error_message: args.errorMessage ?? null,
+    error_message: args.errorMessage ?? (status === 'failed' ? 'force_close_failed' : null),
     request_payload: {
       scope: args.scope,
       channel_id: args.channelId,
@@ -195,7 +221,6 @@ async function insertForceCloseLog(
       pending_cancelled: args.pendingCancelled,
       virtual_legs_deleted: args.virtualLegsDeleted,
     },
-    ...(status === 'failed' ? { error_message: 'force_close_failed' } : {}),
   })
 }
 
@@ -287,13 +312,42 @@ async function forceCloseChannelOnBroker(
 
     let failure = ''
     try {
-      const closeResult = await closeWithVerification(api, uuid, ticket, { liveFast: true })
-      if (closeResult.confirmed) {
-        await settle()
-        result.closed += 1
-        continue
+      // A resting pending order is not a position: MTAPI's OrderClose rejects
+      // it ("Invalid request") while the order survives, so a position close
+      // can never confirm (see pendingOrderCancel.ts). Cancel through the
+      // provider-native cancel endpoint instead.
+      if (trade.status === 'pending') {
+        try {
+          await cancelPendingOrderAtBroker(api, uuid, ticket)
+          await settle()
+          result.pending_cancelled += 1
+          continue
+        } catch (cancelErr) {
+          const cancelMsg = cancelErr instanceof Error ? cancelErr.message : String(cancelErr)
+          const filled = await pendingFilledToPosition(api, uuid, ticket)
+          if (!filled) {
+            // Not a fill race: gone at the broker (benign wording or absent
+            // from the snapshot) settles the row; anything else is a real
+            // failure with the bridge's wording, handled below.
+            if (isBenignCloseError(cancelMsg) || await ticketAlreadyGone(ticket) === true) {
+              await settle()
+              result.pending_cancelled += 1
+              continue
+            }
+            failure = cancelMsg
+          }
+          // filled → fall through and close the resulting position below.
+        }
       }
-      failure = String(closeResult.reason ?? 'close not confirmed')
+      if (!failure) {
+        const closeResult = await closeWithVerification(api, uuid, ticket, { liveFast: true })
+        if (closeResult.confirmed) {
+          await settle()
+          result.closed += 1
+          continue
+        }
+        failure = String(closeResult.reason ?? 'close not confirmed')
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       if (isBenignCloseError(msg)) {
@@ -316,12 +370,17 @@ async function forceCloseChannelOnBroker(
     if (!result.failure_detail) result.failure_detail = failure.slice(0, 200)
   }
 
-  result.pending_cancelled = await cancelChannelBrokerPendingOrders({
+  // += : the per-trade pending branch above already settled the trades-row
+  // cancels it could handle; this sweep adds the signal_entry_pending_orders
+  // ones and retries any trades-pending row the branch left behind (the
+  // counters can overlap for a row retried within the same run).
+  result.pending_cancelled += await cancelChannelBrokerPendingOrders({
     supabase,
     userId: args.userId,
     channelId: args.channelId,
     brokerAccountIds: [broker.id],
     apiFor: () => api,
+    resolve: brokerAccountId => (brokerAccountId === broker.id ? { api, sessionId: uuid } : null),
     reason: 'user_force_close',
   })
 
@@ -598,6 +657,7 @@ export async function forceCloseSignalById(
 
   let closed = 0
   let failed = orphanLegs
+  let pendingCancelledTotal = 0
   let marketClosed = false
   let virtualLegsDeleted = 0
   let brokersProcessed = 0
@@ -637,6 +697,7 @@ export async function forceCloseSignalById(
 
     let brokerClosed = 0
     let brokerFailed = 0
+    let brokerPendingCancelled = 0
     let brokerFailureDetail = ''
     const now = new Date().toISOString()
 
@@ -694,13 +755,38 @@ export async function forceCloseSignalById(
       }
       let failure = ''
       try {
-        const closeResult = await closeWithVerification(api, uuid, ticket, { liveFast: true })
-        if (closeResult.confirmed) {
-          brokerClosed += 1
-          await markDone()
-          continue
+        // Same pending-order rule as the channel/all loop: cancel through the
+        // provider-native endpoint; a position close can never confirm a
+        // resting order (MTAPI OrderClose rejects it while it survives).
+        if (trade.status === 'pending') {
+          try {
+            await cancelPendingOrderAtBroker(api, uuid, ticket)
+            await markDone()
+            brokerPendingCancelled += 1
+            continue
+          } catch (cancelErr) {
+            const cancelMsg = cancelErr instanceof Error ? cancelErr.message : String(cancelErr)
+            const filled = await pendingFilledToPosition(api, uuid, ticket)
+            if (!filled) {
+              if (isBenignCloseError(cancelMsg) || await ticketStillOpen(ticket) === false) {
+                await markDone()
+                brokerPendingCancelled += 1
+                continue
+              }
+              failure = cancelMsg
+            }
+            // filled → fall through and close the resulting position below.
+          }
         }
-        failure = String(closeResult.reason ?? 'close not confirmed')
+        if (!failure) {
+          const closeResult = await closeWithVerification(api, uuid, ticket, { liveFast: true })
+          if (closeResult.confirmed) {
+            brokerClosed += 1
+            await markDone()
+            continue
+          }
+          failure = String(closeResult.reason ?? 'close not confirmed')
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         if (isBenignCloseError(msg)) {
@@ -730,7 +816,7 @@ export async function forceCloseSignalById(
     )
     virtualLegsDeleted += brokerVirtualDeleted
 
-    if (brokerClosed > 0 || brokerFailed > 0 || brokerVirtualDeleted > 0) {
+    if (brokerClosed > 0 || brokerFailed > 0 || brokerPendingCancelled > 0 || brokerVirtualDeleted > 0) {
       await insertForceCloseLog(supabase, {
         userId,
         brokerAccountId: brokerId,
@@ -739,7 +825,7 @@ export async function forceCloseSignalById(
         channelId: channelId ?? '',
         closed: brokerClosed,
         failed: brokerFailed,
-        pendingCancelled: 0,
+        pendingCancelled: brokerPendingCancelled,
         virtualLegsDeleted: brokerVirtualDeleted,
         errorMessage: brokerFailureDetail || undefined,
       })
@@ -747,25 +833,26 @@ export async function forceCloseSignalById(
 
     closed += brokerClosed
     failed += brokerFailed
+    pendingCancelledTotal += brokerPendingCancelled
   }
 
   if (brokersProcessed === 0) {
     return { ...empty, ok: false, failed, virtual_legs_deleted: virtualLegsDeleted, reason: 'broker_not_connected' }
   }
-  if (closed === 0 && failed === 0 && virtualLegsDeleted === 0) {
+  if (closed === 0 && failed === 0 && virtualLegsDeleted === 0 && pendingCancelledTotal === 0) {
     return { ...empty, ok: true, reason: 'no_open_trades' }
   }
 
   console.log(
     `[forceCloseSignalById] signal=${signalId} closed=${closed} failed=${failed}`
-    + ` virtual_deleted=${virtualLegsDeleted} brokers=${brokersProcessed}`,
+    + ` pending_cancelled=${pendingCancelledTotal} virtual_deleted=${virtualLegsDeleted} brokers=${brokersProcessed}`,
   )
 
   return {
-    ok: failed === 0 || closed > 0,
+    ok: failed === 0 || closed > 0 || pendingCancelledTotal > 0,
     closed,
     failed,
-    pending_cancelled: 0,
+    pending_cancelled: pendingCancelledTotal,
     virtual_legs_deleted: virtualLegsDeleted,
     channels_processed: brokersProcessed,
     // Only when the market refused everything: a partial close must still read

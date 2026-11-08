@@ -71,16 +71,29 @@ export async function sendVerificationEmail(args: {
     headers.Authorization = `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
   }
 
-  const res = await fetch(apiUrl, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      email: args.email,
-      redirectTo,
-      captchaToken: args.captchaToken ?? undefined,
-    }),
-  })
-
+  const controller = new AbortController()
+  const timeoutId = globalThis.setTimeout(() => controller.abort(), 15_000)
+  let res: Response
+  try {
+    res = await fetch(apiUrl, {
+      method: 'POST',
+      headers,
+      signal: controller.signal,
+      body: JSON.stringify({
+        email: args.email,
+        redirectTo,
+        captchaToken: args.captchaToken ?? undefined,
+      }),
+    })
+  } catch {
+    return {
+      ok: false,
+      code: 'error',
+      error: 'Could not request a verification email. Please try again.',
+    }
+  } finally {
+    globalThis.clearTimeout(timeoutId)
+  }
   const data = (await res.json().catch(() => ({}))) as {
     error?: string
     code?: string

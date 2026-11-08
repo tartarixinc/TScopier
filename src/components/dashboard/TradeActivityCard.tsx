@@ -1,7 +1,9 @@
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import clsx from 'clsx'
 import { Loader2, RefreshCw } from 'lucide-react'
+import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
 import { useT } from '../../context/LocaleContext'
+import { resolveActivityRoute, type ActivityRouteMark } from '../../lib/activityRoute'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import type { DisplayableTradeActivity } from '../../lib/tradeActivities'
@@ -12,6 +14,46 @@ function statusVariant(status: DisplayableTradeActivity['status']): StatusVarian
   if (status === 'successful') return 'success'
   if (status === 'skipped') return 'warning'
   return 'error'
+}
+
+function RouteIcon({ mark }: { mark: ActivityRouteMark }) {
+  const [failed, setFailed] = useState(false)
+  if (failed) return null
+  return (
+    <span
+      title={mark.label}
+      className="relative flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white ring-2 ring-white dark:bg-neutral-950 dark:ring-neutral-950"
+    >
+      <img
+        src={mark.iconSrc}
+        alt=""
+        className="h-full w-full object-contain"
+        onError={() => setFailed(true)}
+      />
+    </span>
+  )
+}
+
+function ActivityRouteTag({ activity }: { activity: DisplayableTradeActivity }) {
+  const { brokers } = useBrokerAccounts()
+  const route = resolveActivityRoute(activity, brokers)
+  if (!route.source && !route.destination) return null
+  const routeLabel = [route.source?.label, route.destination?.label].filter(Boolean).join(' → ')
+
+  return (
+    <span
+      className="inline-flex items-center rounded-full bg-neutral-50 py-0.5 pl-0.5 pr-1 ring-1 ring-neutral-200/80 dark:bg-neutral-900 dark:ring-neutral-800"
+      aria-label={routeLabel || undefined}
+      title={routeLabel || undefined}
+    >
+      {route.source ? <RouteIcon mark={route.source} /> : null}
+      {route.destination ? (
+        <span className={clsx('relative z-10', route.source && '-ml-1.5')}>
+          <RouteIcon mark={route.destination} />
+        </span>
+      ) : null}
+    </span>
+  )
 }
 
 function statusLabel(
@@ -44,9 +86,12 @@ export const TradeActivityCard = memo(function TradeActivityCard({
 
   if (variant === 'compact') {
     return (
-      <div className="px-5 py-3">
-        <p className="text-sm text-neutral-800 dark:text-neutral-100">{activity.message}</p>
-        <p className="text-[11px] text-neutral-400 mt-1">{timeLabel}</p>
+      <div className="px-5 py-3.5 transition-colors hover:bg-[#F7F8FA] dark:hover:bg-white/3">
+        <p className="text-base font-regular leading-6 text-neutral-900 dark:text-neutral-100">{activity.message}</p>
+        <div className="mt-1 flex items-center gap-2">
+          <p className="text-xs font-regular text-neutral-900 dark:text-neutral-50">{timeLabel}</p>
+          <ActivityRouteTag activity={activity} />
+        </div>
       </div>
     )
   }
@@ -67,7 +112,7 @@ export const TradeActivityCard = memo(function TradeActivityCard({
               {statusLabel(activity.status, statusLabels)}
             </Badge>
           </div>
-          <p className="text-sm text-neutral-700 dark:text-neutral-200 leading-relaxed">{activity.message}</p>
+          <p className="text-sm text-neutral-900 dark:text-neutral-50 leading-relaxed">{activity.message}</p>
         </div>
         {activity.retryEligible && onRetry ? (
           <Button
@@ -87,18 +132,19 @@ export const TradeActivityCard = memo(function TradeActivityCard({
           </Button>
         ) : null}
       </div>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-400">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-900 dark:text-neutral-50">
         <span>{timeLabel}</span>
+        <ActivityRouteTag activity={activity} />
         {activity.symbol ? (
           <>
-            <span aria-hidden className="text-neutral-300 dark:text-neutral-600">·</span>
-            <span className="font-medium text-neutral-500 dark:text-neutral-400">{activity.symbol}</span>
+            <span aria-hidden className="text-neutral-900 dark:text-neutral-50">·</span>
+            <span className="font-medium text-neutral-900 dark:text-neutral-50">{activity.symbol}</span>
           </>
         ) : null}
         {activity.channelName ? (
           <>
-            <span aria-hidden className="text-neutral-300 dark:text-neutral-600">·</span>
-            <span className="truncate max-w-[14rem]" title={activity.channelName}>{activity.channelName}</span>
+            <span aria-hidden className="text-neutral-900 dark:text-neutral-50">·</span>
+            <span className="truncate max-w-56" title={activity.channelName}>{activity.channelName}</span>
           </>
         ) : null}
       </div>
@@ -110,11 +156,11 @@ export function TradeActivityCardSkeleton({ className }: { className?: string })
   return (
     <div className={clsx('px-4 sm:px-5 py-4 space-y-3', className)}>
       <div className="flex justify-between gap-3">
-        <div className="h-5 w-32 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
-        <div className="h-8 w-16 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
+        <div className="h-5 w-32 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
+        <div className="h-8 w-16 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
       </div>
-      <div className="h-4 w-full bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
-      <div className="h-3 w-1/3 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
+      <div className="h-4 w-full bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
+      <div className="h-3 w-1/3 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
     </div>
   )
 }

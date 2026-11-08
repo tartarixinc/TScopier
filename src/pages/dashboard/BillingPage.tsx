@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
 import {
@@ -7,6 +7,7 @@ import {
   Minus,
   Plus,
   Receipt,
+  Users,
   Zap,
   ChevronLeft,
   ChevronRight,
@@ -31,6 +32,13 @@ import {
   type BillingInvoice,
 } from '../../lib/billingApi'
 import { PRICING_ADVANCED_INCLUDED_ACCOUNTS } from '../../lib/pricingPlans'
+import {
+  fetchMySocialCopyBilling,
+  isActiveSocialCopyBilling,
+  startSocialCopyBillingPortal,
+  type MySocialCopyBilling,
+} from '../../lib/socialCopy'
+import { supabase } from '../../lib/supabase'
 
 function formatShortDate(iso: string, locale: string): string {
   return new Date(iso).toLocaleDateString(locale, {
@@ -54,13 +62,13 @@ function invoiceStatusLabel(status: string, bt: ReturnType<typeof useT>['pricing
 function invoiceStatusClass(status: string): string {
   switch (status) {
     case 'paid':
-      return 'bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300'
+      return 'bg-teal-50 text-green-500 dark:bg-teal-950/40 dark:text-teal-300'
     case 'draft':
-      return 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400'
+      return 'bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50'
     case 'open':
       return 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
     default:
-      return 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400'
+      return 'bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50'
   }
 }
 
@@ -77,7 +85,7 @@ function SummaryCard({
 }) {
   return (
     <Card padding="md" className="flex flex-col justify-between min-h-[120px]">
-      <p className="text-xs font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+      <p className="text-xs font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
         {label}
       </p>
       <div className="mt-3">
@@ -85,7 +93,7 @@ function SummaryCard({
         {status ? (
           <p className="mt-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">{status}</p>
         ) : hint ? (
-          <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">{hint}</p>
+          <p className="mt-1 text-xs text-neutral-900 dark:text-neutral-50">{hint}</p>
         ) : null}
       </div>
     </Card>
@@ -112,9 +120,63 @@ export function BillingPage() {
   const subscribeCta = getSubscribeCtaLabel(t, { isPastDue, effectivePlan, hasTrialExpired })
 
   const [portalLoading, setPortalLoading] = useState(false)
+  const [cancelLoading, setCancelLoading] = useState(false)
+  const [cancelError, setCancelError] = useState('')
   const [extraCount, setExtraCount] = useState<number | null>(null)
   const [savingExtras, setSavingExtras] = useState(false)
   const [extraSaved, setExtraSaved] = useState(false)
+  const [copyBilling, setCopyBilling] = useState<MySocialCopyBilling[]>([])
+  const [copyBillingLoading, setCopyBillingLoading] = useState(false)
+  const [copyBillingError, setCopyBillingError] = useState('')
+  const [copyPortalBusyId, setCopyPortalBusyId] = useState<string | null>(null)
+
+  const refreshCopyBilling = useCallback(async () => {
+    if (!user) {
+      setCopyBilling([])
+      return
+    }
+    setCopyBillingLoading(true)
+    setCopyBillingError('')
+    try {
+      setCopyBilling(await fetchMySocialCopyBilling(supabase))
+    } catch (cause) {
+      setCopyBilling([])
+      setCopyBillingError(cause instanceof Error ? cause.message : bt.copySubscriptionsLoadFailed)
+    } finally {
+      setCopyBillingLoading(false)
+    }
+  }, [bt.copySubscriptionsLoadFailed, user])
+
+  useEffect(() => {
+    void refreshCopyBilling()
+  }, [refreshCopyBilling])
+
+  const openCopyPortal = async (providerUserId: string) => {
+    if (!session?.access_token) {
+      setCopyBillingError(bt.copySubscriptionsSignIn)
+      return
+    }
+    setCopyPortalBusyId(providerUserId)
+    setCopyBillingError('')
+    try {
+      const url = await startSocialCopyBillingPortal({
+        accessToken: session.access_token,
+        providerUserId,
+        returnUrl: `${window.location.origin}/billing`,
+      })
+      window.location.assign(url)
+    } catch (cause) {
+      setCopyBillingError(cause instanceof Error ? cause.message : bt.copySubscriptionsPortalFailed)
+      setCopyPortalBusyId(null)
+    }
+  }
+
+  const copyStatusLabel = (row: MySocialCopyBilling) => {
+    if (isActiveSocialCopyBilling(row)) return bt.copyStatusActive
+    if (row.status === 'past_due') return bt.copyStatusPastDue
+    if (row.status === 'canceled') return bt.copyStatusCanceled
+    return bt.copyStatusIncomplete
+  }
 
   const [billingMeta, setBillingMeta] = useState<Omit<BillingHistoryResponse, 'invoices'> | null>(null)
   const [invoicePages, setInvoicePages] = useState<BillingInvoice[][]>([])
@@ -253,27 +315,57 @@ export function BillingPage() {
 
   const currentInvoices = invoicePages[invoicePageIndex] ?? []
 
+  const openCustomerPortal = async (flow?: 'cancel') => {
+    if (!session) return
+    const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/customer-portal`
+    const res = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        returnUrl: `${window.location.origin}/billing`,
+        ...(flow ? { flow } : {}),
+      }),
+    })
+    const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string }
+    if (!res.ok || !data.url) {
+      throw new Error(data.error || bt.cancelSubscriptionFailed)
+    }
+    window.location.href = data.url
+  }
+
   const handleManageBilling = async () => {
     if (!session) return
     setPortalLoading(true)
+    setCancelError('')
     try {
-      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/customer-portal`
-      const res = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ returnUrl: `${window.location.origin}/billing` }),
-      })
-      const data = await res.json()
-      if (data.url) {
-        window.location.href = data.url
-      }
+      await openCustomerPortal()
+    } catch {
+      setCancelError(bt.cancelSubscriptionFailed)
     } finally {
       setPortalLoading(false)
     }
   }
+
+  const handleCancelSubscription = async () => {
+    if (!session) return
+    setCancelLoading(true)
+    setCancelError('')
+    try {
+      await openCustomerPortal('cancel')
+    } catch {
+      setCancelError(bt.cancelSubscriptionFailed)
+    } finally {
+      setCancelLoading(false)
+    }
+  }
+
+  const canCancelSubscription =
+    hasActiveSubscription
+    && Boolean(subscription?.stripe_subscription_id?.startsWith('sub_'))
+    && (subscription?.status === 'active' || subscription?.status === 'trialing')
 
   const handleSaveExtras = async () => {
     if (!session || editingExtra === currentExtra) return
@@ -305,12 +397,11 @@ export function BillingPage() {
     <PageShell>
       <PageHeader
         title={bt.title}
-        subtitle={bt.subtitle}
         actions={
           <div className="flex flex-col items-stretch gap-3 sm:items-end">
             <div className="flex flex-wrap items-center justify-end gap-x-5 gap-y-1 text-sm">
               <div>
-                <span className="text-neutral-500 dark:text-neutral-400">{bt.customerId}: </span>
+                <span className="text-neutral-900 dark:text-neutral-50">{bt.customerId}: </span>
                 <span className="font-semibold text-neutral-900 dark:text-neutral-100">{customerRef}</span>
               </div>
             </div>
@@ -352,33 +443,139 @@ export function BillingPage() {
         </div>
 
         {hasActiveSubscription && subscription ? (
-          <div className="flex flex-wrap gap-3">
-            <Button
-              variant="secondary"
-              onClick={() => void handleManageBilling()}
-              loading={portalLoading}
-              className="gap-2"
-            >
-              {bt.manageBilling}
-              <ExternalLink className="h-3.5 w-3.5" />
-            </Button>
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-3">
+              <Button
+                variant="secondary"
+                onClick={() => void handleManageBilling()}
+                loading={portalLoading}
+                disabled={cancelLoading}
+                className="gap-2"
+              >
+                {bt.manageBilling}
+                <ExternalLink className="h-3.5 w-3.5" />
+              </Button>
+              {canCancelSubscription ? (
+                <Button
+                  variant="danger"
+                  onClick={() => void handleCancelSubscription()}
+                  loading={cancelLoading}
+                  disabled={portalLoading}
+                  className="gap-2"
+                  title={bt.cancelSubscriptionHint}
+                >
+                  {bt.cancelSubscription}
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </Button>
+              ) : null}
+            </div>
+            {canCancelSubscription ? (
+              <p className="text-xs text-neutral-900 dark:text-neutral-50">
+                {bt.cancelSubscriptionHint}
+              </p>
+            ) : null}
+            {cancelError ? (
+              <p className="text-xs text-error-600 dark:text-error-400">{cancelError}</p>
+            ) : null}
           </div>
         ) : null}
 
         <Card padding="none" className="overflow-hidden">
-          <div className="border-b border-neutral-200 px-6 py-4 dark:border-neutral-800">
+          <div className="border-b border-neutral-200/65 px-6 py-4 dark:border-neutral-800/55">
             <div className="flex items-start gap-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-teal-50 dark:bg-teal-950/40">
-                <Receipt className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+                <Users className="h-4 w-4 text-green-400 dark:text-green-400" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
+                  {bt.copySubscriptionsTitle}
+                </h2>
+                <p className="mt-0.5 text-xs text-neutral-900 dark:text-neutral-50">
+                  {bt.copySubscriptionsHint}
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                loading={copyBillingLoading}
+                onClick={() => void refreshCopyBilling()}
+              >
+                {bt.copySubscriptionsRefresh}
+              </Button>
+            </div>
+          </div>
+          {copyBillingError ? (
+            <div className="px-6 py-4 text-sm text-amber-700 dark:text-amber-300">{copyBillingError}</div>
+          ) : null}
+          {copyBillingLoading && copyBilling.length === 0 ? (
+            <div className="px-6 py-10 text-center text-sm text-neutral-900 dark:text-neutral-50">
+              {t.common.loading}
+            </div>
+          ) : copyBilling.length === 0 ? (
+            <div className="px-6 py-10 text-center text-sm text-neutral-900 dark:text-neutral-50">
+              {bt.copySubscriptionsEmpty}
+            </div>
+          ) : (
+            <ul className="divide-y divide-neutral-200/65 dark:divide-neutral-800/55">
+              {copyBilling.map(row => (
+                <li
+                  key={row.id}
+                  className="flex flex-wrap items-center justify-between gap-3 px-6 py-4"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                      {row.providerDisplayName}
+                      {row.providerUsername ? (
+                        <span className="ms-2 text-xs font-normal text-neutral-500">
+                          @{row.providerUsername}
+                        </span>
+                      ) : null}
+                    </p>
+                    <p className="mt-0.5 text-xs text-neutral-600 dark:text-neutral-300">
+                      {copyStatusLabel(row)}
+                      {row.cancelAtPeriodEnd ? ` · ${bt.copyCancelsAtPeriodEnd}` : ''}
+                      {row.currentPeriodEnd
+                        ? ` · ${interpolate(bt.copyPeriodEnds, {
+                            date: formatShortDate(row.currentPeriodEnd, localeTag),
+                          })}`
+                        : ''}
+                    </p>
+                    <p className="mt-1 text-[11px] text-neutral-500 dark:text-neutral-400">
+                      {bt.copyEntitlementNote}
+                    </p>
+                  </div>
+                  {row.stripeSubscriptionId ? (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="gap-2"
+                      loading={copyPortalBusyId === row.providerUserId}
+                      onClick={() => void openCopyPortal(row.providerUserId)}
+                    >
+                      {bt.copyManage}
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </Button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        <Card padding="none" className="overflow-hidden">
+          <div className="border-b border-neutral-200/65 px-6 py-4 dark:border-neutral-800/55">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-teal-50 dark:bg-teal-950/40">
+                <Receipt className="h-4 w-4 text-green-400 dark:text-green-400" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
                   <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
                     {bt.invoices}
                   </h2>
-                  <Info className="h-3.5 w-3.5 text-neutral-400" aria-hidden />
+                  <Info className="h-3.5 w-3.5 text-neutral-900 dark:text-neutral-50" aria-hidden />
                 </div>
-                <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">{bt.invoicesHint}</p>
+                <p className="mt-0.5 text-xs text-neutral-900 dark:text-neutral-50">{bt.invoicesHint}</p>
               </div>
             </div>
           </div>
@@ -386,18 +583,18 @@ export function BillingPage() {
           {invoicesError ? (
             <div className="px-6 py-8 text-sm text-amber-700 dark:text-amber-300">{invoicesError}</div>
           ) : invoicesLoading && currentInvoices.length === 0 ? (
-            <div className="px-6 py-12 text-center text-sm text-neutral-500 dark:text-neutral-400">
+            <div className="px-6 py-12 text-center text-sm text-neutral-900 dark:text-neutral-50">
               {t.common.loading}
             </div>
           ) : currentInvoices.length === 0 ? (
-            <div className="px-6 py-12 text-center text-sm text-neutral-500 dark:text-neutral-400">
+            <div className="px-6 py-12 text-center text-sm text-neutral-900 dark:text-neutral-50">
               {bt.noInvoices}
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead>
-                  <tr className="border-b border-neutral-200 bg-neutral-50/80 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900/60 dark:text-neutral-400">
+                  <tr className="border-b border-neutral-200/65 bg-neutral-50/80 text-left text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:border-neutral-800/55 dark:bg-neutral-900/60 dark:text-neutral-50">
                     <th className="px-6 py-3">{bt.invoiceNumber}</th>
                     <th className="px-6 py-3">{bt.period}</th>
                     <th className="px-6 py-3">{bt.date}</th>
@@ -412,10 +609,10 @@ export function BillingPage() {
                       <td className="px-6 py-4 font-medium text-neutral-900 dark:text-neutral-100">
                         {inv.number ?? inv.id.slice(-8).toUpperCase()}
                       </td>
-                      <td className="px-6 py-4 text-neutral-600 dark:text-neutral-300">
+                      <td className="px-6 py-4 text-neutral-900 dark:text-neutral-50">
                         {formatInvoicePeriod(inv.periodStart, inv.periodEnd, localeTag)}
                       </td>
-                      <td className="px-6 py-4 text-neutral-600 dark:text-neutral-300">
+                      <td className="px-6 py-4 text-neutral-900 dark:text-neutral-50">
                         {formatShortDate(inv.created, localeTag)}
                       </td>
                       <td className="px-6 py-4 font-medium text-neutral-900 dark:text-neutral-100">
@@ -437,12 +634,12 @@ export function BillingPage() {
                             href={inv.pdfUrl ?? inv.hostedUrl ?? '#'}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-sm font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400"
+                            className="text-sm font-medium text-green-400 hover:text-green-500 dark:text-green-400"
                           >
                             {bt.downloadInvoice}
                           </a>
                         ) : (
-                          <span className="text-neutral-400">—</span>
+                          <span className="text-neutral-900 dark:text-neutral-50">—</span>
                         )}
                       </td>
                     </tr>
@@ -453,7 +650,7 @@ export function BillingPage() {
           )}
 
           {(invoicePageIndex > 0 || invoiceHasMore) && currentInvoices.length > 0 ? (
-            <div className="flex items-center justify-end gap-2 border-t border-neutral-200 px-6 py-3 dark:border-neutral-800">
+            <div className="flex items-center justify-end gap-2 border-t border-neutral-200/65 px-6 py-3 dark:border-neutral-800/55">
               <Button
                 variant="ghost"
                 size="sm"
@@ -487,7 +684,7 @@ export function BillingPage() {
                 <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
                   {bt.extraAccounts}
                 </h3>
-                <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
+                <p className="mt-0.5 text-xs text-neutral-900 dark:text-neutral-50">
                   {interpolate(bt.extraAccountsSummary, {
                     included: String(PRICING_ADVANCED_INCLUDED_ACCOUNTS),
                     extra: String(editingExtra),
@@ -501,7 +698,7 @@ export function BillingPage() {
                   type="button"
                   onClick={() => setExtraCount(Math.max(0, editingExtra - 1))}
                   disabled={editingExtra === 0 || savingExtras}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 text-neutral-600 transition-colors hover:bg-neutral-50 disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 text-neutral-900 transition-colors hover:bg-neutral-50 disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-50 dark:hover:bg-neutral-800"
                 >
                   <Minus className="h-4 w-4" />
                 </button>
@@ -518,7 +715,7 @@ export function BillingPage() {
                   type="button"
                   onClick={() => setExtraCount(Math.min(95, editingExtra + 1))}
                   disabled={editingExtra >= 95 || savingExtras}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 text-neutral-600 transition-colors hover:bg-neutral-50 disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 text-neutral-900 transition-colors hover:bg-neutral-50 disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-50 dark:hover:bg-neutral-800"
                 >
                   <Plus className="h-4 w-4" />
                 </button>
@@ -540,8 +737,8 @@ export function BillingPage() {
         {!hasActiveSubscription && !subscriptionLoading ? (
           <Card padding="lg">
             <div className="flex flex-col items-center py-6 text-center">
-              <CreditCard className="h-10 w-10 text-neutral-300 dark:text-neutral-600" />
-              <p className="mt-4 text-sm text-neutral-500 dark:text-neutral-400">{bt.noPlan}</p>
+              <CreditCard className="h-10 w-10 text-neutral-900 dark:text-neutral-50" />
+              <p className="mt-4 text-sm text-neutral-900 dark:text-neutral-50">{bt.noPlan}</p>
               <Button className="mt-4" onClick={() => navigate('/pricing')}>
                 {bt.choosePlan}
               </Button>
@@ -554,7 +751,7 @@ export function BillingPage() {
                 <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">
                   {bt.subscriptionPlans}
                 </h2>
-                <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+                <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-50">
                   {bt.subscriptionPlansIntro}
                 </p>
               </div>

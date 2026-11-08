@@ -26,6 +26,8 @@ import {
 import { hasTrialExpired as subscriptionHasTrialExpired } from '../lib/subscriptionCta'
 import { clearPendingPlanSelection } from '../lib/pendingPlanSelection'
 import { confirmCheckoutSession } from '../lib/confirmCheckout'
+import { consumePostAuthRedirect } from '../lib/postAuthRedirect'
+import { latestExtensionEndMs, isExtensionActive, type SubscriptionExtensionGrant } from '../lib/subscriptionExtensions'
 
 export interface Subscription {
   id: string
@@ -146,6 +148,8 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   const { isAdmin, loading: profileLoading } = useUserProfile()
   const userId = user?.id ?? null
   const [subscription, setSubscription] = useState<Subscription | null>(null)
+  /** End of the latest admin-granted access extension, in epoch milliseconds. */
+  const [extensionEndMs, setExtensionEndMs] = useState<number | null>(null)
   /** Last user id for which subscription + usage fetch completed (prevents no-plan flash on sign-in). */
   const [resolvedUserId, setResolvedUserId] = useState<string | null>(null)
   const [usage, setUsage] = useState<SubscriptionUsage>(emptyUsage)
@@ -158,6 +162,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   const fetchSubscription = useCallback(async (options?: { background?: boolean }) => {
     if (!userId) {
       setSubscription(null)
+      setExtensionEndMs(null)
       setResolvedUserId(null)
       setUsage(emptyUsage)
       setUsageLoading(false)
@@ -168,7 +173,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     if (!background) setUsageLoading(true)
     const monthStart = monthStartUtcIso()
 
-    const [{ data }, usageResults] = await Promise.all([
+    const [{ data }, usageResults, extensionResult] = await Promise.all([
       supabase.from('subscriptions').select('*').eq('user_id', userId).maybeSingle(),
       Promise.all([
         supabase
@@ -181,7 +186,8 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
           .from('telegram_channels')
           .select('id', { count: 'exact', head: true })
           .eq('user_id', userId)
-          .eq('is_active', true),
+          .eq('is_active', true)
+          .neq('source_kind', 'tradingview'),
         supabase
           .from('backtest_runs')
           .select('id', { count: 'exact', head: true })
@@ -189,9 +195,14 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
           .eq('config->>runMode', BACKTEST_QUOTA_RUN_MODE)
           .gte('created_at', monthStart),
       ]),
+      supabase
+        .from('subscription_extensions')
+        .select('days, granted_at')
+        .eq('user_id', userId),
     ])
 
     setSubscription(data as Subscription | null)
+    setExtensionEndMs(latestExtensionEndMs(extensionResult.data as SubscriptionExtensionGrant[]))
     setUsage({
       brokerAccounts: usageResults[0].count ?? 0,
       telegramChannels: usageResults[1].count ?? 0,
@@ -204,6 +215,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     if (!userId) {
       setSubscription(null)
+      setExtensionEndMs(null)
       setResolvedUserId(null)
       setUsage(emptyUsage)
       setUsageLoading(authLoading)
@@ -242,8 +254,11 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     }
   }, [fetchSubscription])
 
+  // A live admin extension counts as an active subscription for every check below.
+  const extensionActive = isExtensionActive(extensionEndMs)
+  const accessStatus = extensionActive ? 'active' : (subscription?.status ?? null)
   const hasActiveSubscription =
-    isAdmin || isSubscriptionActive(subscription?.status, subscription?.trial_ends_at)
+    isAdmin || isSubscriptionActive(accessStatus, subscription?.trial_ends_at)
 
   // Clear checkout grace once entitlement is live; keep paywall open until then.
   useEffect(() => {
@@ -304,7 +319,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     if (!checkoutSyncPending) return
     if (window.location.pathname !== '/pricing') return
-    navigate('/dashboard', { replace: true })
+    navigate(consumePostAuthRedirect() ?? '/dashboard', { replace: true })
   }, [checkoutSyncPending, navigate])
 
   // One-shot self-heal: paid users with a missing/incomplete local row (e.g. staging
@@ -363,7 +378,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     !isAdmin && !hasActiveSubscription && subscriptionHasTrialExpired(subscription?.trial_ends_at)
   const activePlan: SubscriptionPlan | null = isAdmin
     ? 'advanced'
-    : effectivePlan(subscription?.plan, subscription?.status, subscription?.trial_ends_at)
+    : effectivePlan(subscription?.plan, accessStatus, subscription?.trial_ends_at)
 
   const limits = useMemo(
     () =>
@@ -371,11 +386,11 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         ? planLimitsSnapshot('advanced', 'active', 95)
         : planLimitsSnapshot(
             subscription?.plan,
-            subscription?.status,
+            accessStatus,
             subscription?.extra_accounts ?? 0,
             subscription?.trial_ends_at,
           ),
-    [subscription, isAdmin],
+    [subscription, isAdmin, accessStatus],
   )
 
   const planName = isAdmin
@@ -404,11 +419,11 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       isAdmin ||
       canUseFeature(
         subscription?.plan,
-        subscription?.status,
+        accessStatus,
         feature,
         subscription?.trial_ends_at,
       ),
-    [isAdmin, subscription],
+    [isAdmin, subscription, accessStatus],
   )
 
   const canAddBroker = useCallback(() => {

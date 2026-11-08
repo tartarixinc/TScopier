@@ -3,6 +3,10 @@ import type { CopierEngineBundleTranslations } from './types'
 export const copierEnginePl: CopierEngineBundleTranslations = {
   copierEnginePage: {
     connectTelegram: 'Połącz Telegram',
+    newSignalSource: 'Nowe źródło sygnałów',
+    chooseSignalSource: 'Wybierz źródło sygnałów',
+    noSignalSourcesTitle: 'Brak źródeł sygnałów',
+    noSignalSourcesBody: 'Dodaj źródło sygnałów, aby zacząć kopiować.',
     telegramNotConnectedTitle: 'Telegram nie jest połączony.',
     telegramNotConnectedBody: 'Połącz tutaj Telegram, aby wczytać i zarządzać listą kanałów.',
     tgConnectHeroTitle: 'Połącz swoje konto Telegram',
@@ -23,7 +27,7 @@ export const copierEnginePl: CopierEngineBundleTranslations = {
     tgConnectHowItWorks2: 'Wpisz kod wysłany w aplikacji Telegram',
     tgConnectHowItWorks3: 'Wybierz kanały sygnałowe do monitorowania i kopiowania',
     tgConnectPhoneWarning:
-      'TScopier nie uzyskuje dostępu do Twoich wiadomości ani ich nie odczytuje. Łącząc Telegram, dajesz aplikacji dostęp tylko do kanałów, których jesteś członkiem.',
+      'UniCopier nie uzyskuje dostępu do Twoich wiadomości ani ich nie odczytuje. Łącząc Telegram, dajesz aplikacji dostęp tylko do kanałów, których jesteś członkiem.',
     tgConnectMethodTitle: 'Choose how to sign in',
     tgConnectMethodSubtitle: 'Use your phone number or scan a QR code with the Telegram app on your phone.',
     tgConnectMethodPhone: 'Phone number',
@@ -59,7 +63,7 @@ export const copierEnginePl: CopierEngineBundleTranslations = {
     failedSendCode: 'Nie udało się wysłać kodu',
     verificationFailed: 'Weryfikacja nie powiodła się',
     telegramAlreadyLinked:
-      'To konto Telegram jest już powiązane z innym kontem TScopier. Zaloguj się na to konto lub skontaktuj się z pomocą.',
+      'To konto Telegram jest już powiązane z innym kontem UniCopier. Zaloguj się na to konto lub skontaktuj się z pomocą.',
     failedLoadTgChannels: 'Nie udało się wczytać kanałów Telegrama',
     telegramSessionExpired: 'Twoja sesja Telegram wygasła. Połącz ponownie — skonfigurowane kanały zostaną zachowane.',
     telegramConnectionBusy: 'Telegram is reconnecting after a backtest or another task. Wait 30 seconds, then press Refresh — or use Reconnect Telegram.',

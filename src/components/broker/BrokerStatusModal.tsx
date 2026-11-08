@@ -14,8 +14,14 @@ import type { BrokerAccount } from '../../types/database'
 import { useOverlayDismiss } from '../../hooks/useOverlayDismiss'
 import { Button } from '../ui/Button'
 import { Badge } from '../ui/Badge'
+import { BinanceSettingsEditor } from './BinanceSettingsEditor'
+import { BybitSettingsEditor } from './BybitSettingsEditor'
+import { KucoinSettingsEditor } from './KucoinSettingsEditor'
+import { bybitMarginModeKind } from '../../lib/bybitBroker'
+import { useT } from '../../context/LocaleContext'
 import { BrokerHealthCheckUnsupportedError, fxsocketBroker } from '../../lib/fxsocketBroker'
 import { brokerAccountHealthPatchFromMtStatus } from '../../lib/brokerHealth'
+import { resolveProvider } from '../../lib/brokerLink'
 import {
   isFxsocketMtStatusHealthy,
   listFxsocketMtStatusChecks,
@@ -37,6 +43,13 @@ interface BrokerStatusModalProps {
 function platformLogo(platform: string): string | null {
   if (platform === 'MT5') return '/MT5.png'
   if (platform === 'MT4') return '/MT4.png'
+  if (platform === 'cTrader') return '/cTrader.png'
+  if (platform === 'Binance') return '/Binance.png'
+  if (platform === 'Bybit') return '/Bybit.png'
+  if (platform === 'KuCoin') return '/Kucoin.png'
+  if (platform === 'DXtrade') return '/DX-trade.png'
+  if (platform === 'TradeLocker') return '/Trade_locker.png'
+  if (platform === 'MatchTrader') return '/Match-Trader.png'
   return null
 }
 
@@ -75,14 +88,14 @@ function StatusRow({
       <Icon
         className={clsx(
           'mt-0.5 h-4 w-4 shrink-0',
-          ok ? 'text-primary-600 dark:text-primary-400' : 'text-error-600 dark:text-error-400',
+          ok ? 'text-green-400 dark:text-green-400' : 'text-error-600 dark:text-error-400',
         )}
         aria-hidden
       />
       <div className="min-w-0 flex-1">
-        <p className="text-sm text-neutral-800 dark:text-neutral-100">{label}</p>
+        <p className="text-sm text-neutral-900 dark:text-neutral-100">{label}</p>
         {detail ? (
-          <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">{detail}</p>
+          <p className="mt-0.5 text-xs text-neutral-900 dark:text-neutral-50">{detail}</p>
         ) : null}
       </div>
     </div>
@@ -99,10 +112,10 @@ function SectionCard({
   children: ReactNode
 }) {
   return (
-    <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-800/40 p-4">
+    <section className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50/80 dark:bg-neutral-800/40 p-4">
       <div className="mb-2 flex items-center gap-2">
-        <Icon className="h-4 w-4 text-neutral-500 dark:text-neutral-400" aria-hidden />
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+        <Icon className="h-4 w-4 text-neutral-900 dark:text-neutral-50" aria-hidden />
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
           {title}
         </h3>
       </div>
@@ -120,6 +133,7 @@ function BrokerStatusModalInner({
   onClose,
   onAccountUpdate,
 }: BrokerStatusModalProps) {
+  const connectCopy = useT().accountConfig.connectForm
   const overlayRef = useRef<HTMLDivElement>(null)
   const backdropRef = useRef<HTMLDivElement>(null)
   const scrollLockRef = useRef<string | null>(null)
@@ -138,7 +152,7 @@ function BrokerStatusModalInner({
     try {
       const result = await fxsocketBroker.fetchBrokerStatus(
         broker.id,
-        broker.provider as 'fxsocket' | 'mtapi' | undefined,
+        resolveProvider(broker),
       )
       setStatus(result.status)
       onAccountUpdate?.({
@@ -203,7 +217,7 @@ function BrokerStatusModalInner({
   const modal = (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-4 sm:p-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+      className="fixed inset-0 z-70 flex items-end sm:items-center justify-center p-4 sm:p-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
       onMouseDown={onOverlayMouseDown}
       onClick={onOverlayClick}
     >
@@ -213,7 +227,7 @@ function BrokerStatusModalInner({
         role="dialog"
         aria-modal="true"
         aria-labelledby="broker-status-modal-title"
-        className="relative flex max-h-[min(90vh,720px)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-2xl dark:border-neutral-800 dark:bg-neutral-900 animate-modal-in"
+        className="relative flex max-h-[min(90vh,720px)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-neutral-200/65 bg-white shadow-2xl dark:border-neutral-800/55 dark:bg-neutral-900 animate-modal-in"
       >
         <div className="shrink-0 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
           <div className="flex items-start gap-3">
@@ -221,7 +235,7 @@ function BrokerStatusModalInner({
               <img src={logo} alt="" className="h-10 w-10 shrink-0 rounded-lg object-contain" />
             ) : (
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-50 dark:bg-teal-950/60">
-                <Activity className="h-5 w-5 text-primary-600 dark:text-primary-400" aria-hidden />
+                <Activity className="h-5 w-5 text-green-400 dark:text-green-400" aria-hidden />
               </div>
             )}
             <div className="min-w-0 flex-1">
@@ -231,15 +245,15 @@ function BrokerStatusModalInner({
               >
                 {copy.title}
               </h2>
-              <p className="mt-0.5 truncate text-sm text-neutral-500 dark:text-neutral-400">
+              <p className="mt-0.5 truncate text-sm text-neutral-900 dark:text-neutral-50">
                 {broker.label}
               </p>
-              <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">{copy.subtitle}</p>
+              <p className="mt-1 text-xs text-neutral-900 dark:text-neutral-50">{copy.subtitle}</p>
             </div>
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+              className="rounded-lg p-1.5 text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-neutral-50"
               aria-label={copy.close}
             >
               <X className="h-4 w-4" />
@@ -259,7 +273,7 @@ function BrokerStatusModalInner({
                 <Badge variant={healthy ? 'primary' : 'error'} size="sm">
                   {healthy ? copy.healthyTitle : copy.unhealthyTitle}
                 </Badge>
-                <span className="text-xs text-neutral-600 dark:text-neutral-300">
+                <span className="text-xs text-neutral-900 dark:text-neutral-50">
                   {healthy ? copy.healthyBody : copy.unhealthyBody}
                 </span>
               </div>
@@ -282,13 +296,39 @@ function BrokerStatusModalInner({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {resolveProvider(broker) === 'binance' ? (
+            <div className="mb-3">
+              <BinanceSettingsEditor
+                broker={broker}
+                onSaved={account => onAccountUpdate?.(account)}
+              />
+            </div>
+          ) : null}
+          {resolveProvider(broker) === 'bybit' ? (
+            <div className="mb-3">
+              <BybitSettingsEditor
+                key={`${broker.id}:${broker.bybit_margin_usdt ?? ''}:${broker.bybit_leverage ?? ''}`}
+                broker={broker}
+                onSaved={account => onAccountUpdate?.(account)}
+              />
+            </div>
+          ) : null}
+          {resolveProvider(broker) === 'kucoin' ? (
+            <div className="mb-3">
+              <KucoinSettingsEditor
+                key={`${broker.id}:${broker.kucoin_margin_usdt ?? ''}:${broker.kucoin_leverage ?? ''}:${broker.kucoin_margin_mode ?? ''}`}
+                broker={broker}
+                onSaved={account => onAccountUpdate?.(account)}
+              />
+            </div>
+          ) : null}
           {loading ? (
-            <div className="flex flex-col items-center justify-center gap-2 py-12 text-sm text-neutral-500 dark:text-neutral-400">
+            <div className="flex flex-col items-center justify-center gap-2 py-12 text-sm text-neutral-900 dark:text-neutral-50">
               <RefreshCw className="h-5 w-5 animate-spin" aria-hidden />
               {copy.loading}
             </div>
           ) : unsupported ? (
-            <p className="py-8 text-center text-sm text-neutral-500 dark:text-neutral-400">{copy.unsupported}</p>
+            <p className="py-8 text-center text-sm text-neutral-900 dark:text-neutral-50">{copy.unsupported}</p>
           ) : error ? (
             <p className="py-8 text-center text-sm text-error-600 dark:text-error-400">{error}</p>
           ) : status ? (
@@ -336,25 +376,40 @@ function BrokerStatusModalInner({
                   label={copy.checkAccountTradeAllowed}
                   ok={status.account?.tradeAllowed === true}
                 />
-                <div className="grid grid-cols-2 gap-x-4 py-2 text-xs text-neutral-600 dark:text-neutral-300">
+                <div className="grid grid-cols-2 gap-x-4 py-2 text-xs text-neutral-900 dark:text-neutral-50">
                   <div>
-                    <span className="text-neutral-500 dark:text-neutral-400">{copy.labelLogin}</span>
-                    <p className="mt-0.5 font-medium text-neutral-800 dark:text-neutral-100">
+                    <span className="text-neutral-900 dark:text-neutral-50">{copy.labelLogin}</span>
+                    <p className="mt-0.5 font-medium text-neutral-900 dark:text-neutral-100">
                       {status.account?.login ?? broker.account_login ?? '—'}
                     </p>
                   </div>
                   <div>
-                    <span className="text-neutral-500 dark:text-neutral-400">{copy.labelCurrency}</span>
-                    <p className="mt-0.5 font-medium text-neutral-800 dark:text-neutral-100">
+                    <span className="text-neutral-900 dark:text-neutral-50">{copy.labelCurrency}</span>
+                    <p className="mt-0.5 font-medium text-neutral-900 dark:text-neutral-100">
                       {status.account?.currency ?? '—'}
                     </p>
                   </div>
                   <div className="col-span-2">
-                    <span className="text-neutral-500 dark:text-neutral-400">{copy.labelAccountType}</span>
-                    <p className="mt-0.5 font-medium text-neutral-800 dark:text-neutral-100">
+                    <span className="text-neutral-900 dark:text-neutral-50">{copy.labelAccountType}</span>
+                    <p className="mt-0.5 font-medium text-neutral-900 dark:text-neutral-100">
                       {status.account?.type ?? '—'}
                     </p>
                   </div>
+                  {resolveProvider(broker) === 'bybit' ? (
+                    <div className="col-span-2 mt-2">
+                      <span className="text-neutral-900 dark:text-neutral-50">{connectCopy.binanceMarginModeLabel}</span>
+                      <p className="mt-0.5 font-medium text-neutral-900 dark:text-neutral-100">
+                        {(() => {
+                          const kind = bybitMarginModeKind(status.account?.marginMode)
+                          if (kind === 'isolated') return connectCopy.binanceIsolated
+                          if (kind === 'cross') return connectCopy.binanceCross
+                          if (kind === 'portfolio') return connectCopy.bybitPortfolioMargin
+                          return '—'
+                        })()}
+                      </p>
+                      <p className="mt-0.5 text-neutral-900 dark:text-neutral-50">{connectCopy.bybitMarginModeNote}</p>
+                    </div>
+                  ) : null}
                 </div>
               </SectionCard>
 
@@ -373,14 +428,14 @@ function BrokerStatusModalInner({
                   ok={status.bridge?.symbolsSynced === true}
                 />
                 <div className="py-2 text-xs">
-                  <span className="text-neutral-500 dark:text-neutral-400">{copy.labelBridgeVersion}</span>
-                  <p className="mt-0.5 font-medium text-neutral-800 dark:text-neutral-100">
+                  <span className="text-neutral-900 dark:text-neutral-50">{copy.labelBridgeVersion}</span>
+                  <p className="mt-0.5 font-medium text-neutral-900 dark:text-neutral-100">
                     {status.bridge?.version ?? '—'}
                   </p>
                 </div>
               </SectionCard>
 
-              <p className="text-center text-xs text-neutral-500 dark:text-neutral-400">
+              <p className="text-center text-xs text-neutral-900 dark:text-neutral-50">
                 {copy.serverTime}: {formatServerTime(status.serverTime)}
               </p>
             </div>

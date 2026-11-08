@@ -1,10 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from 'react'
 import { Link, Outlet, useNavigate } from 'react-router-dom'
-import { ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, Clock, Loader2, Plus, RefreshCw } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, Hand, Plus, RefreshCw, Users } from 'lucide-react'
 import clsx from 'clsx'
 import { SubscriptionReminderModal } from '../../components/billing/SubscriptionReminderModal'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { useUserProfile } from '../../context/UserProfileContext'
 import { useSubscription } from '../../context/SubscriptionContext'
 import type { BrokerAccount, Signal, Trade } from '../../types/database'
 import {
@@ -16,6 +17,7 @@ import {
   linkedAccountTypeValueClass,
   type LinkedAccountType,
 } from '../../lib/brokerFromServer'
+import { DashboardMetricsSkeleton } from '../../components/dashboard/DashboardMetricsSkeleton'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { PageShell } from '../../components/layout/PageShell'
 import { useAddTradingAccount } from '../../context/AddTradingAccountContext'
@@ -23,8 +25,8 @@ import { Toggle } from '../../components/ui/Toggle'
 import { Button } from '../../components/ui/Button'
 import { InfoTooltip } from '../../components/ui/InfoTooltip'
 import { fxsocketBroker, type MtTrade } from '../../lib/fxsocketBroker'
-import { isFxsocketLinkedBroker, countLinkedBrokerSessionsForUi, hasLinkedBrokerForUi } from '../../lib/brokerLink'
-import { resolveBrokerTotalBalance } from '../../lib/effectiveBrokerBalance'
+import { isFxsocketLinkedBroker, countLinkedBrokerSessionsForUi, hasLinkedBrokerForUi, resolveProvider, type BrokerProvider } from '../../lib/brokerLink'
+import { equityWithFloatingPnl, resolveBrokerTotalBalance } from '../../lib/effectiveBrokerBalance'
 import { useFxsocketStream } from '../../hooks/useFxsocketStream'
 import {
   rebuildPositionBookFromPayload,
@@ -59,6 +61,16 @@ import {
   buildSignalSymbolLookup,
 } from '../../lib/copierLogDisplay'
 import { buildDisplayableTradeActivities, buildChannelDisplayNames, dedupePipelineParseAttempts, TRADE_ACTIVITY_FETCH_LIMIT, type TradeActivityLogRow } from '../../lib/tradeActivities'
+import {
+  buildManualSourceTradeActivities,
+  buildSocialCopyTradeActivities,
+  countSocialCopyOpensInRange,
+  fetchManualSourceTradeLogs,
+  fetchSocialCopyLogs,
+  type SocialCopyLogRow,
+} from '../../lib/socialCopyLogs'
+import { buildChannelSourceKinds, SIGNAL_SOURCE_MARKS, type SignalSourceKind } from '../../lib/signalSourceMark'
+import { SignalSourceLogo } from '../../components/dashboard/SignalSourceLogo'
 import { TradeActivityCard } from '../../components/dashboard/TradeActivityCard'
 import {
   DASHBOARD_ACTIVE_USER_KEY,
@@ -94,8 +106,8 @@ import {
   normalizeChannelLinkMaps,
   type PerformanceChannelLinkMaps,
 } from '../../lib/performanceInsights'
-import { ChannelProfitChart } from '../../components/dashboard/ChannelProfitChart'
-import { TradeVolumeChart } from '../../components/dashboard/TradeVolumeChart'
+// import { ChannelProfitChart } from '../../components/dashboard/ChannelProfitChart'
+// import { TradeVolumeChart } from '../../components/dashboard/TradeVolumeChart'
 import { useDashboardRealtime } from '../../hooks/useDashboardRealtime'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
 import {
@@ -115,9 +127,7 @@ import { useFormatMoney } from '../../hooks/useFormatMoney'
 import { lossTextClass, pnlSignTextClass } from '../../lib/pnlDisplay'
 import { formatMoneyWithCode } from '../../lib/currency'
 import { interpolate } from '../../i18n/interpolate'
-import { TelegramConnectBanner } from '../../components/dashboard/TelegramConnectBanner'
 import { ListenerLeaseOfflineBanner } from '../../components/dashboard/ListenerLeaseOfflineBanner'
-import { LiveFeedDegradedBanner } from '../../components/LiveFeedDegradedBanner'
 import {
   getLiveFeedGeneration,
   isAuthSessionError,
@@ -138,6 +148,12 @@ const DASHBOARD_METRICS_LOADER_DISMISS_MS = 5_000
 /** Shared column template for dashboard Copier Logs header + rows. */
 const DASHBOARD_COPIER_LOG_GRID =
   'grid grid-cols-[5.75rem_minmax(0,1fr)_minmax(4rem,0.85fr)_minmax(4.75rem,auto)_minmax(6.75rem,auto)] gap-x-3 items-center'
+
+const DASHBOARD_CARD =
+  'rounded-2xl border border-neutral-200/65 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-neutral-800/55 dark:bg-neutral-950 dark:shadow-none'
+
+const DASHBOARD_SECTION_LINK =
+  'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-neutral-900 transition-colors hover:text-neutral-900 dark:text-neutral-50 dark:hover:text-neutral-100'
 
 function isNonTradeSkipReason(value: string | null | undefined): boolean {
   const normalized = String(value ?? '')
@@ -187,7 +203,7 @@ interface DashboardStats {
 
 type AiExpertLogRow = TradeActivityLogRow
 
-type ChannelNameRow = { id: string; display_name: string; channel_username?: string | null }
+type ChannelNameRow = { id: string; display_name: string; channel_username?: string | null; source_kind?: string | null }
 
 function channelLabel(channelId: string | null | undefined, names: Record<string, string>): string {
   if (!channelId) return '—'
@@ -295,13 +311,15 @@ function recomputeLiveBrokerDashboardStats(
 
   for (const account of accounts) {
     const snap = balances[account.id]
+    const live = isBrokerLiveForMetrics(account, wsLiveBrokerIds)
     if (snap?.balance != null && Number.isFinite(snap.balance)) {
       portfolioValue += snap.balance
     }
-    if (snap?.equity != null && Number.isFinite(snap.equity)) {
-      totalEquity += snap.equity
-    } else if (snap?.balance != null && Number.isFinite(snap.balance)) {
-      totalEquity += snap.balance
+    const equity = live
+      ? equityWithFloatingPnl(snap?.balance, snap?.open_pnl, snap?.equity)
+      : (snap?.equity != null && Number.isFinite(snap.equity) ? snap.equity : snap?.balance ?? null)
+    if (equity != null && Number.isFinite(equity)) {
+      totalEquity += equity
     }
     if (isBrokerLiveForMetrics(account, wsLiveBrokerIds)) {
       const p = snap?.open_pnl
@@ -358,7 +376,7 @@ function sumConnectedOpenTrades(
 
 /**
  * Open-trade headline count: FxSocket-linked accounts use live broker feeds only
- * (WebSocket positions or REST bootstrap). Never stale TScopier DB leg rows.
+ * (WebSocket positions or REST bootstrap). Never stale UniCopier DB leg rows.
  */
 function resolveDashboardOpenTradesCount(
   accounts: BrokerAccount[],
@@ -523,22 +541,6 @@ function bootDashboardChartsReady(cached: DashboardCachePayload | null): boolean
 
 function isDashboardBootReady(cached: DashboardCachePayload | null): boolean {
   return Boolean(cached?.stats && bootDashboardChartsReady(cached))
-}
-
-function DashboardMetricsLoader({ message }: { message: string }) {
-  return (
-    <div
-      className="flex min-h-[min(70vh,640px)] flex-col items-center justify-center gap-4 px-6 py-16"
-      role="status"
-      aria-live="polite"
-      aria-busy="true"
-    >
-      <Loader2 className="h-9 w-9 animate-spin text-teal-600 dark:text-teal-400" aria-hidden />
-      <p className="text-sm font-medium text-neutral-600 dark:text-neutral-300 text-center max-w-sm">
-        {message}
-      </p>
-    </div>
-  )
 }
 
 function hasDashboardAnalyticsData(analytics: DashboardAnalytics | null | undefined): boolean {
@@ -954,10 +956,43 @@ function applyDashboardBootReadyTransition(
   }
 }
 
+function greetingForLocalHour(
+  hour: number,
+  copy: { greetingMorning: string; greetingAfternoon: string; greetingEvening: string },
+): string {
+  if (hour >= 5 && hour < 12) return copy.greetingMorning
+  if (hour >= 12 && hour < 17) return copy.greetingAfternoon
+  return copy.greetingEvening
+}
+
 export function DashboardPage() {
   const t = useT()
   const la = t.dashboard.linkedAccounts
   const { user } = useAuth()
+  const { profile } = useUserProfile()
+  const [localNow, setLocalNow] = useState(() => new Date())
+  useEffect(() => {
+    const id = window.setInterval(() => setLocalNow(new Date()), 60_000)
+    return () => window.clearInterval(id)
+  }, [])
+  const greetingName =
+    profile.first_name.trim()
+    || profile.display_name.trim().split(/\s+/)[0]
+    || user?.email?.split('@')[0]?.trim()
+    || ''
+  const greeting = greetingForLocalHour(localNow.getHours(), t.dashboard)
+  const greetingParts = greetingName
+    ? t.dashboard.greetingNamed.replace('{greeting}', greeting).split('{name}')
+    : null
+  const dashboardGreeting = greetingParts ? (
+    <>
+      {greetingParts[0]}
+      <span className="text-green-500 dark:text-green-400">{greetingName}</span>
+      {greetingParts[1] ?? ''}
+    </>
+  ) : (
+    `${greeting}.`
+  )
   const { hasActiveSubscription } = useSubscription()
   const {
     brokers: linkedAccounts,
@@ -984,7 +1019,7 @@ export function DashboardPage() {
   const [bootCache, setBootCache] = useState<DashboardCachePayload | null>(() =>
     user?.id ? readBootstrapDashboardCache(user?.id) : null,
   )
-  const [hadBootCache, setHadBootCache] = useState(() => Boolean(bootCache?.stats))
+  const [, setHadBootCache] = useState(() => Boolean(bootCache?.stats))
   /** True when this tab already loaded dashboard data earlier (SPA revisit, not hard refresh). */
   const tabSessionWarmAtMount = Boolean(user?.id && isDashboardSessionLoaded(user.id))
   const tabSessionWarmRef = useRef(tabSessionWarmAtMount)
@@ -996,7 +1031,10 @@ export function DashboardPage() {
   const [channelDisplayNames, setChannelDisplayNames] = useState<Record<string, string>>(
     () => bootCache?.channelDisplayNames ?? {},
   )
+  const [channelSourceKinds, setChannelSourceKinds] = useState<Record<string, SignalSourceKind>>({})
   const [aiExpertLogs, setAiExpertLogs] = useState<AiExpertLogRow[]>(() => bootCache?.aiExpertLogs ?? [])
+  const [socialCopyLogs, setSocialCopyLogs] = useState<SocialCopyLogRow[]>([])
+  const [manualSourceLogs, setManualSourceLogs] = useState<SocialCopyLogRow[]>([])
   const [linkedAccountBalances, setLinkedAccountBalances] = useState<Record<string, BrokerBalanceSnapshot>>(
     () => bootCache?.linkedAccountBalances ?? {},
   )
@@ -1034,7 +1072,7 @@ export function DashboardPage() {
   const [dashboardMetricsLoading, setDashboardMetricsLoading] = useState(
     () => !(tabSessionWarmAtMount && isDashboardBootReady(bootCache)),
   )
-  const [dashboardChartsReady, setDashboardChartsReady] = useState(() => bootDashboardChartsReady(bootCache))
+  const [, setDashboardChartsReady] = useState(() => bootDashboardChartsReady(bootCache))
   const linkedBalancesRef = useRef<Record<string, BrokerBalanceSnapshot>>(bootCache?.linkedAccountBalances ?? {})
   const refreshQuietRef = useRef<() => void>(() => {})
   /** Last successful MT trades response, kept across renders so stats survive throttled refresh windows. */
@@ -1274,10 +1312,91 @@ export function DashboardPage() {
     return out
   }, [linkedAccounts, linkedAccountBalances])
 
-  const visibleTradeActivities = useMemo(
-    () => buildDisplayableTradeActivities(aiExpertLogs, t.channelWorker, t.management, channelDisplayNames),
-    [aiExpertLogs, channelDisplayNames, t.channelWorker, t.management],
-  )
+  const visibleTradeActivities = useMemo(() => {
+    const channelActivities = buildDisplayableTradeActivities(
+      aiExpertLogs,
+      t.channelWorker,
+      t.management,
+      channelDisplayNames,
+      channelSourceKinds,
+    )
+    const socialActivities = buildSocialCopyTradeActivities(socialCopyLogs, t.management, {
+      source: t.copierLogs.socialSource ?? 'Social trading',
+      openMessage: t.copierLogs.socialOpenMessage ?? 'Copied {detail} from provider #{ticket}',
+      closeMessage: t.copierLogs.socialCloseMessage ?? 'Social copy of #{ticket} closed',
+      modifyMessage: t.copierLogs.socialModifyMessage ?? 'Social copy of #{ticket} updated',
+      otherMessage: t.copierLogs.socialOtherMessage ?? '{action} · social copy of #{ticket}',
+    })
+    const manualActivities = buildManualSourceTradeActivities(manualSourceLogs, t.management, {
+      source: t.copierLogs.manualExecutionSource ?? 'Manual Execution',
+      openMessage: t.copierLogs.manualOpenMessage ?? 'Opened {detail} #{ticket}',
+      closeMessage: t.copierLogs.manualCloseMessage ?? 'Closed #{ticket}',
+      modifyMessage: t.copierLogs.manualModifyMessage ?? 'Updated #{ticket}',
+      otherMessage: t.copierLogs.manualOtherMessage ?? '{action} · #{ticket}',
+    })
+    return [...channelActivities, ...socialActivities, ...manualActivities]
+      .sort((a, b) => (a.row.created_at < b.row.created_at ? 1 : a.row.created_at > b.row.created_at ? -1 : 0))
+      .slice(0, 20)
+  }, [aiExpertLogs, socialCopyLogs, manualSourceLogs, channelDisplayNames, channelSourceKinds, t.channelWorker, t.management, t.copierLogs])
+
+  /** Dashboard Copier Logs strip: channel signals + follower social copies + manual source trades. */
+  const visibleCopierLogRows = useMemo(() => {
+    const socialLabel = t.copierLogs.socialSource ?? 'Social trading'
+    const manualLabel = t.copierLogs.manualExecutionSource ?? 'Manual Execution'
+    const signalRows: DashboardCopierLogRow[] = copierLogs.map(signal => {
+      const parsed = signal.parsed_data as Record<string, unknown> | null
+      const action = typeof parsed?.action === 'string' ? parsed.action : null
+      const sourceKind = signal.channel_id
+        ? (channelSourceKinds[signal.channel_id] ?? 'telegram')
+        : null
+      const channelName = channelLabel(signal.channel_id, channelDisplayNames)
+      return {
+        key: signal.id,
+        at: signal.created_at,
+        status: signal.status,
+        channelName,
+        channelTitle: sourceKind ? `${SIGNAL_SOURCE_MARKS[sourceKind].label} · ${channelName}` : channelName,
+        symbol: copierLogSymbols[signal.id] ?? '—',
+        action,
+        sourceKind,
+        isSocial: false,
+        isManual: false,
+      }
+    })
+    const socialRows: DashboardCopierLogRow[] = socialCopyLogs.map(row => {
+      const channelName = `${socialLabel} · ${row.channelName}`
+      return {
+        key: `social:${row.id}`,
+        at: row.createdAt,
+        status: row.status,
+        channelName,
+        channelTitle: channelName,
+        symbol: row.symbol,
+        action: row.action === 'open' ? (row.side ?? row.action) : row.action,
+        sourceKind: null,
+        isSocial: true,
+        isManual: false,
+      }
+    })
+    const manualRows: DashboardCopierLogRow[] = manualSourceLogs.map(row => {
+      const channelName = `${manualLabel} · ${row.channelName}`
+      return {
+        key: `manual:${row.id}`,
+        at: row.createdAt,
+        status: row.status,
+        channelName,
+        channelTitle: channelName,
+        symbol: row.symbol,
+        action: row.action === 'open' ? (row.side ?? row.action) : row.action,
+        sourceKind: null,
+        isSocial: false,
+        isManual: true,
+      }
+    })
+    return [...signalRows, ...socialRows, ...manualRows]
+      .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
+      .slice(0, 10)
+  }, [copierLogs, socialCopyLogs, manualSourceLogs, channelDisplayNames, channelSourceKinds, copierLogSymbols, t.copierLogs.socialSource, t.copierLogs.manualExecutionSource])
 
   const [linkedAccountSortKey, setLinkedAccountSortKey] = useState<LinkedAccountSortKey | null>(null)
   const [linkedAccountSortDir, setLinkedAccountSortDir] = useState<SortDirection>('asc')
@@ -1404,7 +1523,7 @@ export function DashboardPage() {
       mtTradesPromise = Promise.resolve([] as MtTrade[])
     }
 
-    const [channelsRes, tradesRes, todaySignalsRes, yesterdaySignalsRes, logsRes, allSignalsRes, channelsMetaRes, attributionRes, aiLogsRes, prefetchedMtTrades] = await Promise.all([
+    const [channelsRes, tradesRes, todaySignalsRes, yesterdaySignalsRes, logsRes, allSignalsRes, channelsMetaRes, attributionRes, aiLogsRes, prefetchedMtTrades, socialLogs, manualLogs, socialCopiedToday] = await Promise.all([
       supabase.from('telegram_channels').select('id').eq('user_id', user!.id).eq('is_active', true),
       supabase
         .from('trades')
@@ -1422,7 +1541,7 @@ export function DashboardPage() {
         .order('created_at', { ascending: false })
         .limit(10),
       supabase.from('signals').select('id,channel_id').eq('user_id', user!.id),
-      supabase.from('telegram_channels').select('id,display_name,channel_username').eq('user_id', user!.id),
+      supabase.from('telegram_channels').select('id,display_name,channel_username,source_kind').eq('user_id', user!.id),
       supabase
         .from('trade_channel_attributions')
         .select('broker_account_id,metaapi_order_id,signal_id,channel_id,channel_label')
@@ -1439,6 +1558,7 @@ export function DashboardPage() {
           response_payload,
           error_message,
           signal_id,
+          broker_account_id,
           signals ( channel_id, raw_message, parsed_data, status, skip_reason )
         `,
         )
@@ -1446,6 +1566,14 @@ export function DashboardPage() {
         .order('created_at', { ascending: false })
         .limit(TRADE_ACTIVITY_FETCH_LIMIT),
       mtTradesPromise,
+      fetchSocialCopyLogs(supabase, user!.id),
+      fetchManualSourceTradeLogs(supabase, user!.id).catch(() => [] as SocialCopyLogRow[]),
+      countSocialCopyOpensInRange(
+        supabase,
+        user!.id,
+        todayStart.toISOString(),
+        tomorrowStart.toISOString(),
+      ).catch(() => 0),
     ])
 
     const logs = ((logsRes.data ?? []) as Signal[]).filter(s => !isNonTradeSkipReason(s.skip_reason))
@@ -1455,6 +1583,7 @@ export function DashboardPage() {
     const openTrades = allTrades.filter(t => t.status === 'open')
     const todaySignals = (todaySignalsRes.data ?? []) as { status: string }[]
     const copiedToday = todaySignals.filter(s => s.status === 'executed' || s.status === 'parsed').length
+      + (Number.isFinite(socialCopiedToday) ? socialCopiedToday : 0)
     const openPnlFromTrades = openTrades.reduce((sum, t) => sum + (t.profit ?? 0), 0)
     const isInRange = (dateString: string | null | undefined, start: Date, end: Date) =>
       isMtTimestampInRange(dateString, start, end)
@@ -1711,7 +1840,9 @@ export function DashboardPage() {
       mergedBalances,
       openTrades.length,
     )
-    const channelNames = buildChannelDisplayNames((channelsMetaRes.data ?? []) as ChannelNameRow[])
+    const channelRows = (channelsMetaRes.data ?? []) as ChannelNameRow[]
+    const channelNames = buildChannelDisplayNames(channelRows)
+    setChannelSourceKinds(buildChannelSourceKinds(channelRows))
     setChannelLinkMaps(channelMaps)
     const nextStats: DashboardStats = {
       accounts: activeBrokerCount,
@@ -1781,6 +1912,8 @@ export function DashboardPage() {
     linkedBalancesRef.current = mergedBalances
     setLinkedAccountBalances(mergedBalances)
     setAiExpertLogs(aiLogs)
+    setSocialCopyLogs(socialLogs)
+    setManualSourceLogs(manualLogs)
 
     if (mtBrokerConnected && (syncLive || fresh)) {
       await refreshMtTrades(brokerAccounts, { force: true, preloadedTrades: prefetchedMtTrades })
@@ -1885,12 +2018,15 @@ export function DashboardPage() {
   }
 
   const applyBrokerLiveSnapshot = (brokerId: string, patch: Partial<BrokerBalanceSnapshot>) => {
+    const prevSnap = linkedBalancesRef.current[brokerId] ?? {}
+    const nextSnap: BrokerBalanceSnapshot = { ...prevSnap, ...patch }
+    if (patch.open_pnl != null && nextSnap.balance != null && Number.isFinite(nextSnap.balance)) {
+      const equity = equityWithFloatingPnl(nextSnap.balance, patch.open_pnl, nextSnap.equity)
+      if (equity != null) nextSnap.equity = equity
+    }
     linkedBalancesRef.current = {
       ...linkedBalancesRef.current,
-      [brokerId]: {
-        ...(linkedBalancesRef.current[brokerId] ?? {}),
-        ...patch,
-      },
+      [brokerId]: nextSnap,
     }
     liveBrokerStateRef.current[brokerId] = {
       ...liveBrokerStateRef.current[brokerId],
@@ -1977,65 +2113,172 @@ export function DashboardPage() {
   /** REST fallback when WS is quiet — keeps Open P/L moving without a full page refresh. */
   const linkedAccountIdsKey = linkedAccounts.map(a => a.id).sort().join(',')
   useEffect(() => {
-    const accounts = linkedAccounts.filter(isFxsocketLinkedBroker)
+    const accounts = linkedAccounts.filter(account => {
+      const provider = resolveProvider(account)
+      if (provider === 'mtapi' || provider === 'ctrader' || provider === 'binance' || provider === 'bybit' || provider === 'kucoin' || provider === 'dxtrade' || provider === 'tradelocker' || provider === 'matchtrader') return hasLinkedBrokerForUi(account)
+      return isFxsocketLinkedBroker(account)
+    })
     if (accounts.length === 0) return
 
     let cancelled = false
-    let cursor = 0
-    // Multi-account dashboards hammer FxSocket if every account polls every 2s.
-    // Scale interval with account count and rotate one account per tick.
-    const pollIntervalMs = Math.min(15_000, Math.max(4_000, 2_000 * Math.ceil(accounts.length / 2)))
     const throttleUntilById: Record<string, number> = {}
+    const cursors = { mtapi: 0, ctrader: 0, binance: 0, bybit: 0, kucoin: 0, dxtrade: 0, tradelocker: 0, matchtrader: 0, fxsocket: 0 }
+    const inflight = { mtapi: false, ctrader: false, binance: false, bybit: false, kucoin: false, dxtrade: false, tradelocker: false, matchtrader: false, fxsocket: false }
 
-    const pollLiveSnapshots = async () => {
-      if (cancelled || accounts.length === 0) return
+    const pollGroup = async (group: 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin' | 'dxtrade' | 'tradelocker' | 'matchtrader' | 'fxsocket') => {
+      if (cancelled || inflight[group]) return
+      const groupAccounts = accounts.filter(account => {
+        const provider = resolveProvider(account)
+        if (group === 'fxsocket') return provider !== 'mtapi' && provider !== 'ctrader' && provider !== 'binance' && provider !== 'bybit' && provider !== 'kucoin' && provider !== 'dxtrade' && provider !== 'tradelocker' && provider !== 'matchtrader'
+        return provider === group
+      })
+      if (groupAccounts.length === 0) return
+      inflight[group] = true
       const now = Date.now()
-      // Probe at most one quiet account per tick to avoid burst throttling.
-      for (let attempt = 0; attempt < accounts.length; attempt++) {
-        const account = accounts[cursor % accounts.length]!
-        cursor += 1
-        if ((throttleUntilById[account.id] ?? 0) > now) continue
-        const lastWs = lastWsTickRef.current[account.id] ?? 0
-        if (now - lastWs < 2500) continue
-        try {
-          const { summary } = await fxsocketBroker.liveSnapshot(account.id)
-          if (cancelled) return
-          const snap = parseFxsocketAccountStreamData(summary as Record<string, unknown>)
-          const openTrades = linkedBalancesRef.current[account.id]?.open_trades ?? 0
-          const openPnl = resolveFxsocketFloatingOpenPnl(snap, openTrades)
-          const nextBalances = applyFxsocketAccountStreamUpdate(
-            account.id,
-            openPnl != null ? { ...snap, openPnl } : snap,
-            linkedBalancesRef.current,
-          )
-          linkedBalancesRef.current = nextBalances
-          if (openPnl != null) {
-            liveBrokerStateRef.current[account.id] = {
-              ...liveBrokerStateRef.current[account.id],
-              open_pnl: openPnl,
+      try {
+        // Probe at most one quiet account per tick to avoid burst throttling.
+        for (let attempt = 0; attempt < groupAccounts.length; attempt++) {
+          const account = groupAccounts[cursors[group] % groupAccounts.length]!
+          cursors[group] += 1
+          if ((throttleUntilById[account.id] ?? 0) > now) continue
+          const provider = resolveProvider(account)
+          const rawProvider: BrokerProvider = provider
+          const lastWs = lastWsTickRef.current[account.id] ?? 0
+          if (provider !== 'mtapi' && provider !== 'ctrader' && provider !== 'binance' && provider !== 'bybit' && provider !== 'kucoin' && provider !== 'dxtrade' && provider !== 'tradelocker' && provider !== 'matchtrader' && now - lastWs < 2500) continue
+          try {
+            if (provider === 'ctrader' || provider === 'binance' || provider === 'bybit' || provider === 'kucoin') {
+              const { trades } = await fxsocketBroker.trades({
+                brokerId: account.id,
+                scope: 'open',
+                historyProfile: 'dashboard',
+                provider,
+              })
+              if (cancelled) return
+              const rows = trades.filter(trade => trade.status !== 'closed')
+              let marked = 0
+              let priced = 0
+              for (const trade of rows) {
+                const profit = Number(trade.profit)
+                if (!Number.isFinite(profit)) continue
+                marked += profit
+                priced += 1
+              }
+              const openPnl = rows.length === 0
+                ? 0
+                : priced > 0
+                  ? Math.round(marked * 100) / 100
+                  : undefined
+              applyBrokerLiveSnapshot(account.id, {
+                open_trades: rows.length,
+                ...(openPnl != null ? { open_pnl: openPnl } : {}),
+              })
+              return
+            }
+            const summary = provider === 'mtapi'
+              ? await (async () => {
+                  const refreshed = await fxsocketBroker.refreshSummary(account.id, 'mtapi')
+                  if (refreshed.account) replaceBroker(refreshed.account)
+                  return refreshed.pending ? undefined : refreshed.summary
+                })()
+              : (await fxsocketBroker.liveSnapshot(account.id, rawProvider === 'ctrader' || rawProvider === 'dxtrade' || rawProvider === 'tradelocker' || rawProvider === 'matchtrader' ? rawProvider : undefined)).summary
+            if (cancelled || !summary) return
+            const snap = parseFxsocketAccountStreamData(summary as Record<string, unknown>)
+            const summaryOpenTrades = typeof summary.open_trades === 'number' && Number.isFinite(summary.open_trades)
+              ? summary.open_trades
+              : undefined
+            const openTrades = summaryOpenTrades ?? linkedBalancesRef.current[account.id]?.open_trades ?? 0
+            let openPnl = resolveFxsocketFloatingOpenPnl(snap, openTrades)
+            if (rawProvider === 'ctrader' && (openPnl == null || openPnl === 0) && openTrades > 0) {
+              const fromBook = snapshotFromPositionBook(positionBooksRef.current[account.id] ?? new Map()).openPnl
+              if (fromBook) openPnl = fromBook
+            }
+            const nextBalances = applyFxsocketAccountStreamUpdate(
+              account.id,
+              openPnl != null ? { ...snap, openPnl } : snap,
+              linkedBalancesRef.current,
+            )
+            linkedBalancesRef.current = nextBalances
+            if (summaryOpenTrades != null || openPnl != null) {
+              const current = linkedBalancesRef.current[account.id] ?? {}
+              linkedBalancesRef.current = {
+                ...linkedBalancesRef.current,
+                [account.id]: {
+                  ...current,
+                  ...(summaryOpenTrades != null ? { open_trades: summaryOpenTrades } : {}),
+                },
+              }
+              liveBrokerStateRef.current[account.id] = {
+                ...liveBrokerStateRef.current[account.id],
+                ...(summaryOpenTrades != null ? { open_trades: summaryOpenTrades } : {}),
+                ...(openPnl != null ? { open_pnl: openPnl } : {}),
+              }
+            }
+            flushLiveBrokerMetrics()
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err)
+            if (/throttl|rate limit|too many requests|expected available in/i.test(msg)) {
+              const m = msg.match(/expected available in\s+(\d+)\s*seconds?/i)
+              const sec = m ? Number(m[1]) : 8
+              const floorMs = provider === 'mtapi' ? 90_000 : 4_000
+              throttleUntilById[account.id] = Date.now() + Math.min(180_000, Math.max(floorMs, (Number.isFinite(sec) ? sec : 8) * 1000 + 500))
             }
           }
-          flushLiveBrokerMetrics()
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err)
-          if (/throttl|rate limit|expected available in/i.test(msg)) {
-            const m = msg.match(/expected available in\s+(\d+)\s*seconds?/i)
-            const sec = m ? Number(m[1]) : 8
-            throttleUntilById[account.id] = Date.now() + Math.min(120_000, Math.max(4_000, (Number.isFinite(sec) ? sec : 8) * 1000 + 500))
-          }
+          return
         }
-        return
+      } finally {
+        inflight[group] = false
       }
     }
 
-    const intervalId = window.setInterval(() => {
-      void pollLiveSnapshots()
-    }, pollIntervalMs)
-    void pollLiveSnapshots()
+    const timers: number[] = []
+    const schedule = (group: 'mtapi' | 'ctrader' | 'binance' | 'bybit' | 'kucoin' | 'dxtrade' | 'tradelocker' | 'matchtrader' | 'fxsocket', intervalMs: number, startDelayMs: number) => {
+      if (!accounts.some(account => {
+        const provider = resolveProvider(account)
+        if (group === 'fxsocket') return provider !== 'mtapi' && provider !== 'ctrader' && provider !== 'binance' && provider !== 'bybit' && provider !== 'kucoin' && provider !== 'dxtrade' && provider !== 'tradelocker' && provider !== 'matchtrader'
+        return provider === group
+      })) return
+      timers.push(window.setInterval(() => {
+        void pollGroup(group)
+      }, intervalMs))
+      timers.push(window.setTimeout(() => {
+        void pollGroup(group)
+      }, startDelayMs))
+    }
+
+    // MTAPI AccountSummary shares the trade session. A few-second poll trips
+    // "too many requests" and the copier then fails every order.
+    schedule('mtapi', 45_000, 15_000)
+    // cTrader Open PnL is marked from spots on each snapshot, so it can tick
+    // without sharing the MTAPI session limit.
+    schedule('ctrader', 4_000, 800)
+    // Binance marks open positions from the exchange on each trades call (no shared session limit).
+    schedule('binance', 5_000, 1_200)
+    // Bybit marks open positions from the exchange on each trades call, like Binance.
+    schedule('bybit', 5_000, 1_600)
+    // KuCoin marks open positions from the exchange on each trades call, like Binance and Bybit.
+    schedule('kucoin', 5_000, 2_000)
+    // DXtrade reads balance, equity and open P&L from account metrics. Brokers cap each session at about
+    // ten requests a second, so poll gently.
+    schedule('dxtrade', 8_000, 2_400)
+    // TradeLocker allows about one read a second on its state routes. A snapshot is two reads, so every
+    // six seconds stays well under that while keeping Open PnL close to live.
+    schedule('tradelocker', 6_000, 2_400)
+    // Match-Trader allows 500 requests a minute per login; each snapshot is a few reads.
+    schedule('matchtrader', 10_000, 3_600)
+    const fxCount = accounts.filter(account => {
+      const provider = resolveProvider(account)
+      return provider !== 'mtapi' && provider !== 'ctrader' && provider !== 'binance' && provider !== 'bybit' && provider !== 'kucoin' && provider !== 'dxtrade' && provider !== 'tradelocker' && provider !== 'matchtrader'
+    }).length
+    if (fxCount > 0) {
+      schedule('fxsocket', Math.min(15_000, Math.max(4_000, 2_000 * Math.ceil(fxCount / 2))), 0)
+    }
 
     return () => {
       cancelled = true
-      window.clearInterval(intervalId)
+      for (const timer of timers) {
+        window.clearTimeout(timer)
+        window.clearInterval(timer)
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the poll interval is keyed on account identity only; field-level account changes arrive through the realtime handlers and must not restart the interval
   }, [linkedAccountIdsKey])
@@ -2059,7 +2302,9 @@ export function DashboardPage() {
           scheduleDismissLoader: scheduleDismissDashboardMetricsLoader,
         },
       )
-      if (cached?.linkedAccounts?.some(hasLinkedBrokerForUi)) {
+      // A warm session already has this snapshot on screen. Reloading here is
+      // what flashes the dashboard every time the page mounts again.
+      if (!tabSessionWarmRef.current && cached?.linkedAccounts?.some(hasLinkedBrokerForUi)) {
         // Kicked through a promise callback: no direct state-setting call
         // from the effect body.
         void Promise.resolve().then(() => loadDashboard({ fresh: false, syncLive: true }))
@@ -2165,10 +2410,13 @@ export function DashboardPage() {
       const openTrades = bookSnap?.openTrades ?? count
       const prev = nextBalances[account.id]
       if (prev?.open_trades === openTrades && prev?.open_pnl === openPnl) continue
+      const nextOpenPnl = openPnl != null ? openPnl : openTrades === 0 ? 0 : prev?.open_pnl
+      const nextEquity = equityWithFloatingPnl(prev?.balance, nextOpenPnl, prev?.equity)
       nextBalances[account.id] = {
         ...(prev ?? {}),
         open_trades: openTrades,
-        ...(openPnl != null ? { open_pnl: openPnl } : openTrades === 0 ? { open_pnl: 0 } : {}),
+        ...(nextOpenPnl != null ? { open_pnl: nextOpenPnl } : {}),
+        ...(nextEquity != null ? { equity: nextEquity } : {}),
       }
       liveBrokerStateRef.current[account.id] = {
         ...liveBrokerStateRef.current[account.id],
@@ -2315,36 +2563,28 @@ export function DashboardPage() {
   }
 
   const chartsEmpty = effectiveChartTrades.length === 0 && linkedAccounts.length === 0
-  const chartsLoading =
-    !hadBootCache &&
-    !dashboardChartsReady &&
-    !hasDashboardAnalyticsData(displayAnalytics) &&
-    effectiveChartTrades.length === 0 &&
-    mtTrades.length === 0 &&
-    (hasActiveMtBroker(linkedAccounts) || Boolean(bootCache?.linkedAccounts?.some(hasLinkedBrokerForUi)))
 
   const showDashboardLoader = dashboardMetricsLoading
 
   return (
-    <PageShell maxWidth="xl" spacing="none" className="space-y-6">
+    <PageShell maxWidth="xl" spacing="none" className="space-y-8">
       <SubscriptionReminderModal />
+      <PageHeader
+        title={dashboardGreeting}
+        titleClassName="text-2xl"
+      />
       {showDashboardLoader ? (
-        <DashboardMetricsLoader message={t.dashboard.loadingMetrics} />
+        <DashboardMetricsSkeleton message={t.dashboard.loadingMetrics} />
       ) : (
         <>
-      <PageHeader title={t.dashboard.title} />
-      <TelegramConnectBanner className="mb-6" />
-      <ListenerLeaseOfflineBanner className="mb-6" />
-      <LiveFeedDegradedBanner className="mb-6" />
+      <ListenerLeaseOfflineBanner />
 
-      {/* Stats bar */}
-      <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 mb-6">
-        <div className="grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 lg:divide-x divide-neutral-100 dark:divide-neutral-800">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatBlock
             label={t.dashboard.totalBalance}
             value={formatMoney(stats.totalEquity)}
             sub={interpolate(t.dashboard.acrossAccounts, { count: stats.accounts })}
-            subColor="text-neutral-400"
+            subColor="text-neutral-900 dark:text-neutral-50"
           />
           <StatBlock
             label={t.dashboard.todaysProfit}
@@ -2359,7 +2599,7 @@ export function DashboardPage() {
             subColor={
               headlineStats.todayProfit - headlineStats.yesterdayProfit < 0
                 ? lossTextClass
-                : 'text-neutral-400'
+                : 'text-neutral-900 dark:text-neutral-50'
             }
           />
           <StatBlock
@@ -2369,8 +2609,8 @@ export function DashboardPage() {
               headlineStats.tradesTaken === 0 ? (
                 t.dashboard.noClosedTradesToday
               ) : (
-                <span className="inline-flex flex-wrap items-center gap-x-1 gap-y-0.5">
-                  <span className="text-teal-600 dark:text-teal-500">
+                <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                  <span className="text-green-500 dark:text-green-400">
                     {interpolate(t.common.won, { count: headlineStats.tradesWon })}
                   </span>
                   <span className="text-neutral-300 dark:text-neutral-600">•</span>
@@ -2388,7 +2628,7 @@ export function DashboardPage() {
                 </span>
               )
             }
-            subColor="text-neutral-400"
+            subColor="text-neutral-900 dark:text-neutral-50"
           />
           <StatBlock
             label={t.dashboard.openPnl}
@@ -2398,7 +2638,7 @@ export function DashboardPage() {
                 <button
                   type="button"
                   onClick={() => setOpenPnlModalOpen(true)}
-                  className="text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300 underline-offset-2 hover:underline font-medium"
+                  className="font-medium text-green-500 underline-offset-2 hover:underline dark:text-green-400"
                 >
                   {openPnlSub}
                 </button>
@@ -2407,78 +2647,73 @@ export function DashboardPage() {
               )
             }
             valueColor={pnlSignTextClass(stats.openPnl)}
-            subColor="text-neutral-500"
+            subColor="text-neutral-900 dark:text-neutral-50"
           />
-        </div>
-        <div className="border-t border-neutral-100 dark:border-neutral-800 p-4 sm:p-5 grid grid-cols-2 lg:grid-cols-4 gap-4">
+      </div>
+
+      <div className={`${DASHBOARD_CARD} grid grid-cols-2 divide-x divide-y divide-neutral-100 dark:divide-neutral-800/70 lg:grid-cols-4 lg:divide-y-0`}>
           <OverviewStat
             label={t.dashboard.activeSignalChannels}
             value={String(stats.activeChannels)}
-            // sub={t.dashboard.connectedTelegramChannels}
             addTo="/channels"
             addLabel={t.dashboard.manageChannels}
           />
           <OverviewStat
             label={t.dashboard.openTrades}
             value={String(stats.openTrades)}
-            // sub={t.dashboard.activeBrokerPositions}
           />
           <OverviewStat
             label={t.dashboard.tradingAccountsConnected}
             value={String(stats.accounts)}
-            // sub={interpolate(t.dashboard.acrossAccounts, { count: stats.accounts })}
-            onAdd={openAddTradingAccount}
+            onAdd={() => openAddTradingAccount()}
             addLabel={t.dashboard.addOrManageAccounts}
           />
           <OverviewStat
             label={t.dashboard.tradesCopiedToday}
             value={String(stats.tradesCopiedToday)}
-            // sub={t.dashboard.executedFromSignals}
           />
-        </div>
-        <div className="border-t border-neutral-100 dark:border-neutral-800">
-          <CopierStatusCard accounts={linkedAccounts} embedded />
-        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <CopierStatusCard accounts={linkedAccounts} />
+
+      {/*
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-5">
         <TradeVolumeChart data={displayAnalytics.tradeVolume7Day} loading={chartsLoading} />
         <ChannelProfitChart
           data={displayAnalytics.channelProfit7d}
           loading={chartsLoading}
         />
       </div>
+      */}
 
-      {/* Lower panels */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-        {/* AI Expert Log */}
-          <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 min-w-0">
-          <div className="px-4 sm:px-5 py-4 border-b border-neutral-100 dark:border-neutral-800 flex flex-wrap items-center justify-between gap-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-5">
+          <div className={`${DASHBOARD_CARD} min-w-0 overflow-hidden`}>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800/80">
             <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-teal-500" />
-              <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{t.dashboard.tradeActivities}</span>
+              <h2 className="text-[15px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">{t.dashboard.tradeActivities}</h2>
               <InfoTooltip text={t.dashboard.tradeActivitiesHint} />
             </div>
             <button
+              type="button"
               onClick={() => navigate('/activities')}
-              className="flex items-center gap-1.5 px-3 py-1.5 border border-teal-500 dark:border-teal-600 text-teal-600 dark:text-teal-400 rounded-lg text-xs font-medium hover:bg-teal-50 dark:hover:bg-teal-950/50 transition-colors"
+              className={DASHBOARD_SECTION_LINK}
             >
               {t.dashboard.management}
-              <ChevronRight className="w-3 h-3" />
+              <ChevronRight className="h-3.5 w-3.5" />
             </button>
           </div>
 
-          {visibleTradeActivities.length === 0 && chartsEmpty && aiExpertLogs.length === 0 ? (
+          {visibleTradeActivities.length === 0 && chartsEmpty && aiExpertLogs.length === 0 && socialCopyLogs.length === 0 && manualSourceLogs.length === 0 ? (
             <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
               {[...Array(5)].map((_, i) => (
                 <div key={i} className="px-5 py-3">
-                  <div className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse w-3/4 mb-1.5" />
-                  <div className="h-3 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse w-1/3" />
+                  <div className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse w-3/4 mb-1.5" />
+                  <div className="h-3 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse w-1/3" />
                 </div>
               ))}
             </div>
           ) : visibleTradeActivities.length === 0 ? (
-            <div className="px-5 py-10 text-sm text-neutral-400">{t.dashboard.noTradeActivities}</div>
+            <div className="px-5 py-10 text-sm text-neutral-900 dark:text-neutral-50">{t.dashboard.noTradeActivities}</div>
           ) : (
             <div className="divide-y divide-neutral-100 dark:divide-neutral-800 max-h-96 overflow-y-auto">
               {visibleTradeActivities.map(activity => (
@@ -2489,26 +2724,26 @@ export function DashboardPage() {
         </div>
 
         {/* Copier Logs */}
-        <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 min-w-0 overflow-hidden">
-          <div className="px-4 sm:px-5 py-4 border-b border-neutral-100 dark:border-neutral-800 flex flex-wrap items-center justify-between gap-2">
+        <div className={`${DASHBOARD_CARD} min-w-0 overflow-hidden`}>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800/80">
             <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-teal-500" />
-              <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{t.dashboard.copierLogs}</span>
+              <h2 className="text-[15px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">{t.dashboard.copierLogs}</h2>
               <InfoTooltip text={t.copierLogs.subtitle} />
             </div>
             <button
+              type="button"
               onClick={() => navigate('/copier-logs')}
-              className="flex items-center gap-1.5 px-3 py-1.5 border border-teal-500 dark:border-teal-600 text-teal-600 dark:text-teal-400 rounded-lg text-xs font-medium hover:bg-teal-50 dark:hover:bg-teal-950/50 transition-colors"
+              className={DASHBOARD_SECTION_LINK}
             >
-              {t.dashboard.copierLogs}
-              <ChevronRight className="w-3 h-3" />
+              {t.dashboard.viewAll}
+              <ChevronRight className="h-3.5 w-3.5" />
             </button>
           </div>
 
           <div className="overflow-x-auto">
           {/* Table header */}
           <div
-            className={`${DASHBOARD_COPIER_LOG_GRID} min-w-[28rem] px-4 sm:px-5 py-3 border-b border-neutral-100 dark:border-neutral-800 text-xs font-medium text-neutral-400 uppercase tracking-wide`}
+            className={`${DASHBOARD_COPIER_LOG_GRID} min-w-md border-b border-neutral-100 px-5 py-2.5 text-xs font-regular uppercase tracking-[0.06em] text-neutral-900 dark:text-neutral-50 dark:border-neutral-800/80`}
           >
             <span>{t.copierLogs.colStatus}</span>
             <span className="min-w-0">{t.copierLogs.colChannel}</span>
@@ -2517,39 +2752,24 @@ export function DashboardPage() {
             <span className="text-right">{t.copierLogs.colTime}</span>
           </div>
 
-          {copierLogs.length === 0 && chartsEmpty ? (
+          {visibleCopierLogRows.length === 0 && chartsEmpty ? (
             <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
               {[...Array(4)].map((_, i) => (
                 <div key={i} className={`${DASHBOARD_COPIER_LOG_GRID} px-5 py-3`}>
                   {[...Array(5)].map((_, j) => (
-                    <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse min-w-0" />
+                    <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse min-w-0" />
                   ))}
                 </div>
               ))}
             </div>
-          ) : copierLogs.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 px-5">
-              <div className="w-20 h-20 bg-neutral-100 dark:bg-neutral-800 rounded-2xl flex items-center justify-center mb-3 relative">
-                <svg className="w-10 h-10 text-neutral-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <div className="absolute -top-1 -right-1 w-6 h-6 bg-neutral-200 rounded-full flex items-center justify-center">
-                  <svg className="w-3 h-3 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-3 3-1-1" />
-                  </svg>
-                </div>
-              </div>
-              <p className="text-sm text-neutral-400 font-medium">{t.dashboard.noData}</p>
+          ) : visibleCopierLogRows.length === 0 ? (
+            <div className="flex flex-col items-center justify-center px-5 py-16 text-center">
+              <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{t.dashboard.noData}</p>
             </div>
           ) : (
-            <div className="divide-y divide-neutral-100 dark:divide-neutral-800 max-h-80 overflow-y-auto min-w-[28rem]">
-              {copierLogs.map(log => (
-                <LogRow
-                  key={log.id}
-                  signal={log}
-                  channelName={channelLabel(log.channel_id, channelDisplayNames)}
-                  symbol={copierLogSymbols[log.id] ?? '—'}
-                />
+            <div className="divide-y divide-neutral-100 dark:divide-neutral-800 max-h-80 overflow-y-auto min-w-md">
+              {visibleCopierLogRows.map(row => (
+                <LogRow key={row.key} row={row} />
               ))}
             </div>
           )}
@@ -2558,31 +2778,26 @@ export function DashboardPage() {
       </div>
 
       {/* Linked Accounts */}
-      <div className="mt-4 sm:mt-6 bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden">
-        <div className="px-4 sm:px-5 py-4 border-b border-neutral-100 dark:border-neutral-800 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <div>
-              <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 inline-flex items-center gap-2">
-                {la.title}
-                <span className="inline-flex items-center justify-center min-w-[1.375rem] h-5 px-1.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-xs font-semibold text-neutral-500 dark:text-neutral-400 ">
-                  {linkedAccounts.length}
-                </span>
-              </p>
-              <p className="text-xs text-neutral-400 dark:text-neutral-500">{la.subtitle}</p>
-            </div>
-          </div>
+      <div className={`${DASHBOARD_CARD} overflow-hidden`}>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800/80">
+          <h2 className="inline-flex items-center gap-2 text-[15px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
+            {la.title}
+            <span className="text-xs font-medium tabular-nums text-neutral-900 dark:text-neutral-50">
+              {linkedAccounts.length}
+            </span>
+          </h2>
           <button
             type="button"
-            onClick={openAddTradingAccount}
-            className="flex items-center gap-1.5 px-3 py-1.5 border border-teal-500 dark:border-teal-600 text-teal-600 dark:text-teal-400 rounded-lg text-xs font-medium hover:bg-teal-50 dark:hover:bg-teal-950/50 transition-colors"
+            onClick={() => openAddTradingAccount()}
+            className={DASHBOARD_SECTION_LINK}
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Plus className="h-3.5 w-3.5" />
             {t.common.add}
           </button>
         </div>
 
         {brokerReconnectError ? (
-          <div className="px-4 sm:px-5 py-2 text-sm text-neutral-600 dark:text-neutral-400 border-b border-neutral-100 dark:border-neutral-800">
+          <div className="px-4 sm:px-5 py-2 text-sm text-neutral-900 dark:text-neutral-50 border-b border-neutral-100 dark:border-neutral-800">
             {brokerReconnectError}
           </div>
         ) : null}
@@ -2594,8 +2809,8 @@ export function DashboardPage() {
         ) : null}
 
         <div className="overflow-x-auto">
-        <div className="min-w-[52rem] lg:min-w-0">
-        <div className="hidden lg:grid grid-cols-9 gap-2 px-4 sm:px-5 py-3 border-b border-neutral-100 dark:border-neutral-800 text-xs font-medium text-neutral-400">
+        <div className="min-w-208 lg:min-w-0">
+        <div className="hidden lg:grid grid-cols-9 gap-2 border-b border-neutral-100 px-5 py-2.5 text-[11px] font-medium uppercase tracking-[0.06em] text-neutral-900 dark:text-neutral-50 dark:border-neutral-800/80">
           <LinkedAccountSortHeader
             label={la.colAccount}
             sortKey="account"
@@ -2669,13 +2884,13 @@ export function DashboardPage() {
             {[...Array(3)].map((_, i) => (
               <div key={i} className="hidden lg:flex px-4 sm:px-5 py-3 gap-4">
                 {[...Array(9)].map((_, j) => (
-                  <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse flex-1" />
+                  <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse flex-1" />
                 ))}
               </div>
             ))}
           </div>
         ) : linkedAccounts.length === 0 ? (
-          <div className="px-5 py-8 text-sm text-neutral-400">{la.empty}</div>
+          <div className="px-5 py-8 text-sm text-neutral-900 dark:text-neutral-50">{la.empty}</div>
         ) : (
           <div className="divide-y divide-neutral-100 dark:divide-neutral-800"> 
             {displayedLinkedAccounts.map(account => (
@@ -2729,16 +2944,16 @@ function StatBlock({ label, labelHint, value, sub, subColor, valueColor = 'text-
   valueColor?: string
 }) {
   return (
-    <div className="px-4 py-4 sm:px-6 sm:py-5">
-      <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 mb-1.5 sm:mb-2 inline-flex items-center gap-1">
+    <div className="rounded-2xl bg-white px-4 py-4 sm:px-5 dark:bg-white/3 dark:ring-1 dark:ring-inset dark:ring-white/6">
+      <p className="inline-flex items-center gap-1 text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-900 dark:text-neutral-50">
         {label}
         {labelHint ? <InfoTooltip text={labelHint} /> : null}
       </p>
-      <p className={clsx('text-xl sm:text-2xl font-semibold mb-1 sm:mb-1.5', valueColor)}>{value}</p>
+      <p className={clsx('mt-2 text-2xl font-semibold tracking-tight', valueColor)}>{value}</p>
       {sub === '' ? null : typeof sub === 'string' ? (
-        <p className={`text-xs ${subColor}`}>{sub}</p>
+        <p className={clsx('mt-1.5 text-xs leading-5', subColor)}>{sub}</p>
       ) : (
-        <div className="text-xs">{sub}</div>
+        <div className="mt-1.5 text-xs leading-5">{sub}</div>
       )}
     </div>
   )
@@ -2759,71 +2974,88 @@ function OverviewStat({
   onAdd?: () => void
   addLabel?: string
 }) {
+  const actionClass = 'mt-2 inline-flex items-center gap-1 text-xs font-medium text-neutral-900 transition-colors hover:text-neutral-900 dark:text-neutral-50 dark:hover:text-neutral-100'
+
   return (
-    <div>
-      <div className="flex items-center justify-between gap-2 mb-1">
-        <p className="text-xs text-neutral-500 dark:text-neutral-400 min-w-0">{label}</p>
-        {onAdd ? (
-          <button
-            type="button"
-            onClick={onAdd}
-            aria-label={addLabel ?? `Add ${label}`}
-            className="shrink-0 flex items-center justify-center w-6 h-6 rounded-md border border-teal-200 dark:border-teal-800 text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-950/50 hover:border-teal-300 dark:hover:border-teal-700 transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" />
-          </button>
-        ) : addTo ? (
-          <Link
-            to={addTo}
-            aria-label={addLabel ?? `Go to ${label}`}
-            className="shrink-0 flex items-center justify-center w-6 h-6 rounded-md border border-teal-200 dark:border-teal-800 text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-950/50 hover:border-teal-300 dark:hover:border-teal-700 transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" />
-          </Link>
-        ) : null}
-      </div>
-      <p className="text-2xl font-semibold text-neutral-900 dark:text-neutral-50">{value}</p>
-      {sub ? <p className="text-xs text-neutral-400 mt-1">{sub}</p> : null}
+    <div className="px-4 py-4 sm:px-5">
+      <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-900 dark:text-neutral-50">{label}</p>
+      <p className="mt-2 text-xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">{value}</p>
+      {onAdd ? (
+        <button type="button" onClick={onAdd} className={actionClass}>
+          {addLabel ?? `Add ${label}`}
+          <ChevronRight className="h-3.5 w-3.5" />
+        </button>
+      ) : addTo ? (
+        <Link to={addTo} className={actionClass}>
+          {addLabel ?? `Go to ${label}`}
+          <ChevronRight className="h-3.5 w-3.5" />
+        </Link>
+      ) : sub ? (
+        <p className="mt-2 text-xs text-neutral-900 dark:text-neutral-50">{sub}</p>
+      ) : (
+        <span className="mt-2 block h-5" aria-hidden />
+      )}
     </div>
   )
 }
 
-function LogRow({ signal, channelName, symbol }: { signal: Signal; channelName: string; symbol: string }) {
+type DashboardCopierLogRow = {
+  key: string
+  at: string
+  status: string
+  channelName: string
+  channelTitle: string
+  symbol: string
+  action: string | null
+  sourceKind: SignalSourceKind | null
+  isSocial: boolean
+  isManual: boolean
+}
+
+function LogRow({ row }: { row: DashboardCopierLogRow }) {
   const t = useT()
-  const parsed = signal.parsed_data as Record<string, unknown> | null
-  const action = parsed?.action as string | undefined
+  const action = row.action
 
   const statusConfig: Record<string, { color: string; label: string }> = {
-    executed: { color: 'text-teal-700 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60', label: t.copierLogs.statusExecuted },
-    skipped:  { color: 'text-warning-800 bg-warning-50 dark:!text-amber-100 dark:!bg-amber-900', label: t.copierLogs.statusSkipped },
+    executed: { color: 'bg-green-100 text-neutral-950 dark:bg-green-100 dark:text-neutral-950', label: t.copierLogs.statusExecuted },
+    skipped:  { color: 'text-warning-800 bg-warning-50 dark:text-amber-100! dark:bg-amber-900!', label: t.copierLogs.statusSkipped },
     failed:   { color: 'text-error-800 bg-error-50 dark:text-error-300 dark:bg-error-950/70', label: t.copierLogs.statusFailed },
-    pending:  { color: 'text-neutral-600 bg-neutral-100 dark:text-neutral-300 dark:bg-neutral-800', label: t.copierLogs.statusPending },
-    parsed:   { color: 'text-teal-700 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60', label: t.copierLogs.statusParsed },
+    pending:  { color: 'text-neutral-900 bg-neutral-100 dark:text-neutral-50 dark:bg-neutral-800', label: t.copierLogs.statusPending },
+    parsed:   { color: 'text-green-500 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60', label: t.copierLogs.statusParsed },
   }
 
-  const s = statusConfig[signal.status] ?? { color: 'text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800', label: signal.status }
+  const s = statusConfig[row.status] ?? { color: 'text-neutral-900 dark:text-neutral-50 bg-neutral-100 dark:bg-neutral-800', label: row.status }
   const isBuy = action === 'buy'
 
   const typeLabel = action ? action.replace(/_/g, ' ') : '—'
 
   return (
-    <div className={`${DASHBOARD_COPIER_LOG_GRID} px-4 sm:px-5 py-3 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors`}>
-      <span className={`inline-flex w-fit items-center px-2 py-0.5 rounded-md text-xs font-medium ${s.color}`}>
+    <div className={`${DASHBOARD_COPIER_LOG_GRID} px-5 py-3 transition-colors hover:bg-[#F7F8FA] dark:hover:bg-white/3`}>
+      <span className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-sm font-regular ${s.color}`}>
         {s.label}
       </span>
-      <span className="min-w-0 text-xs text-neutral-500 dark:text-neutral-400 truncate" title={channelName}>{channelName}</span>
-      <span className="min-w-0 text-sm font-medium text-neutral-900 dark:text-neutral-50 truncate" title={symbol}>{symbol}</span>
+      <span className="flex min-w-0 items-center gap-2 text-sm font-regular text-neutral-900 dark:text-neutral-50" title={row.channelTitle}>
+        {row.isSocial ? (
+          <Users className="h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50" aria-hidden />
+        ) : row.isManual ? (
+          <Hand className="h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50" aria-hidden />
+        ) : row.sourceKind ? (
+          <SignalSourceLogo kind={row.sourceKind} />
+        ) : null}
+        <span className="truncate">{row.channelName}</span>
+      </span>
+      <span className="min-w-0 text-base font-regular text-neutral-900 dark:text-neutral-50 truncate" title={row.symbol}>{row.symbol}</span>
       <span
-        className={`min-w-0 text-xs font-medium uppercase truncate ${
-          isBuy ? 'text-primary-600' : action === 'sell' ? 'text-error-600' : 'text-neutral-600 dark:text-neutral-400'
+        className={`min-w-0 text-sm font-regular uppercase truncate ${
+          isBuy ? 'text-green-500 dark:text-green-400' : action === 'sell' ? 'text-error-600' : 'text-neutral-900 dark:text-neutral-50'
         }`}
         title={typeLabel}
       >
         {typeLabel}
       </span>
-      <span className="text-xs text-neutral-400 text-right whitespace-nowrap">
-        {signal.created_at
-          ? new Date(signal.created_at).toLocaleString([], {
+      <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50 text-right whitespace-nowrap">
+        {row.at
+          ? new Date(row.at).toLocaleString([], {
               month: 'short',
               day: 'numeric',
               hour: '2-digit',
@@ -2869,13 +3101,13 @@ function LinkedAccountSortHeader({
       type="button"
       onClick={() => onSort(sortKey)}
       title={title}
-      className={`inline-flex min-w-0 items-center gap-0.5 rounded-md transition-colors hover:text-neutral-600 dark:hover:text-neutral-300 ${
+      className={`inline-flex min-w-0 items-center gap-0.5 rounded-md transition-colors hover:text-neutral-900 dark:hover:text-neutral-50 ${
         align === 'right' ? 'ml-auto justify-end' : 'justify-start'
-      } ${isActive ? 'text-neutral-700 dark:text-neutral-200' : 'text-neutral-400'}`}
+      } ${isActive ? 'text-neutral-900 dark:text-neutral-50' : 'text-neutral-900 dark:text-neutral-50'}`}
     >
       <span className="truncate">{label}</span>
       <SortIcon
-        className={`h-3.5 w-3.5 shrink-0 ${isActive ? 'text-teal-600 dark:text-teal-400' : 'opacity-50'}`}
+        className={`h-3.5 w-3.5 shrink-0 ${isActive ? 'text-green-400 dark:text-green-400' : 'opacity-50'}`}
         aria-hidden
       />
     </button>
@@ -2912,11 +3144,17 @@ function LinkedAccountRow({
   const intlLocale = locale === 'en' ? undefined : locale
   const isDisconnected = !isBrokerSessionConnected(account)
   const statusClass = isDisconnected
-    ? 'text-neutral-700 border-neutral-200 bg-neutral-100 dark:text-neutral-300 dark:border-neutral-700 dark:bg-neutral-800/80'
+    ? 'text-neutral-900 border-neutral-200 bg-neutral-100 dark:text-neutral-50 dark:border-neutral-700 dark:bg-neutral-800/80'
     : account.is_active
-      ? 'text-teal-700 border-teal-200 bg-teal-50 dark:text-teal-300 dark:border-teal-800 dark:bg-teal-950/50'
-      : 'text-neutral-600 border-neutral-200 bg-neutral-100 dark:text-neutral-400 dark:border-neutral-700 dark:bg-neutral-800/80'
-  const balance = accountSummary?.balance ?? account.last_balance ?? null
+      ? 'text-green-500 border-teal-200 bg-teal-50 dark:text-teal-300 dark:border-teal-800 dark:bg-teal-950/50'
+      : 'text-neutral-900 border-neutral-200 bg-neutral-100 dark:text-neutral-50 dark:border-neutral-700 dark:bg-neutral-800/80'
+  const cashBalance = accountSummary?.balance ?? account.last_balance ?? null
+  // Cash balance stays put while positions tick. Show cash + live floating P/L.
+  const balance = equityWithFloatingPnl(
+    cashBalance,
+    accountSummary?.open_pnl,
+    accountSummary?.equity ?? account.last_equity,
+  ) ?? cashBalance
   const accountCurrency = (accountSummary?.currency ?? account.last_currency ?? '').trim() || undefined
   const balanceText = formatMoneyWithCode(balance, accountCurrency, { locale: intlLocale })
   const pnl = connectPnl ?? 0
@@ -2958,7 +3196,7 @@ function LinkedAccountRow({
   const winRate = performance?.winRate ?? null
   const maxDd = performance?.maxDrawdownPct ?? null
   const winRateColor =
-    winRate == null ? 'text-neutral-900 dark:text-neutral-50' : winRate >= 50 ? 'text-teal-600' : 'text-neutral-900 dark:text-neutral-50'
+    winRate == null ? 'text-neutral-900 dark:text-neutral-50' : winRate >= 50 ? 'text-green-500 dark:text-green-400' : 'text-neutral-900 dark:text-neutral-50'
   const ddColor =
     maxDd == null ? 'text-neutral-900 dark:text-neutral-50' : lossTextClass
 
@@ -2973,7 +3211,7 @@ function LinkedAccountRow({
           onOpenStats()
         }
       }}
-      className="grid grid-cols-9 gap-2 px-4 sm:px-5 py-3 items-center hover:bg-teal-50 dark:hover:bg-teal-950/40 transition-colors cursor-pointer"
+      className="grid cursor-pointer grid-cols-9 items-center gap-2 px-5 py-3.5 transition-colors hover:bg-[#F7F8FA] dark:hover:bg-white/3"
     >
       <div className="flex flex-col min-w-0">
         <span
@@ -2983,7 +3221,7 @@ function LinkedAccountRow({
           {accountLabel}
         </span>
         <span
-          className="text-[11px] font-medium text-primary-600 uppercase  truncate"
+          className="truncate text-[11px] font-medium tracking-wide text-neutral-900 dark:text-neutral-50"
           title={platformLine}
         >
           {platformLine}
@@ -3038,7 +3276,7 @@ function LinkedAccountRow({
             disabled={toggleDisabled}
           />
         </span>
-        <span className={`inline-flex items-center px-2.5 py-1 rounded-lg border text-xs font-semibold ${statusClass}`}>
+        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusClass}`}>
           {brokerConnectionStatusLabel(account, la)}
         </span>
       </div>

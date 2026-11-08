@@ -6,7 +6,7 @@ export const configureModalEn: ConfigureModalTranslations = {
   saved: 'Saved',
   cancel: 'Cancel',
   save: 'Save',
-  channelsSidebar: 'Channels',
+  channelsSidebar: 'Source',
   addChannel: 'Add channel',
   editLinkedChannels: 'Edit linked channels',
   doneEditingLinkedChannels: 'Done editing channels',
@@ -50,6 +50,8 @@ export const configureModalEn: ConfigureModalTranslations = {
   applyPresetAction: 'Apply & save',
   closeUnsavedConfirm:
     'You have unsaved trading settings. The copier will not use your changes until you save. Close anyway?',
+  closeUnsavedTitle: 'Discard unsaved settings?',
+  discardChanges: 'Discard changes',
   noPresetsYet: 'No presets yet — use Save as preset to create one.',
   saveAsPreset: 'Save as preset',
   saveAsPresetTitle: 'Save as preset',
@@ -135,6 +137,7 @@ export const configureModalEn: ConfigureModalTranslations = {
     editExample: 'Edit',
     manualBadge: 'Manual',
     deleteExampleConfirm: 'Delete this signal example?',
+    deleteExampleTitle: 'Delete signal example',
     cancel: 'Cancel',
     entryCues: 'Entry cues',
     buyCues: 'Buy cues',
@@ -484,7 +487,7 @@ export const configureModalEn: ConfigureModalTranslations = {
     ruleTriggerTpHit: 'when TP{index} is reached',
     orderCommentsTitle: 'Order comments',
     orderCommentsSubtitle:
-      'When off, TScopier leaves the broker order comment field empty for trades it opens or refreshes.',
+      'When off, UniCopier leaves the broker order comment field empty for trades it opens or refreshes.',
   },
   filters: {
     timeTitle: 'Time filter',

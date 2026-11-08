@@ -33,6 +33,15 @@ verify_jwt = false
 [functions.create-checkout-session]
 verify_jwt = true
 
+[functions.provider-connect]
+verify_jwt = true
+
+[functions.create-social-copy-checkout]
+verify_jwt = true
+
+[functions.social-copy-portal]
+verify_jwt = true
+
 [functions.confirm-checkout]
 verify_jwt = true
 
@@ -49,6 +58,27 @@ verify_jwt = true
 verify_jwt = false
 
 [functions.fxsocket-broker]
+verify_jwt = true
+
+[functions.ctrader-broker]
+verify_jwt = true
+
+[functions.binance-broker]
+verify_jwt = true
+
+[functions.bybit-broker]
+verify_jwt = true
+
+[functions.kucoin-broker]
+verify_jwt = true
+
+[functions.dxtrade-broker]
+verify_jwt = true
+
+[functions.tradelocker-broker]
+verify_jwt = true
+
+[functions.matchtrader-broker]
 verify_jwt = true
 
 [functions.reconcile-expired-trials]
@@ -86,6 +116,12 @@ verify_jwt = true
 
 [functions.provider-transition]
 verify_jwt = false
+
+[functions.tradingview-webhook]
+verify_jwt = false
+
+[functions.discord-sync]
+verify_jwt = true
 
 [functions.alert-evaluator]
 verify_jwt = false

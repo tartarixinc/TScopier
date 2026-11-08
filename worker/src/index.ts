@@ -1,4 +1,14 @@
-import 'dotenv/config'
+import dotenv from 'dotenv'
+import path from 'path'
+
+dotenv.config()
+dotenv.config({ path: path.resolve(process.cwd(), '../.env') })
+
+// After env is loaded: route SUPABASE_URL fetches through the VPS gateway
+// header when SUPABASE_RELAY_TOKEN is set (env-breach containment).
+import { installRelayFetch } from './relayFetch'
+installRelayFetch()
+
 import {
   captureWorkerFatalError,
   captureWorkerLog,
@@ -8,6 +18,7 @@ import {
   installWorkerProcessSentryHandlers,
 } from './observability/sentry'
 import { startWorkerHeartbeatCheckIns, stopWorkerHeartbeatCheckIns } from './observability/workerHeartbeat'
+import { telegramSessionKeyFingerprints } from './telegramSessionCrypto'
 // Must be loaded before any TelegramClient runtime code — patches console.log
 // to suppress GramJS flood-wait INFO noise (83% of log volume) and
 // console.error to aggregate the `Error: TIMEOUT` stacks GramJS's update loop
@@ -38,7 +49,8 @@ import { TradeBrokerDriftMonitor } from './tradeBrokerDriftMonitor'
 import { attachBrokerStreamProxy } from './brokerStreamProxy'
 import { getFxsocketStreamManager } from './fxsocketStreamManager'
 import { CopyLimitMonitor } from './copyLimitMonitor'
-import { workerConfig, WORKER_BUILD_TAG } from './workerConfig'
+import { parseEnvBool, isKnownRole, KNOWN_ROLES, workerConfig, WORKER_BUILD_TAG } from './workerConfig'
+import type { DiscordListenerHandle } from './discordListener'
 import { validateListenerTradeShardConfig, validateListenerMgmtShardConfig, validateListenerQueueConfig } from './tradeSignalPush'
 import { SignalQueueConsumerManager } from './queue/signalQueueConsumer'
 import { deployedTradeShardCount, signalQueueConfig, redisQueueConfigured } from './queue/signalQueueConfig'
@@ -52,10 +64,21 @@ import { registerOrderCloseAuditSupabase } from './orderCloseAudit'
 import { initializeBrokerExecutionCapability } from './brokerExecutionMode'
 import { testFlagEnabled } from './testFlags'
 import { MtapiSessionManager } from './mtapiSessionManager'
+import { SocialCopyMonitor } from './socialCopyMonitor'
+import { MirrorCopyMonitor } from './mirrorCopy/mirrorCopyMonitor'
+import { MtapiOrderUpdateHub, mtapiOrderUpdateWsEnabled } from './mtapiOrderUpdateHub'
 import {
   createSupabaseBrokerWriteAuthorityStore,
   registerBrokerWriteAuthorityStore,
 } from './brokerWriteAuthority'
+
+if (!isKnownRole(process.env.WORKER_ROLE)) {
+  console.error(
+    `[worker] FATAL: unknown WORKER_ROLE="${process.env.WORKER_ROLE}" — expected one of `
+    + KNOWN_ROLES.join('|'),
+  )
+  process.exit(1)
+}
 
 initWorkerSentry()
 installWorkerProcessSentryHandlers()
@@ -99,6 +122,7 @@ let authService: AuthService | null = null
 let tradeExecutor: TradeExecutor | null = null
 let signalQueueConsumers: SignalQueueConsumerManager | null = null
 let mtapiSessionManager: MtapiSessionManager | null = null
+let discordListener: DiscordListenerHandle | null = null
 
 const monitors: Array<{ stop: () => void }> = []
 const monitorLoops: MonitorLoopHandle[] = []
@@ -158,6 +182,53 @@ function startTradeMonitors(executor: TradeExecutor | null) {
     const copyLimitMonitor = new CopyLimitMonitor(supabase)
     copyLimitMonitor.start()
     trackMonitor(copyLimitMonitor)
+    // Social copy is fail-closed outside Migration preview. Only start when
+    // explicitly enabled (or when this worker targets the Migration project) so
+    // a disabled replica cannot claim leases and stall or error subscriptions.
+    const migrationPreview = /supmsgcubipmmowrzoub/i.test(process.env.SUPABASE_URL ?? '')
+    const socialCopyExecutionEnabled = parseEnvBool(process.env.SOCIAL_COPY_EXECUTION_ENABLED, migrationPreview)
+    const socialCopySyntheticEnabled = parseEnvBool(process.env.SOCIAL_COPY_SYNTHETIC_SIMULATION_ENABLED, migrationPreview)
+    let socialCopyMonitor: SocialCopyMonitor | null = null
+    if (socialCopyExecutionEnabled || socialCopySyntheticEnabled) {
+      socialCopyMonitor = new SocialCopyMonitor(supabase, {
+        workerId: process.env.SOCIAL_COPY_WORKER_ID?.trim() || `social-copy-${workerConfig.instanceId}:${process.pid}`,
+        executionEnabled: socialCopyExecutionEnabled,
+        syntheticSimulationEnabled: socialCopySyntheticEnabled,
+      })
+      socialCopyMonitor.start()
+      trackMonitor(socialCopyMonitor)
+    }
+    // Mirror copy is default-off and has no links in production yet. Only start the
+    // monitor when the worker is explicitly enabled, so a disabled flag never writes
+    // error state against existing links or reads a broker.
+    let mirrorCopyMonitor: MirrorCopyMonitor | null = null
+    if (parseEnvBool(process.env.MIRROR_COPY_EXECUTION_ENABLED, true)) {
+      mirrorCopyMonitor = new MirrorCopyMonitor(supabase, { workerId: `mirror-copy-${workerConfig.instanceId}:${process.pid}` })
+      mirrorCopyMonitor.start()
+      trackMonitor(mirrorCopyMonitor)
+    }
+
+    // MTAPI OnOrderUpdate wakes social/mirror reconcile for broker-side manuals
+    // instead of waiting on the OpenedOrders poll interval.
+    const orderUpdateWsDefault = migrationPreview
+      || socialCopyExecutionEnabled
+      || socialCopySyntheticEnabled
+      || parseEnvBool(process.env.MIRROR_COPY_EXECUTION_ENABLED, true)
+    if (
+      mtapiOrderUpdateWsEnabled(orderUpdateWsDefault)
+      && (socialCopyMonitor || mirrorCopyMonitor)
+    ) {
+      const orderUpdateHub = new MtapiOrderUpdateHub({
+        supabase,
+        onSourceUpdate: (brokerAccountId) => {
+          socialCopyMonitor?.pokeSourceBrokerAccount(brokerAccountId)
+          mirrorCopyMonitor?.pokeSourceBrokerAccount(brokerAccountId)
+        },
+      })
+      orderUpdateHub.start()
+      trackMonitor(orderUpdateHub)
+      console.log('[worker] MTAPI OnOrderUpdate hub started for realtime copy wakes')
+    }
   }
 
   if (workerConfig.runsManagementMonitors) {
@@ -189,6 +260,14 @@ function startTradeMonitors(executor: TradeExecutor | null) {
 async function main() {
   initializeBrokerExecutionCapability()
 
+  if (workerConfig.runsDiscordListener && (workerConfig.shardCount > 1 || workerConfig.shardId > 0)) {
+    console.error(
+      '[worker] FATAL: discord_listener must run as a single replica'
+      + ' (WORKER_SHARD_COUNT=1, WORKER_SHARD_ID=0) — one gateway per bot token',
+    )
+    process.exit(1)
+  }
+
   if (workerConfig.runsListener) {
     const shardErr = validateListenerTradeShardConfig()
     if (shardErr) {
@@ -211,6 +290,14 @@ async function main() {
     `[worker] starting role=${workerConfig.role} shard=${workerConfig.shardId}/${workerConfig.shardCount}`
     + ` instance=${workerConfig.instanceId} build=${WORKER_BUILD_TAG}`,
   )
+
+  if (!workerConfig.runsDiscordListener) {
+    const sessionKeys = telegramSessionKeyFingerprints()
+    console.log(
+      `[worker] telegram-session-encryption primary=${sessionKeys.primary ?? 'not-configured'}`
+      + ` previous=${sessionKeys.previous.join(',') || 'none'}`,
+    )
+  }
 
   if (workerConfig.runsListener || workerConfig.runsBacktestHttp) {
     authService = new AuthService(supabase, sessionManager)
@@ -304,6 +391,13 @@ async function main() {
     sessionManager.setTradeExecutor(null)
   }
 
+  if (workerConfig.runsDiscordListener) {
+    // Loaded lazily: discord.js costs ~2s and ~46 MB and only this role needs it.
+    const { startDiscordListener } = await import('./discordListener')
+    discordListener = await startDiscordListener()
+    console.log(`[worker] discord listener started guilds=${discordListener.client.guilds.cache.size}`)
+  }
+
   if (workerConfig.runsListener) {
     // Register periodic lease renewal + session sync BEFORE (and independent of)
     // loadAll. Previously loadAll was awaited first, so a single hung listener
@@ -373,9 +467,12 @@ async function main() {
     if (workerConfig.runsListener) {
       await sessionManager.disconnectAll()
     }
-    const drainMs = telegramShutdownDrainMs()
-    console.log(`[worker] Telegram shutdown drain ${drainMs}ms before exit`)
-    await new Promise(r => setTimeout(r, drainMs))
+    await discordListener?.stop()
+    if (!workerConfig.runsDiscordListener) {
+      const drainMs = telegramShutdownDrainMs()
+      console.log(`[worker] Telegram shutdown drain ${drainMs}ms before exit`)
+      await new Promise(r => setTimeout(r, drainMs))
+    }
     clearTimeout(shutdownWarnTimer)
     await flushWorkerSentry(1800)
     process.exit(0)

@@ -18,6 +18,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { TelegramClient } from 'telegram'
 import { StringSession } from 'telegram/sessions'
+import { openTelegramSession } from '../src/telegramSessionCrypto'
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? ''
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
@@ -112,12 +113,13 @@ async function main() {
   }
 
   const session = sessions[0]
-  console.log(`  Using session: user=${session.user_id} fp=${redact(session.session_string)}`)
+  const sessionString = openTelegramSession(session.session_string)
+  console.log(`  Using session: user=${session.user_id} fp=${redact(sessionString)}`)
 
   // 2. Connect to Telegram
   console.log('\n[2/3] Connecting to Telegram...')
   const client = new TelegramClient(
-    new StringSession(session.session_string),
+    new StringSession(sessionString),
     API_ID,
     API_HASH,
     {

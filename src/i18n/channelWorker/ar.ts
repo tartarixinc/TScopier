@@ -197,6 +197,8 @@ export const channelWorkerAr: ChannelWorkerTranslations = {
     delete_pendings_requires_reply:
       'يجب إرسال تعليمات الإلغاء كرد على رسالة الإشارة الأصلية',
     delete_pendings_none: 'لم يتم العثور على أوامر معلقة لإلغائها لهذه الصفقة',
+    delete_pendings_cancel_failed: 'تم العثور على أوامر معلقة ولكن تعذر إلغاء أي منها (رفض الوسيط أو كان غير متاح) — حاول مرة أخرى، أو أغلقها من صفحة الصفقات',
+    partial_close_unavailable_for_position_size: 'إغلاق جزئي غير ممكن — هذه الصفقة صغيرة جدًا للتقسيم (الجزء المطلوب سيكون أقل من الحد الأدنى لللوت لدى الوسيط)؛ لم يُغلق أي جزء وبقيت الصفقة مفتوحة بحجمها الكامل',
   },
   dispatchSkipped: 'لم يُنسخ هذا الإشعار ({reason}).',
   rangeRebalanceSkippedNamed: 'تم تخطي إعادة موازنة جني الأرباح لـ {symbol} ({reason}).',

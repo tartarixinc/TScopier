@@ -34,7 +34,7 @@ export function ActiveSignalTradesSection({
 }: ActiveSignalTradesSectionProps) {
   if (rows.length === 0) {
     return (
-      <p className="text-sm text-neutral-400 dark:text-neutral-500">{bs.noActiveSignalTrade}</p>
+      <p className="text-sm text-neutral-900 dark:text-neutral-50">{bs.noActiveSignalTrade}</p>
     )
   }
 
@@ -44,7 +44,7 @@ export function ActiveSignalTradesSection({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{bs.activeSignalTrade}</h3>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{bs.activeSignalTradeHint}</p>
+            <p className="text-xs text-neutral-900 dark:text-neutral-50 mt-0.5">{bs.activeSignalTradeHint}</p>
           </div>
           {showCloseAll && onCloseAll ? (
             <Button
@@ -64,26 +64,26 @@ export function ActiveSignalTradesSection({
       ) : null}
       <ul
         className={clsx(
-          'divide-y divide-neutral-100 dark:divide-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-800 overflow-hidden',
+          'divide-y divide-neutral-100 dark:divide-neutral-800 rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 overflow-hidden',
           showHeader ? 'mt-3' : '',
         )}
       >
         {rows.map(row => (
           <li
             key={row.channelId}
-            className="flex items-center justify-between gap-3 px-4 py-3 bg-white dark:bg-neutral-900"
+            className="flex items-center justify-between gap-3 px-4 py-3 bg-white dark:bg-neutral-950"
           >
             <div className="min-w-0">
               <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50 truncate">
                 {row.channelLabel}
               </p>
-              <p className="text-xs text-neutral-400 mt-0.5 tabular-nums">
+              <p className="text-xs text-neutral-900 dark:text-neutral-50 mt-0.5 tabular-nums">
                 {row.totalLots > 0 ? `${row.totalLots.toFixed(2)} ${bs.lots}` : '—'}
               </p>
             </div>
             <div className="flex items-center gap-3 shrink-0">
               <div className="text-right">
-                <p className="text-[10px] uppercase tracking-wide text-neutral-400">{bs.openPnl}</p>
+                <p className="text-[10px] uppercase tracking-wide text-neutral-900 dark:text-neutral-50">{bs.openPnl}</p>
                 <p className={clsx('text-sm font-semibold tabular-nums', pnlColor(row.pnl))}>
                   {formatSignedMoney(row.pnl)}
                 </p>

@@ -8,8 +8,8 @@ type PlanKey = 'basic' | 'advanced' | 'custom'
 function PlanCell({ value }: { value: LandingPlanComparisonRow['basic'] }) {
   if (value === 'yes') {
     return (
-      <span className="inline-flex items-center gap-2 text-sm text-neutral-800 dark:text-neutral-100">
-        <Check className="h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400" strokeWidth={2.5} aria-hidden />
+      <span className="inline-flex items-center gap-2 text-sm text-neutral-900 dark:text-neutral-100">
+        <Check className="h-4 w-4 shrink-0 text-green-400 dark:text-green-400" strokeWidth={2.5} aria-hidden />
         <span className="sr-only">Included</span>
       </span>
     )
@@ -17,7 +17,7 @@ function PlanCell({ value }: { value: LandingPlanComparisonRow['basic'] }) {
 
   if (value === 'no') {
     return (
-      <span className="inline-flex items-center gap-2 text-sm text-neutral-400 dark:text-neutral-500">
+      <span className="inline-flex items-center gap-2 text-sm text-neutral-900 dark:text-neutral-50">
         <X className="h-4 w-4 shrink-0" strokeWidth={2.5} aria-hidden />
         <span className="sr-only">Not included</span>
       </span>
@@ -26,14 +26,14 @@ function PlanCell({ value }: { value: LandingPlanComparisonRow['basic'] }) {
 
   if (value === 'partial') {
     return (
-      <span className="inline-flex items-center gap-2 text-sm text-neutral-500 dark:text-neutral-400">
+      <span className="inline-flex items-center gap-2 text-sm text-neutral-900 dark:text-neutral-50">
         <Minus className="h-4 w-4 shrink-0" strokeWidth={2.5} aria-hidden />
         <span className="sr-only">Limited</span>
       </span>
     )
   }
 
-  return <span className="text-sm text-neutral-700 dark:text-neutral-300">{value}</span>
+  return <span className="text-sm text-neutral-900 dark:text-neutral-50">{value}</span>
 }
 
 function MobilePlanCard({
@@ -53,13 +53,13 @@ function MobilePlanCard({
         'rounded-xl border px-4 py-3',
         highlighted
           ? 'border-teal-200 bg-teal-50/70 dark:border-teal-900/50 dark:bg-teal-950/40'
-          : 'border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900',
+          : 'border-neutral-200/65 bg-white dark:border-neutral-800/55 dark:bg-neutral-900',
       )}
     >
       <p
         className={clsx(
           'mb-2 text-[0.65rem] font-semibold uppercase tracking-wide',
-          highlighted ? 'text-teal-700 dark:text-teal-400' : 'text-neutral-500 dark:text-neutral-400',
+          highlighted ? 'text-green-500 dark:text-green-400' : 'text-neutral-900 dark:text-neutral-50',
         )}
       >
         {planLabel}
@@ -81,13 +81,13 @@ export function PlanComparisonSection({ variant = 'marketing' }: { variant?: 'ma
       )}
     >
       <div className="mx-auto max-w-2xl text-center">
-        <p className="text-xs font-semibold uppercase tracking-wider text-teal-600 dark:text-teal-400">
+        <p className="text-xs font-semibold uppercase tracking-wider text-green-400 dark:text-green-400">
           {c.eyebrow}
         </p>
         <h2 className="mt-3 text-3xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-4xl">
           {c.title}
         </h2>
-        <p className="mt-4 text-base text-neutral-600 dark:text-neutral-400">{c.subtitle}</p>
+        <p className="mt-4 text-base text-neutral-900 dark:text-neutral-50">{c.subtitle}</p>
       </div>
 
       <ul className="mt-10 flex flex-col gap-3 sm:mt-12 md:hidden">
@@ -95,11 +95,11 @@ export function PlanComparisonSection({ variant = 'marketing' }: { variant?: 'ma
           <li
             key={row.feature}
             className={clsx(
-              'overflow-hidden rounded-2xl border border-neutral-200/90 shadow-sm dark:border-neutral-800',
+              'overflow-hidden rounded-2xl border border-neutral-200/60 shadow-xs dark:border-neutral-800/55',
               index % 2 === 0 ? 'bg-white dark:bg-neutral-900' : 'bg-neutral-50/60 dark:bg-neutral-900/50',
             )}
           >
-            <p className="border-b border-neutral-200/90 px-4 py-3 text-sm font-semibold text-neutral-900 dark:border-neutral-800 dark:text-neutral-50">
+            <p className="border-b border-neutral-200/60 px-4 py-3 text-sm font-semibold text-neutral-900 dark:border-neutral-800/55 dark:text-neutral-50">
               {row.feature}
             </p>
             <div className="grid gap-2 p-3">
@@ -117,23 +117,23 @@ export function PlanComparisonSection({ variant = 'marketing' }: { variant?: 'ma
             <tr>
               <th
                 scope="col"
-                className="w-[28%] border-b border-neutral-200 bg-neutral-50/80 px-4 py-4 dark:border-neutral-800 dark:bg-neutral-900/80 sm:px-5"
+                className="w-[28%] border-b border-neutral-200/65 bg-neutral-50/80 px-4 py-4 dark:border-neutral-800/55 dark:bg-neutral-900/80 sm:px-5"
               />
               <th
                 scope="col"
-                className="border-b border-neutral-200 bg-neutral-50/80 px-4 py-4 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900/80 dark:text-neutral-400 sm:px-5"
+                className="border-b border-neutral-200/65 bg-neutral-50/80 px-4 py-4 text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:border-neutral-800/55 dark:bg-neutral-900/80 dark:text-neutral-50 sm:px-5"
               >
                 {c.basicColumn}
               </th>
               <th
                 scope="col"
-                className="border-b border-teal-700/20 bg-teal-600 px-4 py-4 text-xs font-semibold uppercase tracking-wide text-white dark:border-teal-600/40 dark:bg-teal-700 sm:px-5"
+                className="border-b border-green-500/20 bg-green-400 px-4 py-4 text-xs font-semibold uppercase tracking-wide text-neutral-950 dark:border-green-400/40 dark:bg-green-500 sm:px-5"
               >
                 {c.advancedColumn}
               </th>
               <th
                 scope="col"
-                className="border-b border-neutral-200 bg-neutral-50/80 px-4 py-4 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900/80 dark:text-neutral-400 sm:px-5"
+                className="border-b border-neutral-200/65 bg-neutral-50/80 px-4 py-4 text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:border-neutral-800/55 dark:bg-neutral-900/80 dark:text-neutral-50 sm:px-5"
               >
                 {c.customColumn}
               </th>
@@ -151,7 +151,7 @@ export function PlanComparisonSection({ variant = 'marketing' }: { variant?: 'ma
               >
                 <th
                   scope="row"
-                  className="border-b border-neutral-100 px-4 py-4 align-top text-xs font-semibold text-neutral-800 dark:border-neutral-800 dark:text-neutral-200 sm:px-5 sm:text-sm"
+                  className="border-b border-neutral-100 px-4 py-4 align-top text-xs font-semibold text-neutral-900 dark:border-neutral-800 dark:text-neutral-50 sm:px-5 sm:text-sm"
                 >
                   {row.feature}
                 </th>

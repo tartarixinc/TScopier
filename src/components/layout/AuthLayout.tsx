@@ -25,12 +25,12 @@ export function AuthLayout() {
         <header
           className={clsx(
             'z-20 flex shrink-0 touch-none items-center justify-between bg-white px-5 dark:bg-neutral-950 sm:px-8',
-            'fixed inset-x-0 top-[var(--app-banner-h,0px)] h-[calc(4rem+env(safe-area-inset-top,0px))] pt-[env(safe-area-inset-top,0px)]',
+            'fixed inset-x-0 top-(--app-banner-h,0px) h-[calc(4rem+env(safe-area-inset-top,0px))] pt-[env(safe-area-inset-top,0px)]',
             'lg:static lg:z-auto lg:h-auto lg:px-10 lg:py-4 lg:touch-auto',
           )}
         >
-          <Link to="/" className="flex items-center" aria-label="TScopier home">
-            <AuthBrandLogo className="h-8 w-auto sm:h-6" />
+          <Link to="/" className="flex items-center" aria-label="UniCopier home">
+            <AuthBrandLogo className="h-10 w-auto sm:h-8" />
           </Link>
           <div className="flex items-center gap-1 sm:gap-1.5">
             <LanguageSwitcher />
@@ -58,7 +58,7 @@ export function AuthLayout() {
           </div>
 
           <footer className="mx-auto w-full max-w-[420px] shrink-0 pt-4">
-            <p className="text-xs text-neutral-400 dark:text-neutral-500">{copyright}</p>
+            <p className="text-xs text-neutral-900 dark:text-neutral-50">{copyright}</p>
           </footer>
         </div>
       </main>

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, Loader2, RefreshCw } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowLeftRight, ChevronLeft, ChevronRight, Hand, Loader2, RefreshCw, Users } from 'lucide-react'
 import clsx from 'clsx'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
@@ -23,7 +23,12 @@ import {
   isCopierSignalRetryEligible,
 } from '../../lib/retrySignalDisplay'
 import { formatCopierSkipReasonShort } from '../../lib/copierLogDetail'
+import { fetchMirrorCopyLogs, pageMirrorSlice, type MirrorCopyLogRow } from '../../lib/mirrorCopyLogs'
+import { fetchManualSourceTradeLogs, fetchSocialCopyLogs, type SocialCopyLogRow } from '../../lib/socialCopyLogs'
 import { CopierLogDetailModal } from '../../components/dashboard/CopierLogDetailModal'
+import { MirrorLogDetailModal } from '../../components/dashboard/MirrorLogDetailModal'
+import { SignalSourceLogo } from '../../components/dashboard/SignalSourceLogo'
+import { buildChannelSourceKinds, SIGNAL_SOURCE_MARKS, type SignalSourceKind } from '../../lib/signalSourceMark'
 
 const DEFAULT_DETAIL_MODAL = en.copierLogs.detailModal!
 
@@ -32,7 +37,7 @@ type Filter = 'all' | 'executed' | 'skipped' | 'failed' | 'pending'
 const PAGE_SIZE_OPTIONS = [10, 25, 50] as const
 type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number]
 
-type ChannelNameRow = { id: string; display_name: string; channel_username?: string | null }
+type ChannelNameRow = { id: string; display_name: string; channel_username?: string | null; source_kind?: string | null }
 
 type StatusVariant = 'success' | 'warning' | 'error' | 'neutral' | 'primary'
 
@@ -59,117 +64,344 @@ function channelLabel(channelId: string | null | undefined, names: Record<string
   return names[channelId] ?? 'Unknown channel'
 }
 
-function useCopierLogDisplay(
-  signal: Signal,
-  channelDisplayNames: Record<string, string>,
-  symbolContext: CopierSymbolContext,
-  batchSignals: Signal[],
-  statusConfig: Record<string, { variant: StatusVariant; label: string }>,
-  copierLogs: ReturnType<typeof useT>['copierLogs'],
-) {
-  const parsed = signal.parsed_data as Record<string, unknown> | null
-  const action = parsed?.action as string | undefined
-  const symbol = symbolForCopierLog(signal, symbolContext, batchSignals)
-  const status = statusConfig[signal.status] ?? { variant: 'neutral' as const, label: signal.status }
-  const channelName = channelLabel(signal.channel_id, channelDisplayNames)
-  const reason = formatCopierSkipReasonShort(signal.skip_reason, copierLogs)
-  const reasonShort = signal.skip_reason
-    ? (reason.length > 80 ? `${reason.slice(0, 80)}…` : reason)
-    : '—'
-  const messagePreview = signal.raw_message
-    ? (signal.raw_message.length > 60 ? `${signal.raw_message.slice(0, 60)}…` : signal.raw_message)
-    : '(image)'
-  const timeLabel = new Date(signal.created_at).toLocaleString([], {
+/** One rendered log line, whatever produced it (a signal, mirror, social, or manual trade). */
+type CopierLogView = {
+  symbol: string
+  status: { variant: StatusVariant; label: string; className?: string }
+  channelName: string
+  channelTitle: string
+  sourceKind: SignalSourceKind | null
+  isMirror: boolean
+  isSocial: boolean
+  isManual: boolean
+  action: string | null
+  messageFull: string
+  messagePreview: string
+  reason: string | null
+  reasonShort: string
+  timeLabel: string
+}
+
+/** One row on the list — a signal, mirror, social, or manual trade, never more than one. */
+type LogViewEntry = { key: string; view: CopierLogView; at: string } & (
+  | { signal: Signal; mirror?: never; social?: never; manual?: never }
+  | { mirror: MirrorCopyLogRow; signal?: never; social?: never; manual?: never }
+  | { social: SocialCopyLogRow; signal?: never; mirror?: never; manual?: never }
+  | { manual: SocialCopyLogRow; signal?: never; mirror?: never; social?: never }
+)
+
+/** Where the loaded signal page sits in time, so mirror rows can be spliced in. */
+type SignalWindow = {
+  /** Page these bounds belong to. */
+  page: number
+  /** Oldest signal of that page — the next page's exclusive upper bound. */
+  oldest: string | null
+  /** Bound inherited from the page before it, when the reader paged forward. */
+  previousOldest: string | null
+}
+
+function formatLogTime(iso: string): string {
+  return new Date(iso).toLocaleString([], {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
   })
+}
 
-  return { action, symbol, status, channelName, reason, reasonShort, messagePreview, timeLabel }
+function shortenReason(reason: string | null | undefined): string | null {
+  if (!reason) return null
+  return reason.length > 80 ? `${reason.slice(0, 80)}…` : reason
+}
+
+function buildSignalLogView(
+  signal: Signal,
+  channelDisplayNames: Record<string, string>,
+  channelSourceKinds: Record<string, SignalSourceKind>,
+  symbolContext: CopierSymbolContext,
+  batchSignals: Signal[],
+  statusConfig: Record<string, { variant: StatusVariant; label: string; className?: string }>,
+  copierLogs: ReturnType<typeof useT>['copierLogs'],
+): CopierLogView {
+  const parsed = signal.parsed_data as Record<string, unknown> | null
+  const action = parsed?.action as string | undefined
+  const symbol = symbolForCopierLog(signal, symbolContext, batchSignals)
+  const status = statusConfig[signal.status] ?? { variant: 'neutral' as const, label: signal.status }
+  const channelName = channelLabel(signal.channel_id, channelDisplayNames)
+  const sourceKind = signal.channel_id ? (channelSourceKinds[signal.channel_id] ?? 'telegram') : null
+  const channelTitle = sourceKind ? `${SIGNAL_SOURCE_MARKS[sourceKind].label} · ${channelName}` : channelName
+  const reason = formatCopierSkipReasonShort(signal.skip_reason, copierLogs)
+  const messagePreview = signal.raw_message
+    ? (signal.raw_message.length > 60 ? `${signal.raw_message.slice(0, 60)}…` : signal.raw_message)
+    : '(image)'
+
+  return {
+    symbol,
+    status,
+    channelName,
+    channelTitle,
+    sourceKind,
+    isMirror: false,
+    isSocial: false,
+    isManual: false,
+    action: action ?? null,
+    messageFull: signal.raw_message ?? messagePreview,
+    messagePreview,
+    reason,
+    reasonShort: shortenReason(reason) ?? '—',
+    timeLabel: formatLogTime(signal.created_at),
+  }
+}
+
+/** Compose a plain-English one-liner for a mirror-copy event. */
+function mirrorLogMessage(
+  row: MirrorCopyLogRow,
+  copierLogs: ReturnType<typeof useT>['copierLogs'],
+): string {
+  const vars = {
+    // Built from what is actually known: an event with no mapping has no lot
+    // and sometimes no side, and must not render "Copied  XAUUSD ( lot)".
+    detail: `${[row.side, row.symbol].filter(Boolean).join(' ')}${row.lot == null ? '' : ` (${row.lot} lot)`}`
+      || row.action
+      || '',
+    ticket: row.sourceTicket || '—',
+    action: row.action ?? '',
+  }
+  switch (row.action) {
+    case 'open':
+      return interpolate(copierLogs.mirrorOpenMessage ?? 'Copied {detail} from master #{ticket}', vars)
+    case 'close':
+      return interpolate(copierLogs.mirrorCloseMessage ?? 'Copy of #{ticket} closed', vars)
+    case 'modify':
+      return interpolate(copierLogs.mirrorModifyMessage ?? 'Copy of #{ticket} updated', vars)
+    // open | modify | close are the only write actions the engine claims;
+    // unsupported and reconcile fall through here (see the action CHECK on
+    // mirror_copy_execution_events).
+    default:
+      return interpolate(copierLogs.mirrorOtherMessage ?? '{action} · copy of #{ticket}', vars)
+  }
+}
+
+function buildMirrorLogView(
+  row: MirrorCopyLogRow,
+  statusConfig: Record<string, { variant: StatusVariant; label: string; className?: string }>,
+  copierLogs: ReturnType<typeof useT>['copierLogs'],
+): CopierLogView {
+  const sourceLabel = copierLogs.mirrorSource
+  const message = mirrorLogMessage(row, copierLogs)
+  return {
+    symbol: row.symbol,
+    status: statusConfig[row.status] ?? { variant: 'neutral' as const, label: row.status },
+    channelName: `${sourceLabel ?? 'Mirror copy'} · ${row.channelName}`,
+    channelTitle: row.channelName,
+    sourceKind: null,
+    isMirror: true,
+    isSocial: false,
+    isManual: false,
+    action: row.action === 'open' ? (row.side ?? row.action) : row.action,
+    messageFull: message,
+    messagePreview: message,
+    reason: row.reason,
+    reasonShort: shortenReason(row.reason) ?? '—',
+    timeLabel: formatLogTime(row.createdAt),
+  }
+}
+
+/** Compose a plain-English one-liner for a follower social-copy event. */
+function socialLogMessage(
+  row: SocialCopyLogRow,
+  copierLogs: ReturnType<typeof useT>['copierLogs'],
+): string {
+  const vars = {
+    detail: `${[row.side, row.symbol].filter(Boolean).join(' ')}${row.lot == null ? '' : ` (${row.lot} lot)`}`
+      || row.action
+      || '',
+    ticket: row.sourceTicket || '—',
+    action: row.action ?? '',
+  }
+  switch (row.action) {
+    case 'open':
+      return interpolate(copierLogs.socialOpenMessage ?? 'Copied {detail} from provider #{ticket}', vars)
+    case 'close':
+      return interpolate(copierLogs.socialCloseMessage ?? 'Social copy of #{ticket} closed', vars)
+    case 'modify':
+      return interpolate(copierLogs.socialModifyMessage ?? 'Social copy of #{ticket} updated', vars)
+    default:
+      return interpolate(copierLogs.socialOtherMessage ?? '{action} · social copy of #{ticket}', vars)
+  }
+}
+
+function buildSocialLogView(
+  row: SocialCopyLogRow,
+  statusConfig: Record<string, { variant: StatusVariant; label: string; className?: string }>,
+  copierLogs: ReturnType<typeof useT>['copierLogs'],
+): CopierLogView {
+  const sourceLabel = copierLogs.socialSource
+  const message = socialLogMessage(row, copierLogs)
+  return {
+    symbol: row.symbol,
+    status: statusConfig[row.status] ?? { variant: 'neutral' as const, label: row.status },
+    channelName: `${sourceLabel ?? 'Social trading'} · ${row.channelName}`,
+    channelTitle: row.channelName,
+    sourceKind: null,
+    isMirror: false,
+    isSocial: true,
+    isManual: false,
+    action: row.action === 'open' ? (row.side ?? row.action) : row.action,
+    messageFull: message,
+    messagePreview: message,
+    reason: row.reason,
+    reasonShort: shortenReason(row.reason) ?? '—',
+    timeLabel: formatLogTime(row.createdAt),
+  }
+}
+
+/** Compose a plain-English one-liner for a provider Manual Execution trade. */
+function manualLogMessage(
+  row: SocialCopyLogRow,
+  copierLogs: ReturnType<typeof useT>['copierLogs'],
+): string {
+  const vars = {
+    detail: `${[row.side, row.symbol].filter(Boolean).join(' ')}${row.lot == null ? '' : ` (${row.lot} lot)`}`
+      || row.action
+      || '',
+    ticket: row.sourceTicket || '—',
+    action: row.action ?? '',
+  }
+  switch (row.action) {
+    case 'open':
+      return interpolate(copierLogs.manualOpenMessage ?? 'Opened {detail} #{ticket}', vars)
+    case 'close':
+      return interpolate(copierLogs.manualCloseMessage ?? 'Closed #{ticket}', vars)
+    case 'modify':
+      return interpolate(copierLogs.manualModifyMessage ?? 'Updated #{ticket}', vars)
+    default:
+      return interpolate(copierLogs.manualOtherMessage ?? '{action} · #{ticket}', vars)
+  }
+}
+
+function buildManualLogView(
+  row: SocialCopyLogRow,
+  statusConfig: Record<string, { variant: StatusVariant; label: string; className?: string }>,
+  copierLogs: ReturnType<typeof useT>['copierLogs'],
+): CopierLogView {
+  const sourceLabel = copierLogs.manualExecutionSource
+  const message = manualLogMessage(row, copierLogs)
+  return {
+    symbol: row.symbol,
+    status: statusConfig[row.status] ?? { variant: 'neutral' as const, label: row.status },
+    channelName: `${sourceLabel ?? 'Manual Execution'} · ${row.channelName}`,
+    channelTitle: row.channelName,
+    sourceKind: null,
+    isMirror: false,
+    isSocial: false,
+    isManual: true,
+    action: row.action === 'open' ? (row.side ?? row.action) : row.action,
+    messageFull: message,
+    messagePreview: message,
+    reason: row.reason,
+    reasonShort: shortenReason(row.reason) ?? '—',
+    timeLabel: formatLogTime(row.createdAt),
+  }
+}
+
+function SourceMark({ view, className }: { view: CopierLogView; className?: string }) {
+  if (view.isSocial) {
+    return (
+      <Users
+        className={clsx('h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50', className)}
+        aria-hidden
+      />
+    )
+  }
+  if (view.isManual) {
+    return (
+      <Hand
+        className={clsx('h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50', className)}
+        aria-hidden
+      />
+    )
+  }
+  if (view.isMirror) {
+    return (
+      <ArrowLeftRight
+        className={clsx('h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50', className)}
+        aria-hidden
+      />
+    )
+  }
+  return <SignalSourceLogo kind={view.sourceKind} className={className} />
 }
 
 function CopierLogCard({
-  signal,
-  channelDisplayNames,
-  symbolContext,
-  batchSignals,
-  statusConfig,
+  view,
   labels,
   copierLogs,
   isRetrying,
   onRetry,
   onOpenDetail,
 }: {
-  signal: Signal
-  channelDisplayNames: Record<string, string>
-  symbolContext: CopierSymbolContext
-  batchSignals: Signal[]
-  statusConfig: Record<string, { variant: StatusVariant; label: string }>
+  view: CopierLogView
   labels: { colReason: string; viewDetails: string }
   copierLogs: ReturnType<typeof useT>['copierLogs']
   isRetrying: boolean
   onRetry?: () => void
-  onOpenDetail: () => void
+  onOpenDetail?: () => void
 }) {
-  const { action, symbol, status, channelName, reason, messagePreview, timeLabel } = useCopierLogDisplay(
-    signal,
-    channelDisplayNames,
-    symbolContext,
-    batchSignals,
-    statusConfig,
-    copierLogs,
-  )
-  const retryEligible = isCopierSignalRetryEligible(signal)
+  const { action, symbol, status, channelName, channelTitle, reason, messagePreview, messageFull, timeLabel } = view
 
   return (
     <article
-      className="px-4 py-4 hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition-colors cursor-pointer"
+      className={clsx(
+        'px-4 py-4 transition-colors',
+        onOpenDetail && 'hover:bg-neutral-50 dark:hover:bg-neutral-800/40 cursor-pointer',
+      )}
       onClick={onOpenDetail}
-      onKeyDown={e => {
+      onKeyDown={onOpenDetail ? e => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
           onOpenDetail()
         }
-      }}
-      role="button"
-      tabIndex={0}
-      aria-label={labels.viewDetails}
+      } : undefined}
+      role={onOpenDetail ? 'button' : undefined}
+      tabIndex={onOpenDetail ? 0 : undefined}
+      aria-label={onOpenDetail ? labels.viewDetails : undefined}
     >
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="min-w-0">
           <p className="text-base font-semibold text-neutral-900 dark:text-neutral-50 truncate">{symbol}</p>
-          <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate mt-0.5" title={channelName}>
-            {channelName}
+          <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-neutral-900 dark:text-neutral-50" title={channelTitle}>
+            <SourceMark view={view} />
+            <span className="truncate">{channelName}</span>
           </p>
         </div>
         <div className="flex flex-col items-end gap-1.5 shrink-0">
-          <Badge variant={status.variant} size="sm">{status.label}</Badge>
-          <span className="text-xs text-neutral-400 whitespace-nowrap">{timeLabel}</span>
+          <Badge variant={status.variant} size="sm" className={status.className}>{status.label}</Badge>
+          <span className="text-xs text-neutral-900 dark:text-neutral-50 whitespace-nowrap">{timeLabel}</span>
         </div>
       </div>
 
       {action ? (
         <p className={clsx(
           'text-sm font-medium uppercase mb-3',
-          action === 'buy' ? 'text-primary-600' : action === 'sell' ? 'text-error-600' : 'text-neutral-400',
+          action === 'buy' ? 'text-green-400' : action === 'sell' ? 'text-error-600' : 'text-neutral-900 dark:text-neutral-50',
         )}>
           {action}
         </p>
       ) : null}
 
-      <p className="text-sm text-neutral-600 dark:text-neutral-300 mb-3 line-clamp-3" title={signal.raw_message ?? ''}>
+      <p className="text-sm text-neutral-900 dark:text-neutral-50 mb-3 line-clamp-3" title={messageFull}>
         {messagePreview}
       </p>
 
-      {reason !== '—' ? (
-        <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3">
-          <span className="font-medium text-neutral-600 dark:text-neutral-300">{labels.colReason}: </span>
+      {reason !== '—' && reason ? (
+        <p className="text-xs text-neutral-900 dark:text-neutral-50 mb-3">
+          <span className="font-medium text-neutral-900 dark:text-neutral-50">{labels.colReason}: </span>
           <span className="underline decoration-dotted underline-offset-2">{reason}</span>
         </p>
       ) : null}
 
-      {retryEligible && onRetry ? (
+      {onRetry ? (
         <Button
           type="button"
           variant="secondary"
@@ -193,72 +425,60 @@ function CopierLogCard({
 }
 
 function CopierLogRow({
-  signal,
-  channelDisplayNames,
-  symbolContext,
-  batchSignals,
-  statusConfig,
+  view,
   copierLogs,
   isRetrying,
   onRetry,
   onOpenDetail,
   viewDetailsLabel,
 }: {
-  signal: Signal
-  channelDisplayNames: Record<string, string>
-  symbolContext: CopierSymbolContext
-  batchSignals: Signal[]
-  statusConfig: Record<string, { variant: StatusVariant; label: string }>
+  view: CopierLogView
   copierLogs: ReturnType<typeof useT>['copierLogs']
   isRetrying: boolean
   onRetry?: () => void
-  onOpenDetail: () => void
+  onOpenDetail?: () => void
   viewDetailsLabel: string
 }) {
-  const { action, symbol, status, channelName, reasonShort, messagePreview, timeLabel } = useCopierLogDisplay(
-    signal,
-    channelDisplayNames,
-    symbolContext,
-    batchSignals,
-    statusConfig,
-    copierLogs,
-  )
-  const retryEligible = isCopierSignalRetryEligible(signal)
+  const { action, symbol, status, channelName, channelTitle, reasonShort, messagePreview, messageFull, timeLabel } = view
 
   return (
     <div
-      className="grid grid-cols-[1.5fr_1.2fr_1fr_1.2fr_1fr_1fr_auto_auto] gap-3 min-w-[48rem] px-4 sm:px-5 py-3.5 items-center hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors cursor-pointer"
+      className={clsx(
+        'grid grid-cols-[1.5fr_1.2fr_1fr_1.2fr_1fr_1fr_auto_auto] gap-3 min-w-3xl px-4 sm:px-5 py-3.5 items-center transition-colors',
+        onOpenDetail && 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50 cursor-pointer',
+      )}
       onClick={onOpenDetail}
-      onKeyDown={e => {
+      onKeyDown={onOpenDetail ? e => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
           onOpenDetail()
         }
-      }}
-      role="button"
-      tabIndex={0}
-      aria-label={viewDetailsLabel}
+      } : undefined}
+      role={onOpenDetail ? 'button' : undefined}
+      tabIndex={onOpenDetail ? 0 : undefined}
+      aria-label={onOpenDetail ? viewDetailsLabel : undefined}
     >
-      <Badge variant={status.variant} size="sm">{status.label}</Badge>
-      <span className="text-xs text-neutral-600 dark:text-neutral-300 truncate underline decoration-dotted underline-offset-2" title={reasonShort}>
+      <Badge variant={status.variant} size="sm" className={status.className}>{status.label}</Badge>
+      <span className="text-xs text-neutral-900 dark:text-neutral-50 truncate underline decoration-dotted underline-offset-2" title={reasonShort}>
         {reasonShort}
       </span>
-      <span className="text-xs text-neutral-600 dark:text-neutral-400 truncate" title={channelName}>
-        {channelName}
+      <span className="flex min-w-0 items-center gap-1.5 text-xs text-neutral-900 dark:text-neutral-50" title={channelTitle}>
+        <SourceMark view={view} />
+        <span className="truncate">{channelName}</span>
       </span>
       <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{symbol}</span>
-      <span className="text-xs text-neutral-500 dark:text-neutral-400 truncate" title={signal.raw_message ?? ''}>
+      <span className="text-xs text-neutral-900 dark:text-neutral-50 truncate" title={messageFull}>
         {messagePreview}
       </span>
       <span className={clsx(
         'text-xs font-medium uppercase',
-        action === 'buy' ? 'text-primary-600' : action === 'sell' ? 'text-error-600' : 'text-neutral-400',
+        action === 'buy' ? 'text-green-400' : action === 'sell' ? 'text-error-600' : 'text-neutral-900 dark:text-neutral-50',
       )}>
         {action ?? '—'}
       </span>
-      <span className="text-xs text-neutral-400 text-right whitespace-nowrap">{timeLabel}</span>
+      <span className="text-xs text-neutral-900 dark:text-neutral-50 text-right whitespace-nowrap">{timeLabel}</span>
       <div className="flex justify-end">
-        {retryEligible && onRetry ? (
+        {onRetry ? (
           <Button
             type="button"
             variant="secondary"
@@ -286,7 +506,11 @@ export function CopierLogsPage() {
   const t = useT()
   const { user } = useAuth()
   const [signals, setSignals] = useState<Signal[]>([])
+  const [mirrorLogs, setMirrorLogs] = useState<MirrorCopyLogRow[]>([])
+  const [socialLogs, setSocialLogs] = useState<SocialCopyLogRow[]>([])
+  const [manualLogs, setManualLogs] = useState<SocialCopyLogRow[]>([])
   const [channelDisplayNames, setChannelDisplayNames] = useState<Record<string, string>>({})
+  const [channelSourceKinds, setChannelSourceKinds] = useState<Record<string, SignalSourceKind>>({})
   const [symbolContext, setSymbolContext] = useState<CopierSymbolContext>(() => ({
     lookup: new Map(),
     replyParentBySignalId: new Map(),
@@ -294,18 +518,38 @@ export function CopierLogsPage() {
   const [filter, setFilter] = useState<Filter>('all')
   const [loading, setLoading] = useState(true)
   const [totalCount, setTotalCount] = useState(0)
+  // Signals only (mirrors/social/manual are excluded) — pages are laid out on this count.
+  const [signalRowCount, setSignalRowCount] = useState(0)
+  // Monotonic token so a slower, older load can never commit over a newer one.
+  const loadSeqRef = useRef(0)
+  // Where the last loaded signal page ended in time, and the bound inherited
+  // from the page before it. Held in state (not a ref) so the render that splices
+  // mirror/social/manual rows sees a tracked value rather than a ref read during render.
+  const [signalWindow, setSignalWindow] = useState<SignalWindow | null>(null)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<PageSizeOption>(25)
   const [retryingSignalIds, setRetryingSignalIds] = useState<Set<string>>(() => new Set())
   const [toast, setToast] = useState<string | null>(null)
-  const [detailSignal, setDetailSignal] = useState<Signal | null>(null)
+  // One slot for the open detail view. A row is a signal, mirror, social, or manual trade.
+  const [detail, setDetail] = useState<LogViewEntry | null>(null)
+  const detailSignal = detail?.signal ?? null
+  const detailMirror = detail?.mirror ?? null
+  const detailSocial = detail?.social ?? null
+  const detailManual = detail?.manual ?? null
+  // Stable identity: MirrorLogDetailModal re-runs its scroll-lock/focus effect
+  // whenever this changes, which would yank focus back to the panel.
+  const closeDetail = useCallback(() => setDetail(null), [])
 
   const showToast = useCallback((message: string) => {
     setToast(message)
     window.setTimeout(() => setToast(null), 5000)
   }, [])
 
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
+  // Pages are counted in signal rows: mirror events ride along inside their
+  // signal's span instead of adding pages of their own. Counting them here would
+  // create trailing pages with nothing left to show.
+  const totalPages = Math.max(1, Math.ceil(signalRowCount / pageSize))
+  const isLastSignalPage = page >= totalPages
 
   useEffect(() => {
     setPage(1)
@@ -318,33 +562,84 @@ export function CopierLogsPage() {
   const loadSignals = useCallback(async () => {
     if (!user) return
     setLoading(true)
-    const from = (page - 1) * pageSize
-    const to = from + pageSize - 1
+    const seq = ++loadSeqRef.current
 
-    let query = supabase
-      .from('signals')
-      .select('*', { count: 'exact' })
-      .eq('user_id', user.id)
-      .or('skip_reason.is.null,skip_reason.neq.non_trade_message')
-      .order('created_at', { ascending: false })
-      .range(from, to)
-
-    if (filter !== 'all') query = query.eq('status', filter)
-
-    const [channelsRes, signalsRes] = await Promise.all([
-      supabase
+    try {
+      // Mirror/social/manual rows carry no signal, so they are read from their own
+      // ledgers and spliced into the page that owns their time span.
+      const channelsQuery = supabase
         .from('telegram_channels')
-        .select('id,display_name,channel_username')
-        .eq('user_id', user.id),
-      query,
-    ])
+        .select('id,display_name,channel_username,source_kind')
+        .eq('user_id', user.id)
+      const [mirror, social, manual, channelsRes] = await Promise.all([
+        fetchMirrorCopyLogs(supabase, user.id),
+        fetchSocialCopyLogs(supabase, user.id),
+        fetchManualSourceTradeLogs(supabase, user.id).catch(() => [] as SocialCopyLogRow[]),
+        channelsQuery,
+      ])
+      const visibleMirror = filter === 'all' ? mirror : mirror.filter(row => row.status === filter)
+      const visibleSocial = filter === 'all' ? social : social.filter(row => row.status === filter)
+      const visibleManual = filter === 'all' ? manual : manual.filter(row => row.status === filter)
 
-    const loaded = ((signalsRes.data ?? []) as Signal[]).filter(s => !isNonTradeSkipReason(s.skip_reason))
-    setTotalCount(signalsRes.count ?? loaded.length)
-    setChannelDisplayNames(buildChannelDisplayNames((channelsRes.data ?? []) as ChannelNameRow[]))
-    setSymbolContext(await buildSignalSymbolLookup(supabase, user.id, loaded))
-    setSignals(loaded)
-    setLoading(false)
+      const from = (page - 1) * pageSize
+      const to = from + pageSize - 1
+
+      let query = supabase
+        .from('signals')
+        .select('*', { count: 'exact' })
+        .eq('user_id', user.id)
+        .or('skip_reason.is.null,skip_reason.neq.non_trade_message')
+        .order('created_at', { ascending: false })
+
+      if (filter !== 'all') query = query.eq('status', filter)
+      query = query.range(from, to)
+
+      const signalsRes = await query
+      // The count and the rows come from one request, so a failure here must not
+      // be committed as "this page has no signals" — keep the previous view.
+      if (signalsRes.error) throw signalsRes.error
+
+      const loaded = ((signalsRes.data ?? []) as Signal[]).filter(s => !isNonTradeSkipReason(s.skip_reason))
+      const nextSymbolContext = await buildSignalSymbolLookup(supabase, user.id, loaded)
+      const channelRows = (channelsRes.data ?? []) as ChannelNameRow[]
+
+      // Commit everything together after the last await: the extra ledgers and
+      // the signal window must never be written a request apart, or a slower older
+      // load could pair its rows with a newer load's signal page.
+      if (seq !== loadSeqRef.current) return
+      // Record where this page ended in time. The bound is handed on only when
+      // the reader moved to the very next page — after a jump there is no
+      // continuous window to inherit, so the next page falls back to its own span.
+      const oldestSignal = loaded[loaded.length - 1]?.created_at ?? null
+      setSignalWindow(prev => ({
+        page,
+        // Keep the chain alive when a page returns no signals at all: without a
+        // bound the next page could not place its window and would show nothing.
+        // A middle page coming back empty would widen the window instead and
+        // repeat rows — impossible in practice, because the count and the rows
+        // come from the same request and `totalPages` is derived from that count.
+        oldest: oldestSignal ?? prev?.oldest ?? null,
+        previousOldest: prev && prev.page === page - 1 ? prev.oldest : null,
+      }))
+      const signalsTotal = signalsRes.count ?? loaded.length
+      const signalTotal = Number.isFinite(signalsTotal) ? signalsTotal : loaded.length
+      setSignalRowCount(signalTotal)
+      setMirrorLogs(visibleMirror)
+      setSocialLogs(visibleSocial)
+      setManualLogs(visibleManual)
+      setTotalCount(signalTotal + visibleMirror.length + visibleSocial.length + visibleManual.length)
+      setChannelDisplayNames(buildChannelDisplayNames(channelRows))
+      setChannelSourceKinds(buildChannelSourceKinds(channelRows))
+      setSymbolContext(nextSymbolContext)
+      setSignals(loaded)
+    } catch (error) {
+      // Never leave the skeleton up: the next load recovers from a failed one.
+      console.warn('[copier-logs] load failed:', error instanceof Error ? error.message : String(error))
+    } finally {
+      // Only the load that still owns the token may clear the flag, so a
+      // superseded request cannot switch off a newer one's loading state.
+      if (seq === loadSeqRef.current) setLoading(false)
+    }
   }, [user, filter, page, pageSize])
 
   const retrySignalEntry = useCallback(async (signalId: string) => {
@@ -373,9 +668,6 @@ export function CopierLogsPage() {
     void loadSignals()
   }, [user, loadSignals])
 
-  const rangeStart = totalCount === 0 ? 0 : (page - 1) * pageSize + 1
-  const rangeEnd = Math.min(page * pageSize, totalCount)
-
   const filters: { value: Filter; label: string }[] = useMemo(
     () => [
       { value: 'all', label: t.copierLogs.filterAll },
@@ -387,9 +679,9 @@ export function CopierLogsPage() {
     [t],
   )
 
-  const statusConfig: Record<string, { variant: StatusVariant; label: string }> = useMemo(
+  const statusConfig: Record<string, { variant: StatusVariant; label: string; className?: string }> = useMemo(
     () => ({
-      executed: { variant: 'success', label: t.copierLogs.statusExecuted },
+      executed: { variant: 'success', label: t.copierLogs.statusExecuted, className: 'bg-green-100 text-neutral-950 dark:bg-green-100 dark:text-neutral-950' },
       skipped: { variant: 'warning', label: t.copierLogs.statusSkipped },
       failed: { variant: 'error', label: t.copierLogs.statusFailed },
       pending: { variant: 'neutral', label: t.copierLogs.statusPending },
@@ -408,16 +700,74 @@ export function CopierLogsPage() {
 
   const viewDetailsLabel = t.copierLogs.detailModal?.viewDetails ?? DEFAULT_DETAIL_MODAL.viewDetails
 
+  /**
+   * One page of the log: this page's signals, with the mirror/social/manual events that
+   * share their time span spliced in, newest first. Extra events never sit in
+   * front of every signal — they appear in the page that owns their moment.
+   */
+  const logViews = useMemo(() => {
+    const bound = signalWindow && signalWindow.page === page ? signalWindow.previousOldest : null
+    const mirrorRows = pageMirrorSlice(mirrorLogs, signals, page, bound, isLastSignalPage)
+    const socialRows = pageMirrorSlice(socialLogs, signals, page, bound, isLastSignalPage)
+    const manualRows = pageMirrorSlice(manualLogs, signals, page, bound, isLastSignalPage)
+    const entries: LogViewEntry[] = [
+      ...mirrorRows.map(row => ({
+        key: row.id,
+        at: row.createdAt,
+        view: buildMirrorLogView(row, statusConfig, t.copierLogs),
+        mirror: row,
+      })),
+      ...socialRows.map(row => ({
+        key: row.id,
+        at: row.createdAt,
+        view: buildSocialLogView(row, statusConfig, t.copierLogs),
+        social: row,
+      })),
+      ...manualRows.map(row => ({
+        key: row.id,
+        at: row.createdAt,
+        view: buildManualLogView(row, statusConfig, t.copierLogs),
+        manual: row,
+      })),
+      ...signals.map(signal => ({
+        key: signal.id,
+        at: signal.created_at,
+        view: buildSignalLogView(
+          signal,
+          channelDisplayNames,
+          channelSourceKinds,
+          symbolContext,
+          signals,
+          statusConfig,
+          t.copierLogs,
+        ),
+        signal,
+      })),
+    ]
+    return entries.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
+  }, [mirrorLogs, socialLogs, manualLogs, signals, page, signalWindow, isLastSignalPage, statusConfig, channelDisplayNames, channelSourceKinds, symbolContext, t])
+
+  // Positions are counted in signal rows, but a page can carry more rows than
+  // the page size once mirror events splice in, so the end of the range comes
+  // from what is actually on screen rather than from `page * pageSize`. The two
+  // numbers are therefore approximate when mirrors span several pages: the total
+  // is exact (every row is reachable exactly once), the window is not.
+  const rangeStart = totalCount === 0 ? 0 : (page - 1) * pageSize + 1
+  const rangeEnd = totalCount === 0
+    ? 0
+    : Math.max(rangeStart, Math.min(rangeStart + logViews.length - 1, totalCount))
+
   const detailDisplay = useMemo(() => {
     if (!detailSignal) return null
     const status = statusConfig[detailSignal.status] ?? { variant: 'neutral' as const, label: detailSignal.status }
     return {
       signal: detailSignal,
       channelName: channelLabel(detailSignal.channel_id, channelDisplayNames),
+      sourceKind: detailSignal.channel_id ? (channelSourceKinds[detailSignal.channel_id] ?? 'telegram') : null,
       symbol: symbolForCopierLog(detailSignal, symbolContext, signals),
       status,
     }
-  }, [detailSignal, statusConfig, channelDisplayNames, symbolContext, signals])
+  }, [detailSignal, statusConfig, channelDisplayNames, channelSourceKinds, symbolContext, signals])
 
   return (
     <PageShell maxWidth="lg" spacing="none" className="space-y-6">
@@ -428,17 +778,16 @@ export function CopierLogsPage() {
       ) : null}
       <PageHeader
         title={t.copierLogs.title}
-        subtitle={t.copierLogs.subtitle}
         actions={(
           <div className="-mx-4 w-full overflow-x-auto px-4 sm:mx-0 sm:w-auto sm:px-0">
-          <div className="inline-flex bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg p-0.5 gap-0.5">
+          <div className="inline-flex bg-white dark:bg-neutral-900 border border-neutral-200/65 dark:border-neutral-800/55 rounded-lg p-0.5 gap-0.5">
             {filters.map(f => (
               <button
                 key={f.value}
                 type="button"
                 onClick={() => setFilter(f.value)}
                 className={`shrink-0 px-3 py-2 text-xs rounded-md font-medium transition-colors whitespace-nowrap ${
-                  filter === f.value ? 'bg-teal-600 text-white' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                  filter === f.value ? 'bg-green-400 text-neutral-950' : 'text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800'
                 }`}
               >
                 {f.label}
@@ -456,11 +805,11 @@ export function CopierLogsPage() {
               {[...Array(4)].map((_, i) => (
                 <div key={i} className="px-4 py-4 space-y-3">
                   <div className="flex justify-between gap-3">
-                    <div className="h-5 w-20 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
-                    <div className="h-5 w-16 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
+                    <div className="h-5 w-20 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
+                    <div className="h-5 w-16 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
                   </div>
-                  <div className="h-4 w-full bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
-                  <div className="h-4 w-3/4 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
+                  <div className="h-4 w-full bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
+                  <div className="h-4 w-3/4 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
                 </div>
               ))}
             </div>
@@ -468,45 +817,44 @@ export function CopierLogsPage() {
               {[...Array(pageSize > 6 ? 6 : pageSize)].map((_, i) => (
                 <div key={i} className="px-5 py-3.5 grid grid-cols-7 gap-3">
                   {[...Array(7)].map((_, j) => (
-                    <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
+                    <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
                   ))}
                 </div>
               ))}
             </div>
           </>
-        ) : signals.length === 0 ? (
+        ) : logViews.length === 0 ? (
           <div className="px-4 sm:px-6 py-12 sm:py-20 text-center">
             <div className="w-16 h-16 bg-neutral-100 dark:bg-neutral-800 rounded-2xl mx-auto mb-3 flex items-center justify-center">
-              <svg className="w-8 h-8 text-neutral-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-8 h-8 text-neutral-900 dark:text-neutral-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
-            <p className="text-sm font-medium text-neutral-400">{t.copierLogs.emptyTitle}</p>
-            <p className="text-xs text-neutral-300 mt-1">{t.copierLogs.emptySubtitle}</p>
+            <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{t.copierLogs.emptyTitle}</p>
+            <p className="text-xs text-neutral-900 dark:text-neutral-50 mt-1">{t.copierLogs.emptySubtitle}</p>
           </div>
         ) : (
           <>
             <div className="md:hidden divide-y divide-neutral-100 dark:divide-neutral-800">
-              {signals.map(signal => (
-                <CopierLogCard
-                  key={signal.id}
-                  signal={signal}
-                  channelDisplayNames={channelDisplayNames}
-                  symbolContext={symbolContext}
-                  batchSignals={signals}
-                  statusConfig={statusConfig}
-                  labels={cardLabels}
-                  copierLogs={t.copierLogs}
-                  isRetrying={retryingSignalIds.has(signal.id)}
-                  onRetry={isCopierSignalRetryEligible(signal)
-                    ? () => { void retrySignalEntry(signal.id) }
-                    : undefined}
-                  onOpenDetail={() => setDetailSignal(signal)}
-                />
-              ))}
+              {logViews.map(entry => {
+                const signal = entry.signal
+                return (
+                  <CopierLogCard
+                    key={entry.key}
+                    view={entry.view}
+                    labels={cardLabels}
+                    copierLogs={t.copierLogs}
+                    isRetrying={signal ? retryingSignalIds.has(signal.id) : false}
+                    onRetry={signal && isCopierSignalRetryEligible(signal)
+                      ? () => { void retrySignalEntry(signal.id) }
+                      : undefined}
+                    onOpenDetail={() => setDetail(entry)}
+                  />
+                )
+              })}
             </div>
             <div className="hidden md:block overflow-x-auto">
-              <div className="grid grid-cols-[1.5fr_1.2fr_1fr_1.2fr_1fr_1fr_auto_auto] gap-3 min-w-[48rem] px-4 sm:px-5 py-3 border-b border-neutral-100 dark:border-neutral-800 text-xs font-semibold text-neutral-400 uppercase tracking-wide">
+              <div className="grid grid-cols-[1.5fr_1.2fr_1fr_1.2fr_1fr_1fr_auto_auto] gap-3 min-w-3xl px-4 sm:px-5 py-3 border-b border-neutral-100 dark:border-neutral-800 text-xs font-semibold text-neutral-900 dark:text-neutral-50 uppercase tracking-wide">
                 <span>{t.copierLogs.colStatus}</span>
                 <span>{t.copierLogs.colReason}</span>
                 <span>{t.copierLogs.colChannel}</span>
@@ -517,23 +865,22 @@ export function CopierLogsPage() {
                 <span />
               </div>
               <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
-                {signals.map(signal => (
-                  <CopierLogRow
-                    key={signal.id}
-                    signal={signal}
-                    channelDisplayNames={channelDisplayNames}
-                    symbolContext={symbolContext}
-                    batchSignals={signals}
-                    statusConfig={statusConfig}
-                    copierLogs={t.copierLogs}
-                    isRetrying={retryingSignalIds.has(signal.id)}
-                    onRetry={isCopierSignalRetryEligible(signal)
-                      ? () => { void retrySignalEntry(signal.id) }
-                      : undefined}
-                    onOpenDetail={() => setDetailSignal(signal)}
-                    viewDetailsLabel={viewDetailsLabel}
-                  />
-                ))}
+                {logViews.map(entry => {
+                  const signal = entry.signal
+                  return (
+                    <CopierLogRow
+                      key={entry.key}
+                      view={entry.view}
+                      copierLogs={t.copierLogs}
+                      isRetrying={signal ? retryingSignalIds.has(signal.id) : false}
+                      onRetry={signal && isCopierSignalRetryEligible(signal)
+                        ? () => { void retrySignalEntry(signal.id) }
+                        : undefined}
+                      onOpenDetail={() => setDetail(entry)}
+                      viewDetailsLabel={viewDetailsLabel}
+                    />
+                  )
+                })}
               </div>
             </div>
           </>
@@ -547,7 +894,13 @@ export function CopierLogsPage() {
             rangeStart={rangeStart}
             rangeEnd={rangeEnd}
             total={totalCount}
-            onPageChange={setPage}
+            onPageChange={(next) => {
+              setPage(next)
+              // Raise the skeleton in the same tick as the navigation. Effects run
+              // after paint, so without this one frame would show the new page
+              // number paired with the previous page's rows.
+              setLoading(true)
+            }}
             onPageSizeChange={setPageSize}
             labels={{
               show: t.common.show,
@@ -565,14 +918,42 @@ export function CopierLogsPage() {
         <CopierLogDetailModal
           signal={detailDisplay.signal}
           channelName={detailDisplay.channelName}
+          sourceKind={detailDisplay.sourceKind}
           symbol={detailDisplay.symbol}
           status={detailDisplay.status}
-          onClose={() => setDetailSignal(null)}
+          onClose={closeDetail}
           retryEligible={isCopierSignalRetryEligible(detailDisplay.signal)}
           isRetrying={retryingSignalIds.has(detailDisplay.signal.id)}
           onRetry={isCopierSignalRetryEligible(detailDisplay.signal)
             ? () => { void retrySignalEntry(detailDisplay.signal.id) }
             : undefined}
+        />
+      ) : null}
+
+      {detailMirror ? (
+        <MirrorLogDetailModal
+          row={detailMirror}
+          status={statusConfig[detailMirror.status] ?? { variant: 'neutral' as const, label: detailMirror.status }}
+          onClose={closeDetail}
+          variant="mirror"
+        />
+      ) : null}
+
+      {detailSocial ? (
+        <MirrorLogDetailModal
+          row={detailSocial}
+          status={statusConfig[detailSocial.status] ?? { variant: 'neutral' as const, label: detailSocial.status }}
+          onClose={closeDetail}
+          variant="social"
+        />
+      ) : null}
+
+      {detailManual ? (
+        <MirrorLogDetailModal
+          row={detailManual}
+          status={statusConfig[detailManual.status] ?? { variant: 'neutral' as const, label: detailManual.status }}
+          onClose={closeDetail}
+          variant="manual"
         />
       ) : null}
     </PageShell>
@@ -620,12 +1001,12 @@ function CopierLogsPagination({
   return (
     <div className="flex flex-col gap-3 px-3 sm:px-4 py-3 border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <label className="inline-flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
-          <span className="font-medium text-neutral-700 dark:text-neutral-300">{labels.show}</span>
+        <label className="inline-flex items-center gap-2 text-sm text-neutral-900 dark:text-neutral-50">
+          <span className="font-medium text-neutral-900 dark:text-neutral-50">{labels.show}</span>
           <select
             value={pageSize}
             onChange={e => onPageSizeChange(Number(e.target.value) as PageSizeOption)}
-            className="h-8 min-w-[4.5rem] rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-2 text-sm text-neutral-900 dark:text-neutral-50 tabular-nums focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+            className="h-8 min-w-18 rounded-md border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 px-2 text-sm text-neutral-900 dark:text-neutral-50 tabular-nums focus:outline-hidden focus:ring-2 focus:ring-green-400 focus:border-transparent"
             aria-label="Results per page"
           >
             {PAGE_SIZE_OPTIONS.map(n => (
@@ -634,7 +1015,7 @@ function CopierLogsPagination({
           </select>
           <span>{labels.results}</span>
         </label>
-        <p className="text-xs text-neutral-500 dark:text-neutral-400 tabular-nums">
+        <p className="text-xs text-neutral-900 dark:text-neutral-50 tabular-nums">
           {labels.showingRange(rangeStart, rangeEnd, total)}
         </p>
       </div>
@@ -644,7 +1025,7 @@ function CopierLogsPagination({
             type="button"
             onClick={() => onPageChange(page - 1)}
             disabled={page <= 1}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-white dark:hover:bg-neutral-900 disabled:opacity-40 disabled:pointer-events-none"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200/65 dark:border-neutral-800/55 text-neutral-900 dark:text-neutral-50 hover:bg-white dark:hover:bg-neutral-900 disabled:opacity-40 disabled:pointer-events-none"
             aria-label="Previous page"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -654,7 +1035,7 @@ function CopierLogsPagination({
             {pageNumbers[0]! > 1 && (
               <>
                 <PageButton n={1} active={page === 1} onClick={() => onPageChange(1)} />
-                {pageNumbers[0]! > 2 && <span className="px-1 text-neutral-400 text-sm">…</span>}
+                {pageNumbers[0]! > 2 && <span className="px-1 text-neutral-900 dark:text-neutral-50 text-sm">…</span>}
               </>
             )}
             {pageNumbers.map(n => (
@@ -663,7 +1044,7 @@ function CopierLogsPagination({
             {pageNumbers[pageNumbers.length - 1]! < totalPages && (
               <>
                 {pageNumbers[pageNumbers.length - 1]! < totalPages - 1 && (
-                  <span className="px-1 text-neutral-400 text-sm">…</span>
+                  <span className="px-1 text-neutral-900 dark:text-neutral-50 text-sm">…</span>
                 )}
                 <PageButton n={totalPages} active={page === totalPages} onClick={() => onPageChange(totalPages)} />
               </>
@@ -673,7 +1054,7 @@ function CopierLogsPagination({
             type="button"
             onClick={() => onPageChange(page + 1)}
             disabled={page >= totalPages}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-white dark:hover:bg-neutral-900 disabled:opacity-40 disabled:pointer-events-none"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200/65 dark:border-neutral-800/55 text-neutral-900 dark:text-neutral-50 hover:bg-white dark:hover:bg-neutral-900 disabled:opacity-40 disabled:pointer-events-none"
             aria-label="Next page"
           >
             <span className="hidden sm:inline">{labels.next}</span>
@@ -691,10 +1072,10 @@ function PageButton({ n, active, onClick }: { n: number; active: boolean; onClic
       type="button"
       onClick={onClick}
       aria-current={active ? 'page' : undefined}
-      className={`min-w-[2rem] px-2 py-1.5 text-sm rounded-md font-medium tabular-nums transition-colors ${
+      className={`min-w-8 px-2 py-1.5 text-sm rounded-md font-medium tabular-nums transition-colors ${
         active
-          ? 'bg-teal-600 text-white'
-          : 'text-neutral-600 dark:text-neutral-400 hover:bg-white dark:hover:bg-neutral-900 border border-transparent hover:border-neutral-200 dark:hover:border-neutral-800'
+          ? 'bg-green-400 text-neutral-950'
+          : 'text-neutral-900 dark:text-neutral-50 hover:bg-white dark:hover:bg-neutral-900 border border-transparent hover:border-neutral-200 dark:hover:border-neutral-800'
       }`}
     >
       {n}

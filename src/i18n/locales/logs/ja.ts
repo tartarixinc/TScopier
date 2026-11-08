@@ -11,7 +11,7 @@ export const logsJa: LogsBundleTranslations = {
     filterPending: '保留中',
     colStatus: 'ステータス',
     colReason: '理由',
-    colChannel: 'チャンネル',
+    colChannel: 'ソース',
     colSymbol: 'シンボル',
     colMessage: 'メッセージ',
     colType: '種別',

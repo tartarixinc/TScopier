@@ -529,6 +529,120 @@ Make sure to secure 30% profits by closing partial lotsize`
     assert.equal(result.parsed.partial_close_fraction, 0.3)
   })
 
+  it('treats any sub-100% close as partial (plural nouns, non-tier percentages)', () => {
+    const cases: Array<[string, number]> = [
+      ['Close 20% of the trades now', 0.2],
+      ['Close 20% of the positions now', 0.2],
+      ['Close 10% of the trade', 0.1],
+      ['Close 35% of the trades', 0.35],
+      ['Close 20% now', 0.2],
+    ]
+    for (const [msg, fraction] of cases) {
+      const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+      assert.equal(result.status, 'parsed', msg)
+      assert.equal(result.parsed.action, 'partial_profit', msg)
+      assert.equal(result.parsed.partial_close_fraction, fraction, msg)
+    }
+  })
+
+  it('keeps a full 100% close out of the partial path', () => {
+    const result = parseChannelMessageSync('Close 100% of the trades', DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    assert.notEqual(result.parsed.action, 'partial_profit')
+  })
+
+  it('keeps percentage prose and advice out of the partial-close path', () => {
+    // Verified against the pre-fix parser in a clean worktree: every row below
+    // produced the same result before the generic-percentage clause existed.
+    const cases: Array<[string, string]> = [
+      ['Close all trades, 20% profit secured', 'close'], // explicit full close wins
+      ['BUY ETHUSDT now, SL 5% / TP 20% profit', 'buy'], // entry keeps its prices
+      ['80% trades hit TP today', 'skipped'], // commentary, no close verb
+      ['Close 20% of the trade if it reaches 4100', 'skipped'], // conditional advice
+      ['Close at 20% profit', 'skipped'], // target wording, not an instruction
+    ]
+    for (const [msg, expected] of cases) {
+      const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+      const action = result.status === 'parsed' ? String(result.parsed.action) : 'skipped'
+      assert.equal(action, expected, msg)
+      assert.notEqual(action, 'partial_profit', msg)
+    }
+  })
+
+  it('keeps conditional, entry and modify percentage shapes on their pre-fix path', () => {
+    // Each expectation was measured against the pre-fix parser in a clean
+    // worktree (HEAD) — these messages must behave exactly as they did before
+    // the generic-percentage clause existed, and none may become a partial.
+    const cases: Array<[string, string]> = [
+      // condition or price level after the percentage → advice
+      ['Close 20% when it hits 4200', 'modify'],
+      ['Close 20% once it reaches 4100', 'modify'],
+      ['Close 20% at 4100', 'modify'],
+      ['Close 20% after 4100', 'modify'],
+      ['Close 20% of the trades when TP1 hits', 'skipped'],
+      ['Secure 30% if price hits 2680', 'modify'],
+      ['Take 20% if it hits 4200', 'modify'],
+      // side-bearing messages are entries
+      ['BUY XAUUSD now, SL 4060, TP 4090, close 20%', 'buy'],
+      ['Close 20% and buy XAUUSD now', 'buy'],
+      ['BUY XAUUSD now, take 20% profit', 'buy'],
+      // a stop/target change in the same message belongs to the modify branch
+      ['Close 20%, set SL to 4050', 'modify'],
+      ['Set SL to 4050 and close 20% of the trades', 'modify'],
+    ]
+    for (const [msg, expected] of cases) {
+      const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+      const action = result.status === 'parsed' ? String(result.parsed.action) : 'skipped'
+      assert.equal(action, expected, msg)
+      assert.notEqual(action, 'partial_profit', msg)
+    }
+  })
+
+  it('treats a price level after the percentage as advice, not a partial', () => {
+    // Level markers (`above 4100`, `@ 4100`) are the same advice class as
+    // `when/if/at <level>`: HEAD-measured expectations, none may execute.
+    const cases: Array<[string, string]> = [
+      ['Close 20% above 4100', 'modify'],
+      ['Close 20% below 3900', 'modify'],
+      ['Close 20% @ 4100', 'modify'],
+      ['Close 20% on a break above 4100', 'modify'],
+    ]
+    for (const [msg, expected] of cases) {
+      const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+      const action = result.status === 'parsed' ? String(result.parsed.action) : 'skipped'
+      assert.equal(action, expected, msg)
+      assert.notEqual(action, 'partial_profit', msg)
+      assert.notEqual(action, 'partial_breakeven', msg)
+    }
+  })
+
+  it('keeps both breakeven phrasings as a partial breakeven with the stated fraction', () => {
+    // The percentage must not be dropped when the message also asks for
+    // breakeven, and the two spellings must agree.
+    for (const msg of [
+      'Close 20% and move SL to breakeven',
+      'Close 20% and move stop to breakeven',
+      'Close 20% breakeven',
+    ]) {
+      const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+      assert.equal(result.status, 'parsed', msg)
+      assert.equal(result.parsed.action, 'partial_breakeven', msg)
+      assert.equal(result.parsed.partial_close_fraction, 0.2, msg)
+    }
+  })
+
+  it('does not over-exclude legitimate immediate partials', () => {
+    const cases: Array<[string, number]> = [
+      ['Close 20% of the trade at market', 0.2], // "at market" is an instruction, not a level
+      ['Secure 20% profit to cut risk', 0.2],
+      ['Close half when ready', 0.5], // legacy tier branch, unaffected by the gate
+    ]
+    for (const [msg, fraction] of cases) {
+      const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+      assert.equal(result.parsed.action, 'partial_profit', msg)
+      assert.equal(result.parsed.partial_close_fraction, fraction, msg)
+    }
+  })
+
   it('parses Trading Central breakeven suggestion', () => {
     const msg = '+50 pips running, you can move stop to breakeven.'
     const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)

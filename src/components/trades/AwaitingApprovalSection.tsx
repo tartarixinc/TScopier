@@ -62,32 +62,32 @@ export function AwaitingApprovalSection({
                   onClick={() => onOpenSignal(signal)}
                   className="min-w-0 flex-1 text-left group"
                 >
-                  <p className="line-clamp-2 whitespace-pre-wrap break-words text-sm text-neutral-900 dark:text-neutral-50">
+                  <p className="line-clamp-2 whitespace-pre-wrap wrap-break-word text-sm text-neutral-900 dark:text-neutral-50">
                     {messageText}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
                     {levels.symbol ? (
-                      <span className="rounded-md bg-neutral-100 px-2 py-0.5 font-medium text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
+                      <span className="rounded-md bg-neutral-100 px-2 py-0.5 font-medium text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50">
                         {levels.symbol}
                       </span>
                     ) : null}
                     {levels.action ? (
-                      <span className="rounded-md bg-neutral-100 px-2 py-0.5 font-medium uppercase text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
+                      <span className="rounded-md bg-neutral-100 px-2 py-0.5 font-medium uppercase text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50">
                         {levels.action}
                       </span>
                     ) : null}
                     {levels.entry ? (
-                      <span className="rounded-md bg-neutral-100 px-2 py-0.5 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">
+                      <span className="rounded-md bg-neutral-100 px-2 py-0.5 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50">
                         Entry {levels.entry}
                       </span>
                     ) : null}
                     {levels.sl ? (
-                      <span className="rounded-md bg-neutral-100 px-2 py-0.5 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">
+                      <span className="rounded-md bg-neutral-100 px-2 py-0.5 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50">
                         SL {levels.sl}
                       </span>
                     ) : null}
                     {levels.tp ? (
-                      <span className="rounded-md bg-neutral-100 px-2 py-0.5 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">
+                      <span className="rounded-md bg-neutral-100 px-2 py-0.5 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50">
                         TP {levels.tp}
                       </span>
                     ) : null}
@@ -97,7 +97,7 @@ export function AwaitingApprovalSection({
                     <ChevronRight className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
                   </p>
                   {error ? (
-                    <p className="mt-1 break-words text-xs text-red-600 dark:text-red-400">{error}</p>
+                    <p className="mt-1 wrap-break-word text-xs text-red-600 dark:text-red-400">{error}</p>
                   ) : null}
                 </button>
                 <div className="flex shrink-0 items-center gap-2">
@@ -105,7 +105,7 @@ export function AwaitingApprovalSection({
                     type="button"
                     disabled={pendingApprove}
                     onClick={() => { void approve(signal.id) }}
-                    className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="rounded-lg bg-green-400 px-3 py-1.5 text-xs font-semibold text-neutral-950 transition-colors hover:bg-green-500 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     {pendingApprove ? 'Approving…' : 'Approve'}
                   </button>
@@ -113,7 +113,7 @@ export function AwaitingApprovalSection({
                     type="button"
                     disabled={pendingApprove}
                     onClick={() => dismiss(signal.id)}
-                    className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 transition-colors hover:bg-neutral-100 disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                    className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-900 transition-colors hover:bg-neutral-100 disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-50 dark:hover:bg-neutral-800"
                   >
                     Dismiss
                   </button>

@@ -180,7 +180,7 @@ export const channelWorkerEn: ChannelWorkerTranslations = {
     channel_filter_ignored:
       'this channel instruction is set to Ignore in Configure Trading',
     telegram_listener_not_live:
-      'Telegram listener is not connected — open Copier Engine and reconnect Telegram',
+      'Telegram listener is not connected — open Copier Process and reconnect Telegram',
     explicit_stops_required_when_add_to_existing_off:
       'this channel is in single-slot mode (Add to Existing Trades is off), so new entries must include TP/SL parameters',
     entry_not_opened: 'broker did not open any position for this signal',
@@ -196,6 +196,9 @@ export const channelWorkerEn: ChannelWorkerTranslations = {
     delete_pendings_requires_reply:
       'cancel-pending instructions must be sent as a reply to the original signal message',
     delete_pendings_none: 'no pending orders found to cancel for this trade',
+    delete_pendings_cancel_failed:
+      'pending orders were found but none could be cancelled (the broker refused or was unavailable) — try again, or close them from the Trades page',
+    partial_close_unavailable_for_position_size: 'partial close not possible — this position is too small to split: the requested part would fall below the broker minimum lot, so nothing was closed and the trade stayed open at its full size',
   },
   dispatchSkipped: 'Did not copy this signal ({reason}).',
   rangeRebalanceSkippedNamed: 'Skipped {symbol} take-profit rebalance ({reason})',
