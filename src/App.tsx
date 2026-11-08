@@ -46,6 +46,9 @@ const ProviderPublicProfilePage = lazy(() =>
 const ProviderApplyPage = lazy(() =>
   import('./pages/dashboard/ProviderApplyPage').then(m => ({ default: m.ProviderApplyPage })),
 )
+const CopierDetailsPage = lazy(() =>
+  import('./pages/dashboard/CopierDetailsPage').then(m => ({ default: m.CopierDetailsPage })),
+)
 const SocialTraderActivityPage = lazy(() =>
   import('./pages/dashboard/SocialTradingPage').then(m => ({ default: m.SocialTraderActivityPage })),
 )
@@ -188,6 +191,12 @@ export default function App() {
               element={buildFlags.hideSocialTrading
                 ? <Navigate to="/dashboard" replace />
                 : <LazyPage><ProviderApplyPage /></LazyPage>}
+            />
+            <Route
+              path="/social-trading/provider/copiers/:subscriptionId"
+              element={buildFlags.hideSocialTrading
+                ? <Navigate to="/dashboard" replace />
+                : <LazyPage><CopierDetailsPage /></LazyPage>}
             />
             <Route
               path="/social-trading/:traderId"

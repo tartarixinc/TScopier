@@ -420,6 +420,106 @@ export async function fetchMyProviderCopiers(client: SupabaseClient): Promise<Pr
   }))
 }
 
+export type ProviderCopierDetails = {
+  subscriptionId: string
+  subscriberUserId: string
+  displayName: string
+  username: string
+  status: string
+  desiredStatus: string
+  sizingMode: SocialCopySubscription['sizingMode']
+  fixedLot: number | null
+  lotMultiplier: number
+  maxLot: number
+  copyRisk: CopyRiskSettings
+  symbolMap: Record<string, string>
+  destinationBrokerAccountId: string | null
+  destinationPlatform: string | null
+  destinationBrokerName: string | null
+  destinationLabel: string | null
+  destinationBalance: number | null
+  destinationEquity: number | null
+  destinationCurrency: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export async function fetchProviderCopierDetails(
+  client: SupabaseClient,
+  subscriptionId: string,
+): Promise<ProviderCopierDetails | null> {
+  const { data, error } = await client.rpc('get_provider_copier_details', {
+    p_subscription_id: subscriptionId,
+  })
+  if (error) throw failure(error)
+  const row = (Array.isArray(data) ? data[0] : data) as {
+    subscription_id: string
+    subscriber_user_id: string
+    display_name: string
+    username: string
+    status: string
+    desired_status: string
+    sizing_mode: SocialCopySubscription['sizingMode']
+    fixed_lot: number | string | null
+    lot_multiplier: number | string
+    max_lot: number | string
+    manual_settings: unknown
+    destination_broker_account_id: string | null
+    destination_platform: string | null
+    destination_broker_name: string | null
+    destination_label: string | null
+    destination_balance: number | string | null
+    destination_equity: number | string | null
+    destination_currency: string | null
+    created_at: string
+    updated_at: string
+  } | null | undefined
+  if (!row?.subscription_id) return null
+  const mapped = mapSubscriptionRow({
+    id: row.subscription_id,
+    source_id: '',
+    destination_broker_account_id: row.destination_broker_account_id ?? '',
+    sizing_mode: row.sizing_mode,
+    fixed_lot: row.fixed_lot,
+    lot_multiplier: row.lot_multiplier,
+    max_lot: row.max_lot,
+    requested_account_mode: 'demo',
+    source_account_mode: 'unknown',
+    destination_account_mode: 'unknown',
+    execution_path: 'broker',
+    manual_settings: row.manual_settings,
+    status: row.status as SocialCopySubscriptionStatus,
+    desired_status: row.desired_status as SocialCopySubscription['desiredStatus'],
+    error_code: null,
+    error_detail: null,
+    worker_acknowledged_at: null,
+    updated_at: row.updated_at,
+  })
+  return {
+    subscriptionId: String(row.subscription_id),
+    subscriberUserId: String(row.subscriber_user_id),
+    displayName: row.display_name,
+    username: row.username,
+    status: row.status,
+    desiredStatus: row.desired_status,
+    sizingMode: mapped.sizingMode,
+    fixedLot: mapped.fixedLot,
+    lotMultiplier: mapped.lotMultiplier,
+    maxLot: mapped.maxLot,
+    copyRisk: mapped.copyRisk,
+    symbolMap: mapped.symbolMap,
+    destinationBrokerAccountId: row.destination_broker_account_id,
+    destinationPlatform: row.destination_platform,
+    destinationBrokerName: row.destination_broker_name,
+    destinationLabel: row.destination_label,
+    destinationBalance: row.destination_balance == null ? null : Number(row.destination_balance),
+    destinationEquity: row.destination_equity == null ? null : Number(row.destination_equity),
+    destinationCurrency: row.destination_currency,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
 export type ProviderPaymentRow = {
   id: string
   payerUserId: string

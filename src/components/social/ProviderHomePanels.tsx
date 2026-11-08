@@ -49,9 +49,17 @@ export function ProviderCopiersPanel({ copy }: { copy: SocialTradingPageTranslat
                 <p className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-50">{row.displayName}</p>
                 {row.username ? <p className="truncate text-xs text-neutral-500">@{row.username}</p> : null}
               </div>
-              <div className="text-end text-xs text-neutral-600 dark:text-neutral-300">
-                <p className="font-medium capitalize">{row.status.replaceAll('_', ' ')}</p>
-                <p>{new Date(row.createdAt).toLocaleDateString()}</p>
+              <div className="flex items-center gap-3 text-end text-xs text-neutral-600 dark:text-neutral-300">
+                <div>
+                  <p className="font-medium capitalize">{row.status.replaceAll('_', ' ')}</p>
+                  <p>{new Date(row.createdAt).toLocaleDateString()}</p>
+                </div>
+                <Link
+                  to={`/social-trading/provider/copiers/${row.subscriptionId}`}
+                  className="font-semibold text-green-500 hover:underline dark:text-teal-300"
+                >
+                  {copy.providerCopiersView ?? 'View'}
+                </Link>
               </div>
             </li>
           ))}

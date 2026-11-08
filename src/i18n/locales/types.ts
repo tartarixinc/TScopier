@@ -1180,6 +1180,12 @@ export interface SocialTradingPageTranslations {
   providerCopiersBody: string
   providerCopiersEmpty: string
   providerCopiersError: string
+  providerCopiersView?: string
+  copierDetailsTitle?: string
+  copierDetailsAccount?: string
+  copierDetailsRisk?: string
+  copierDetailsNotFound?: string
+  copierDetailsError?: string
   providerPaymentsTitle: string
   providerPaymentsBody: string
   providerPaymentsEmpty: string
