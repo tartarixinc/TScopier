@@ -116,6 +116,7 @@ function devSiteOverride(): 'app' | 'marketing' | null {
 
 function isMarketingHost(hostname: string): boolean {
   if (hostname === 'tscopier.ai' || hostname === 'www.tscopier.ai') return true
+  if (hostname === 'unicopier.com' || hostname === 'www.unicopier.com') return true
   if (hostname.endsWith('.netlify.app')) return true
   return false
 }
@@ -126,6 +127,7 @@ export function isAppHost(hostname = window.location.hostname): boolean {
   if (override) return override === 'app'
 
   if (hostname === 'app.tscopier.ai') return true
+  if (hostname === 'app.unicopier.com') return true
   if (hostname === 'staging.tscopier.ai') return true
   if (hostname === 'migration.tscopier.ai') return true
   if (hostname === 'legendary-valkyrie-4da363.netlify.app') return true
