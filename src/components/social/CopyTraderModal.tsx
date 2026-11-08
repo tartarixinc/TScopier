@@ -1,9 +1,10 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowDown, ArrowRight, Check, CheckCircle2, X } from 'lucide-react'
 import clsx from 'clsx'
 import { Button } from '../ui/Button'
 import { Alert } from '../ui/Alert'
+import { Toggle } from '../ui/Toggle'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
 import { useFormatMoney } from '../../hooks/useFormatMoney'
 import { interpolate } from '../../i18n/interpolate'
@@ -29,7 +30,9 @@ import { eligibilityDiagnosticForReason } from '../../lib/socialEligibility'
 import { useT } from '../../context/LocaleContext'
 import { AccountModeBadge } from './AccountModeBadge'
 import { SocialCopyFilterSettingsEditor } from './SocialCopyFilterSettingsEditor'
+
 const MULTIPLIERS = [0.25, 0.5, 0.75, 1, 1.5, 2] as const
+const EXAMPLE_LOT = 1
 
 function isPaidCopyPrice(cents: number | null | undefined): boolean {
   return cents != null && cents > 0
@@ -38,10 +41,17 @@ function isPaidCopyPrice(cents: number | null | undefined): boolean {
 function AccountLogo({ platform }: { platform: string }) {
   const [failed, setFailed] = useState(false)
   const normalized = platform.trim().toUpperCase()
-  if (failed || (normalized !== 'MT4' && normalized !== 'MT5')) {
+  if (failed || (normalized !== 'MT4' && normalized !== 'MT5' && normalized !== 'CTRADER')) {
     return (
       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-neutral-100 text-[11px] font-semibold text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50">
-        {normalized || 'MT'}
+        {normalized.slice(0, 3) || 'MT'}
+      </span>
+    )
+  }
+  if (normalized === 'CTRADER') {
+    return (
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-neutral-100 text-[9px] font-semibold tracking-wide text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50">
+        CT
       </span>
     )
   }
@@ -57,30 +67,18 @@ function AccountLogo({ platform }: { platform: string }) {
     </span>
   )
 }
+
 function accountRouteLabel(account: BrokerAccount): string {
   const broker = account.broker_name?.trim() || getBrokerDisplayLabel(account)
   return `${broker} ${account.platform.toUpperCase()}`
 }
 
-function SetupSection({
-  step,
-  title,
-  children,
-}: {
-  step: number
-  title: string
-  children: ReactNode
-}) {
+function PreviewValue({ label, value }: { label: string; value: string }) {
   return (
-    <section className="space-y-3">
-      <div className="flex items-center gap-2.5">
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-[11px] font-semibold tabular-nums text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200">
-          {step}
-        </span>
-        <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{title}</h3>
-      </div>
-      <div className="sm:pl-8">{children}</div>
-    </section>
+    <div className="flex items-start justify-between gap-4 text-xs">
+      <dt className="text-neutral-900 dark:text-neutral-50">{label}</dt>
+      <dd className="max-w-[55%] text-right font-medium text-neutral-900 dark:text-neutral-100">{value}</dd>
+    </div>
   )
 }
 
@@ -106,6 +104,7 @@ export function CopyTraderModal({
   const [multiplier, setMultiplier] = useState(0.75)
   const [maxLot, setMaxLot] = useState(0.1)
   const [filterSettings, setFilterSettings] = useState<SocialCopyFilterSettings>(DEFAULT_SOCIAL_COPY_FILTER_SETTINGS)
+  const [advanced, setAdvanced] = useState(false)
   const [ready, setReady] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -155,16 +154,17 @@ export function CopyTraderModal({
   const isSyntheticSimulation = selectedSource?.isSynthetic === true
   const destinationMode = selectedBroker ? resolveSocialAccountMode(selectedBroker) : 'unknown'
   const destinationBalance = selectedBroker ? resolveBrokerTotalBalance(selectedBroker) : null
-  const copiedLot = previewTrade?.previewLot != null && trader.previewBalance != null
-    ? estimateSocialCopyLot({
-        mode: riskMode,
-        traderLot: previewTrade.previewLot,
-        traderBalance: trader.previewBalance,
-        destinationBalance,
-        fixedLot,
-        multiplier,
-      })
-    : riskMode === 'fixed_lot' ? fixedLot : null
+  const exampleTraderLot = previewTrade?.previewLot != null && previewTrade.previewLot > 0
+    ? previewTrade.previewLot
+    : EXAMPLE_LOT
+  const copiedLot = estimateSocialCopyLot({
+    mode: riskMode,
+    traderLot: exampleTraderLot,
+    traderBalance: trader.previewBalance,
+    destinationBalance,
+    fixedLot,
+    multiplier,
+  }) ?? (riskMode === 'fixed_lot' ? fixedLot : null)
 
   const profileLabel = riskMode === 'fixed_lot'
     ? `${fixedLot.toFixed(2)} ${c.lots}`
@@ -177,6 +177,9 @@ export function CopyTraderModal({
     : riskMode === 'proportional'
       ? c.estimatedCopiedLot
       : c.copiedLot
+  const lotValue = copiedLot == null
+    ? c.estimateUnavailable
+    : `${Math.min(copiedLot, maxLot).toFixed(2)} ${c.lots}`
 
   const configurationValid = Number.isFinite(maxLot) && maxLot > 0 && maxLot <= 1000
     && (riskMode !== 'fixed_lot' || (Number.isFinite(fixedLot) && fixedLot > 0 && fixedLot <= maxLot))
@@ -307,27 +310,43 @@ export function CopyTraderModal({
       aria-labelledby="copy-trader-title"
     >
       <button type="button" className="absolute inset-0 bg-neutral-950/55" aria-label={c.close} onClick={onClose} />
-      <div className="relative flex max-h-[94vh] w-full flex-col overflow-hidden rounded-t-2xl border border-neutral-200/65 bg-white shadow-2xl dark:border-neutral-800/55 dark:bg-neutral-950 sm:max-w-xl sm:rounded-2xl">
-        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-neutral-100 px-5 py-3.5 dark:border-neutral-800 sm:px-6">
+      <div className="relative flex max-h-[94vh] w-full flex-col overflow-hidden rounded-t-2xl border border-neutral-200/65 bg-white shadow-2xl dark:border-neutral-800/55 dark:bg-neutral-950 sm:max-w-3xl sm:rounded-2xl">
+        <header className="flex shrink-0 items-start justify-between gap-4 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800 sm:px-6">
           <div className="min-w-0">
-            <h2 id="copy-trader-title" className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">
-              {showPaywall
-                ? interpolate(c.paywallTitle, { trader: trader.displayName })
-                : interpolate(c.title, { trader: trader.displayName })}
-            </h2>
-            <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-neutral-500 dark:text-neutral-400">
-              <span className="font-medium text-neutral-800 dark:text-neutral-200">@{trader.username}</span>
-              {isSyntheticSimulation ? <span className="text-amber-600 dark:text-amber-400">Simulated demo</span> : null}
-              <span>{copy.roi} {trader.roi == null ? '—' : `${trader.roi.toFixed(1)}%`}</span>
-              <span>{copy.winRate} {trader.winRate == null ? '—' : `${trader.winRate.toFixed(1)}%`}</span>
-              {pricePaid && trader.monthlyCopyPriceCents != null
-                ? <span className="font-medium text-neutral-800 dark:text-neutral-200">{formatMoney(trader.monthlyCopyPriceCents / 100)}/mo</span>
-                : <span>{copy.priceFree}</span>}
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 id="copy-trader-title" className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">
+                {showPaywall
+                  ? interpolate(c.paywallTitle, { trader: trader.displayName })
+                  : interpolate(c.title, { trader: trader.displayName })}
+              </h2>
+              {!showPaywall ? (
+                <span className="rounded-full bg-teal-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-green-500 dark:bg-teal-950/40 dark:text-teal-300">
+                  {c.previewLabel}
+                </span>
+              ) : null}
+            </div>
+            <p className="mt-0.5 text-sm text-neutral-900 dark:text-neutral-50">
+              {showPaywall ? c.paywallBody : c.subtitle}
             </p>
+            {!showPaywall ? (
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-900 dark:text-neutral-50">
+                <span>@{trader.username}</span>
+                {isSyntheticSimulation ? <span className="text-amber-600 dark:text-amber-400">Simulated demo</span> : null}
+                {destinationBalance != null ? (
+                  <span>
+                    {c.balance}{' '}
+                    <strong className="font-semibold">{formatMoney(destinationBalance)}</strong>
+                  </span>
+                ) : null}
+                {selectedBroker ? (
+                  <span className="font-semibold">{selectedBroker.platform.toUpperCase()}</span>
+                ) : null}
+              </div>
+            ) : null}
           </div>
           <button
             type="button"
-            className="shrink-0 rounded-lg p-2 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-neutral-50"
+            className="shrink-0 rounded-lg p-2 text-neutral-900 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-50"
             aria-label={c.close}
             onClick={onClose}
           >
@@ -335,7 +354,7 @@ export function CopyTraderModal({
           </button>
         </header>
 
-        <div className="overflow-y-auto px-5 py-5 sm:px-6">
+        <div className="overflow-y-auto px-5 py-4 sm:px-6">
           {showPaywall ? (
             <section aria-labelledby="copy-paywall-heading" className="mx-auto max-w-md space-y-4 py-4 text-center sm:py-8">
               <p className="text-3xl font-semibold tabular-nums text-neutral-900 dark:text-neutral-50">
@@ -348,228 +367,247 @@ export function CopyTraderModal({
               {error ? <Alert variant="error">{error}</Alert> : null}
             </section>
           ) : (
-          <div className="space-y-8">
-            <SetupSection step={1} title={c.destinationAccount}>
-              {loading ? (
-                <p className="text-sm text-neutral-600 dark:text-neutral-300">{c.loadingAccounts}</p>
-              ) : destinations.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-neutral-300 px-3 py-3 dark:border-neutral-700">
-                  <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{c.noAccountsTitle}</p>
-                  <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-300">{c.noAccountsBody}</p>
-                  <Button type="button" size="sm" className="mt-3" onClick={onConnectBroker}>{c.connectBroker}</Button>
+            <div className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
+              <div className="space-y-4">
+                {error ? <Alert variant="error">{error}</Alert> : null}
+
+                <div className="flex items-center justify-between gap-4 rounded-xl border border-neutral-200 px-3 py-2.5 dark:border-neutral-800">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">Advanced</p>
+                    <p className="mt-0.5 text-xs leading-5 text-neutral-900 dark:text-neutral-50">
+                      Show filters, symbols, and max lot.
+                    </p>
+                  </div>
+                  <Toggle checked={advanced} onChange={setAdvanced} />
                 </div>
-              ) : (
-                <div className="max-h-52 space-y-1.5 overflow-y-auto pr-0.5">
-                  {destinations.map(broker => {
-                    const login = resolveAccountLogin(broker)
-                    const selected = broker.id === selectedBrokerId
-                    return (
+
+                <section aria-labelledby="copy-destination-heading">
+                  <h3 id="copy-destination-heading" className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
+                    {c.destinationAccount}
+                  </h3>
+                  {loading ? (
+                    <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-300">{c.loadingAccounts}</p>
+                  ) : destinations.length === 0 ? (
+                    <div className="mt-2 rounded-xl border border-dashed border-neutral-300 px-3 py-3 dark:border-neutral-700">
+                      <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{c.noAccountsTitle}</p>
+                      <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-300">{c.noAccountsBody}</p>
+                      <Button type="button" size="sm" className="mt-3" onClick={onConnectBroker}>{c.connectBroker}</Button>
+                    </div>
+                  ) : (
+                    <div className="mt-2 max-h-52 space-y-1.5 overflow-y-auto pr-0.5">
+                      {destinations.map(broker => {
+                        const login = resolveAccountLogin(broker)
+                        const selected = broker.id === selectedBrokerId
+                        return (
+                          <button
+                            key={broker.id}
+                            type="button"
+                            className={clsx(
+                              'flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-start transition-colors',
+                              selected
+                                ? 'border-green-400 bg-teal-50/60 ring-1 ring-green-400 dark:bg-teal-950/20'
+                                : 'border-neutral-200 hover:border-neutral-300 dark:border-neutral-800 dark:hover:border-neutral-700',
+                            )}
+                            aria-pressed={selected}
+                            onClick={() => setSelectedBrokerId(broker.id)}
+                          >
+                            <AccountLogo platform={broker.platform} />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">
+                                {getBrokerDisplayLabel(broker)}
+                              </span>
+                              <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-neutral-900 dark:text-neutral-50">
+                                <span>{broker.platform.toUpperCase()}</span>
+                                {login ? <span>{c.login} {maskBrokerAccountIdentifier(login)}</span> : null}
+                                {broker.last_balance != null ? <span>{formatMoney(resolveBrokerTotalBalance(broker))}</span> : null}
+                              </span>
+                            </span>
+                            {selected ? <Check className="h-5 w-5 shrink-0 text-green-400" aria-hidden /> : null}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </section>
+
+                <section aria-labelledby="copy-method-heading">
+                  <h3 id="copy-method-heading" className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
+                    {c.copyMethod}
+                  </h3>
+                  <div className="mt-2 grid gap-1.5">
+                    {([
+                      ['proportional', c.proportional, c.proportionalDescription],
+                      ['fixed_lot', c.fixedLot, c.fixedLotDescription],
+                      ['risk_multiplier', c.riskMultiplier, c.riskMultiplierDescription],
+                    ] as const).map(([mode, label, description]) => (
                       <button
-                        key={broker.id}
+                        key={mode}
                         type="button"
                         className={clsx(
-                          'flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-start transition-colors',
-                          selected
-                            ? 'border-green-400 bg-emerald-50/70 ring-1 ring-green-400 dark:bg-emerald-950/20'
-                            : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50 dark:border-neutral-800 dark:hover:border-neutral-700 dark:hover:bg-neutral-900',
+                          'rounded-xl border px-3 py-2 text-start transition-colors',
+                          riskMode === mode
+                            ? 'border-green-400 bg-teal-50/60 ring-1 ring-green-400 dark:bg-teal-950/20'
+                            : 'border-neutral-200 hover:border-neutral-300 dark:border-neutral-800 dark:hover:border-neutral-700',
                         )}
-                        aria-pressed={selected}
-                        onClick={() => setSelectedBrokerId(broker.id)}
+                        aria-pressed={riskMode === mode}
+                        onClick={() => setRiskMode(mode)}
                       >
-                        <AccountLogo platform={broker.platform} />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">{getBrokerDisplayLabel(broker)}</span>
-                          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-neutral-600 dark:text-neutral-300">
-                            <span>{broker.platform.toUpperCase()}</span>
-                            {login ? <span>{maskBrokerAccountIdentifier(login)}</span> : null}
-                            {broker.last_balance != null ? <span>{formatMoney(resolveBrokerTotalBalance(broker))}</span> : null}
-                          </span>
-                        </span>
-                        {selected ? <Check className="h-4 w-4 shrink-0 text-green-500" aria-hidden /> : null}
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-            </SetupSection>
-
-            <SetupSection step={2} title={c.copyMethod}>
-              <div className="space-y-3">
-                <div className="grid grid-cols-3 gap-1.5">
-                  {([
-                    ['proportional', c.proportional],
-                    ['fixed_lot', c.fixedLot],
-                    ['risk_multiplier', c.riskMultiplier],
-                  ] as const).map(([mode, label]) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      className={clsx(
-                        'rounded-lg border px-2 py-2 text-xs font-medium transition-colors',
-                        riskMode === mode
-                          ? 'border-green-400 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200'
-                          : 'border-neutral-200 text-neutral-700 hover:border-neutral-300 dark:border-neutral-800 dark:text-neutral-200',
-                      )}
-                      aria-pressed={riskMode === mode}
-                      onClick={() => setRiskMode(mode)}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-
-                {riskMode === 'fixed_lot' ? (
-                  <label className="flex items-center justify-between gap-3 text-sm text-neutral-700 dark:text-neutral-200">
-                    <span>{c.fixedLot}</span>
-                    <span className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min="0.01"
-                        step="0.01"
-                        value={fixedLot}
-                        onChange={event => setFixedLot(Number(event.target.value))}
-                        className="w-24 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm tabular-nums text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50"
-                      />
-                      <span className="text-xs text-neutral-500">{c.lots}</span>
-                    </span>
-                  </label>
-                ) : null}
-
-                {riskMode === 'risk_multiplier' ? (
-                  <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6">
-                    {MULTIPLIERS.map(value => (
-                      <button
-                        key={value}
-                        type="button"
-                        className={clsx(
-                          'rounded-lg border px-2 py-1.5 text-xs font-semibold tabular-nums',
-                          multiplier === value
-                            ? 'border-green-400 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200'
-                            : 'border-neutral-200 text-neutral-700 dark:border-neutral-800 dark:text-neutral-200',
-                        )}
-                        onClick={() => setMultiplier(value)}
-                      >
-                        {value.toFixed(2)}x
+                        <span className="block text-sm font-medium text-neutral-900 dark:text-neutral-50">{label}</span>
+                        <span className="mt-0.5 block text-xs leading-4 text-neutral-900 dark:text-neutral-50">{description}</span>
                       </button>
                     ))}
+
+                    {riskMode === 'fixed_lot' ? (
+                      <label className="mt-1.5 flex items-center gap-3 text-sm text-neutral-900 dark:text-neutral-50">
+                        <span>{c.fixedLot}</span>
+                        <input
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          value={fixedLot}
+                          onChange={event => setFixedLot(Number(event.target.value))}
+                          className="w-24 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm tabular-nums text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50"
+                        />
+                        <span className="text-xs text-neutral-900 dark:text-neutral-50">{c.lots}</span>
+                      </label>
+                    ) : null}
+
+                    {riskMode === 'risk_multiplier' ? (
+                      <div className="mt-1.5 grid grid-cols-3 gap-2 sm:grid-cols-6">
+                        {MULTIPLIERS.map(value => (
+                          <button
+                            key={value}
+                            type="button"
+                            className={clsx(
+                              'rounded-lg border px-2 py-2 text-xs font-semibold tabular-nums',
+                              multiplier === value
+                                ? 'border-green-400 bg-teal-50 text-green-500 dark:bg-teal-950/30 dark:text-teal-300'
+                                : 'border-neutral-200 text-neutral-900 dark:border-neutral-800 dark:text-neutral-50',
+                            )}
+                            onClick={() => setMultiplier(value)}
+                          >
+                            {value.toFixed(2)}x
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
+                </section>
+
+                {advanced ? (
+                  <section className="space-y-3 rounded-xl border border-neutral-200 px-3 py-3 dark:border-neutral-800">
+                    <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{filterSectionTitle}</h3>
+                    <label className="flex items-center justify-between gap-3 text-sm text-neutral-900 dark:text-neutral-50">
+                      <span>Max lot</span>
+                      <span className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="0.01"
+                          max="1000"
+                          step="0.01"
+                          value={maxLot}
+                          onChange={event => setMaxLot(Number(event.target.value))}
+                          className="w-24 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm tabular-nums text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50"
+                        />
+                        <span className="text-xs text-neutral-500">{c.lots}</span>
+                      </span>
+                    </label>
+                    <SocialCopyFilterSettingsEditor value={filterSettings} onChange={setFilterSettings} />
+                  </section>
                 ) : null}
 
-                <label className="flex items-center justify-between gap-3 border-t border-neutral-100 pt-3 text-sm text-neutral-700 dark:border-neutral-800 dark:text-neutral-200">
-                  <span>Max lot</span>
-                  <span className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min="0.01"
-                      max="1000"
-                      step="0.01"
-                      value={maxLot}
-                      onChange={event => setMaxLot(Number(event.target.value))}
-                      className="w-24 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm tabular-nums text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50"
-                    />
-                    <span className="text-xs text-neutral-500">{c.lots}</span>
-                  </span>
-                </label>
-
                 {!configurationValid ? (
-                  <p className="text-xs text-red-600 dark:text-red-400">Enter positive sizing values. Fixed lot cannot exceed the maximum lot. Complete filter selections when enabled.</p>
-                ) : (
-                  <p className="text-xs leading-5 text-neutral-500 dark:text-neutral-400">
-                    {riskMode === 'proportional' ? c.proportionalDescription : riskMode === 'fixed_lot' ? c.fixedLotDescription : c.riskMultiplierDescription}
+                  <p className="text-xs text-red-600 dark:text-red-400">
+                    Enter positive sizing values. Fixed lot cannot exceed the maximum lot. Complete filter selections when enabled.
                   </p>
-                )}
+                ) : null}
               </div>
-            </SetupSection>
 
-            <SetupSection step={3} title={filterSectionTitle}>
-              <SocialCopyFilterSettingsEditor value={filterSettings} onChange={setFilterSettings} />
-            </SetupSection>
-
-            <SetupSection step={4} title={c.setupPreview}>
-              {previewTrade ? (
-                <div className="overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800">
-                  <div className="flex items-center justify-between gap-3 bg-neutral-50 px-3.5 py-3 dark:bg-neutral-900/70">
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-semibold uppercase tracking-widest text-neutral-500">{c.traderAction}</p>
-                      <p className="mt-1 flex flex-wrap items-center gap-2 text-sm font-semibold text-neutral-900 dark:text-neutral-50">
-                        <span>{previewTrade.symbol}</span>
-                        <span className={clsx('rounded-md px-1.5 py-0.5 text-[11px] font-semibold', previewTrade.side === 'buy' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' : 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300')}>
-                          {previewTrade.side.toUpperCase()}
-                        </span>
-                        <span className="font-normal tabular-nums text-neutral-600 dark:text-neutral-300">
-                          {previewTrade.previewLot == null ? '—' : `${previewTrade.previewLot.toFixed(2)} ${c.lots}`}
-                        </span>
+              <section
+                aria-labelledby="copy-preview-heading"
+                className="self-start rounded-2xl border border-neutral-200/80 bg-neutral-50/70 p-4 dark:border-neutral-800 dark:bg-neutral-900/60 sm:p-5 lg:sticky lg:top-0 lg:max-h-[calc(94vh-9rem)] lg:overflow-y-auto"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <h3 id="copy-preview-heading" className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
+                    {c.previewLabel}
+                  </h3>
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-green-500 dark:text-teal-300">
+                    {c.previewLabel}
+                  </span>
+                </div>
+                <div className="mt-4">
+                  <div className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-950">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-neutral-900 dark:text-neutral-50">
+                      {c.traderAction}
+                    </p>
+                    <div className="mt-1 flex items-center justify-between gap-3">
+                      <p className="truncate text-base font-semibold text-neutral-900 dark:text-neutral-50">
+                        {previewTrade ? `${previewTrade.symbol} ${previewTrade.side.toUpperCase()}` : trader.displayName}
                       </p>
-                      <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-                        {c.stopLoss} {previewTrade.previewStopLoss ?? '—'} · {c.takeProfit} {previewTrade.previewTakeProfit ?? '—'}
+                      <p className="text-xs font-semibold text-green-500 dark:text-teal-300">
+                        {c.traderSize}: {exampleTraderLot.toFixed(2)}
                       </p>
                     </div>
-                    <ArrowDown className="h-4 w-4 shrink-0 text-green-500" aria-hidden />
                   </div>
-                  <div className="px-3.5 py-3">
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-green-600 dark:text-teal-300">{c.yourAccount}</p>
+                  <div className="flex justify-center py-2 text-green-400 dark:text-green-400">
+                    <ArrowDown className="h-5 w-5" aria-hidden />
+                  </div>
+                  <div className="rounded-xl border border-teal-200 bg-white p-4 dark:border-teal-900 dark:bg-neutral-950">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-green-500 dark:text-teal-300">
+                      {c.yourAccount}
+                    </p>
                     {selectedBroker ? (
-                      <div className="mt-2 flex items-start justify-between gap-3">
+                      <div className="mt-2 flex items-center gap-3">
+                        <AccountLogo platform={selectedBroker.platform} />
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">{accountRouteLabel(selectedBroker)}</p>
-                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <p className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">
+                            {accountRouteLabel(selectedBroker)}
+                          </p>
+                          <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-neutral-900 dark:text-neutral-50">
                             <AccountModeBadge mode={destinationMode} />
-                            <p className="truncate text-xs text-neutral-600 dark:text-neutral-300">{maskBrokerAccountIdentifier(resolveAccountLogin(selectedBroker))}</p>
+                            <span>{maskBrokerAccountIdentifier(resolveAccountLogin(selectedBroker))}</span>
                           </div>
                         </div>
-                        <dl className="shrink-0 text-right">
-                          <div>
-                            <dt className="text-[10px] uppercase tracking-wide text-neutral-500">{copiedLotLabel}</dt>
-                            <dd className="text-sm font-semibold tabular-nums text-neutral-900 dark:text-neutral-50">
-                              {copiedLot == null ? '—' : copiedLot.toFixed(2)}
-                            </dd>
-                          </div>
-                          <div className="mt-1">
-                            <dt className="text-[10px] uppercase tracking-wide text-neutral-500">{c.riskProfile}</dt>
-                            <dd className="text-xs font-medium text-neutral-700 dark:text-neutral-200">{profileLabel} · max {maxLot.toFixed(2)}</dd>
-                          </div>
-                        </dl>
                       </div>
                     ) : (
                       <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-300">{c.noAccountsBody}</p>
                     )}
+                    <dl className="mt-4 space-y-2 border-t border-neutral-100 pt-3 dark:border-neutral-800">
+                      <PreviewValue label={copiedLotLabel} value={lotValue} />
+                      <PreviewValue label={c.copyStopLoss} value={c.copied} />
+                      <PreviewValue label={c.copyTakeProfit} value={c.copied} />
+                      <PreviewValue label={c.closeWhenTraderCloses} value={c.copied} />
+                      <PreviewValue label={c.riskProfile} value={profileLabel} />
+                      {advanced ? <PreviewValue label="Max lot" value={`${maxLot.toFixed(2)} ${c.lots}`} /> : null}
+                    </dl>
                   </div>
+                  {selectedBroker ? (
+                    <div className="mt-3 flex items-center justify-center gap-2 text-xs font-medium text-neutral-900 dark:text-neutral-50">
+                      <span className="truncate">{trader.displayName}</span>
+                      <ArrowRight className="h-3.5 w-3.5 shrink-0 text-green-400 dark:text-green-400" aria-hidden />
+                      <span className="truncate">{accountRouteLabel(selectedBroker)}</span>
+                    </div>
+                  ) : null}
                 </div>
-              ) : (
-                <div className="rounded-xl border border-dashed border-neutral-300 px-4 py-5 text-center text-sm text-neutral-600 dark:border-neutral-700 dark:text-neutral-300">
-                  {c.noOpenTrade}
-                </div>
-              )}
-            </SetupSection>
-          </div>
+              </section>
+            </div>
           )}
         </div>
 
-        {!showPaywall && error ? <div className="px-5 pb-2 sm:px-6"><Alert variant="error">{error}</Alert></div> : null}
-        <footer className="flex shrink-0 flex-col-reverse gap-2 border-t border-neutral-100 bg-white px-5 py-4 dark:border-neutral-800 dark:bg-neutral-950 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <footer className="flex shrink-0 flex-col-reverse gap-2 border-t border-neutral-100 bg-white px-5 py-4 dark:border-neutral-800 dark:bg-neutral-950 sm:flex-row sm:justify-end sm:px-6">
           {showPaywall ? (
             <>
-              <p className="text-xs leading-5 text-neutral-500 dark:text-neutral-400">{c.paywallPendingNote}</p>
-              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                <Button type="button" variant="secondary" disabled={submitting} onClick={onClose}>{c.cancel}</Button>
-                <Button type="button" loading={submitting} disabled={submitting} onClick={() => void confirmPaywallSubscribe()}>
-                  {interpolate(c.paywallSubscribe, { amount: priceLabel })}
-                </Button>
-              </div>
+              <Button type="button" variant="secondary" disabled={submitting} onClick={onClose}>{c.cancel}</Button>
+              <Button type="button" loading={submitting} disabled={submitting} onClick={() => void confirmPaywallSubscribe()}>
+                {interpolate(c.paywallSubscribe, { amount: priceLabel })}
+              </Button>
             </>
           ) : (
             <>
-              <p className="text-xs leading-5 text-neutral-500 dark:text-neutral-400">
-                {selectedBroker
-                  ? `${trader.displayName} → ${accountRouteLabel(selectedBroker)} · ${profileLabel} · max ${maxLot.toFixed(2)} ${c.lots}`
-                  : c.noAccountsBody}
-              </p>
-              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                <Button type="button" variant="secondary" disabled={submitting} onClick={onClose}>{c.cancel}</Button>
-                <Button type="button" loading={submitting} disabled={disabled} onClick={() => void submitCopy()}>
-                  {isSyntheticSimulation ? 'Create simulated subscription' : c.startCopying}
-                </Button>
-              </div>
+              <Button type="button" variant="secondary" disabled={submitting} onClick={onClose}>{c.close}</Button>
+              <Button type="button" loading={submitting} disabled={disabled} onClick={() => void submitCopy()}>
+                {isSyntheticSimulation ? 'Create simulated subscription' : c.startCopying}
+              </Button>
             </>
           )}
         </footer>

@@ -38,12 +38,14 @@ class Query implements PromiseLike<{ data: unknown; error: Row | null }> {
   eq(key: string, value: unknown): this { this.filters.push(row => row[key] === value); return this }
   in(key: string, values: unknown[]): this { this.filters.push(row => values.includes(row[key])); return this }
   single(): this { this.wantsSingle = true; return this }
+  maybeSingle(): this { this.wantsSingle = true; this.allowMissing = true; return this }
   insert(payload: Row): this { this.mutation = 'insert'; this.payload = payload; return this }
   update(payload: Row): this { this.mutation = 'update'; this.payload = payload; return this }
   delete(): this { this.mutation = 'delete'; return this }
   then<TResult1 = { data: unknown; error: Row | null }, TResult2 = never>(resolve?: ((value: { data: unknown; error: Row | null }) => TResult1 | PromiseLike<TResult1>) | null, reject?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null): Promise<TResult1 | TResult2> {
     return Promise.resolve(this.execute()).then(resolve, reject)
   }
+  private allowMissing = false
   private execute(): { data: unknown; error: Row | null } {
     const rows = this.db.tables[this.table] ?? (this.db.tables[this.table] = [])
     const matches = rows.filter(row => this.filters.every(filter => filter(row)))
@@ -73,15 +75,16 @@ class Query implements PromiseLike<{ data: unknown; error: Row | null }> {
       return { data: null, error: { message: `column broker_accounts.${column} does not exist` } }
     }
     const data = this.wantsSingle ? (matches[0] ?? null) : matches
-    return { data, error: this.wantsSingle && !data ? { message: 'not found' } : null }
+    return { data, error: this.wantsSingle && !data && !this.allowMissing ? { message: 'not found' } : null }
   }
 }
 
 class FakeDb {
   tables: Record<string, Row[]> = {
-    social_copy_sources: [{ id: 'source-1', broker_account_id: 'src', status: 'published' }],
+    social_copy_sources: [{ id: 'source-1', broker_account_id: 'src', status: 'published', trader_user_id: 'src-user' }],
     broker_accounts: [broker('src'), broker('dst')],
     social_copy_trade_mappings: [], social_copy_execution_events: [], social_copy_subscriptions: [],
+    trades: [],
   }
   /** Test hook: while set, the first broker_accounts select fails as if the
    * database predates that provider column (see `missingProviderIdColumn`). */
@@ -380,4 +383,41 @@ test('live-involved broker execution fails observably when SOCIAL_COPY_ALLOW_LIV
   assert.equal(db.tables.social_copy_subscriptions[0]?.status, 'error')
   assert.equal(db.tables.social_copy_subscriptions[0]?.error_code, 'LIVE_EXECUTION_DISABLED')
   assert.equal(api.sends, 0)
+})
+
+test('pokeSourceBrokerAccount reconciles matching subscriptions without a claim tick', async () => {
+  const db = new FakeDb()
+  const sub = subscription({ status: 'active' })
+  db.claimed = []
+  db.tables.social_copy_subscriptions = [{ ...sub }]
+  const source = provider({ orders: [sourcePosition] })
+  const destination = provider()
+  const monitor = new SocialCopyMonitor(db as never, {
+    executionEnabled: true,
+    providerFor: row => String((row as Row).id) === 'src' ? source : destination,
+  })
+  monitor.pokeSourceBrokerAccount('src')
+  await new Promise(resolve => setTimeout(resolve, 30))
+  assert.equal(destination.sends, 1)
+  assert.equal(db.tables.social_copy_trade_mappings[0]?.state, 'open')
+  assert.equal(db.tables.trades[0]?.metaapi_order_id, '42')
+  assert.equal(db.tables.trades[0]?.status, 'open')
+  assert.equal(db.tables.trades[0]?.user_id, 'src-user')
+})
+
+test('tick upserts provider source trades for Copier Logs visibility', async () => {
+  const db = new FakeDb()
+  const sub = subscription({ status: 'active' })
+  db.claimed = [sub]
+  db.tables.social_copy_subscriptions = [{ ...sub }]
+  const source = provider({ orders: [sourcePosition] })
+  const destination = provider()
+  const monitor = new SocialCopyMonitor(db as never, {
+    executionEnabled: true,
+    providerFor: row => String((row as Row).id) === 'src' ? source : destination,
+  })
+  await monitor.tick()
+  assert.equal(db.tables.trades.length, 1)
+  assert.equal(db.tables.trades[0]?.symbol, 'EURUSD')
+  assert.equal(db.tables.trades[0]?.broker_account_id, 'src')
 })

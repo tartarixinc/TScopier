@@ -24,6 +24,10 @@ import {
   evaluateSocialCopyOpenFilters,
   type SocialCopyManualSettings,
 } from './socialCopyFilters'
+import {
+  closeSocialCopySourceTrade,
+  upsertSocialCopySourceTrade,
+} from './socialCopySourceTrades'
 
 export { normalizeSourcePosition, constrainedCopyVolume }
 export type { NormalizedSourcePosition }
@@ -74,7 +78,7 @@ type BrokerRow = {
   provider_transition_state: string | null
 }
 
-type SourceRow = { id: string; broker_account_id: string; status: string }
+type SourceRow = { id: string; broker_account_id: string; status: string; trader_user_id: string | null }
 type MappingRow = {
   id: string
   source_ticket: string
@@ -107,6 +111,9 @@ export class SocialCopyMonitor {
   private readonly allowLive: boolean
   private readonly syntheticSimulationEnabled: boolean
   private readonly intervalMs: number
+  private readonly reconciling = new Set<string>()
+  private readonly pokeQueued = new Set<string>()
+  private pokeDraining = false
 
   constructor(private readonly supabase: SupabaseClient, private readonly options: SocialCopyMonitorOptions = {}) {
     this.workerId = options.workerId ?? `social-copy-${process.pid}`
@@ -129,6 +136,71 @@ export class SocialCopyMonitor {
   stop(): void {
     if (this.timer) clearInterval(this.timer)
     this.timer = null
+    this.pokeQueued.clear()
+  }
+
+  /**
+   * Immediate wake from MTAPI OnOrderUpdate for subscriptions whose published
+   * source broker account matches. Falls back to the interval tick if this fails.
+   */
+  pokeSourceBrokerAccount(brokerAccountId: string): void {
+    const id = String(brokerAccountId ?? '').trim()
+    if (!id) return
+    this.pokeQueued.add(id)
+    void this.drainPokes()
+  }
+
+  private async drainPokes(): Promise<void> {
+    if (this.pokeDraining) return
+    this.pokeDraining = true
+    try {
+      while (this.pokeQueued.size > 0) {
+        const ids = [...this.pokeQueued]
+        this.pokeQueued.clear()
+        for (const brokerAccountId of ids) {
+          await this.reconcileSourceBrokerAccount(brokerAccountId).catch(error => {
+            console.warn(
+              `[social-copy] poke failed source=${brokerAccountId}:`,
+              error instanceof Error ? error.message : String(error),
+            )
+          })
+        }
+      }
+    } finally {
+      this.pokeDraining = false
+    }
+  }
+
+  private async reconcileSourceBrokerAccount(brokerAccountId: string): Promise<void> {
+    const { data: sources, error: sourceError } = await this.supabase
+      .from('social_copy_sources')
+      .select('id')
+      .eq('broker_account_id', brokerAccountId)
+      .eq('status', 'published')
+    if (sourceError) throw sourceError
+    const sourceIds = (sources ?? []).map(row => String((row as { id: string }).id))
+    if (sourceIds.length === 0) return
+
+    const { data: rows, error } = await this.supabase
+      .from('social_copy_subscriptions')
+      .select('*')
+      .in('source_id', sourceIds)
+      .eq('desired_status', 'active')
+      .in('status', ['pending', 'active', 'error'])
+    if (error) throw error
+    for (const row of (rows ?? []) as SocialCopySubscriptionRow[]) {
+      await this.reconcileGuarded(row).catch(cause => this.failSubscription(row.id, brokerErrorCode(cause), cause))
+    }
+  }
+
+  private async reconcileGuarded(row: SocialCopySubscriptionRow): Promise<void> {
+    if (this.reconciling.has(row.id)) return
+    this.reconciling.add(row.id)
+    try {
+      await this.reconcile(row)
+    } finally {
+      this.reconciling.delete(row.id)
+    }
   }
 
   async tick(): Promise<void> {
@@ -140,7 +212,7 @@ export class SocialCopyMonitor {
       })
       if (error) throw error
       for (const row of (data ?? []) as SocialCopySubscriptionRow[]) {
-        await this.reconcile(row).catch(error => this.failSubscription(row.id, brokerErrorCode(error), error))
+        await this.reconcileGuarded(row).catch(error => this.failSubscription(row.id, brokerErrorCode(error), error))
       }
     } catch (error) {
       console.warn('[social-copy] claim failed:', error instanceof Error ? error.message : String(error))
@@ -159,7 +231,7 @@ export class SocialCopyMonitor {
     source: SourceRow; sourceBroker: BrokerRow; destinationBroker: BrokerRow
   }> {
     const sourceResult = await this.supabase.from('social_copy_sources')
-      .select('id,broker_account_id,status').eq('id', subscription.source_id).single()
+      .select('id,broker_account_id,status,trader_user_id').eq('id', subscription.source_id).single()
     if (sourceResult.error || !sourceResult.data) throw new Error('SOURCE_UNAVAILABLE')
     const source = sourceResult.data as SourceRow
     const readBrokerAccounts = (columns: string) => Promise.all([
@@ -274,6 +346,24 @@ export class SocialCopyMonitor {
     if (error) throw error
     const bySource = new Map(((mappings ?? []) as MappingRow[]).map(row => [row.source_ticket, row]))
 
+    // Mirror live source positions into `trades` so Copier Logs / Social update
+    // with the copy wake, not only the edge cron.
+    const traderUserId = String(context.source.trader_user_id ?? context.sourceBroker.user_id ?? '').trim()
+    if (traderUserId) {
+      for (const position of sourcePositions) {
+        await upsertSocialCopySourceTrade(this.supabase, {
+          traderUserId,
+          brokerAccountId: context.source.broker_account_id,
+          position,
+        }).catch(cause => {
+          console.warn(
+            `[social-copy] source trade upsert ${position.ticket} failed:`,
+            cause instanceof Error ? cause.message : String(cause),
+          )
+        })
+      }
+    }
+
     // Dead opens (null destination) permanently blocked retries via the unique
     // (subscription_id, source_ticket) key. Clear error/opening rows while the
     // source ticket is still live so openPosition can rematerialize. Leave
@@ -324,6 +414,18 @@ export class SocialCopyMonitor {
       if (!openTickets.has(mapping.source_ticket) && mapping.state !== 'closed') {
         try {
           await this.closeMapping(subscription, context.destinationBroker, destinationApi, destinationOrders, mapping)
+          if (traderUserId) {
+            await closeSocialCopySourceTrade(
+              this.supabase,
+              context.source.broker_account_id,
+              mapping.source_ticket,
+            ).catch(cause => {
+              console.warn(
+                `[social-copy] source trade close ${mapping.source_ticket} failed:`,
+                cause instanceof Error ? cause.message : String(cause),
+              )
+            })
+          }
         } catch (error) {
           console.warn(
             `[social-copy] close ${mapping.source_ticket} failed:`,
