@@ -8,12 +8,13 @@ import { clearChunkReloadGuard, registerChunkLoadRecovery } from './lib/chunkLoa
 
 registerChunkLoadRecovery()
 
-applyThemeToDocument(readStoredTheme())
+const appHost = isAppHost()
+applyThemeToDocument(appHost ? readStoredTheme() : 'light')
 
 const App = lazy(() => import('./App.tsx'))
 const MarketingApp = lazy(() => import('./MarketingApp.tsx'))
 
-const RootComponent = isAppHost() ? App : MarketingApp
+const RootComponent = appHost ? App : MarketingApp
 
 function BootGuardClear() {
   useEffect(() => {
@@ -24,11 +25,11 @@ function BootGuardClear() {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ThemeProvider>
+    <ThemeProvider forcedTheme={appHost ? undefined : 'light'}>
       <BootGuardClear />
       <Suspense
         fallback={
-          isAppHost() && isDashboardBootPath(window.location.pathname) ? (
+          appHost && isDashboardBootPath(window.location.pathname) ? (
             <div className="flex h-dvh min-h-0">
               <DashboardBootSkeleton />
             </div>
