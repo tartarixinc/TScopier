@@ -234,13 +234,18 @@ export function CopyTraderModal({
     setError(null)
     try {
       const origin = window.location.origin
-      const url = await startSocialCopyCheckout({
+      const result = await startSocialCopyCheckout({
         accessToken,
         providerUserId: trader.id,
         successUrl: `${origin}/social-trading?site=app&social_copy_checkout=success&provider=${trader.id}&session_id={CHECKOUT_SESSION_ID}`,
         cancelUrl: `${origin}/social-trading?site=app&social_copy_checkout=cancel&provider=${trader.id}`,
       })
-      window.location.assign(url)
+      if (result.kind === 'already_active') {
+        setPaywallCleared(true)
+        setSubmitting(false)
+        return
+      }
+      window.location.assign(result.url)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to start Stripe Checkout.')
       setSubmitting(false)

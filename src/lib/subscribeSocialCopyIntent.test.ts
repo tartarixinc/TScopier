@@ -39,8 +39,16 @@ test('create_social_copy_subscription requires active social_copy_billing for pa
   assert.match(billingMigration, /create table if not exists public\.social_copy_billing/)
   assert.match(billingMigration, /has_active_social_copy_billing/)
   assert.match(billingMigration, /An active paid subscription is required before copying this provider/)
-  assert.match(billingMigration, /stripe_connect_charges_enabled/)
-  assert.match(billingMigration, /Connect Stripe payouts before setting a paid copy price/)
+})
+
+test('platform collects copy fees without requiring provider Stripe Connect', () => {
+  const platformMigration = readFileSync(
+    new URL('../../supabase/migrations/20261108100948_social_copy_billing_platform_collect.sql', import.meta.url),
+    'utf8',
+  )
+  assert.match(platformMigration, /create or replace function public\.update_provider_profile/)
+  assert.doesNotMatch(platformMigration, /Connect Stripe payouts before setting a paid copy price/)
+  assert.doesNotMatch(platformMigration, /stripe_connect_charges_enabled/)
 })
 
 test('copy modal gates paid providers behind Stripe Checkout before destination sizing', () => {

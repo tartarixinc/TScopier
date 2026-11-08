@@ -489,11 +489,17 @@ Deno.serve(async (req: Request) => {
           if (isSocialCopyKind(subscription.metadata)) {
             const row = await upsertSocialCopyBillingFromSubscription(supabase, subscription);
             if (row) {
+              const baseFromMeta = Number(subscription.metadata?.base_price_cents ?? 0);
               await settleSocialCopyLedgerFromInvoice(
                 supabase,
                 invoice,
                 row.payerUserId,
                 row.providerUserId,
+                {
+                  basePriceCents: Number.isFinite(baseFromMeta) && baseFromMeta > 0
+                    ? baseFromMeta
+                    : null,
+                },
               );
             }
             break;

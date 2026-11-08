@@ -46,9 +46,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: provider, error: providerError } = await supabase
       .from("social_profiles")
-      .select(
-        "user_id, is_listed, provider_status, monthly_copy_price_cents, stripe_connect_account_id, stripe_connect_charges_enabled",
-      )
+      .select("user_id, is_listed, provider_status, monthly_copy_price_cents")
       .eq("user_id", providerUserId)
       .maybeSingle();
     if (providerError) return bad(400, providerError.message);
@@ -60,20 +58,16 @@ Deno.serve(async (req: Request) => {
       return bad(404, "Provider profile is not available", "provider_unavailable");
     }
 
-    const priceCents = Number(provider.monthly_copy_price_cents ?? 0);
-    if (!Number.isFinite(priceCents) || priceCents <= 0) {
+    const basePriceCents = Number(provider.monthly_copy_price_cents ?? 0);
+    if (!Number.isFinite(basePriceCents) || basePriceCents <= 0) {
       return bad(400, "This provider is free to copy", "provider_free");
     }
-    if (
-      !provider.stripe_connect_account_id ||
-      provider.stripe_connect_charges_enabled !== true
-    ) {
-      return bad(
-        409,
-        "This provider has not finished payout setup yet",
-        "provider_payouts_not_ready",
-      );
-    }
+
+    const { data: feeRows } = await supabase.rpc("get_platform_fee_settings");
+    const feeRow = Array.isArray(feeRows) ? feeRows[0] : feeRows;
+    const copierFeePercent = Math.max(0, Math.min(100, Number(feeRow?.copier_fee_percent ?? 0)));
+    const copierFeeCents = Math.round(basePriceCents * (copierFeePercent / 100));
+    const chargeCents = basePriceCents + copierFeeCents;
 
     const { data: existingBilling } = await supabase
       .from("social_copy_billing")
@@ -84,10 +78,18 @@ Deno.serve(async (req: Request) => {
 
     if (
       existingBilling?.status === "active" &&
-      existingBilling.current_period_end &&
-      new Date(existingBilling.current_period_end).getTime() > Date.now()
+      (
+        !existingBilling.current_period_end ||
+        new Date(existingBilling.current_period_end).getTime() > Date.now()
+      )
     ) {
-      return bad(409, "You already have an active copy subscription for this provider", "already_active");
+      return Response.json(
+        {
+          already_active: true,
+          current_period_end: existingBilling.current_period_end,
+        },
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     const { data: nameRow } = await supabase
@@ -124,7 +126,7 @@ Deno.serve(async (req: Request) => {
         .insert({
           payer_user_id: user.id,
           provider_user_id: providerUserId,
-          amount_cents: priceCents,
+          amount_cents: basePriceCents,
           currency: "usd",
           status: "pending",
           description: `Copy subscription · ${providerName}`,
@@ -183,25 +185,19 @@ Deno.serve(async (req: Request) => {
       ? successUrl
       : `${successUrl}${successUrl.includes("?") ? "&" : "?"}session_id={CHECKOUT_SESSION_ID}`;
 
-    const feePercentRaw = Number(Deno.env.get("SOCIAL_COPY_APPLICATION_FEE_PERCENT") ?? "0");
-    const applicationFeePercent = Number.isFinite(feePercentRaw)
-      ? Math.max(0, Math.min(99, feePercentRaw))
-      : 0;
-
+    // Platform collects on TScopier's Stripe account. Provider earnings are
+    // tracked in wallet_ledger / user_wallets and paid out later by the platform.
     const subscriptionData: Stripe.Checkout.SessionCreateParams.SubscriptionData = {
       metadata: {
         kind: "social_copy",
         payer_user_id: user.id,
         provider_user_id: providerUserId,
         wallet_ledger_id: walletLedgerId ?? "",
-      },
-      transfer_data: {
-        destination: provider.stripe_connect_account_id,
+        base_price_cents: String(basePriceCents),
+        copier_fee_cents: String(copierFeeCents),
+        copier_fee_percent: String(copierFeePercent),
       },
     };
-    if (applicationFeePercent > 0) {
-      subscriptionData.application_fee_percent = applicationFeePercent;
-    }
 
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
@@ -212,7 +208,7 @@ Deno.serve(async (req: Request) => {
           quantity: 1,
           price_data: {
             currency: "usd",
-            unit_amount: priceCents,
+            unit_amount: chargeCents,
             recurring: { interval: "month" },
             product_data: {
               name: `Copy ${providerName}`,
@@ -231,6 +227,9 @@ Deno.serve(async (req: Request) => {
         payer_user_id: user.id,
         provider_user_id: providerUserId,
         wallet_ledger_id: walletLedgerId ?? "",
+        base_price_cents: String(basePriceCents),
+        copier_fee_cents: String(copierFeeCents),
+        copier_fee_percent: String(copierFeePercent),
       },
       subscription_data: subscriptionData,
     });

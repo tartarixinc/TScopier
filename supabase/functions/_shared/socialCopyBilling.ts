@@ -77,6 +77,7 @@ export async function settleSocialCopyLedgerFromInvoice(
   invoice: Stripe.Invoice,
   payerUserId: string,
   providerUserId: string,
+  opts?: { basePriceCents?: number | null },
 ): Promise<void> {
   if (!invoice.id) return;
   const amountPaid = Number(invoice.amount_paid ?? 0);
@@ -85,6 +86,16 @@ export async function settleSocialCopyLedgerFromInvoice(
   const paymentIntentId = typeof invoice.payment_intent === "string"
     ? invoice.payment_intent
     : invoice.payment_intent?.id ?? null;
+
+  const metaBase = Number(opts?.basePriceCents ?? invoice.metadata?.base_price_cents ?? 0);
+  // Prefer explicit base (provider price before copier fee); else amount paid.
+  const baseCents = Number.isFinite(metaBase) && metaBase > 0 ? Math.round(metaBase) : amountPaid;
+
+  const { data: feeRows } = await supabase.rpc("get_platform_fee_settings");
+  const feeRow = Array.isArray(feeRows) ? feeRows[0] : feeRows;
+  const providerFeePercent = Math.max(0, Math.min(100, Number(feeRow?.provider_fee_percent ?? 0)));
+  const providerFeeCents = Math.round(baseCents * (providerFeePercent / 100));
+  const providerCreditCents = Math.max(0, baseCents - providerFeeCents);
 
   const { data: byInvoice } = await supabase
     .from("wallet_ledger")
@@ -107,16 +118,20 @@ export async function settleSocialCopyLedgerFromInvoice(
     ledgerId = pending?.id ?? null;
   }
 
+  const description = providerFeeCents > 0
+    ? `Copy subscription · invoice ${invoice.id} · provider net after ${providerFeePercent}% fee`
+    : `Copy subscription · invoice ${invoice.id}`;
+
   if (!ledgerId) {
     const { data: inserted, error } = await supabase
       .from("wallet_ledger")
       .insert({
         payer_user_id: payerUserId,
         provider_user_id: providerUserId,
-        amount_cents: amountPaid,
+        amount_cents: providerCreditCents,
         currency: String(invoice.currency ?? "usd"),
         status: "paid",
-        description: `Copy subscription · invoice ${invoice.id}`,
+        description,
         stripe_invoice_id: invoice.id,
         stripe_payment_intent_id: paymentIntentId,
       })
@@ -132,7 +147,8 @@ export async function settleSocialCopyLedgerFromInvoice(
       .from("wallet_ledger")
       .update({
         status: "paid",
-        amount_cents: amountPaid,
+        amount_cents: providerCreditCents,
+        description,
         stripe_invoice_id: invoice.id,
         stripe_payment_intent_id: paymentIntentId,
       })
@@ -150,7 +166,7 @@ export async function settleSocialCopyLedgerFromInvoice(
     .select("pending_cents")
     .eq("user_id", providerUserId)
     .maybeSingle();
-  const nextPending = Number(wallet?.pending_cents ?? 0) + amountPaid;
+  const nextPending = Number(wallet?.pending_cents ?? 0) + providerCreditCents;
   await supabase
     .from("user_wallets")
     .update({ pending_cents: nextPending })

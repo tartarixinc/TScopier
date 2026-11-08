@@ -2254,6 +2254,21 @@ export interface PricingTranslations {
     statusPastDue: string
     trialEnds: string
     choosePlan: string
+    copySubscriptionsTitle: string
+    copySubscriptionsHint: string
+    copySubscriptionsEmpty: string
+    copySubscriptionsRefresh: string
+    copySubscriptionsLoadFailed: string
+    copySubscriptionsSignIn: string
+    copySubscriptionsPortalFailed: string
+    copyManage: string
+    copyStatusActive: string
+    copyStatusPastDue: string
+    copyStatusCanceled: string
+    copyStatusIncomplete: string
+    copyCancelsAtPeriodEnd: string
+    copyPeriodEnds: string
+    copyEntitlementNote: string
   }
   checkoutFailed: string
   paywall: {
@@ -2342,6 +2357,17 @@ export interface WalletPageTranslations {
   roleProvider: string
   empty: string
   loadError: string
+  payoutTitle: string
+  payoutBody: string
+  payoutAsset: string
+  payoutNetwork: string
+  payoutAddress: string
+  payoutAddressPlaceholder: string
+  payoutSave: string
+  payoutClear: string
+  payoutSaved: string
+  payoutSaveError: string
+  payoutFeeNote: string
 }
 
 export interface Translations {

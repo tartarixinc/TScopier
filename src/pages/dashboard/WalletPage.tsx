@@ -7,7 +7,12 @@ import { Alert } from '../../components/ui/Alert'
 import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
 import { useFormatMoney } from '../../hooks/useFormatMoney'
-import { startSocialCopyBillingPortal } from '../../lib/socialCopy'
+import {
+  clearMyWalletPayoutMethod,
+  startSocialCopyBillingPortal,
+  updateMyWalletPayoutMethod,
+  type WalletPayoutAsset,
+} from '../../lib/socialCopy'
 import { supabase } from '../../lib/supabase'
 import type { SocialCopyBillingRow, UserWalletRow, WalletLedgerRow } from '../../types/database'
 
@@ -44,6 +49,14 @@ export function WalletPage() {
   const [rows, setRows] = useState<LedgerEntry[]>([])
   const [billingRows, setBillingRows] = useState<BillingEntry[]>([])
   const [portalBusyId, setPortalBusyId] = useState<string | null>(null)
+  const [payoutAsset, setPayoutAsset] = useState<WalletPayoutAsset>('USDT')
+  const [payoutAddress, setPayoutAddress] = useState('')
+  const [savedPayoutAsset, setSavedPayoutAsset] = useState<WalletPayoutAsset | null>(null)
+  const [savedPayoutAddress, setSavedPayoutAddress] = useState<string | null>(null)
+  const [payoutSaving, setPayoutSaving] = useState(false)
+  const [payoutMessage, setPayoutMessage] = useState('')
+  const [payoutError, setPayoutError] = useState('')
+  const [payoutFeePercent, setPayoutFeePercent] = useState(0)
 
   const refresh = useCallback(async () => {
     if (!user) {
@@ -52,10 +65,10 @@ export function WalletPage() {
     }
     setLoading(true)
     setError('')
-    const [walletResult, ledgerResult, billingResult] = await Promise.all([
+    const [walletResult, ledgerResult, billingResult, feeResult] = await Promise.all([
       supabase
         .from('user_wallets')
-        .select('available_cents, pending_cents')
+        .select('available_cents, pending_cents, payout_asset, payout_network, payout_address')
         .eq('user_id', user.id)
         .maybeSingle(),
       supabase
@@ -68,6 +81,7 @@ export function WalletPage() {
         .select('id, provider_user_id, status, current_period_end, cancel_at_period_end, stripe_subscription_id')
         .eq('payer_user_id', user.id)
         .order('updated_at', { ascending: false }),
+      supabase.rpc('get_platform_fee_settings'),
     ])
     if (walletResult.error || ledgerResult.error || billingResult.error) {
       setAvailableCents(0)
@@ -76,12 +90,24 @@ export function WalletPage() {
       setBillingRows([])
       setError(copy.loadError)
     } else {
-      const wallet = walletResult.data as Pick<UserWalletRow, 'available_cents' | 'pending_cents'> | null
+      const wallet = walletResult.data as (Pick<UserWalletRow, 'available_cents' | 'pending_cents'> & {
+        payout_asset?: string | null
+        payout_address?: string | null
+      }) | null
       setAvailableCents(wallet?.available_cents ?? 0)
       setPendingCents(wallet?.pending_cents ?? 0)
       setRows((ledgerResult.data ?? []) as LedgerEntry[])
       setBillingRows((billingResult.data ?? []) as BillingEntry[])
+      const asset = wallet?.payout_asset === 'USDC' || wallet?.payout_asset === 'USDT'
+        ? wallet.payout_asset
+        : null
+      setSavedPayoutAsset(asset)
+      setSavedPayoutAddress(wallet?.payout_address ?? null)
+      if (asset) setPayoutAsset(asset)
+      if (wallet?.payout_address) setPayoutAddress(wallet.payout_address)
     }
+    const feeRow = Array.isArray(feeResult.data) ? feeResult.data[0] : feeResult.data
+    setPayoutFeePercent(Number(feeRow?.payout_fee_percent ?? 0) || 0)
     setLoading(false)
   }, [copy.loadError, user])
 
@@ -116,6 +142,39 @@ export function WalletPage() {
     }
   }
 
+  const savePayout = async () => {
+    setPayoutSaving(true)
+    setPayoutError('')
+    setPayoutMessage('')
+    try {
+      await updateMyWalletPayoutMethod(supabase, payoutAsset, payoutAddress)
+      setPayoutMessage(copy.payoutSaved)
+      await refresh()
+    } catch (cause) {
+      setPayoutError(cause instanceof Error ? cause.message : copy.payoutSaveError)
+    } finally {
+      setPayoutSaving(false)
+    }
+  }
+
+  const clearPayout = async () => {
+    setPayoutSaving(true)
+    setPayoutError('')
+    setPayoutMessage('')
+    try {
+      await clearMyWalletPayoutMethod(supabase)
+      setPayoutAddress('')
+      setSavedPayoutAddress(null)
+      setSavedPayoutAsset(null)
+      setPayoutMessage(copy.payoutSaved)
+      await refresh()
+    } catch (cause) {
+      setPayoutError(cause instanceof Error ? cause.message : copy.payoutSaveError)
+    } finally {
+      setPayoutSaving(false)
+    }
+  }
+
   return (
     <PageShell>
       <PageHeader
@@ -136,11 +195,57 @@ export function WalletPage() {
           <StatCard title={copy.pending} value={formatMoney(pendingCents / 100)} />
         </div>
 
+        <Card padding="md">
+          <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">{copy.payoutTitle}</h2>
+          <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-300">{copy.payoutBody}</p>
+          <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+            {copy.payoutNetwork}: TRC20
+            {payoutFeePercent > 0 ? ` · ${copy.payoutFeeNote} (${payoutFeePercent}%)` : ` · ${copy.payoutFeeNote}`}
+          </p>
+          {savedPayoutAddress ? (
+            <p className="mt-3 text-sm text-neutral-900 dark:text-neutral-50">
+              {savedPayoutAsset} TRC20 · <span className="break-all font-mono text-xs">{savedPayoutAddress}</span>
+            </p>
+          ) : null}
+          <div className="mt-4 grid gap-3 sm:grid-cols-[140px_minmax(0,1fr)]">
+            <label className="block text-sm">
+              <span className="font-medium text-neutral-900 dark:text-neutral-50">{copy.payoutAsset}</span>
+              <select
+                value={payoutAsset}
+                onChange={event => setPayoutAsset(event.target.value as WalletPayoutAsset)}
+                className="mt-1 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+              >
+                <option value="USDT">USDT</option>
+                <option value="USDC">USDC</option>
+              </select>
+            </label>
+            <label className="block text-sm">
+              <span className="font-medium text-neutral-900 dark:text-neutral-50">{copy.payoutAddress}</span>
+              <input
+                value={payoutAddress}
+                onChange={event => setPayoutAddress(event.target.value)}
+                placeholder={copy.payoutAddressPlaceholder}
+                className="mt-1 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 font-mono text-sm dark:border-neutral-700 dark:bg-neutral-900"
+              />
+            </label>
+          </div>
+          {payoutError ? <Alert className="mt-3" variant="error">{payoutError}</Alert> : null}
+          {payoutMessage ? <Alert className="mt-3" variant="success">{payoutMessage}</Alert> : null}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button loading={payoutSaving} onClick={() => void savePayout()}>{copy.payoutSave}</Button>
+            {savedPayoutAddress ? (
+              <Button variant="secondary" loading={payoutSaving} onClick={() => void clearPayout()}>
+                {copy.payoutClear}
+              </Button>
+            ) : null}
+          </div>
+        </Card>
+
         <Card padding="none" className="overflow-hidden">
           <div className="border-b border-neutral-200/65 px-5 py-4 dark:border-neutral-800/55">
             <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">Copy subscriptions</h2>
             <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-300">
-              Paid provider copy billing periods. Manage renewal or cancel in Stripe.
+              Paid provider copy billing periods. Prefer managing these from Subscription &amp; Billing.
             </p>
           </div>
           {billingRows.length === 0 ? (

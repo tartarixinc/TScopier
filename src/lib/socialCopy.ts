@@ -424,12 +424,16 @@ export async function fetchSocialCopyBillingForProvider(
   }
 }
 
+export type SocialCopyCheckoutResult =
+  | { kind: 'checkout'; url: string }
+  | { kind: 'already_active'; currentPeriodEnd: string | null }
+
 export async function startSocialCopyCheckout(params: {
   accessToken: string
   providerUserId: string
   successUrl?: string
   cancelUrl?: string
-}): Promise<string> {
+}): Promise<SocialCopyCheckoutResult> {
   const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-social-copy-checkout`
   const res = await fetch(apiUrl, {
     method: 'POST',
@@ -443,11 +447,69 @@ export async function startSocialCopyCheckout(params: {
       cancel_url: params.cancelUrl,
     }),
   })
-  const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string; code?: string }
+  const data = (await res.json().catch(() => ({}))) as {
+    url?: string
+    error?: string
+    code?: string
+    already_active?: boolean
+    current_period_end?: string | null
+  }
+  if (res.ok && data.already_active) {
+    return { kind: 'already_active', currentPeriodEnd: data.current_period_end ?? null }
+  }
   if (!res.ok || !data.url) {
     throw new Error(data.error || 'Unable to start copy checkout')
   }
-  return data.url
+  return { kind: 'checkout', url: data.url }
+}
+
+export type MySocialCopyBilling = SocialCopyBilling & {
+  providerUserId: string
+  providerDisplayName: string
+  providerUsername: string
+}
+
+export async function fetchMySocialCopyBilling(client: SupabaseClient): Promise<MySocialCopyBilling[]> {
+  const { data, error } = await client.rpc('get_my_social_copy_billing')
+  if (error) throw failure(error)
+  return ((data ?? []) as Array<{
+    id: string
+    provider_user_id: string
+    provider_display_name: string
+    provider_username: string
+    status: string
+    current_period_end: string | null
+    cancel_at_period_end: boolean
+    stripe_subscription_id: string | null
+  }>).map(row => ({
+    id: String(row.id),
+    providerUserId: String(row.provider_user_id),
+    providerDisplayName: row.provider_display_name,
+    providerUsername: row.provider_username,
+    status: row.status as SocialCopyBillingStatus,
+    currentPeriodEnd: row.current_period_end,
+    cancelAtPeriodEnd: Boolean(row.cancel_at_period_end),
+    stripeSubscriptionId: row.stripe_subscription_id,
+  }))
+}
+
+export type WalletPayoutAsset = 'USDT' | 'USDC'
+
+export async function updateMyWalletPayoutMethod(
+  client: SupabaseClient,
+  asset: WalletPayoutAsset,
+  address: string,
+): Promise<void> {
+  const { error } = await client.rpc('update_my_wallet_payout_method', {
+    p_asset: asset,
+    p_address: address,
+  })
+  if (error) throw failure(error)
+}
+
+export async function clearMyWalletPayoutMethod(client: SupabaseClient): Promise<void> {
+  const { error } = await client.rpc('clear_my_wallet_payout_method')
+  if (error) throw failure(error)
 }
 
 export async function startSocialCopyBillingPortal(params: {
@@ -474,33 +536,6 @@ export async function startSocialCopyBillingPortal(params: {
   return data.url
 }
 
-export async function startProviderConnectOnboarding(accessToken: string): Promise<{
-  url: string | null
-  chargesEnabled: boolean
-}> {
-  const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/provider-connect`
-  const res = await fetch(apiUrl, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      refresh_url: `${window.location.origin}/provider/apply`,
-      return_url: `${window.location.origin}/provider/apply?connect=return`,
-    }),
-  })
-  const data = (await res.json().catch(() => ({}))) as {
-    url?: string | null
-    charges_enabled?: boolean
-    error?: string
-  }
-  if (!res.ok) throw new Error(data.error || 'Unable to start payout onboarding')
-  return {
-    url: data.url ?? null,
-    chargesEnabled: data.charges_enabled === true,
-  }
-}
 
 export async function changeSocialCopySubscription(client: SupabaseClient, id: string, action: 'pause' | 'resume' | 'stop' | 'emergency_stop'): Promise<void> {
   const { error } = await client.rpc('set_social_copy_subscription_status', { p_subscription_id: id, p_action: action })

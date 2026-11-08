@@ -204,7 +204,19 @@ export interface UserWalletRow {
   user_id: string
   available_cents: number
   pending_cents: number
+  payout_asset?: 'USDT' | 'USDC' | null
+  payout_network?: 'TRC20' | null
+  payout_address?: string | null
+  payout_updated_at?: string | null
   created_at: string
+  updated_at: string
+}
+
+export interface PlatformFeeSettingsRow {
+  id: number
+  provider_fee_percent: number
+  copier_fee_percent: number
+  payout_fee_percent: number
   updated_at: string
 }
 
