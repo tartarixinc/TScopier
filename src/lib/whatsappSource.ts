@@ -70,7 +70,20 @@ export async function fetchWhatsAppGroups(
 
 export async function logoutWhatsApp(supabase: SupabaseClient): Promise<{ error: string | null }> {
   const result = await listenerFetch<Record<string, unknown>>(supabase, '/whatsapp/logout', 'POST')
-  if (!result.error) notifyWhatsAppSourcesChanged()
+  if (!result.error) {
+    notifyWhatsAppSourcesChanged()
+    return { error: null }
+  }
+  // With the listener down nothing else can clear the saved link, so the app would show
+  // "connected" again on the next load. Clear it in the database instead; the listener
+  // finds no saved login the next time it starts.
+  if (result.error === 'listener_unavailable' || result.error === 'listener_missing') {
+    const { error } = await supabase.rpc('reset_whatsapp_connection')
+    if (!error) {
+      notifyWhatsAppSourcesChanged()
+      return { error: null }
+    }
+  }
   return { error: result.error }
 }
 

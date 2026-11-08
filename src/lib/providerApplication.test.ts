@@ -113,6 +113,7 @@ describe('snapshot freshness and formatting', () => {
     expect(floatingOpenPnl({ equity: 100, balance: 100, openCount: 1, snapshotAt: stale, now })).toBeNull()
     expect(floatingOpenPnl({ equity: 100, balance: 100, openCount: 1, snapshotAt: null, now })).toBeNull()
     expect(floatingOpenPnl({ equity: 112.5, balance: 100, openCount: 1, snapshotAt: fresh, now })).toBe(12.5)
+    expect(floatingOpenPnl({ equity: 100, balance: 100, openCount: 1, snapshotAt: fresh, now })).toBeNull()
     expect(floatingOpenPnl({ equity: 100, balance: 100, openCount: 0, snapshotAt: stale, now })).toBe(0)
     expect(floatingOpenPnl({ equity: null, balance: 100, openCount: 0, snapshotAt: fresh, now })).toBeNull()
   })

@@ -34,6 +34,7 @@ function Stat({ label, children }: { label: string; children: ReactNode }) {
 export function ProviderPublicProfilePage() {
   const { slug = '' } = useParams()
   const { user, loading: authLoading } = useAuth()
+  const [failedAvatar, setFailedAvatar] = useState<string | null>(null)
   const [result, setResult] = useState<{ slug: string; profile: ProviderPublicProfile | null; error: string | null } | null>(null)
 
   useEffect(() => {
@@ -126,8 +127,16 @@ export function ProviderPublicProfilePage() {
           <>
             <section className="rounded-2xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
               <div className="flex items-start gap-4">
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-green-100 text-xl font-semibold text-green-800 dark:bg-green-950/50 dark:text-green-300" aria-hidden="true">
-                  {profile.displayName.slice(0, 1).toUpperCase()}
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-green-100 text-xl font-semibold text-green-800 dark:bg-green-950/50 dark:text-green-300" aria-hidden={profile.avatarUrl ? undefined : 'true'}>
+                  {profile.avatarUrl && failedAvatar !== profile.avatarUrl ? (
+                    <img
+                      src={profile.avatarUrl}
+                      alt={profile.displayName}
+                      className="h-full w-full object-cover"
+                      referrerPolicy="no-referrer"
+                      onError={() => setFailedAvatar(profile.avatarUrl)}
+                    />
+                  ) : profile.displayName.slice(0, 1).toUpperCase()}
                 </div>
                 <div className="min-w-0 flex-1">
                   <h1 className="truncate text-xl font-semibold">{profile.displayName}</h1>
@@ -147,6 +156,15 @@ export function ProviderPublicProfilePage() {
                   </div>
                   <SocialProfileLinks links={profile.socialLinks} />
                 </div>
+                {isOwner ? null : (
+                  <a
+                    href={user ? appUrl(providerCopyLandingPath(profile.profileUserId)) : authHref('/signup')}
+                    onClick={user ? undefined : rememberLanding}
+                    className="inline-flex shrink-0 rounded-lg bg-green-400 px-4 py-2 text-sm font-semibold text-neutral-950 hover:bg-green-500"
+                  >
+                    Copy Provider
+                  </a>
+                )}
               </div>
               {profile.bio && <p className="mt-4 whitespace-pre-line text-sm text-neutral-800 dark:text-neutral-200">{profile.bio}</p>}
             </section>
@@ -177,7 +195,7 @@ export function ProviderPublicProfilePage() {
             )}
 
             {isOwner ? (
-              <ProviderShareCard slug={profile.slug} name={profile.displayName} shareTradeHistory={publicData ? publicData.performance?.shared ?? null : null} manageHref={`/social-trading/${profile.profileUserId}`} />
+              <ProviderShareCard slug={profile.slug} name={profile.displayName} shareTradeHistory={publicData ? publicData.performance?.shared ?? null : null} manageHref="/social-trading" />
             ) : (
               <section className="sticky bottom-3 rounded-2xl border border-green-200 bg-green-50 p-5 text-center shadow-sm dark:border-green-900 dark:bg-green-950/80">
                 <p className="text-sm font-medium">

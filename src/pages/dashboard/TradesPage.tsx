@@ -11,7 +11,6 @@ import { PageShell } from '../../components/layout/PageShell'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import { Alert } from '../../components/ui/Alert'
-import { LiveFeedDegradedBanner } from '../../components/LiveFeedDegradedBanner'
 import { TradeDetailModal } from '../../components/trades/TradeDetailModal'
 import { AwaitingApprovalSection } from '../../components/trades/AwaitingApprovalSection'
 import { SignalReviewDetailModal } from '../../components/trades/SignalReviewDetailModal'
@@ -160,8 +159,6 @@ export function TradesPage() {
           </div>
         )}
       />
-
-      <LiveFeedDegradedBanner className="mb-4" />
 
       {error && !showInitialSkeleton && <Alert className="mb-4 px-4 py-2.5">{error}</Alert>}
 

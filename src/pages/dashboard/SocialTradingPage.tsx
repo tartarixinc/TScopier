@@ -1,12 +1,22 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { BarChart3, ChevronRight, LineChart, Wallet, X } from 'lucide-react'
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { BarChart3, ChevronRight, LineChart, Settings, Wallet, X } from 'lucide-react'
+import {
+  changeSocialCopySubscription,
+  fetchMySocialCopySubscriptions,
+  isCurrentSocialCopySubscription,
+  type MySocialCopySubscription,
+} from '../../lib/socialCopy'
+import { ProviderCopiersPanel, ProviderPaymentsPanel } from '../../components/social/ProviderHomePanels'
+import { supabase } from '../../lib/supabase'
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import clsx from 'clsx'
 import { AccountGrowthChart } from '../../components/dashboard/AccountGrowthChart'
 import { PageHeader } from '../../components/layout/PageHeader'
+import { ConfigureCopyModal } from '../../components/social/ConfigureCopyModal'
 import { CopyTraderModal } from '../../components/social/CopyTraderModal'
+import { SocialTraderProfileSkeleton } from '../../components/social/SocialTraderProfileSkeleton'
 import { TraderReviews } from '../../components/social/TraderReviews'
 import { SocialProfileLinks } from '../../components/social/SocialProfileLinks'
 import { PageShell } from '../../components/layout/PageShell'
@@ -19,36 +29,45 @@ import { useAuth } from '../../context/AuthContext'
 import { useLocale, useT } from '../../context/LocaleContext'
 import { useUserProfile } from '../../context/UserProfileContext'
 import { useLiveOwnOpenPnl } from '../../hooks/useLiveOwnOpenPnl'
+import { resolveAccountDeposit } from '../../lib/accountDeposit'
 import { findTimezoneLabel } from '../../lib/timezoneOptions'
 import type { SocialTradingPageTranslations } from '../../i18n/locales/types'
 import { useTheme } from '../../context/ThemeContext'
 import { useFormatMoney } from '../../hooks/useFormatMoney'
 import { useSocialTradingPreview } from '../../hooks/useSocialTradingPreview'
 import { useOwnSocialAccountView } from '../../hooks/useOwnSocialAccountView'
-import { providerEntryLabel, useProviderStatus } from '../../hooks/useProviderStatus'
+import { useProviderStatus } from '../../hooks/useProviderStatus'
 import { interpolate } from '../../i18n/interpolate'
 import { chartThemeColors, chartTooltipProps } from '../../lib/chartTheme'
 import { AccountKindBadge } from '../../components/social/AccountKindBadge'
 import { platformIconSrc } from '../../lib/activityRoute'
 import { formatAccountAmount, normalizeAccountKind } from '../../lib/providerApplication'
-import { copyPriceOfferLabel } from '../../lib/socialCopyPrice'
+import { copyPriceOfferLabel, normalizeCopyPriceCents } from '../../lib/socialCopyPrice'
 import { canOpenCopyTrader, copyTraderUnavailableReason } from '../../lib/socialCopyAvailability'
 import { consumePostAuthRedirect } from '../../lib/postAuthRedirect'
-import { OwnAccountSelector } from '../../components/social/OwnAccountSelector'
 import { useDefaultOwnSourceAccount } from '../../hooks/useDefaultOwnSourceAccount'
 
 import { resolveUserAvatarUrl } from '../../lib/userAvatar'
 import {
   socialTraderStats,
-  type SocialAccess,
   type SocialCalendarDay,
   type SocialTradeSide,
   type SocialTrader,
   type SocialTraderStats,
 } from '../../lib/socialTradingFixture'
 
-type SortKey = 'roi' | 'winRate' | 'followers' | 'rating'
-type DirectoryView = 'all' | 'followers' | 'following'
+type SortKey = 'roi' | 'winRate' | 'rating' | 'copiers'
+type DirectoryView = 'discover' | 'yours'
+
+function copyTraderActionLabel(
+  cents: number | null | undefined,
+  formatMoney: (dollars: number) => string,
+  labels: { free: string; paid: string },
+): string {
+  const price = cents == null ? 0 : normalizeCopyPriceCents(cents)
+  if (price <= 0) return labels.free
+  return interpolate(labels.paid, { amount: formatMoney(price / 100) })
+}
 
 function useOwnAvatarUrl(): string | null {
   const { user } = useAuth()
@@ -115,94 +134,164 @@ export function SocialTradingPage() {
   const navigate = useNavigate()
   const { formatMoney } = useFormatMoney()
   const { openAddTradingAccount } = useAddTradingAccount()
+  const { user } = useAuth()
   const [params] = useSearchParams()
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<SortKey>('roi')
-  const [visibility, setVisibility] = useState<'all' | SocialAccess>('all')
-  const [requestsOnly, setRequestsOnly] = useState(false)
   const social = useSocialTradingPreview()
   const provider = useProviderStatus()
   const [setupTrader, setSetupTrader] = useState<SocialTrader | null>(null)
+  const [configureTarget, setConfigureTarget] = useState<{
+    trader: SocialTrader
+    subscription: MySocialCopySubscription
+  } | null>(null)
+  const [mySubscriptions, setMySubscriptions] = useState<MySocialCopySubscription[]>([])
+  const [subscriptionsLoaded, setSubscriptionsLoaded] = useState(false)
+  const [stoppingTraderId, setStoppingTraderId] = useState<string | null>(null)
   const ownAvatarUrl = useOwnAvatarUrl()
-  const view: DirectoryView = params.get('view') === 'followers'
-    ? 'followers'
-    : params.get('view') === 'following'
-      ? 'following'
-      : 'all'
 
-  const access = social.currentProfile?.access ?? 'open'
+  const refreshMySubscriptions = async () => {
+    if (!user?.id) {
+      setMySubscriptions([])
+      setSubscriptionsLoaded(true)
+      return
+    }
+    try {
+      const rows = await fetchMySocialCopySubscriptions(supabase)
+      setMySubscriptions(rows.filter(isCurrentSocialCopySubscription))
+    } catch {
+      setMySubscriptions([])
+    } finally {
+      setSubscriptionsLoaded(true)
+    }
+  }
+
+  useEffect(() => {
+    let active = true
+    if (!user?.id) {
+      setMySubscriptions([])
+      setSubscriptionsLoaded(true)
+      return () => { active = false }
+    }
+    setSubscriptionsLoaded(false)
+    void fetchMySocialCopySubscriptions(supabase)
+      .then(rows => {
+        if (!active) return
+        setMySubscriptions(rows.filter(isCurrentSocialCopySubscription))
+      })
+      .catch(() => {
+        if (active) setMySubscriptions([])
+      })
+      .finally(() => {
+        if (active) setSubscriptionsLoaded(true)
+      })
+    return () => { active = false }
+  }, [user?.id])
+
+  const subscribedProviderIds = useMemo(
+    () => new Set(mySubscriptions.map(row => row.sourceTraderUserId)),
+    [mySubscriptions],
+  )
+  const hasSubscriptions = subscribedProviderIds.size > 0
+
+  const stopCopyingTrader = async (traderId: string) => {
+    const targets = mySubscriptions.filter(row => row.sourceTraderUserId === traderId)
+    if (targets.length === 0) return
+    if (!window.confirm(copy.stopCopyingConfirm)) return
+    setStoppingTraderId(traderId)
+    try {
+      await Promise.all(targets.map(row => changeSocialCopySubscription(supabase, row.id, 'stop')))
+      setMySubscriptions(current => current.filter(row => row.sourceTraderUserId !== traderId))
+    } finally {
+      setStoppingTraderId(null)
+    }
+  }
+  const viewParam = params.get('view')
+  const view: DirectoryView = viewParam === 'discover'
+    ? 'discover'
+    : viewParam === 'yours'
+      ? 'yours'
+      : hasSubscriptions
+        ? 'yours'
+        : 'discover'
+
   const traders = useMemo(() => {
     const needle = query.trim().toLowerCase()
     const filtered = social.traders.filter(trader => {
-      const relationship = social.profiles.find(profile => profile.profileUserId === trader.id)
-      // "You" appears only once your provider application is approved; the main list is providers only.
       if (trader.isYou && trader.providerStatus !== 'approved') return false
-      if (view === 'all' && trader.providerStatus !== 'approved') return false
-      if (view === 'followers' && relationship?.followsViewerStatus !== 'accepted') return false
-      if (view === 'following' && relationship?.viewerRelationshipStatus !== 'accepted') return false
-      if (visibility !== 'all' && trader.access !== visibility) return false
-      if (requestsOnly && relationship?.viewerRelationshipStatus !== 'pending') return false
+      if (trader.providerStatus !== 'approved') return false
+      if (view === 'yours' && !subscribedProviderIds.has(trader.id) && !trader.isYou) return false
+      if (view === 'yours' && trader.isYou && !subscribedProviderIds.has(trader.id)) return false
       if (!needle) return true
       return trader.displayName.toLowerCase().includes(needle) || trader.username.toLowerCase().includes(needle)
     })
     const rank = (trader: SocialTrader) => {
       if (sort === 'winRate') return trader.winRate ?? -1
-      if (sort === 'followers') return trader.followerCount
       if (sort === 'rating') return trader.rating ?? -1
+      if (sort === 'copiers') return trader.liveCopiers ?? -1
       return trader.roi ?? -1
     }
     return filtered.slice().sort((a, b) => {
       if (a.isYou !== b.isYou) return a.isYou ? -1 : 1
       return rank(b) - rank(a)
     })
-  }, [query, requestsOnly, social.profiles, social.traders, sort, view, visibility])
+  }, [query, social.traders, sort, subscribedProviderIds, view])
 
-  const heading = view === 'followers' ? copy.tabFollowers : view === 'following' ? copy.tabFollowing : copy.tabProviders
-  // Count only approved providers, matching what the Providers list shows.
-  const providerTraders = social.traders.filter(trader => trader.providerStatus === 'approved')
-  const openCount = providerTraders.filter(trader => trader.access === 'open').length
-  const privateCount = providerTraders.length - openCount
-  const followerCount = social.currentProfile?.followerCount ?? 0
-  const requestCount = social.profiles.filter(profile => profile.viewerRelationshipStatus === 'pending').length
-  const toggleVisibility = (next: SocialAccess) => {
-    setVisibility(current => current === next ? 'all' : next)
-  }
-
+  const isApprovedProvider = provider.status === 'approved'
+  const heading = view === 'yours' ? copy.tabYourProviders : copy.tabProviders
   const priceLabel = (cents: number | null) => cents == null ? '—' : copyPriceOfferLabel(cents, formatMoney, {
     free: copy.priceFree,
     paid: copy.pricePerMonth,
   })
 
+  if (!provider.loading && isApprovedProvider) {
+    return (
+      <PageShell maxWidth="xl">
+        <PageHeader
+          title={copy.providerHomeTitle}
+          actions={(
+            <Link to="/social-trading/provider" className="inline-flex items-center rounded-lg border border-neutral-200 bg-white px-4 py-2 text-sm font-medium text-neutral-900 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-50 dark:hover:bg-neutral-900">
+              {copy.providerManageLink}
+            </Link>
+          )}
+        />
+        <div className="space-y-6">
+          <OwnProviderProfileView />
+          <div className="grid gap-4 xl:grid-cols-2">
+            <ProviderCopiersPanel copy={copy} />
+            <ProviderPaymentsPanel copy={copy} />
+          </div>
+        </div>
+      </PageShell>
+    )
+  }
+
   return (
     <>
     <PageShell maxWidth="xl">
       <nav className="flex gap-6 overflow-x-auto border-b border-neutral-200 dark:border-neutral-800" aria-label={copy.title}>
-        <DirectoryTab to="/social-trading" active={view === 'all'}>{copy.tabProviders}</DirectoryTab>
-        <DirectoryTab to="/social-trading?view=followers" active={view === 'followers'}>{copy.tabFollowers}</DirectoryTab>
-        <DirectoryTab to="/social-trading?view=following" active={view === 'following'}>{copy.tabFollowing}</DirectoryTab>
+        {hasSubscriptions || view === 'yours' ? (
+          <DirectoryTab to="/social-trading?view=yours" active={view === 'yours'}>{copy.tabYourProviders}</DirectoryTab>
+        ) : null}
+        <DirectoryTab to="/social-trading?view=discover" active={view === 'discover' || viewParam == null}>{copy.tabProviders}</DirectoryTab>
       </nav>
       <PageHeader
         title={heading}
-        actions={provider.loading ? undefined : (
-          <Link to="/social-trading/provider" className="inline-flex items-center rounded-lg bg-green-400 px-4 py-2 text-sm font-medium text-neutral-950 hover:bg-green-500">
-            {providerEntryLabel(provider.status)}
-          </Link>
+        actions={(
+          <div className="flex flex-wrap items-center gap-2">
+            {view === 'yours' ? (
+              <Link to="/social-trading?view=discover" className="inline-flex items-center rounded-lg border border-neutral-200 bg-white px-4 py-2 text-sm font-medium text-neutral-900 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-50 dark:hover:bg-neutral-900">
+                {copy.findNewProviders}
+              </Link>
+            ) : null}
+            {provider.loading ? null : (
+              <Link to="/social-trading/provider" className="inline-flex items-center rounded-lg bg-green-400 px-4 py-2 text-sm font-medium text-neutral-950 hover:bg-green-500">
+                Become a provider
+              </Link>
+            )}
+          </div>
         )}
       />
-      {!social.loading && !social.currentProfile ? (
-        <Card>
-          <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{copy.joinTitle}</h2>
-          <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-50">{copy.joinBody}</p>
-          <Button type="button" size="sm" className="mt-3" disabled={social.pendingKeys.has('register')} onClick={() => void social.register()}>{copy.joinAction}</Button>
-        </Card>
-      ) : null}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-        <SummaryStat label={copy.open} value={openCount} selected={visibility === 'open'} onClick={() => toggleVisibility('open')} />
-        <SummaryStat label={copy.private} value={privateCount} selected={visibility === 'private'} onClick={() => toggleVisibility('private')} />
-        <SummaryStat label={copy.following} value={social.profiles.filter(profile => profile.viewerRelationshipStatus === 'accepted').length} selected={view === 'following'} onClick={() => navigate('/social-trading?view=following')} />
-        <SummaryStat label={copy.followers} value={followerCount} selected={view === 'followers'} onClick={() => navigate('/social-trading?view=followers')} />
-        <SummaryStat label={copy.requests} value={requestCount} selected={requestsOnly} onClick={() => setRequestsOnly(current => !current)} />
-      </div>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <input
           type="search"
@@ -212,28 +301,25 @@ export function SocialTradingPage() {
           className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-50 sm:max-w-xs"
         />
         <select
-          value={visibility}
-          aria-label={copy.visibility}
-          onChange={event => setVisibility(event.target.value === 'open' || event.target.value === 'private' ? event.target.value : 'all')}
-          className="rounded-full border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-50"
-        >
-          <option value="all">{copy.visibility}: {copy.visibilityAll}</option>
-          <option value="open">{copy.visibility}: {copy.open}</option>
-          <option value="private">{copy.visibility}: {copy.private}</option>
-        </select>
-        <select
           value={sort}
           onChange={event => setSort(event.target.value as SortKey)}
           className="rounded-full border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-50"
         >
           <option value="roi">{copy.sortRoi}</option>
           <option value="winRate">{copy.sortWinRate}</option>
-          <option value="followers">{copy.sortFollowers}</option>
+          <option value="copiers">{copy.sortCopiers}</option>
           <option value="rating">{copy.sortRating}</option>
         </select>
       </div>
       <Card padding="none" className="overflow-hidden">
-        {traders.length === 0 ? (
+        {view === 'yours' && subscriptionsLoaded && traders.length === 0 ? (
+          <div className="px-4 py-10 text-center">
+            <p className="text-sm text-neutral-900 dark:text-neutral-50">{copy.yourProvidersEmpty}</p>
+            <Link to="/social-trading?view=discover" className="mt-4 inline-flex items-center rounded-lg bg-green-400 px-4 py-2 text-sm font-medium text-neutral-950 hover:bg-green-500">
+              {copy.findNewProviders}
+            </Link>
+          </div>
+        ) : traders.length === 0 ? (
           <p className="px-4 py-8 text-sm text-neutral-900 dark:text-neutral-50">{copy.empty}</p>
         ) : (
           <div className="overflow-x-auto">
@@ -245,7 +331,7 @@ export function SocialTradingPage() {
                   <th className="px-3 py-3">{copy.colStatus}</th>
                   <th className="px-3 py-3">{copy.roi}</th>
                   <th className="px-3 py-3">{copy.winRate}</th>
-                  <th className="px-3 py-3">{copy.followers}</th>
+                  <th className="px-3 py-3">{copy.liveCopiers}</th>
                   <th className="px-3 py-3">{copy.colBalance}</th>
                   <th className="px-3 py-3">{copy.colPrice}</th>
                   <th className="px-4 py-3 text-end"><span className="sr-only">{copy.colActions}</span></th>
@@ -253,7 +339,6 @@ export function SocialTradingPage() {
               </thead>
               <tbody>
                 {traders.map(trader => {
-                  const traderAccess = trader.isYou ? access : trader.access
                   const rank = trader.profile.rank ?? '—'
                   const name = trader.isYou ? copy.you : trader.displayName
                   return (
@@ -263,11 +348,11 @@ export function SocialTradingPage() {
                       tabIndex={0}
                       aria-label={name}
                       className="cursor-pointer border-t border-neutral-100 hover:bg-neutral-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-green-400 dark:border-neutral-800 dark:hover:bg-neutral-900"
-                      onClick={() => navigate(`/social-trading/${trader.id}`)}
+                      onClick={() => navigate(trader.isYou ? '/social-trading' : `/social-trading/${trader.id}`)}
                       onKeyDown={event => {
                         if (event.key === 'Enter' || event.key === ' ') {
                           event.preventDefault()
-                          navigate(`/social-trading/${trader.id}`)
+                          navigate(trader.isYou ? '/social-trading' : `/social-trading/${trader.id}`)
                         }
                       }}
                     >
@@ -276,10 +361,11 @@ export function SocialTradingPage() {
                           <TraderAvatar name={name} src={trader.isYou ? ownAvatarUrl : null} size="row" />
                           <div className="min-w-0">
                             <p className="truncate font-medium text-neutral-900 dark:text-neutral-50">{name}</p>{trader.syntheticDemo ? <span className="ms-2 rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">Synthetic demo</span> : null}
-                            <TraderReviews traderUserId={trader.id} traderName={trader.displayName} isSelf={trader.isYou} averageRating={trader.rating} reviewCount={trader.ratingCount} />
-                            <p className="truncate text-xs text-neutral-900 dark:text-neutral-50">
-                              #{rank} · {traderAccess === 'open' ? copy.open : copy.private}
-                            </p>
+                            {/* The row is a link; keep rating clicks and key presses (and the modal's, which bubble through the portal) from navigating. */}
+                            <div onClick={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}>
+                              <TraderReviews traderUserId={trader.id} traderName={trader.displayName} isSelf={trader.isYou} averageRating={trader.rating} reviewCount={trader.ratingCount} compact />
+                            </div>
+                            <p className="truncate text-xs text-neutral-900 dark:text-neutral-50">#{rank}</p>
                           </div>
                         </div>
                       </td>
@@ -292,7 +378,7 @@ export function SocialTradingPage() {
                       </td>
                       <td className="px-3 py-3 font-medium text-neutral-900 dark:text-neutral-100">{percent(trader.roi)}</td>
                       <td className="px-3 py-3 text-neutral-900 dark:text-neutral-50">{percent(trader.winRate)}</td>
-                      <td className="px-3 py-3 text-neutral-900 dark:text-neutral-50">{trader.followerCount}</td>
+                      <td className="px-3 py-3 text-neutral-900 dark:text-neutral-50">{trader.liveCopiers ?? '—'}</td>
                       <td className="px-3 py-3 text-neutral-900 dark:text-neutral-50">
                         {trader.previewBalance == null ? '—' : (
                           <span className="block font-medium">{formatAccountAmount(trader.previewBalance, trader.accountCurrency)}</span>
@@ -303,11 +389,25 @@ export function SocialTradingPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-2">
-                          {trader.isYou ? null : (
+                          {trader.isYou ? null : subscribedProviderIds.has(trader.id) ? (
+                            <ActiveCopyActions
+                              currentlyCopyingLabel={copy.currentlyCopying}
+                              configureLabel={copy.configureCopy ?? 'Configure'}
+                              configureAria={copy.configureCopyAria ?? 'Configure copy settings'}
+                              stopLabel={copy.stopCopying}
+                              stopping={stoppingTraderId === trader.id}
+                              onConfigure={() => {
+                                const subscription = mySubscriptions.find(row => row.sourceTraderUserId === trader.id)
+                                if (!subscription) return
+                                setConfigureTarget({ trader, subscription })
+                              }}
+                              onStop={() => void stopCopyingTrader(trader.id)}
+                            />
+                          ) : (
                             <CopyActionButton
                               disabled={!canOpenCopyTrader(trader)}
                               disabledReason={copyTraderUnavailableReason(trader) ?? undefined}
-                              copyLabel={copy.copySetup.action}
+                              copyLabel="Copy"
                               onOpenSetup={() => setSetupTrader(trader)}
                             />
                           )}
@@ -327,10 +427,24 @@ export function SocialTradingPage() {
       <CopyTraderModal
         trader={setupTrader}
         copy={copy}
-        onClose={() => setSetupTrader(null)}
+        onClose={() => {
+          setSetupTrader(null)
+          void refreshMySubscriptions()
+        }}
         onConnectBroker={() => {
           setSetupTrader(null)
           openAddTradingAccount({ asDestination: true })
+        }}
+      />
+    ) : null}
+    {configureTarget ? (
+      <ConfigureCopyModal
+        trader={configureTarget.trader}
+        subscription={configureTarget.subscription}
+        copy={copy}
+        onClose={() => setConfigureTarget(null)}
+        onSaved={() => {
+          void refreshMySubscriptions()
         }}
       />
     ) : null}
@@ -369,58 +483,6 @@ function DirectoryTab({ to, active, children }: { to: string; active: boolean; c
   )
 }
 
-function SummaryStat({
-  label,
-  value,
-  selected,
-  onClick,
-}: {
-  label: string
-  value: number
-  selected: boolean
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={clsx(
-        'rounded-xl border bg-white px-4 py-3 text-left transition-colors dark:bg-neutral-950',
-        selected
-          ? 'border-neutral-900 dark:border-neutral-100'
-          : 'border-neutral-200 hover:border-neutral-300 dark:border-neutral-800 dark:hover:border-neutral-700',
-      )}
-    >
-      <span className="block text-sm text-neutral-900 dark:text-neutral-50">{label}</span>
-      <span className="mt-2 block text-2xl font-semibold text-neutral-900 dark:text-neutral-50">{value}</span>
-    </button>
-  )
-}
-
-function AccessTag({
-  access,
-  openLabel,
-  privateLabel,
-}: {
-  access: SocialAccess
-  openLabel: string
-  privateLabel: string
-}) {
-  const isOpen = access === 'open'
-  return (
-    <span
-      className={clsx(
-        'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
-        isOpen
-          ? 'bg-teal-50 text-green-500 dark:bg-teal-950/50 dark:text-teal-300'
-          : 'bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50',
-      )}
-    >
-      {isOpen ? openLabel : privateLabel}
-    </span>
-  )
-}
-
 function CopyActionButton({
   copyLabel,
   disabled = false,
@@ -448,20 +510,248 @@ function CopyActionButton({
     >
       {copyLabel}
     </Button>
-    <p className={'max-w-64 text-right text-xs leading-4 text-neutral-500'} role={'status'}>{disabledReason}</p>
+    {disabledReason ? (
+      <p className={'max-w-64 text-right text-xs leading-4 text-neutral-500'} role={'status'}>{disabledReason}</p>
+    ) : null}
     </div>
   )
 }
 
-function PerformanceNotice({ loading, trader }: { loading: boolean, trader: SocialTrader }) {
-  if (loading) return <Alert variant={'warning'}>Loading source-scoped performance and trade history...</Alert>
+function ActiveCopyActions({
+  currentlyCopyingLabel,
+  configureLabel,
+  configureAria,
+  stopLabel,
+  stopping,
+  onConfigure,
+  onStop,
+}: {
+  currentlyCopyingLabel: string
+  configureLabel: string
+  configureAria: string
+  stopLabel: string
+  stopping?: boolean
+  onConfigure: () => void
+  onStop: () => void
+}) {
+  return (
+    <div className="flex flex-col items-end gap-1.5">
+      <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300" role="status">
+        {currentlyCopyingLabel}
+      </p>
+      <div className="flex items-center gap-1.5">
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className="!px-2"
+          aria-label={configureAria}
+          title={configureLabel}
+          onClick={event => {
+            event.stopPropagation()
+            onConfigure()
+          }}
+          onKeyDown={event => event.stopPropagation()}
+        >
+          <Settings className="h-4 w-4" aria-hidden />
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          loading={stopping}
+          disabled={stopping}
+          onClick={event => {
+            event.stopPropagation()
+            onStop()
+          }}
+          onKeyDown={event => event.stopPropagation()}
+        >
+          {stopLabel}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function PerformanceNotice({ trader }: { trader: SocialTrader }) {
   if (trader.performanceError) return <Alert variant={'error'}>{trader.performanceError}</Alert>
   if (trader.performanceStatus === 'no_history') return <Alert variant={'warning'}>Verified source history contains no trades yet.</Alert>
   if (trader.performanceStatus === 'pending') return <Alert variant={'warning'}>Source history synchronization has not completed yet. Statistics remain unavailable.</Alert>
-  if (trader.performanceStatus === 'incomplete') return <Alert variant={'warning'}>Source history is incomplete. Known trades are shown, but historical totals remain unavailable.</Alert>
   if (trader.performanceStatus === 'unavailable') return <Alert variant={'warning'}>Source performance is unavailable.</Alert>
   if (trader.performanceStatus === 'stale') return <Alert variant={'warning'}>Source history is stale. Historical values are shown and copying remains unavailable until synchronization succeeds.</Alert>
   return null
+}
+
+/** Own provider performance dashboard — used on Manage provider profile. */
+export function OwnProviderProfileView() {
+  const t = useT()
+  const copy = t.socialTradingPage
+  const { formatMoney, formatSignedMoney } = useFormatMoney()
+  const { locale } = useLocale()
+  const { user } = useAuth()
+  const social = useSocialTradingPreview()
+  const directoryTrader = social.traders.find(item => item.isYou)
+    ?? (user?.id ? social.traders.find(item => item.id === user.id) : undefined)
+  // Manage provider uses the published source account; no account picker.
+  const selectedOwnAccountId = useDefaultOwnSourceAccount(true)
+  const ownAccountView = useOwnSocialAccountView(
+    directoryTrader ? { ...directoryTrader, isYou: true } : undefined,
+    selectedOwnAccountId,
+  )
+  const { profile: ownProfile } = useUserProfile()
+  const ownTimezoneLabel = ownProfile.timezone?.trim()
+    ? findTimezoneLabel(ownProfile.timezone.trim())
+    : null
+  const rawTrader = ownAccountView.trader
+  const trader = useMemo(
+    () => {
+      if (!rawTrader) return rawTrader
+      const timezone = ownTimezoneLabel
+        ?? rawTrader.profile.timezone
+        ?? null
+      if (timezone === rawTrader.profile.timezone) return rawTrader
+      return { ...rawTrader, profile: { ...rawTrader.profile, timezone } }
+    },
+    [rawTrader, ownTimezoneLabel],
+  )
+  const openCountHint = Math.max(trader?.openTradeCount ?? 0, trader?.openTrades.length ?? 0)
+  // Poll as soon as the published source account is known — do not wait for history hydration.
+  const liveOwn = useLiveOwnOpenPnl(selectedOwnAccountId, openCountHint, Boolean(selectedOwnAccountId))
+  const ownAvatarUrl = useOwnAvatarUrl()
+  const [profileTab, setProfileTab] = useState<'performance' | 'trading' | 'portfolio'>('performance')
+
+  if (social.loading || social.performanceLoading || ownAccountView.loading) {
+    return <SocialTraderProfileSkeleton />
+  }
+  if (!trader) {
+    return (
+      <Card>
+        <p className="text-sm text-neutral-900 dark:text-neutral-50">
+          Performance appears here once your provider source account is published for copying.
+        </p>
+      </Card>
+    )
+  }
+
+  const baseStats = socialTraderStats(trader)
+  const deposit = resolveAccountDeposit(ownAccountView.account) ?? baseStats.deposit
+  const stats = {
+    ...baseStats,
+    deposit,
+    openPosition: liveOwn.openPnl != null ? liveOwn.openPnl : baseStats.openPosition,
+  }
+  const name = copy.you
+  const joined = trader.profile.joinedAt
+    ? new Date(trader.profile.joinedAt).toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric' })
+    : '—'
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            <TraderAvatar name={name} src={ownAvatarUrl} size="profile" />
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="truncate text-xl font-semibold text-neutral-900 dark:text-neutral-50">{name}</h2>
+                {trader.syntheticDemo ? <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">Synthetic demo · simulated copying</span> : null}
+              </div>
+              <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-50">
+                #{trader.profile.rank ?? '—'} {copy.rank} · {copy.joined} {joined} · {trader.profile.country}
+              </p>
+              <div className="mt-1">
+                <TraderReviews traderUserId={trader.id} traderName={trader.displayName} isSelf averageRating={trader.rating} reviewCount={trader.ratingCount} />
+                <SocialProfileLinks links={trader.socialLinks ?? {}} />
+                <p className="mt-2 text-xs text-neutral-500">
+                  Source: {trader.sourceLabel
+                    ? [trader.sourceLabel, trader.sourcePlatform, trader.sourceAccountMode].filter(Boolean).join(' · ')
+                    : '—'}
+                </p>
+              </div>
+            </div>
+          </div>
+          <dl className="grid grid-cols-2 gap-4 sm:gap-8">
+            <HeaderStat label={copy.liveCopiers} value={trader.liveCopiers == null ? '—' : String(trader.liveCopiers)} />
+            <HeaderStat label={copy.leverage} value={trader.profile.leverage ?? '—'} />
+          </dl>
+        </div>
+      </Card>
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="min-w-0 space-y-4">
+          <div className="flex gap-2 overflow-x-auto">
+            <ProfileTab icon={<BarChart3 className="h-4 w-4" />} active={profileTab === 'performance'} onClick={() => setProfileTab('performance')}>{copy.tabPerformance}</ProfileTab>
+            <ProfileTab icon={<LineChart className="h-4 w-4" />} active={profileTab === 'trading'} onClick={() => setProfileTab('trading')}>{copy.tabTrading}</ProfileTab>
+            <ProfileTab icon={<Wallet className="h-4 w-4" />} active={profileTab === 'portfolio'} onClick={() => setProfileTab('portfolio')}>{copy.tabPortfolio}</ProfileTab>
+          </div>
+          <PerformanceNotice trader={trader} />
+          {liveOwn.error ? (
+            <Alert variant={'warning'}>
+              Couldn&apos;t get live data from your trading account, so some values show a dash or the last known number. {liveOwn.error}
+            </Alert>
+          ) : null}
+          {profileTab === 'performance' ? (
+            <>
+              <MonthlyProfitChart title={copy.monthlyStatistics} data={stats.monthly} />
+              <StatisticsGrid trader={trader} stats={stats} copy={copy} formatMoney={formatMoney} />
+              <PnlCalendar trader={trader} days={stats.calendar} locale={locale} copy={copy} formatSignedMoney={formatSignedMoney} />
+            </>
+          ) : null}
+          {profileTab === 'trading' ? (
+            <>
+              <TradeTable
+                title={copy.openTrades}
+                whenLabel={copy.opened}
+                rows={trader.openTrades.map(trade => ({
+                  id: trade.id,
+                  symbol: trade.symbol,
+                  side: trade.side,
+                  when: formatWhen(trade.openedAt),
+                  result: null,
+                }))}
+                copy={copy}
+                formatSignedMoney={formatSignedMoney}
+              />
+              <TradeTable
+                title={copy.closedPerformance}
+                whenLabel={copy.closed}
+                rows={trader.closedPerformance.map(trade => ({
+                  id: trade.id,
+                  symbol: trade.symbol,
+                  side: trade.side,
+                  when: formatWhen(trade.closedAt),
+                  result: trade.profit,
+                }))}
+                copy={copy}
+                formatSignedMoney={formatSignedMoney}
+              />
+              <ActivityList activities={trader.activities} copy={copy} formatSignedMoney={formatSignedMoney} />
+            </>
+          ) : null}
+          {profileTab === 'portfolio' ? (
+            <div className="grid gap-4">
+              <AccountGrowthChart data={trader.chart.growth} series={trader.chart.series} />
+              <PerformanceTradeOutcomeChart
+                data={trader.chart.outcome}
+                title={copy.closedPerformance}
+                subtitle={t.performance.outcomeSubtitle}
+                emptyLabel={t.performance.outcomeEmpty}
+                profitLabel={t.dashboard.chartProfit}
+                lossLabel={t.dashboard.chartLoss}
+              />
+            </div>
+          ) : null}
+        </div>
+        <OverviewPanel
+          trader={trader}
+          stats={stats}
+          copy={copy}
+          formatMoney={formatMoney}
+          formatSignedMoney={formatSignedMoney}
+        />
+      </div>
+    </div>
+  )
 }
 
 export function SocialTraderActivityPage() {
@@ -470,31 +760,66 @@ export function SocialTraderActivityPage() {
   const { formatMoney, formatSignedMoney } = useFormatMoney()
   const { locale } = useLocale()
   const { openAddTradingAccount } = useAddTradingAccount()
+  const { user } = useAuth()
   const { traderId } = useParams()
   const social = useSocialTradingPreview()
+  const ownProvider = useProviderStatus()
+  const viewerIsApprovedProvider = ownProvider.status === 'approved'
   const directoryTrader = traderId ? social.traders.find(item => item.id === traderId) : undefined
-  const [pickedOwnAccountId, setSelectedOwnAccountId] = useState('')
-  // Default the "You" page to the published source account so its data shows without picking one first.
-  const defaultOwnAccountId = useDefaultOwnSourceAccount(Boolean(directoryTrader?.isYou))
-  const selectedOwnAccountId = pickedOwnAccountId || defaultOwnAccountId
+  const isOwnProfile = Boolean(directoryTrader?.isYou || (user?.id && traderId === user.id))
+
+  const selectedOwnAccountId = useDefaultOwnSourceAccount(false)
   const ownAccountView = useOwnSocialAccountView(directoryTrader, selectedOwnAccountId)
-  const { timezone: ownTimezone } = useUserProfile()
   const rawTrader = ownAccountView.trader
-  // Your own timezone comes from your account settings; other traders' timezones are private.
-  const trader = useMemo(
-    () => rawTrader?.isYou && ownTimezone
-      ? { ...rawTrader, profile: { ...rawTrader.profile, timezone: findTimezoneLabel(ownTimezone) } }
-      : rawTrader,
-    [rawTrader, ownTimezone],
-  )
-  const liveOwn = useLiveOwnOpenPnl(selectedOwnAccountId, trader?.openTradeCount ?? 0, Boolean(trader?.isYou))
-  const ownAvatarUrl = useOwnAvatarUrl()
+  const trader = rawTrader
   const [copyModalOpen, setCopyModalOpen] = useState(false)
+  const [configureSubscription, setConfigureSubscription] = useState<MySocialCopySubscription | null>(null)
+  const [activeSubscriptions, setActiveSubscriptions] = useState<MySocialCopySubscription[]>([])
+  const [stoppingCopy, setStoppingCopy] = useState(false)
   const [profileParams, setProfileParams] = useSearchParams()
+  const traderIdForSubs = trader?.id ?? traderId ?? null
+
+  const refreshActiveSubscriptions = async () => {
+    if (!user?.id || !traderIdForSubs) {
+      setActiveSubscriptions([])
+      return
+    }
+    try {
+      const rows = await fetchMySocialCopySubscriptions(supabase)
+      setActiveSubscriptions(
+        rows.filter(row => row.sourceTraderUserId === traderIdForSubs && isCurrentSocialCopySubscription(row)),
+      )
+    } catch {
+      setActiveSubscriptions([])
+    }
+  }
+
+  useEffect(() => {
+    let active = true
+    if (!user?.id || !traderIdForSubs) {
+      setActiveSubscriptions([])
+      return () => { active = false }
+    }
+    void fetchMySocialCopySubscriptions(supabase)
+      .then(rows => {
+        if (!active) return
+        setActiveSubscriptions(
+          rows.filter(row => row.sourceTraderUserId === traderIdForSubs && isCurrentSocialCopySubscription(row)),
+        )
+      })
+      .catch(() => {
+        if (active) setActiveSubscriptions([])
+      })
+    return () => { active = false }
+  }, [user?.id, traderIdForSubs])
+
+  const isCurrentlyCopying = activeSubscriptions.length > 0
   const wantsCopy = profileParams.get('copy') === '1'
   const copyIntentReady = wantsCopy && Boolean(trader) && !trader?.isYou && !social.loading && !social.performanceLoading
     && trader?.performanceStatusReason !== 'not_loaded'
-  const copyIntentEligible = Boolean(trader) && canOpenCopyTrader(trader as SocialTrader)
+    && !viewerIsApprovedProvider
+    && !isCurrentlyCopying
+  const copyIntentEligible = Boolean(trader) && canOpenCopyTrader(trader as SocialTrader, { viewerIsApprovedProvider })
   useEffect(() => {
     if (!copyIntentReady) return
     // Arrived from a provider's public page: finish the sign-up -> copy journey once.
@@ -509,10 +834,29 @@ export function SocialTraderActivityPage() {
     })
   }, [copyIntentReady, copyIntentEligible, setProfileParams])
   const [profileTab, setProfileTab] = useState<'performance' | 'trading' | 'portfolio'>('performance')
-  const access = social.currentProfile?.access ?? trader?.access ?? 'open'
 
-  if (social.loading && !trader) {
-    return <PageShell maxWidth="xl"><Card><p className="text-sm text-neutral-900 dark:text-neutral-50">{copy.loadingDirectory}</p></Card></PageShell>
+  const stopCopying = async () => {
+    if (activeSubscriptions.length === 0) return
+    if (!window.confirm(copy.stopCopyingConfirm)) return
+    setStoppingCopy(true)
+    try {
+      await Promise.all(activeSubscriptions.map(row => changeSocialCopySubscription(supabase, row.id, 'stop')))
+      setActiveSubscriptions([])
+    } finally {
+      setStoppingCopy(false)
+    }
+  }
+
+  if (isOwnProfile) {
+    return <Navigate to="/social-trading" replace />
+  }
+
+  if ((social.loading || social.performanceLoading) && !trader) {
+    return (
+      <PageShell maxWidth="xl">
+        <SocialTraderProfileSkeleton />
+      </PageShell>
+    )
   }
 
   if (!trader) {
@@ -529,14 +873,23 @@ export function SocialTraderActivityPage() {
     )
   }
 
-  const pendingRequests = social.profiles
-    .filter(profile => profile.followsViewerStatus === 'pending')
-    .map(profile => social.traders.find(person => person.id === profile.profileUserId))
-    .filter((person): person is SocialTrader => Boolean(person))
-  const baseStats = socialTraderStats(trader)
-  // Your own Open position is fetched live from the trading account; the saved snapshot can be stale.
-  const stats = trader.isYou && liveOwn.openPnl != null ? { ...baseStats, openPosition: liveOwn.openPnl } : baseStats
-  const name = trader.isYou ? copy.you : trader.displayName
+  if (social.performanceLoading) {
+    return (
+      <PageShell maxWidth="xl">
+        <div>
+          <Link to="/social-trading" className="text-sm font-medium text-green-500 hover:text-teal-800 dark:text-teal-300">
+            {copy.back}
+          </Link>
+          <div className="mt-3">
+            <SocialTraderProfileSkeleton />
+          </div>
+        </div>
+      </PageShell>
+    )
+  }
+
+  const stats = socialTraderStats(trader)
+  const name = trader.displayName
   const joined = trader.profile.joinedAt
     ? new Date(trader.profile.joinedAt).toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric' })
     : '—'
@@ -551,21 +904,16 @@ export function SocialTraderActivityPage() {
         <Card className="mt-3">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex min-w-0 items-start gap-3">
-              <TraderAvatar name={name} src={trader.isYou ? ownAvatarUrl : null} size="profile" />
+              <TraderAvatar name={name} size="profile" />
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="truncate text-xl font-semibold text-neutral-900 dark:text-neutral-50">{name}</h1>{trader.syntheticDemo ? <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">Synthetic demo · simulated copying</span> : null}
-                  <AccessTag
-                    access={trader.isYou ? access : trader.access}
-                    openLabel={copy.open}
-                    privateLabel={copy.private}
-                  />
                 </div>
                 <p className="mt-1 text-sm text-neutral-900 dark:text-neutral-50">
                   #{trader.profile.rank ?? '—'} {copy.rank} · {copy.joined} {joined} · {trader.profile.country}
                 </p>
                 <div className="mt-1">
-                  <TraderReviews traderUserId={trader.id} traderName={trader.displayName} isSelf={trader.isYou} averageRating={trader.rating} reviewCount={trader.ratingCount} />
+                  <TraderReviews traderUserId={trader.id} traderName={trader.displayName} isSelf={false} averageRating={trader.rating} reviewCount={trader.ratingCount} />
                   <SocialProfileLinks links={trader.socialLinks ?? {}} />
                   <p className="mt-2 text-xs text-neutral-500">
                     Source: {trader.sourceLabel
@@ -576,57 +924,37 @@ export function SocialTraderActivityPage() {
               </div>
             </div>
             <dl className="grid grid-cols-2 gap-4 sm:gap-8">
-              <HeaderStat label={copy.followers} value={String(trader.followerCount)} />
+              <HeaderStat label={copy.liveCopiers} value={trader.liveCopiers == null ? '—' : String(trader.liveCopiers)} />
               <HeaderStat label={copy.leverage} value={trader.profile.leverage ?? '—'} />
             </dl>
-            {trader.isYou ? null : (
+            {viewerIsApprovedProvider ? null : isCurrentlyCopying ? (
+              <ActiveCopyActions
+                currentlyCopyingLabel={copy.currentlyCopying}
+                configureLabel={copy.configureCopy ?? 'Configure'}
+                configureAria={copy.configureCopyAria ?? 'Configure copy settings'}
+                stopLabel={copy.stopCopying}
+                stopping={stoppingCopy}
+                onConfigure={() => {
+                  const subscription = activeSubscriptions[0]
+                  if (!subscription) return
+                  setConfigureSubscription(subscription)
+                }}
+                onStop={() => void stopCopying()}
+              />
+            ) : (
               <CopyActionButton
-                disabled={!canOpenCopyTrader(trader)}
-                disabledReason={copyTraderUnavailableReason(trader) ?? undefined}
-                copyLabel={copy.copySetup.action}
+                disabled={!canOpenCopyTrader(trader, { viewerIsApprovedProvider })}
+                disabledReason={copyTraderUnavailableReason(trader, { viewerIsApprovedProvider }) ?? undefined}
+                copyLabel={copyTraderActionLabel(trader.monthlyCopyPriceCents, formatMoney, {
+                  free: copy.copyForFree,
+                  paid: copy.copyForAmount,
+                })}
                 onOpenSetup={() => setCopyModalOpen(true)}
               />
             )}
           </div>
         </Card>
       </div>
-      {trader.isYou ? (
-        <OwnAccountSelector
-          selectedAccountId={selectedOwnAccountId}
-          onChange={setSelectedOwnAccountId}
-          loading={ownAccountView.loading}
-          error={ownAccountView.error}
-        />
-      ) : null}
-      {trader.isYou && access === 'private' ? (
-        <Card padding="none" className="overflow-hidden">
-          <h2 className="border-b border-neutral-100 px-4 py-3 text-sm font-semibold text-neutral-900 dark:border-neutral-800 dark:text-neutral-50">
-            {copy.copyRequests}
-          </h2>
-          {pendingRequests.length === 0 ? (
-            <p className="px-4 py-3 text-sm text-neutral-900 dark:text-neutral-50">{copy.copyRequestsEmpty}</p>
-          ) : (
-            <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
-              {pendingRequests.map(person => (
-                <li key={person.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-50">{person.displayName}</p>
-                    <p className="truncate text-sm text-neutral-900 dark:text-neutral-50">@{person.username}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button type="button" size="sm" onClick={() => void social.resolve(person.id, 'accepted')}>
-                      {copy.accept}
-                    </Button>
-                    <Button type="button" size="sm" variant="secondary" onClick={() => void social.resolve(person.id, 'declined')}>
-                      {copy.decline}
-                    </Button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      ) : null}
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
         <div className="min-w-0 space-y-4">
           <div className="flex gap-2 overflow-x-auto">
@@ -634,12 +962,7 @@ export function SocialTraderActivityPage() {
             <ProfileTab icon={<LineChart className="h-4 w-4" />} active={profileTab === 'trading'} onClick={() => setProfileTab('trading')}>{copy.tabTrading}</ProfileTab>
             <ProfileTab icon={<Wallet className="h-4 w-4" />} active={profileTab === 'portfolio'} onClick={() => setProfileTab('portfolio')}>{copy.tabPortfolio}</ProfileTab>
           </div>
-          <PerformanceNotice loading={social.performanceLoading} trader={trader} />
-          {trader.isYou && liveOwn.error ? (
-            <Alert variant={'warning'}>
-              Couldn&apos;t get live data from your trading account, so some values show a dash or the last known number. {liveOwn.error}
-            </Alert>
-          ) : null}
+          <PerformanceNotice trader={trader} />
           {profileTab === 'performance' ? (
             <>
               <MonthlyProfitChart title={copy.monthlyStatistics} data={stats.monthly} />
@@ -705,10 +1028,24 @@ export function SocialTraderActivityPage() {
       <CopyTraderModal
         trader={trader}
         copy={copy}
-        onClose={() => setCopyModalOpen(false)}
+        onClose={() => {
+          setCopyModalOpen(false)
+          void refreshActiveSubscriptions()
+        }}
         onConnectBroker={() => {
           setCopyModalOpen(false)
           openAddTradingAccount({ asDestination: true })
+        }}
+      />
+    ) : null}
+    {configureSubscription && trader ? (
+      <ConfigureCopyModal
+        trader={trader}
+        subscription={configureSubscription}
+        copy={copy}
+        onClose={() => setConfigureSubscription(null)}
+        onSaved={() => {
+          void refreshActiveSubscriptions()
         }}
       />
     ) : null}
@@ -768,11 +1105,18 @@ function MonthlyProfitChart({ title, data }: { title: string; data: SocialTrader
             <XAxis dataKey="label" tick={{ fontSize: 11, fill: colors.tick }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 11, fill: colors.tick }} axisLine={false} tickLine={false} tickFormatter={value => formatAxisMoney(Number(value))} width={48} />
             <Tooltip {...chartTooltipProps(colors)} formatter={(value, _name, item) => { const month = item.payload as SocialTraderStats['monthly'][number]; return value == null || month.profit == null ? ['—', 'Performance'] : [formatAxisMoney(Number(value)), month.state === 'no_activity' ? 'Verified no activity' : month.state === 'incomplete' ? 'Partial P/L' : 'P/L'] }} />
-            <Bar dataKey="profit" fill="#4ade80" radius={[4, 4, 0, 0]} maxBarSize={36} />
+            <Bar dataKey="profit" radius={[4, 4, 0, 0]} maxBarSize={36}>
+              {data.map(month => (
+                <Cell
+                  key={month.label}
+                  fill={month.profit == null ? 'transparent' : month.profit >= 0 ? '#4ade80' : '#ef4444'}
+                />
+              ))}
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>}
-      {hasKnownPerformance && data.some(month => month.state === 'incomplete' || month.state === 'unavailable') ? <p className="mt-2 text-xs text-neutral-500">Blank months are unavailable or outside complete verified history; they are not zero-performance months.</p> : null}
+      {hasKnownPerformance && data.some(month => month.state === 'unavailable') ? <p className="mt-2 text-xs text-neutral-500">Blank months have no known closed trades; they are not zero-performance months.</p> : null}
     </Card>
   )
 }
@@ -1093,7 +1437,13 @@ function OverviewPanel({
   formatMoney: (value: number) => string
   formatSignedMoney: (value: number) => string
 }) {
+  const { profile: viewerProfile } = useUserProfile()
   const lastTrade = trader.activities.reduce((latest, item) => item.at > latest ? item.at : latest, trader.activities[0]?.at ?? '')
+  // Own manage overview reads the same Settings timezone; others use directory-published timezone.
+  const timezoneLabel = trader.profile.timezone
+    ?? (trader.isYou && viewerProfile.timezone?.trim()
+      ? findTimezoneLabel(viewerProfile.timezone.trim())
+      : null)
   return (
     <Card className="xl:sticky xl:top-4">
       <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{copy.overview}</h2>
@@ -1128,14 +1478,14 @@ function OverviewPanel({
         <OverviewRow label={copy.balance} value={trader.previewBalance == null ? '—' : trader.accountCurrency ? formatAccountAmount(trader.previewBalance, trader.accountCurrency) : formatMoney(trader.previewBalance)} />
         <OverviewRow label={copy.equity} value={stats.equity == null ? '—' : formatMoney(stats.equity)} />
         <OverviewRow label={copy.deposit} value={stats.deposit == null ? '—' : formatMoney(stats.deposit)} />
-        <OverviewRow label={copy.totalTrades} value={!trader.historyComplete || trader.closedTrades == null || trader.openTradeCount == null ? '—' : String(trader.closedTrades + trader.openTradeCount)} />
-        <OverviewRow label={copy.openTrades} value={!trader.historyComplete || trader.openTradeCount == null ? '—' : String(trader.openTradeCount)} />
-        <OverviewRow label={copy.lastTrade} value={!trader.historyComplete ? '—' : lastTrade ? formatWhen(lastTrade) : trader.historyAvailable ? '—' : '—'} />
+        <OverviewRow label={copy.totalTrades} value={trader.closedTrades == null || trader.openTradeCount == null ? '—' : String(trader.closedTrades + trader.openTradeCount)} />
+        <OverviewRow label={copy.openTrades} value={trader.openTradeCount == null ? '—' : String(trader.openTradeCount)} />
+        <OverviewRow label={copy.lastTrade} value={lastTrade ? formatWhen(lastTrade) : '—'} />
         <OverviewRow label={copy.openPosition} value={stats.openPosition == null ? '—' : formatSignedMoney(stats.openPosition)} tone={stats.openPosition == null ? undefined : stats.openPosition >= 0 ? 'up' : 'down'} />
         <OverviewRow label={copy.liveCopiers} value={trader.liveCopiers == null ? '—' : String(trader.liveCopiers)} />
-<OverviewRow label={copy.bestTrade} value={stats.bestTradeProfit == null || !stats.bestTradeAt ? '—' : formatSignedMoney(stats.bestTradeProfit) + ' / ' + formatWhen(stats.bestTradeAt)} tone="up" />
-<OverviewRow label={copy.worstTrade} value={stats.worstTradeProfit == null || !stats.worstTradeAt ? '—' : formatSignedMoney(stats.worstTradeProfit) + ' / ' + formatWhen(stats.worstTradeAt)} tone="down" />
-        <OverviewRow label={copy.timezone} value={trader.profile.timezone ?? '—'} />
+        <OverviewRow label={copy.bestTrade} value={stats.bestTradeProfit == null || !stats.bestTradeAt ? '—' : formatSignedMoney(stats.bestTradeProfit) + ' / ' + formatWhen(stats.bestTradeAt)} tone="up" />
+        <OverviewRow label={copy.worstTrade} value={stats.worstTradeProfit == null || !stats.worstTradeAt ? '—' : formatSignedMoney(stats.worstTradeProfit) + ' / ' + formatWhen(stats.worstTradeAt)} tone="down" />
+        <OverviewRow label={copy.timezone} value={timezoneLabel ?? '—'} />
         <OverviewRow label={copy.amountFollowing} value={stats.amountFollowing == null ? '—' : formatMoney(stats.amountFollowing)} />
       </dl>
     </Card>
@@ -1146,7 +1496,12 @@ function OverviewRow({ label, value, tone }: { label: string; value: string; ton
   return (
     <div className="flex items-start justify-between gap-3 border-b border-neutral-100 pb-2 dark:border-neutral-800">
       <dt className="text-neutral-900 dark:text-neutral-50">{label}</dt>
-      <dd className={clsx('text-end font-medium text-neutral-900 dark:text-neutral-50', tone === 'up' && 'text-green-500 dark:text-teal-300', tone === 'down' && 'text-red-600 dark:text-red-400')}>{value}</dd>
+      <dd className={clsx(
+        'text-end font-medium',
+        tone === 'up' ? 'text-green-500 dark:text-teal-300'
+          : tone === 'down' ? 'text-red-600 dark:text-red-400'
+            : 'text-neutral-900 dark:text-neutral-50',
+      )}>{value}</dd>
     </div>
   )
 }
@@ -1155,7 +1510,12 @@ function Metric({ label, value, tone }: { label: string; value: string; tone?: '
   return (
     <div>
       <dt className="text-xs text-neutral-900 dark:text-neutral-50">{label}</dt>
-      <dd className={clsx('mt-1 text-sm font-semibold text-neutral-900 dark:text-neutral-50', tone === 'up' && 'text-green-500 dark:text-teal-300', tone === 'down' && 'text-red-600 dark:text-red-400')}>{value}</dd>
+      <dd className={clsx(
+        'mt-1 text-sm font-semibold',
+        tone === 'up' ? 'text-green-500 dark:text-teal-300'
+          : tone === 'down' ? 'text-red-600 dark:text-red-400'
+            : 'text-neutral-900 dark:text-neutral-50',
+      )}>{value}</dd>
     </div>
   )
 }

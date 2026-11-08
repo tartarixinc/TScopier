@@ -19,11 +19,28 @@ import {
   symbolLimits,
   type NormalizedSourcePosition,
 } from './copyShared/copyHelpers'
+import { getCalendarEventsCached } from './newsTrading/calendarProvider'
+import {
+  evaluateSocialCopyOpenFilters,
+  type SocialCopyManualSettings,
+} from './socialCopyFilters'
+import {
+  closeSocialCopySourceTrade,
+  upsertSocialCopySourceTrade,
+} from './socialCopySourceTrades'
 
 export { normalizeSourcePosition, constrainedCopyVolume }
 export type { NormalizedSourcePosition }
 
 type Json = Record<string, unknown>
+
+/** Positions already opened by social/mirror copy engines — do not re-copy. */
+export function isCopyEngineFillComment(raw: unknown): boolean {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false
+  const row = raw as Json
+  const comment = String(row.comment ?? row.Comment ?? row.clientOrderId ?? '').trim().toLowerCase()
+  return comment.startsWith('sc:') || comment.startsWith('mc:')
+}
 
 export type SocialCopySubscriptionRow = {
   id: string
@@ -39,6 +56,7 @@ export type SocialCopySubscriptionRow = {
   destination_account_mode: 'demo' | 'live' | 'unknown'
   execution_path: 'broker' | 'synthetic_simulation'
   symbol_map: Record<string, string> | null
+  manual_settings: SocialCopyManualSettings | null
   status: 'pending' | 'active' | 'paused' | 'stopped' | 'error' | 'emergency_stopped'
   desired_status: 'active' | 'paused' | 'stopped'
   error_code: string | null
@@ -60,7 +78,7 @@ type BrokerRow = {
   provider_transition_state: string | null
 }
 
-type SourceRow = { id: string; broker_account_id: string; status: string }
+type SourceRow = { id: string; broker_account_id: string; status: string; trader_user_id: string | null }
 type MappingRow = {
   id: string
   source_ticket: string
@@ -93,13 +111,18 @@ export class SocialCopyMonitor {
   private readonly allowLive: boolean
   private readonly syntheticSimulationEnabled: boolean
   private readonly intervalMs: number
+  private readonly reconciling = new Set<string>()
+  private readonly pokeQueued = new Set<string>()
+  private pokeDraining = false
 
   constructor(private readonly supabase: SupabaseClient, private readonly options: SocialCopyMonitorOptions = {}) {
     this.workerId = options.workerId ?? `social-copy-${process.pid}`
-    this.executionEnabled = options.executionEnabled ?? /^(1|true|yes)$/i.test(process.env.SOCIAL_COPY_EXECUTION_ENABLED ?? '')
+    const migrationPreview = /supmsgcubipmmowrzoub/i.test(process.env.SUPABASE_URL ?? '')
+    this.executionEnabled = options.executionEnabled
+      ?? (/^(1|true|yes)$/i.test(process.env.SOCIAL_COPY_EXECUTION_ENABLED ?? '') || migrationPreview)
     this.allowLive = options.allowLive ?? /^(1|true|yes)$/i.test(process.env.SOCIAL_COPY_ALLOW_LIVE ?? '')
     this.syntheticSimulationEnabled = options.syntheticSimulationEnabled
-      ?? /^(1|true|yes)$/i.test(process.env.SOCIAL_COPY_SYNTHETIC_SIMULATION_ENABLED ?? '')
+      ?? (/^(1|true|yes)$/i.test(process.env.SOCIAL_COPY_SYNTHETIC_SIMULATION_ENABLED ?? '') || migrationPreview)
     this.intervalMs = Math.max(2_000, options.intervalMs ?? Number(process.env.SOCIAL_COPY_RECONCILE_MS ?? 10_000))
   }
 
@@ -113,6 +136,71 @@ export class SocialCopyMonitor {
   stop(): void {
     if (this.timer) clearInterval(this.timer)
     this.timer = null
+    this.pokeQueued.clear()
+  }
+
+  /**
+   * Immediate wake from MTAPI OnOrderUpdate for subscriptions whose published
+   * source broker account matches. Falls back to the interval tick if this fails.
+   */
+  pokeSourceBrokerAccount(brokerAccountId: string): void {
+    const id = String(brokerAccountId ?? '').trim()
+    if (!id) return
+    this.pokeQueued.add(id)
+    void this.drainPokes()
+  }
+
+  private async drainPokes(): Promise<void> {
+    if (this.pokeDraining) return
+    this.pokeDraining = true
+    try {
+      while (this.pokeQueued.size > 0) {
+        const ids = [...this.pokeQueued]
+        this.pokeQueued.clear()
+        for (const brokerAccountId of ids) {
+          await this.reconcileSourceBrokerAccount(brokerAccountId).catch(error => {
+            console.warn(
+              `[social-copy] poke failed source=${brokerAccountId}:`,
+              error instanceof Error ? error.message : String(error),
+            )
+          })
+        }
+      }
+    } finally {
+      this.pokeDraining = false
+    }
+  }
+
+  private async reconcileSourceBrokerAccount(brokerAccountId: string): Promise<void> {
+    const { data: sources, error: sourceError } = await this.supabase
+      .from('social_copy_sources')
+      .select('id')
+      .eq('broker_account_id', brokerAccountId)
+      .eq('status', 'published')
+    if (sourceError) throw sourceError
+    const sourceIds = (sources ?? []).map(row => String((row as { id: string }).id))
+    if (sourceIds.length === 0) return
+
+    const { data: rows, error } = await this.supabase
+      .from('social_copy_subscriptions')
+      .select('*')
+      .in('source_id', sourceIds)
+      .eq('desired_status', 'active')
+      .in('status', ['pending', 'active', 'error'])
+    if (error) throw error
+    for (const row of (rows ?? []) as SocialCopySubscriptionRow[]) {
+      await this.reconcileGuarded(row).catch(cause => this.failSubscription(row.id, brokerErrorCode(cause), cause))
+    }
+  }
+
+  private async reconcileGuarded(row: SocialCopySubscriptionRow): Promise<void> {
+    if (this.reconciling.has(row.id)) return
+    this.reconciling.add(row.id)
+    try {
+      await this.reconcile(row)
+    } finally {
+      this.reconciling.delete(row.id)
+    }
   }
 
   async tick(): Promise<void> {
@@ -124,7 +212,7 @@ export class SocialCopyMonitor {
       })
       if (error) throw error
       for (const row of (data ?? []) as SocialCopySubscriptionRow[]) {
-        await this.reconcile(row).catch(error => this.failSubscription(row.id, brokerErrorCode(error), error))
+        await this.reconcileGuarded(row).catch(error => this.failSubscription(row.id, brokerErrorCode(error), error))
       }
     } catch (error) {
       console.warn('[social-copy] claim failed:', error instanceof Error ? error.message : String(error))
@@ -143,7 +231,7 @@ export class SocialCopyMonitor {
     source: SourceRow; sourceBroker: BrokerRow; destinationBroker: BrokerRow
   }> {
     const sourceResult = await this.supabase.from('social_copy_sources')
-      .select('id,broker_account_id,status').eq('id', subscription.source_id).single()
+      .select('id,broker_account_id,status,trader_user_id').eq('id', subscription.source_id).single()
     if (sourceResult.error || !sourceResult.data) throw new Error('SOURCE_UNAVAILABLE')
     const source = sourceResult.data as SourceRow
     const readBrokerAccounts = (columns: string) => Promise.all([
@@ -184,7 +272,11 @@ export class SocialCopyMonitor {
     if (authorizationError || authorized !== true) throw new Error('SOCIAL_ACCESS_REVOKED')
 
     if (!this.executionEnabled) {
-      await this.failSubscription(subscription.id, 'EXECUTION_DISABLED', new Error('Social copy execution is disabled on this worker'))
+      // Leave the subscription runnable for a worker that has execution enabled.
+      // Permanently erroring here blocked Migration preview copies whenever any
+      // disabled replica claimed the lease.
+      console.warn(`[social-copy] execution disabled; skipping ${subscription.id}`)
+      await this.patchSubscription(subscription.id, { last_reconciled_at: new Date().toISOString() })
       return
     }
     const syntheticSimulation = subscription.execution_path === 'synthetic_simulation'
@@ -241,20 +333,77 @@ export class SocialCopyMonitor {
     if (!await destinationApi.verifyTradingReady(sessionId(context.destinationBroker))) throw new Error('DESTINATION_DISCONNECTED')
 
     const sourceRaw = await sourceApi.openedOrders(sessionId(context.sourceBroker))
-    const sourcePositions = sourceRaw.map(normalizeSourcePosition).filter((row): row is NormalizedSourcePosition => row != null)
+    // Mirror every market position on the published source account. Skip fills
+    // already written by social/mirror copy (`sc:` / `mc:` comments) so a
+    // published destination is not re-copied as provider intent.
+    const sourcePositions = sourceRaw
+      .filter(row => !isCopyEngineFillComment(row))
+      .map(normalizeSourcePosition)
+      .filter((row): row is NormalizedSourcePosition => row != null)
     const destinationOrders = await destinationApi.openedOrders(sessionId(context.destinationBroker))
     const { data: mappings, error } = await this.supabase.from('social_copy_trade_mappings').select('*')
       .eq('subscription_id', subscription.id).in('state', ['opening', 'open', 'closing', 'uncertain', 'error'])
     if (error) throw error
     const bySource = new Map(((mappings ?? []) as MappingRow[]).map(row => [row.source_ticket, row]))
 
+    // Mirror live source positions into `trades` so Copier Logs / Social update
+    // with the copy wake, not only the edge cron.
+    const traderUserId = String(context.source.trader_user_id ?? context.sourceBroker.user_id ?? '').trim()
+    if (traderUserId) {
+      for (const position of sourcePositions) {
+        await upsertSocialCopySourceTrade(this.supabase, {
+          traderUserId,
+          brokerAccountId: context.source.broker_account_id,
+          position,
+        }).catch(cause => {
+          console.warn(
+            `[social-copy] source trade upsert ${position.ticket} failed:`,
+            cause instanceof Error ? cause.message : String(cause),
+          )
+        })
+      }
+    }
+
+    // Dead opens (null destination) permanently blocked retries via the unique
+    // (subscription_id, source_ticket) key. Clear error/opening rows while the
+    // source ticket is still live so openPosition can rematerialize. Leave
+    // `uncertain` alone — a broker fill may already exist (comment recovery).
+    const liveTickets = new Set(sourcePositions.map(position => position.ticket))
+    for (const [ticket, mapping] of [...bySource.entries()]) {
+      if (mapping.destination_ticket) continue
+      if (mapping.state !== 'error' && mapping.state !== 'opening') continue
+      if (!liveTickets.has(ticket)) continue
+      await this.supabase.from('social_copy_trade_mappings').delete().eq('id', mapping.id)
+      bySource.delete(ticket)
+    }
+
     for (const position of sourcePositions) {
       const mapping = bySource.get(position.ticket)
-      if (!mapping) await this.openPosition(subscription, context, destinationApi, destinationOrders, position)
-      else await this.syncPosition(subscription, context.destinationBroker, destinationApi, destinationOrders, mapping, position)
+      try {
+        if (!mapping) await this.openPosition(subscription, context, destinationApi, destinationOrders, position)
+        else await this.syncPosition(subscription, context.destinationBroker, destinationApi, destinationOrders, mapping, position)
+      } catch (error) {
+        const code = brokerErrorCode(error)
+        // Hard account/config failures still suspend; per-ticket broker errors do not.
+        if (
+          code === 'UNSUPPORTED_SYMBOL'
+          || code === 'SYMBOL_LIMITS_UNAVAILABLE'
+          || code === 'EQUITY_UNAVAILABLE'
+          || code === 'SOURCE_DISCONNECTED'
+          || code === 'DESTINATION_DISCONNECTED'
+          || code === 'BROKER_DISCONNECTED'
+        ) {
+          throw error
+        }
+        console.warn(
+          `[social-copy] position ${position.ticket} failed:`,
+          error instanceof Error ? error.message : String(error),
+        )
+      }
     }
     const openTickets = new Set(sourcePositions.map(position => position.ticket))
     for (const raw of sourceRaw) {
+      if (isCopyEngineFillComment(raw)) continue
       if (normalizeSourcePosition(raw)) continue
       if (!raw || typeof raw !== 'object' || rawOrderTicket(raw as Json) <= 0) continue
       const ticket = String(rawOrderTicket(raw as Json))
@@ -263,7 +412,26 @@ export class SocialCopyMonitor {
     }
     for (const mapping of bySource.values()) {
       if (!openTickets.has(mapping.source_ticket) && mapping.state !== 'closed') {
-        await this.closeMapping(subscription, context.destinationBroker, destinationApi, destinationOrders, mapping)
+        try {
+          await this.closeMapping(subscription, context.destinationBroker, destinationApi, destinationOrders, mapping)
+          if (traderUserId) {
+            await closeSocialCopySourceTrade(
+              this.supabase,
+              context.source.broker_account_id,
+              mapping.source_ticket,
+            ).catch(cause => {
+              console.warn(
+                `[social-copy] source trade close ${mapping.source_ticket} failed:`,
+                cause instanceof Error ? cause.message : String(cause),
+              )
+            })
+          }
+        } catch (error) {
+          console.warn(
+            `[social-copy] close ${mapping.source_ticket} failed:`,
+            error instanceof Error ? error.message : String(error),
+          )
+        }
       }
     }
     await this.patchSubscription(subscription.id, {
@@ -295,7 +463,54 @@ export class SocialCopyMonitor {
 
   private async openPosition(subscription: SocialCopySubscriptionRow, context: { sourceBroker: BrokerRow; destinationBroker: BrokerRow }, api: BrokerProvider, destinationOrders: unknown[], position: NormalizedSourcePosition): Promise<void> {
     const symbol = subscription.symbol_map?.[position.symbol] ?? position.symbol
-    const volume = await this.requestedVolume(subscription, context, position, api, symbol)
+    const newsEvents = await getCalendarEventsCached().catch(() => [])
+    const filterSkip = evaluateSocialCopyOpenFilters({
+      symbol,
+      manualSettings: subscription.manual_settings,
+      newsEvents,
+    })
+    if (filterSkip) {
+      const event = await this.claimEvent(
+        subscription.id,
+        null,
+        position.ticket,
+        'open',
+        `filter-skip:${filterSkip}:${position.ticket}`,
+        { symbol, reason: filterSkip },
+      )
+      if (event) {
+        await this.finishEvent(event, 'skipped', { symbol, reason: filterSkip }, filterSkip.toUpperCase(), new Error(`Social copy open skipped: ${filterSkip}`))
+      }
+      return
+    }
+    let volume: number
+    try {
+      volume = await this.requestedVolume(subscription, context, position, api, symbol)
+    } catch (error) {
+      // Undersized equity-ratio / multiplier opens must not suspend the whole
+      // subscription — skip this ticket so later trades can still copy.
+      if (brokerErrorCode(error) === 'VOLUME_BELOW_MINIMUM') {
+        const event = await this.claimEvent(
+          subscription.id,
+          null,
+          position.ticket,
+          'open',
+          `volume-skip:${position.ticket}`,
+          { symbol, reason: 'VOLUME_BELOW_MINIMUM', sourceVolume: position.volume },
+        )
+        if (event) {
+          await this.finishEvent(
+            event,
+            'skipped',
+            { symbol, reason: 'VOLUME_BELOW_MINIMUM', sourceVolume: position.volume },
+            'VOLUME_BELOW_MINIMUM',
+            error,
+          )
+        }
+        return
+      }
+      throw error
+    }
     const comment = `sc:${subscription.id.slice(0, 8)}:${position.ticket}`.slice(0, 31)
     const { data: mappingData, error: mappingError } = await this.supabase.from('social_copy_trade_mappings').insert({
       subscription_id: subscription.id, source_ticket: position.ticket, source_symbol: position.symbol,
@@ -448,7 +663,11 @@ export class SocialCopyMonitor {
         .eq('subscription_id', subscriptionId)
         .eq('idempotency_key', idempotencyKey)
         .single()
-      if (readError || !existing || (existing as { status?: string }).status !== 'failed') return null
+      // Rematerialize after a cleared dead mapping: prior open attempts often
+      // finished as uncertain (timeout) rather than failed.
+      const priorStatus = String((existing as { status?: string } | null)?.status ?? '')
+      const retryable = priorStatus === 'failed' || priorStatus === 'uncertain'
+      if (readError || !existing || !retryable) return null
       const row = existing as { id: string; attempt_count?: number }
       const { error: retryError } = await this.supabase.from('social_copy_execution_events').update({
         status: 'claimed', attempt_count: Number(row.attempt_count ?? 1) + 1,

@@ -96,5 +96,6 @@ export function resolveCopierProcessState(links: CopierSourceLinks): CopierProce
   if (values.some(copierSourceIsIssue)) return 'offline'
   if (values.some(link => link === 'checking')) return 'checking'
   if (values.some(link => link === 'unknown')) return 'unknown'
-  return 'stopped'
+  // No signal source is optional. Social trading and account mirroring still run.
+  return 'operational'
 }

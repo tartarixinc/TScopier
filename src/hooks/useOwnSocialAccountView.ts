@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useBrokerAccounts } from '../context/BrokerAccountsContext'
+import { resolveAccountDeposit } from '../lib/accountDeposit'
 import { isVerifiedSocialBrokerTicket, normalizeSocialBrokerTicket, resolveSocialAccountMode, socialBrokerDisplayLabel } from '../lib/socialAccount'
 import { formatAccountLeverage } from '../lib/providerApplication'
 import { computeMaxDrawdownPct, computeReturnPct } from '../lib/maxDrawdown'
@@ -8,6 +9,12 @@ import { supabase } from '../lib/supabase'
 import { hydrateTrader } from './useSocialTradingPreview'
 import type { SocialProviderPerformance, SocialTradeHistoryItem } from '../lib/socialTradeHistory'
 import type { SocialTrader } from '../lib/socialTradingFixture'
+
+function finiteMoney(value: number | string | null | undefined): number | null {
+  if (value == null || value === '') return null
+  const n = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(n) ? n : null
+}
 
 type OwnTradeRow = {
   id: string
@@ -99,9 +106,6 @@ export function useOwnSocialAccountView(base: SocialTrader | undefined, accountI
           && rows.length < 2000
           && !hasUnverifiedRows
           && closedRecords.length === completeClosed.length
-        const hasIncompleteHistory = rows.length >= 2000
-          || hasUnverifiedRows
-          || closedRecords.length !== completeClosed.length
         const positive = closed.filter(item => item.realizedProfit! > 0)
         const grossProfit = positive.reduce((sum, item) => sum + item.realizedProfit!, 0)
         const grossLoss = Math.abs(closed.filter(item => item.realizedProfit! < 0).reduce((sum, item) => sum + item.realizedProfit!, 0))
@@ -111,10 +115,10 @@ export function useOwnSocialAccountView(base: SocialTrader | undefined, accountI
           sourceStatus: 'published',
           performanceStatus: !hasSynchronized
             ? 'pending'
-            : hasIncompleteHistory ? 'incomplete' : history.length ? 'available' : 'no_history',
+            : history.length ? 'available' : 'no_history',
           statusReason: !hasSynchronized
             ? 'sync_pending'
-            : hasIncompleteHistory ? 'history_incomplete' : history.length ? 'current' : 'no_history',
+            : history.length ? 'current' : 'no_history',
           accountMode: resolveSocialAccountMode(account),
           currency: account.last_currency ?? null,
           periodStartedAt: closed.at(-1)?.openedAt ?? null,
@@ -129,11 +133,10 @@ export function useOwnSocialAccountView(base: SocialTrader | undefined, accountI
             : null,
           winRate: closed.length ? (positive.length / closed.length) * 100 : null,
           profitFactor: grossLoss > 0 ? grossProfit / grossLoss : null,
-          returnPercentage: historyComplete
+          returnPercentage: closed.length
             ? computeReturnPct(account.performance_baseline_balance, closed.map(item => ({ profit: item.realizedProfit })))
             : null,
-          // Realized-balance drawdown from the performance baseline; only for a complete history.
-          maximumDrawdown: historyComplete
+          maximumDrawdown: closed.length
             ? computeMaxDrawdownPct(
               account.performance_baseline_balance,
               closed.map(item => ({ closedAt: item.closedAt, profit: item.realizedProfit })),
@@ -150,11 +153,11 @@ export function useOwnSocialAccountView(base: SocialTrader | undefined, accountI
           trader: {
             ...hydrated,
             profile: { ...hydrated.profile, leverage: formatAccountLeverage(account) },
-            previewBalance: account.last_balance ?? null,
-            accountEquity: account.last_equity ?? null,
+            previewBalance: finiteMoney(account.last_balance),
+            accountEquity: finiteMoney(account.last_equity),
             accountSnapshotAt: account.last_synced_at ?? null,
-            accountDeposits: account.total_deposits ?? account.performance_baseline_balance ?? null,
-            accountWithdrawals: account.total_withdrawals ?? null,
+            accountDeposits: resolveAccountDeposit(account),
+            accountWithdrawals: finiteMoney(account.total_withdrawals),
             sourceLabel: socialBrokerDisplayLabel(account),
             sourceProvider: account.provider ?? null,
             sourcePlatform: account.platform,
@@ -167,10 +170,37 @@ export function useOwnSocialAccountView(base: SocialTrader | undefined, accountI
   }, [account, accountId, base, user?.id])
 
   const loading = Boolean(base?.isYou && accountId && snapshot.accountId !== accountId)
+  const trader = useMemo(() => {
+    if (!base?.isYou || !accountId) return base
+    const raw = snapshot.accountId === accountId && snapshot.trader
+      ? snapshot.trader
+      : emptyAccountTrader(base)
+    if (!account) return raw
+    // Keep deposit/equity in sync with the linked account row (including after live summary merges).
+    const deposit = resolveAccountDeposit(account)
+    const equity = finiteMoney(account.last_equity)
+    const balance = finiteMoney(account.last_balance)
+    const withdrawals = finiteMoney(account.total_withdrawals)
+    if (
+      deposit === (raw.accountDeposits ?? null)
+      && equity === (raw.accountEquity ?? null)
+      && balance === (raw.previewBalance ?? null)
+      && withdrawals === (raw.accountWithdrawals ?? null)
+    ) {
+      return raw
+    }
+    return {
+      ...raw,
+      accountDeposits: deposit,
+      accountEquity: equity ?? raw.accountEquity ?? null,
+      previewBalance: balance ?? raw.previewBalance ?? null,
+      accountWithdrawals: withdrawals,
+      accountSnapshotAt: account.last_synced_at ?? raw.accountSnapshotAt ?? null,
+    }
+  }, [account, accountId, base, snapshot.accountId, snapshot.trader])
+
   return {
-    trader: base?.isYou && accountId
-      ? snapshot.accountId === accountId && snapshot.trader ? snapshot.trader : emptyAccountTrader(base)
-      : base,
+    trader,
     loading,
     error: snapshot.accountId === accountId ? snapshot.error : null,
     account,

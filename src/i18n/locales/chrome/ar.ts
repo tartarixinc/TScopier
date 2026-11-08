@@ -58,7 +58,7 @@ export const chromeAr: AppChromeTranslations = {
       statusPaused: 'النسخ متوقف مؤقتًا',
       statusCopierStopped: 'النسخ متوقف',
       stoppedHintSubscription: 'اشترك لبدء النسخ',
-      stoppedHintSetup: 'اربط Telegram وأضف قنوات واربط وسيطًا لبدء النسخ',
+      stoppedHintSetup: 'اربط وسيطًا لبدء النسخ',
       stopCopier: 'إيقاف النسخ مؤقتًا',
       confirmTitle: 'إيقاف النسخ مؤقتًا',
       confirmBody: 'حتى تستأنف، يتوقف نسخ الإشارات وتنفيذ الصفقات وسجلات الناسخ.',

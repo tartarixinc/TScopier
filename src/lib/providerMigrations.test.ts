@@ -126,6 +126,22 @@ test('deposit/withdrawal totals are server-written only and exposed through the 
   assert.match(cashflow, /grant execute on function public\.get_provider_public_performance\(text\) to anon, authenticated/)
 })
 
+test('approved providers can close their own profile and leave the directory', () => {
+  const close = read('_close_provider_profile.sql')
+  const closeClears = read('_close_provider_clears_application.sql')
+  assert.match(close, /function public\.close_provider_profile\(\)/)
+  assert.match(close, /Only an approved provider can close their profile/)
+  assert.match(close, /provider_status = 'none'/)
+  assert.match(close, /status = 'retired'/)
+  assert.match(close, /provider_audit\(/)
+  assert.match(close, /revoke all on function public\.close_provider_profile\(\) from public, anon/)
+  assert.match(close, /grant execute on function public\.close_provider_profile\(\) to authenticated/)
+  assert.doesNotMatch(close, /grant execute on function public\.close_provider_profile\(\) to anon/)
+  // Closing must delete the application so the CTA returns to "Become a provider".
+  assert.match(closeClears, /delete from public\.provider_applications where user_id = v_actor/)
+  assert.doesNotMatch(closeClears, /set status = 'draft'/)
+})
+
 test('every new broker_accounts column the app selects is readable by authenticated users', () => {
   // broker_accounts is read through column-level grants: one ungranted column in the client select
   // makes the whole accounts query fail and blanks the You page.

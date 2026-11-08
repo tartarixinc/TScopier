@@ -615,6 +615,28 @@ export interface CopierLogsTranslations {
   mirrorMasterTicket?: string
   mirrorCopyTicket?: string
   mirrorLot?: string
+  socialSource?: string
+  socialOpenMessage?: string
+  socialCloseMessage?: string
+  socialModifyMessage?: string
+  socialOtherMessage?: string
+  socialDetailTitle?: string
+  socialOccurred?: string
+  socialProvider?: string
+  socialDestinationAccount?: string
+  socialProviderTicket?: string
+  socialCopyTicket?: string
+  socialLot?: string
+  manualExecutionSource?: string
+  manualOpenMessage?: string
+  manualCloseMessage?: string
+  manualModifyMessage?: string
+  manualOtherMessage?: string
+  manualDetailTitle?: string
+  manualOccurred?: string
+  manualAccount?: string
+  manualTicket?: string
+  manualLot?: string
   skipReasons: Record<string, string>
   skipReasonDetails?: Record<string, string>
   detailModal?: {
@@ -1098,6 +1120,7 @@ export interface SocialTradingPageTranslations {
   sortRoi: string
   sortWinRate: string
   sortFollowers: string
+  sortCopiers: string
   sortRating: string
   rating: string
   noRating: string
@@ -1112,6 +1135,11 @@ export interface SocialTradingPageTranslations {
   requested: string
   copyForFree: string
   copyForAmount: string
+  currentlyCopying: string
+  configureCopy?: string
+  configureCopyAria?: string
+  stopCopying: string
+  stopCopyingConfirm: string
   monthlyPrice: string
   priceFree: string
   pricePaid: string
@@ -1142,6 +1170,31 @@ export interface SocialTradingPageTranslations {
   viewFollowers: string
   viewFollowing: string
   tabProviders: string
+  tabDiscoverProviders: string
+  tabYourProviders: string
+  findNewProviders: string
+  yourProvidersEmpty: string
+  providerHomeTitle: string
+  providerManageLink: string
+  providerCopiersTitle: string
+  providerCopiersBody: string
+  providerCopiersEmpty: string
+  providerCopiersError: string
+  providerPaymentsTitle: string
+  providerPaymentsBody: string
+  providerPaymentsEmpty: string
+  providerPaymentsError: string
+  providerPaymentsWalletLink: string
+  providerPaymentDate: string
+  providerPaymentDescription: string
+  providerPaymentAmount: string
+  providerPaymentStatus: string
+  providerPaymentPending: string
+  providerPaymentPaid: string
+  providerPaymentReversed: string
+  applyCopyWarningTitle: string
+  applyCopyWarningBody: string
+  providerCannotCopy: string
   tabFollowers: string
   tabFollowing: string
   colName: string
@@ -1230,6 +1283,7 @@ export interface SocialTradingPageTranslations {
   copySetup: {
     action: string
     title: string
+    configureTitle?: string
     subtitle: string
     previewLabel: string
     destinationAccount: string
@@ -1248,6 +1302,7 @@ export interface SocialTradingPageTranslations {
     riskMultiplier: string
     riskMultiplierDescription: string
     lots: string
+    maxLot?: string
     protections: string
     copyStopLoss: string
     copyTakeProfit: string
@@ -1271,11 +1326,16 @@ export interface SocialTradingPageTranslations {
     estimateUnavailable: string
     noOpenTrade: string
     startCopying: string
+    saveSettings?: string
     cancel: string
     successTitle: string
     successBody: string
     done: string
     close: string
+    paywallTitle: string
+    paywallBody: string
+    paywallSubscribe: string
+    paywallPendingNote: string
   }
 }
 
@@ -1366,6 +1426,9 @@ export interface TradesTranslations {
   imageSignal: string
   copiedFromMasterTitle?: string
   copiedFromMaster?: string
+  copiedFromSocialTitle?: string
+  copiedFromSocial?: string
+  socialProviderTicket?: string
   closeCopy?: string
   closeCopyConfirm?: string
   closeCopyWorking?: string

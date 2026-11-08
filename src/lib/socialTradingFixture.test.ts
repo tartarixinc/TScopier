@@ -45,15 +45,27 @@ describe('approved Social Trading performance presentation', () => {
     expect(stats.monthly.every(month => month.profit == null && month.state === 'unavailable')).toBe(true)
   })
 
-  it('does not present partial trade history as complete profile metrics', () => {
+  it('shows known trade metrics immediately even when history is still incomplete', () => {
     const stats = socialTraderStats({ ...trader, historyComplete: false })
-    expect(stats.profitableTrades).toBeNull()
-    expect(stats.losingTrades).toBeNull()
-    expect(stats.bestTradeProfit).toBeNull()
+    expect(stats.profitableTrades).toBe(1)
+    expect(stats.losingTrades).toBe(1)
+    expect(stats.bestTradeProfit).toBe(120)
+    expect(stats.worstTradeProfit).toBe(-20)
+    expect(stats.monthly.at(-1)).toEqual({ label: 'Sep', profit: 100, state: 'verified' })
+    expect(stats.monthly.slice(0, -1).every(month => month.profit == null && month.state === 'unavailable')).toBe(true)
+  })
+
+  it('shows an em dash for worst trade when every closed trade is a win', () => {
+    const stats = socialTraderStats({
+      ...trader,
+      closedTrades: 1,
+      closedPerformance: [
+        { id: 'win', symbol: 'EURUSD', side: 'buy', openedAt: '2026-09-02T08:00:00Z', closedAt: '2026-09-02T12:00:00Z', profit: 785 },
+      ],
+    })
+    expect(stats.bestTradeProfit).toBe(785)
     expect(stats.worstTradeProfit).toBeNull()
-    expect(stats.profitFactor).toBeNull()
-    expect(stats.monthly.at(-1)).toEqual({ label: 'Sep', profit: 100, state: 'incomplete' })
-    expect(stats.monthly.slice(0, -1).every(month => month.profit == null && month.state === 'incomplete')).toBe(true)
+    expect(stats.worstTradeAt).toBeNull()
   })
 
   it('uses zero only for a genuinely covered complete month with no activity', () => {

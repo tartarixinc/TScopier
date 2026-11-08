@@ -121,7 +121,6 @@ export function SocialTradeHistoryPanel({ traderUserId, isSelf }: { traderUserId
     : performance?.accountMode === 'live'
       ? 'Live account'
       : '—'
-  const partialMetrics = performance != null && !performance.historyComplete && performance.closedTradeCount > 0
   const changeSharing = async () => {
     if (saving || !access) return
     setSaving(true); setError(null)
@@ -184,11 +183,11 @@ export function SocialTradeHistoryPanel({ traderUserId, isSelf }: { traderUserId
           <Card>
             <h2 className="text-sm font-semibold">Statistics</h2>
             <dl className="mt-4 grid grid-cols-2 gap-5 sm:grid-cols-3">
-              <Metric label={partialMetrics ? 'Realized P/L (partial)' : 'Realized P/L'} value={money(performance.realizedProfit, performance.currency)} tone={performance.realizedProfit == null ? undefined : performance.realizedProfit >= 0 ? 'up' : 'down'} />
+              <Metric label="Realized P/L" value={money(performance.realizedProfit, performance.currency)} tone={performance.realizedProfit == null ? undefined : performance.realizedProfit >= 0 ? 'up' : 'down'} />
               <Metric label="Closed trades" value={String(performance.closedTradeCount)} />
               <Metric label="Open trades" value={String(performance.openTradeCount)} />
-              <Metric label={partialMetrics ? 'Win rate (partial)' : 'Win rate'} value={performance.winRate == null ? '—' : `${performance.winRate.toFixed(2)}%`} />
-              <Metric label={partialMetrics ? 'Profit factor (partial)' : 'Profit factor'} value={performance.profitFactor == null ? '—' : performance.profitFactor.toFixed(2)} />
+              <Metric label="Win rate" value={performance.winRate == null ? '—' : `${performance.winRate.toFixed(2)}%`} />
+              <Metric label="Profit factor" value={performance.profitFactor == null ? '—' : performance.profitFactor.toFixed(2)} />
               <Metric label="History period" value={performance.periodStartedAt && performance.periodEndedAt ? `${new Date(performance.periodStartedAt).toLocaleDateString()} – ${new Date(performance.periodEndedAt).toLocaleDateString()}` : '—'} />
             </dl>
           </Card>

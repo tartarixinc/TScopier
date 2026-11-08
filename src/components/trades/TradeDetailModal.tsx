@@ -8,6 +8,7 @@ import {
   Radio,
   Repeat,
   TriangleAlert,
+  Users,
   X,
 } from 'lucide-react'
 import clsx from 'clsx'
@@ -25,6 +26,10 @@ import {
   requestMirrorCopyClose,
   waitForMirrorCopyClosed,
 } from '../../lib/mirrorCopyClose'
+import {
+  fetchSocialCopyAttribution,
+  type SocialCopyAttribution,
+} from '../../lib/socialCopyAttribution'
 import {
   fetchPlanFallbackReason,
   isTpSplitSkippedReason,
@@ -87,6 +92,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
   const [closeReasonCode, setCloseReasonCode] = useState<TradeCloseReasonCode | null>(null)
   const [brokerFailures, setBrokerFailures] = useState<CopierBrokerFailureRow[]>([])
   const [mirrorAttribution, setMirrorAttribution] = useState<MirrorCopyAttribution | null>(null)
+  const [socialAttribution, setSocialAttribution] = useState<SocialCopyAttribution | null>(null)
   const [mirrorCloseStatus, setMirrorCloseStatus] = useState<'idle' | 'working' | 'done' | 'timeout' | 'error'>('idle')
   const [mirrorCloseError, setMirrorCloseError] = useState<string | null>(null)
   const [planFallbackReason, setPlanFallbackReason] = useState<string | null>(null)
@@ -100,6 +106,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
       setLoading(false)
       setBrokerFailures([])
       setMirrorAttribution(null)
+      setSocialAttribution(null)
       setMirrorCloseStatus('idle')
       setMirrorCloseError(null)
       setPlanFallbackReason(null)
@@ -110,6 +117,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
       setCloseReasonCode(null)
       setBrokerFailures([])
       setMirrorAttribution(null)
+      setSocialAttribution(null)
       setMirrorCloseStatus('idle')
       setMirrorCloseError(null)
       setPlanFallbackReason(null)
@@ -123,13 +131,14 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
     setCloseReasonCode(null)
     setBrokerFailures([])
     setMirrorAttribution(null)
+    setSocialAttribution(null)
     setMirrorCloseStatus('idle')
     setMirrorCloseError(null)
     setPlanFallbackReason(null)
 
     void (async () => {
       try {
-        const [result, storedCloseReason, mirror] = await Promise.all([
+        const [result, storedCloseReason, mirror, social] = await Promise.all([
           resolveTradeSignalContext(userId, trade),
           trade.status === 'closed'
             ? fetchTradeCloseReason(supabase, {
@@ -139,6 +148,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
               }).catch(() => null)
             : Promise.resolve(null),
           fetchMirrorCopyAttribution(supabase, userId, trade.comment).catch(() => null),
+          fetchSocialCopyAttribution(supabase, userId, trade.comment, trade.ticket).catch(() => null),
         ])
         if (cancelled) return
         const resolvedReason = resolveTradeCloseReason(mirror?.mappingCloseReason ?? storedCloseReason, trade)
@@ -147,6 +157,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
         )
         setContext(result)
         setMirrorAttribution(mirror)
+        setSocialAttribution(social)
         if (result?.signal) {
           const [failures, fallbackReason] = await Promise.all([
             fetchBrokerFailuresForTrade(supabase, {
@@ -600,6 +611,29 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
             </section>
           ) : null}
 
+          {socialAttribution ? (
+            <section className="rounded-xl border border-teal-200/80 dark:border-teal-900/60 bg-teal-50/40 dark:bg-teal-950/20 p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-green-400 shrink-0" aria-hidden />
+                <p className="text-xs font-semibold uppercase tracking-wide text-teal-800 dark:text-teal-300">
+                  {tr.copiedFromSocialTitle ?? 'Social trading'}
+                </p>
+              </div>
+              <p className="text-sm text-neutral-900 dark:text-neutral-50">
+                {interpolate(tr.copiedFromSocial ?? 'Copied from {provider}', {
+                  provider: socialAttribution.providerName,
+                })}
+              </p>
+              {socialAttribution.sourceTicket ? (
+                <p className="text-xs text-neutral-900 dark:text-neutral-50 tabular-nums">
+                  {interpolate(tr.socialProviderTicket ?? 'Provider ticket #{ticket}', {
+                    ticket: socialAttribution.sourceTicket,
+                  })}
+                </p>
+              ) : null}
+            </section>
+          ) : null}
+
           {staleEntry != null || showTpSplitNote || strippedTp != null ? (
             <section className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 space-y-2 dark:border-amber-900/60 dark:bg-amber-950/25">
               <div className="flex items-center gap-2">
@@ -719,11 +753,11 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
             </div>
           ) : loadError ? (
             <p className="text-sm text-error-600 dark:text-error-400">{loadError}</p>
-          ) : context === null || !context ? (
+          ) : (context === null || !context) && !mirrorAttribution && !socialAttribution ? (
             <p className="text-sm text-neutral-900 dark:text-neutral-50 rounded-xl bg-neutral-50 dark:bg-neutral-800/40 px-4 py-3">
               {tr.noLinkedSignal}
             </p>
-          ) : (
+          ) : context ? (
             <>
               <section className="rounded-xl border border-teal-200/80 dark:border-teal-900/60 bg-teal-50/40 dark:bg-teal-950/20 p-4 space-y-2">
                 <div className="flex items-center gap-2">
@@ -794,7 +828,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                 </section>
               ) : null}
             </>
-          )}
+          ) : null}
         </div>
       </div>
 

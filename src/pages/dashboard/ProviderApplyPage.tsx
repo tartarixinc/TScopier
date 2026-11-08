@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { CheckCircle2, Clock, Plus, XCircle } from 'lucide-react'
 import clsx from 'clsx'
 import { PageHeader } from '../../components/layout/PageHeader'
@@ -7,11 +7,14 @@ import { PageShell } from '../../components/layout/PageShell'
 import { AccountKindBadge } from '../../components/social/AccountKindBadge'
 import { ProviderShareCard } from '../../components/social/ProviderShareCard'
 import { SocialBrandIcon } from '../../components/social/SocialProfileLinks'
+import { fetchMySocialCopySubscriptions, isCurrentSocialCopySubscription } from '../../lib/socialCopy'
+import { supabase } from '../../lib/supabase'
 import { Alert } from '../../components/ui/Alert'
 import { Button } from '../../components/ui/Button'
 import { useAuth } from '../../context/AuthContext'
 import { useAddTradingAccount } from '../../context/AddTradingAccountContext'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
+import { useConfirm } from '../../context/ConfirmDialogContext'
 import { useUserProfile } from '../../context/UserProfileContext'
 import { useProviderApplication } from '../../hooks/useProviderApplication'
 import { useOwnTradeHistorySharing } from '../../hooks/useOwnTradeHistorySharing'
@@ -40,7 +43,7 @@ import type { BrokerAccount } from '../../types/database'
 
 const STEP_TITLES: Record<ProviderStep, string> = {
   1: 'Account',
-  2: 'Price & access',
+  2: 'Price',
   3: 'Social profiles',
   4: 'Review',
 }
@@ -49,7 +52,7 @@ const TERMS = [
   'My balance, equity, account type and platform are shown publicly on my provider profile.',
   'My closed-trade performance is published and cannot be edited by me.',
   'An administrator reviews my application and may suspend my profile at any time.',
-  'Followers copy at their own risk; UniCopier does not guarantee any results.',
+  'Copiers copy at their own risk; TScopier does not guarantee any results.',
 ]
 
 function Stepper({ step, onJump, maxStep }: { step: ProviderStep; onJump: (s: ProviderStep) => void; maxStep: ProviderStep }) {
@@ -247,7 +250,7 @@ function PricingStep({
       <div>
         <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">Set your price</h2>
         <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-          The price is displayed on your profile. Billing between you and your followers is not handled by UniCopier yet.
+          The price is displayed on your profile. Billing between you and your copiers is not handled by TScopier yet.
         </p>
       </div>
       <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Pricing">
@@ -271,21 +274,6 @@ function PricingStep({
           />
         </label>
       )}
-      <fieldset className="space-y-2">
-        <legend className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Who can follow you?</legend>
-        {([
-          ['open', 'Anyone', 'Followers are accepted automatically.'],
-          ['private', 'Approval required', 'You approve each follow request.'],
-        ] as const).map(([value, label, hint]) => (
-          <label key={value} className={clsx('flex cursor-pointer items-start gap-3 rounded-lg border p-3', draft.access === value ? 'border-green-400' : 'border-neutral-200 dark:border-neutral-800')}>
-            <input type="radio" name="provider-access" checked={draft.access === value} onChange={() => setDraft({ access: value })} className="mt-1" />
-            <span>
-              <span className="block text-sm font-medium text-neutral-900 dark:text-neutral-50">{label}</span>
-              <span className="block text-xs text-neutral-600 dark:text-neutral-400">{hint}</span>
-            </span>
-          </label>
-        ))}
-      </fieldset>
       <label className="block text-sm">
         <span className="font-medium text-neutral-900 dark:text-neutral-50">About your strategy (optional)</span>
         <textarea
@@ -378,7 +366,6 @@ function ReviewStep({
           {account ? `${formatAccountAmount(account.last_balance, account.last_currency)} / ${formatAccountAmount(account.last_equity, account.last_currency)}` : '\u2014'}
         </ReviewRow>
         <ReviewRow label="Price">{cents == null ? '\u2014' : cents === 0 ? 'Free' : `$${(cents / 100).toFixed(2)} / month`}</ReviewRow>
-        <ReviewRow label="Followers">{draft.access === 'open' ? 'Anyone' : 'Approval required'}</ReviewRow>
         <ReviewRow label="Social profiles">
           {links.length ? <span className="inline-flex items-center gap-1.5">{links.map(platform => <SocialBrandIcon key={platform.key} platform={platform.key} />)}</span> : 'None'}
         </ReviewRow>
@@ -397,14 +384,16 @@ function ReviewStep({
 }
 
 function StatusScreen({
-  status, rejectionReason, slug, name, onEdit, children,
+  status, rejectionReason, slug, name, onEdit, onCloseProfile, closing, closeError,
 }: {
   status: 'pending' | 'approved' | 'rejected' | 'suspended'
   rejectionReason: string | null
   slug: string | null
   name: string
   onEdit?: () => void
-  children?: ReactNode
+  onCloseProfile?: () => void
+  closing?: boolean
+  closeError?: string | null
 }) {
   const content = {
     pending: { icon: Clock, tone: 'text-amber-600', title: 'Application under review', body: 'An administrator is reviewing your application. You will get a notification as soon as it is decided.' },
@@ -426,8 +415,19 @@ function StatusScreen({
           {onEdit && <Button className="mt-3" size="sm" onClick={onEdit}>{status === 'rejected' ? 'Edit and resubmit' : 'Edit profile'}</Button>}
         </div>
       </div>
-      {status === 'approved' && slug && <ProviderShareCard slug={slug} name={name} shareTradeHistory={sharing} manageHref={userId ? `/social-trading/${userId}` : undefined} />}
-      {children}
+      {status === 'approved' && slug && <ProviderShareCard slug={slug} name={name} shareTradeHistory={sharing} manageHref="/social-trading" />}
+      {status === 'approved' && onCloseProfile ? (
+        <div className="rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
+          <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Close provider profile</h3>
+          <p className="mt-1 text-sm text-neutral-700 dark:text-neutral-300">
+            Remove yourself from the Providers directory. Copying stops, your public profile goes offline, and you can apply again later.
+          </p>
+          {closeError ? <Alert className="mt-3" variant="error">{closeError}</Alert> : null}
+          <Button className="mt-3" size="sm" variant="danger" loading={closing} onClick={onCloseProfile}>
+            Close provider profile
+          </Button>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -436,6 +436,8 @@ export function ProviderApplyPage() {
   const app = useProviderApplication()
   const { brokers } = useBrokerAccounts()
   const { profile } = useUserProfile()
+  const confirm = useConfirm()
+  const navigate = useNavigate()
   const [step, setStep] = useState<ProviderStep>(1)
   const [accepted, setAccepted] = useState(false)
   const [stepError, setStepError] = useState<string | null>(null)
@@ -445,6 +447,20 @@ export function ProviderApplyPage() {
   const account = brokers.find(item => item.id === app.draft.brokerAccountId) ?? null
   const displayName = profile.display_name?.trim() || profile.username?.trim() || 'Provider'
   const status = app.application?.status ?? null
+
+  const requestCloseProfile = () => {
+    void confirm({
+      title: 'Close provider profile?',
+      body: 'You will leave the Providers directory. People copying you will stop receiving new trades, and your public profile will go offline. You can apply again later.',
+      confirmLabel: 'Close provider profile',
+      tone: 'danger',
+      busyLabel: 'Closing…',
+      onConfirm: async () => {
+        await app.closeProfile()
+        navigate('/social-trading', { replace: true })
+      },
+    })
+  }
 
   const goNext = async () => {
     const problem = validateProviderStep(step, app.draft, account)
@@ -458,6 +474,22 @@ export function ProviderApplyPage() {
     for (const value of [1, 2, 3] as ProviderStep[]) {
       const problem = validateProviderStep(value, app.draft, account)
       if (problem) { setStep(value); setStepError(problem); return }
+    }
+    let hasOutgoingCopies = false
+    try {
+      const rows = await fetchMySocialCopySubscriptions(supabase)
+      hasOutgoingCopies = rows.some(isCurrentSocialCopySubscription)
+    } catch {
+      hasOutgoingCopies = false
+    }
+    if (hasOutgoingCopies) {
+      const ok = await confirm({
+        title: 'Stop copying when approved?',
+        body: 'If your provider application is approved, all of your outgoing copy subscriptions will stop. Any paid copy plans with other providers will be cancelled.',
+        confirmLabel: 'Submit application',
+        tone: 'danger',
+      })
+      if (!ok) return
     }
     try {
       await app.submit(accepted)
@@ -497,6 +529,9 @@ export function ProviderApplyPage() {
         slug={app.application?.slug ?? null}
         name={displayName}
         onEdit={status === 'approved' ? () => setEditingApproved(true) : status === 'rejected' ? () => { setForceWizard(true); setStep(1) } : undefined}
+        onCloseProfile={status === 'approved' ? requestCloseProfile : undefined}
+        closing={status === 'approved' ? app.submitting : false}
+        closeError={status === 'approved' ? app.saveError : null}
       />
     )
   } else {
@@ -534,7 +569,7 @@ export function ProviderApplyPage() {
   return (
     <PageShell maxWidth="xl">
       <PageHeader
-        title="Become a provider"
+        title={status === 'approved' ? 'Manage provider profile' : 'Become a provider'}
         actions={<Link to="/social-trading" className="text-sm font-medium text-green-700 hover:underline dark:text-green-400">Back to Social Trading</Link>}
       />
       <div className="mt-6 max-w-4xl">{body}</div>
