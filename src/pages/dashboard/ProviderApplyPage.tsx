@@ -7,7 +7,10 @@ import { PageShell } from '../../components/layout/PageShell'
 import { AccountKindBadge } from '../../components/social/AccountKindBadge'
 import { ProviderShareCard } from '../../components/social/ProviderShareCard'
 import { SocialBrandIcon } from '../../components/social/SocialProfileLinks'
-import { fetchMySocialCopySubscriptions, isCurrentSocialCopySubscription } from '../../lib/socialCopy'
+import {
+  fetchMySocialCopySubscriptions,
+  isCurrentSocialCopySubscription,
+} from '../../lib/socialCopy'
 import { supabase } from '../../lib/supabase'
 import { Alert } from '../../components/ui/Alert'
 import { Button } from '../../components/ui/Button'
@@ -236,7 +239,10 @@ function AccountStep({
 
 function PricingStep({
   draft, setDraft,
-}: { draft: ProviderDraft; setDraft: (patch: Partial<ProviderDraft>) => void }) {
+}: {
+  draft: ProviderDraft
+  setDraft: (patch: Partial<ProviderDraft>) => void
+}) {
   const [mode, setMode] = useState<'free' | 'paid' | null>(() => {
     if (draft.priceUsd.trim() === '') return null
     return priceInputToCents(draft.priceUsd) === 0 ? 'free' : 'paid'
@@ -250,7 +256,7 @@ function PricingStep({
       <div>
         <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">Set your price</h2>
         <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-          The price is displayed on your profile. Billing between you and your copiers is not handled by TScopier yet.
+          Paid prices are billed monthly through TScopier&apos;s Stripe Checkout. Earnings show in your wallet for platform payout.
         </p>
       </div>
       <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Pricing">

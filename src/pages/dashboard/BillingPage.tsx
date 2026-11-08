@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
 import {
@@ -7,6 +7,7 @@ import {
   Minus,
   Plus,
   Receipt,
+  Users,
   Zap,
   ChevronLeft,
   ChevronRight,
@@ -31,6 +32,13 @@ import {
   type BillingInvoice,
 } from '../../lib/billingApi'
 import { PRICING_ADVANCED_INCLUDED_ACCOUNTS } from '../../lib/pricingPlans'
+import {
+  fetchMySocialCopyBilling,
+  isActiveSocialCopyBilling,
+  startSocialCopyBillingPortal,
+  type MySocialCopyBilling,
+} from '../../lib/socialCopy'
+import { supabase } from '../../lib/supabase'
 
 function formatShortDate(iso: string, locale: string): string {
   return new Date(iso).toLocaleDateString(locale, {
@@ -117,6 +125,58 @@ export function BillingPage() {
   const [extraCount, setExtraCount] = useState<number | null>(null)
   const [savingExtras, setSavingExtras] = useState(false)
   const [extraSaved, setExtraSaved] = useState(false)
+  const [copyBilling, setCopyBilling] = useState<MySocialCopyBilling[]>([])
+  const [copyBillingLoading, setCopyBillingLoading] = useState(false)
+  const [copyBillingError, setCopyBillingError] = useState('')
+  const [copyPortalBusyId, setCopyPortalBusyId] = useState<string | null>(null)
+
+  const refreshCopyBilling = useCallback(async () => {
+    if (!user) {
+      setCopyBilling([])
+      return
+    }
+    setCopyBillingLoading(true)
+    setCopyBillingError('')
+    try {
+      setCopyBilling(await fetchMySocialCopyBilling(supabase))
+    } catch (cause) {
+      setCopyBilling([])
+      setCopyBillingError(cause instanceof Error ? cause.message : bt.copySubscriptionsLoadFailed)
+    } finally {
+      setCopyBillingLoading(false)
+    }
+  }, [bt.copySubscriptionsLoadFailed, user])
+
+  useEffect(() => {
+    void refreshCopyBilling()
+  }, [refreshCopyBilling])
+
+  const openCopyPortal = async (providerUserId: string) => {
+    if (!session?.access_token) {
+      setCopyBillingError(bt.copySubscriptionsSignIn)
+      return
+    }
+    setCopyPortalBusyId(providerUserId)
+    setCopyBillingError('')
+    try {
+      const url = await startSocialCopyBillingPortal({
+        accessToken: session.access_token,
+        providerUserId,
+        returnUrl: `${window.location.origin}/billing`,
+      })
+      window.location.assign(url)
+    } catch (cause) {
+      setCopyBillingError(cause instanceof Error ? cause.message : bt.copySubscriptionsPortalFailed)
+      setCopyPortalBusyId(null)
+    }
+  }
+
+  const copyStatusLabel = (row: MySocialCopyBilling) => {
+    if (isActiveSocialCopyBilling(row)) return bt.copyStatusActive
+    if (row.status === 'past_due') return bt.copyStatusPastDue
+    if (row.status === 'canceled') return bt.copyStatusCanceled
+    return bt.copyStatusIncomplete
+  }
 
   const [billingMeta, setBillingMeta] = useState<Omit<BillingHistoryResponse, 'invoices'> | null>(null)
   const [invoicePages, setInvoicePages] = useState<BillingInvoice[][]>([])
@@ -419,6 +479,88 @@ export function BillingPage() {
             ) : null}
           </div>
         ) : null}
+
+        <Card padding="none" className="overflow-hidden">
+          <div className="border-b border-neutral-200/65 px-6 py-4 dark:border-neutral-800/55">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-teal-50 dark:bg-teal-950/40">
+                <Users className="h-4 w-4 text-green-400 dark:text-green-400" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
+                  {bt.copySubscriptionsTitle}
+                </h2>
+                <p className="mt-0.5 text-xs text-neutral-900 dark:text-neutral-50">
+                  {bt.copySubscriptionsHint}
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                loading={copyBillingLoading}
+                onClick={() => void refreshCopyBilling()}
+              >
+                {bt.copySubscriptionsRefresh}
+              </Button>
+            </div>
+          </div>
+          {copyBillingError ? (
+            <div className="px-6 py-4 text-sm text-amber-700 dark:text-amber-300">{copyBillingError}</div>
+          ) : null}
+          {copyBillingLoading && copyBilling.length === 0 ? (
+            <div className="px-6 py-10 text-center text-sm text-neutral-900 dark:text-neutral-50">
+              {t.common.loading}
+            </div>
+          ) : copyBilling.length === 0 ? (
+            <div className="px-6 py-10 text-center text-sm text-neutral-900 dark:text-neutral-50">
+              {bt.copySubscriptionsEmpty}
+            </div>
+          ) : (
+            <ul className="divide-y divide-neutral-200/65 dark:divide-neutral-800/55">
+              {copyBilling.map(row => (
+                <li
+                  key={row.id}
+                  className="flex flex-wrap items-center justify-between gap-3 px-6 py-4"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                      {row.providerDisplayName}
+                      {row.providerUsername ? (
+                        <span className="ms-2 text-xs font-normal text-neutral-500">
+                          @{row.providerUsername}
+                        </span>
+                      ) : null}
+                    </p>
+                    <p className="mt-0.5 text-xs text-neutral-600 dark:text-neutral-300">
+                      {copyStatusLabel(row)}
+                      {row.cancelAtPeriodEnd ? ` · ${bt.copyCancelsAtPeriodEnd}` : ''}
+                      {row.currentPeriodEnd
+                        ? ` · ${interpolate(bt.copyPeriodEnds, {
+                            date: formatShortDate(row.currentPeriodEnd, localeTag),
+                          })}`
+                        : ''}
+                    </p>
+                    <p className="mt-1 text-[11px] text-neutral-500 dark:text-neutral-400">
+                      {bt.copyEntitlementNote}
+                    </p>
+                  </div>
+                  {row.stripeSubscriptionId ? (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="gap-2"
+                      loading={copyPortalBusyId === row.providerUserId}
+                      onClick={() => void openCopyPortal(row.providerUserId)}
+                    >
+                      {bt.copyManage}
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </Button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
 
         <Card padding="none" className="overflow-hidden">
           <div className="border-b border-neutral-200/65 px-6 py-4 dark:border-neutral-800/55">

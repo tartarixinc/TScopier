@@ -48,11 +48,12 @@ test('copy setup uses the provider registered source without a source picker', (
   assert.match(modal, /primaryDisabled=\{disabled\}/)
 })
 
-test('copy setup paywall unlocks Start copying after subscribe for paid providers only', () => {
-  assert.match(modal, /subscribeSocialCopyIntent/)
+test('copy setup paywall unlocks Start copying after Stripe Checkout billing for paid providers only', () => {
+  assert.match(modal, /startSocialCopyCheckout/)
   assert.match(modal, /confirmPaywallSubscribe/)
   assert.match(modal, /if \(showPaywall\)/)
   assert.match(modal, /c\.startCopying/)
+  assert.match(modal, /isActiveSocialCopyBilling/)
   assert.match(modal, /setPaywallCleared\(true\)/)
 })
 

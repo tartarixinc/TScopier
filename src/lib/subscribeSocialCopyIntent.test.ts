@@ -6,6 +6,10 @@ const migration = readFileSync(
   new URL('../../supabase/migrations/20261104225506_subscribe_social_copy_intent.sql', import.meta.url),
   'utf8',
 )
+const billingMigration = readFileSync(
+  new URL('../../supabase/migrations/20261108094829_social_copy_billing_stripe.sql', import.meta.url),
+  'utf8',
+)
 const modal = readFileSync(new URL('../components/social/CopyTraderModal.tsx', import.meta.url), 'utf8')
 
 test('subscribe_social_copy_intent only accepts approved paid providers and rejects self-pay', () => {
@@ -31,17 +35,32 @@ test('pending wallet_ledger rows are de-duplicated per payer and provider', () =
   assert.match(migration, /if v_existing is not null then\s+return v_existing;/s)
 })
 
-test('copy modal gates paid providers behind subscribe before destination sizing', () => {
+test('create_social_copy_subscription requires active social_copy_billing for paid providers', () => {
+  assert.match(billingMigration, /create table if not exists public\.social_copy_billing/)
+  assert.match(billingMigration, /has_active_social_copy_billing/)
+  assert.match(billingMigration, /An active paid subscription is required before copying this provider/)
+})
+
+test('platform collects copy fees without requiring provider Stripe Connect', () => {
+  const platformMigration = readFileSync(
+    new URL('../../supabase/migrations/20261108100948_social_copy_billing_platform_collect.sql', import.meta.url),
+    'utf8',
+  )
+  assert.match(platformMigration, /create or replace function public\.update_provider_profile/)
+  assert.doesNotMatch(platformMigration, /Connect Stripe payouts before setting a paid copy price/)
+  assert.doesNotMatch(platformMigration, /stripe_connect_charges_enabled/)
+})
+
+test('copy modal gates paid providers behind Stripe Checkout before destination sizing', () => {
   assert.match(modal, /isPaidCopyPrice/)
   assert.match(modal, /useState\(!pricePaid\)/)
   assert.match(modal, /showPaywall = pricePaid && !paywallCleared/)
-  assert.match(modal, /subscribeSocialCopyIntent\(supabase, trader\.id\)/)
+  assert.match(modal, /startSocialCopyCheckout/)
   assert.match(modal, /paywallSubscribe/)
   assert.match(modal, /c\.startCopying/)
   assert.match(modal, /destinationOptions=\{destinations\}/)
-  // Free providers skip the wall: paywallCleared starts true when !pricePaid
   assert.match(modal, /const \[paywallCleared, setPaywallCleared\] = useState\(!pricePaid\)/)
-  // Destination / Mirror configure UI only renders after the paywall gate
+  assert.doesNotMatch(modal, /subscribeSocialCopyIntent\(supabase, trader\.id\)/)
   const paywallBranch = modal.indexOf('if (showPaywall)')
   const configureModal = modal.indexOf('<SlaveConfigureModal')
   assert.ok(paywallBranch >= 0 && configureModal > paywallBranch, 'destination UI follows the paywall branch')

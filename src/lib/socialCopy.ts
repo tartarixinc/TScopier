@@ -374,7 +374,7 @@ export async function updateSocialCopySubscriptionSettings(client: SupabaseClien
   if (error) throw failure(error)
 }
 
-/** Records a pending wallet ledger row for a paid provider copy (UI paywall). No charge yet. */
+/** Records a pending wallet ledger row for a paid provider copy (legacy soft intent). */
 export async function subscribeSocialCopyIntent(client: SupabaseClient, providerUserId: string): Promise<string> {
   const { data, error } = await client.rpc('subscribe_social_copy_intent', {
     p_provider_user_id: providerUserId,
@@ -382,6 +382,195 @@ export async function subscribeSocialCopyIntent(client: SupabaseClient, provider
   if (error) throw failure(error)
   return String(data)
 }
+
+export type SocialCopyBillingStatus = 'incomplete' | 'active' | 'past_due' | 'canceled'
+
+export type SocialCopyBilling = {
+  id: string
+  status: SocialCopyBillingStatus
+  currentPeriodEnd: string | null
+  cancelAtPeriodEnd: boolean
+  stripeSubscriptionId: string | null
+}
+
+export function isActiveSocialCopyBilling(billing: SocialCopyBilling | null | undefined, now = Date.now()): boolean {
+  if (!billing || billing.status !== 'active') return false
+  if (!billing.currentPeriodEnd) return true
+  return new Date(billing.currentPeriodEnd).getTime() > now
+}
+
+export async function fetchSocialCopyBillingForProvider(
+  client: SupabaseClient,
+  providerUserId: string,
+): Promise<SocialCopyBilling | null> {
+  const { data, error } = await client.rpc('get_social_copy_billing_for_provider', {
+    p_provider_user_id: providerUserId,
+  })
+  if (error) throw failure(error)
+  const row = ((data ?? []) as Array<{
+    id: string
+    status: string
+    current_period_end: string | null
+    cancel_at_period_end: boolean
+    stripe_subscription_id: string | null
+  }>)[0]
+  if (!row) return null
+  return {
+    id: String(row.id),
+    status: row.status as SocialCopyBillingStatus,
+    currentPeriodEnd: row.current_period_end,
+    cancelAtPeriodEnd: Boolean(row.cancel_at_period_end),
+    stripeSubscriptionId: row.stripe_subscription_id,
+  }
+}
+
+export type SocialCopyCheckoutResult =
+  | { kind: 'checkout'; url: string }
+  | { kind: 'already_active'; currentPeriodEnd: string | null }
+
+export async function startSocialCopyCheckout(params: {
+  accessToken: string
+  providerUserId: string
+  successUrl?: string
+  cancelUrl?: string
+}): Promise<SocialCopyCheckoutResult> {
+  const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-social-copy-checkout`
+  const res = await fetch(apiUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${params.accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      provider_user_id: params.providerUserId,
+      success_url: params.successUrl,
+      cancel_url: params.cancelUrl,
+    }),
+  })
+  const data = (await res.json().catch(() => ({}))) as {
+    url?: string
+    error?: string
+    code?: string
+    already_active?: boolean
+    current_period_end?: string | null
+  }
+  if (res.ok && data.already_active) {
+    return { kind: 'already_active', currentPeriodEnd: data.current_period_end ?? null }
+  }
+  if (!res.ok || !data.url) {
+    throw new Error(data.error || 'Unable to start copy checkout')
+  }
+  return { kind: 'checkout', url: data.url }
+}
+
+export type MySocialCopyBilling = SocialCopyBilling & {
+  providerUserId: string
+  providerDisplayName: string
+  providerUsername: string
+}
+
+export async function fetchMySocialCopyBilling(client: SupabaseClient): Promise<MySocialCopyBilling[]> {
+  const { data, error } = await client.rpc('get_my_social_copy_billing')
+  if (error) throw failure(error)
+  return ((data ?? []) as Array<{
+    id: string
+    provider_user_id: string
+    provider_display_name: string
+    provider_username: string
+    status: string
+    current_period_end: string | null
+    cancel_at_period_end: boolean
+    stripe_subscription_id: string | null
+  }>).map(row => ({
+    id: String(row.id),
+    providerUserId: String(row.provider_user_id),
+    providerDisplayName: row.provider_display_name,
+    providerUsername: row.provider_username,
+    status: row.status as SocialCopyBillingStatus,
+    currentPeriodEnd: row.current_period_end,
+    cancelAtPeriodEnd: Boolean(row.cancel_at_period_end),
+    stripeSubscriptionId: row.stripe_subscription_id,
+  }))
+}
+
+export type PlatformFeeSettings = {
+  providerFeePercent: number
+  copierFeePercent: number
+  payoutFeePercent: number
+}
+
+export async function fetchPlatformFeeSettings(client: SupabaseClient): Promise<PlatformFeeSettings> {
+  const { data, error } = await client.rpc('get_platform_fee_settings')
+  if (error) throw failure(error)
+  const row = (Array.isArray(data) ? data[0] : data) as {
+    provider_fee_percent?: number | string | null
+    copier_fee_percent?: number | string | null
+    payout_fee_percent?: number | string | null
+  } | null
+  const clamp = (value: number) => Math.max(0, Math.min(100, value))
+  return {
+    providerFeePercent: clamp(Number(row?.provider_fee_percent ?? 0) || 0),
+    copierFeePercent: clamp(Number(row?.copier_fee_percent ?? 0) || 0),
+    payoutFeePercent: clamp(Number(row?.payout_fee_percent ?? 0) || 0),
+  }
+}
+
+/** Provider base price + platform copier fee, matching create-social-copy-checkout. */
+export function socialCopyChargeBreakdown(basePriceCents: number, copierFeePercent: number): {
+  baseCents: number
+  feeCents: number
+  totalCents: number
+  feePercent: number
+} {
+  const baseCents = Math.max(0, Math.round(basePriceCents))
+  const feePercent = Math.max(0, Math.min(100, copierFeePercent))
+  const feeCents = Math.round(baseCents * (feePercent / 100))
+  return { baseCents, feeCents, feePercent, totalCents: baseCents + feeCents }
+}
+
+export type WalletPayoutAsset = 'USDT' | 'USDC'
+
+export async function updateMyWalletPayoutMethod(
+  client: SupabaseClient,
+  asset: WalletPayoutAsset,
+  address: string,
+): Promise<void> {
+  const { error } = await client.rpc('update_my_wallet_payout_method', {
+    p_asset: asset,
+    p_address: address,
+  })
+  if (error) throw failure(error)
+}
+
+export async function clearMyWalletPayoutMethod(client: SupabaseClient): Promise<void> {
+  const { error } = await client.rpc('clear_my_wallet_payout_method')
+  if (error) throw failure(error)
+}
+
+export async function startSocialCopyBillingPortal(params: {
+  accessToken: string
+  providerUserId: string
+  returnUrl?: string
+}): Promise<string> {
+  const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/social-copy-portal`
+  const res = await fetch(apiUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${params.accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      provider_user_id: params.providerUserId,
+      return_url: params.returnUrl,
+    }),
+  })
+  const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string }
+  if (!res.ok || !data.url) {
+    throw new Error(data.error || 'Unable to open billing portal')
+  }
+  return data.url
+}
+
 
 export async function changeSocialCopySubscription(client: SupabaseClient, id: string, action: 'pause' | 'resume' | 'stop' | 'emergency_stop'): Promise<void> {
   const { error } = await client.rpc('set_social_copy_subscription_status', { p_subscription_id: id, p_action: action })
@@ -418,6 +607,106 @@ export async function fetchMyProviderCopiers(client: SupabaseClient): Promise<Pr
     desiredStatus: row.desired_status,
     createdAt: row.created_at,
   }))
+}
+
+export type ProviderCopierDetails = {
+  subscriptionId: string
+  subscriberUserId: string
+  displayName: string
+  username: string
+  status: string
+  desiredStatus: string
+  sizingMode: SocialCopySubscription['sizingMode']
+  fixedLot: number | null
+  lotMultiplier: number
+  maxLot: number
+  copyRisk: CopyRiskSettings
+  symbolMap: Record<string, string>
+  destinationBrokerAccountId: string | null
+  destinationPlatform: string | null
+  destinationBrokerName: string | null
+  destinationLabel: string | null
+  destinationBalance: number | null
+  destinationEquity: number | null
+  destinationCurrency: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export async function fetchProviderCopierDetails(
+  client: SupabaseClient,
+  subscriptionId: string,
+): Promise<ProviderCopierDetails | null> {
+  const { data, error } = await client.rpc('get_provider_copier_details', {
+    p_subscription_id: subscriptionId,
+  })
+  if (error) throw failure(error)
+  const row = (Array.isArray(data) ? data[0] : data) as {
+    subscription_id: string
+    subscriber_user_id: string
+    display_name: string
+    username: string
+    status: string
+    desired_status: string
+    sizing_mode: SocialCopySubscription['sizingMode']
+    fixed_lot: number | string | null
+    lot_multiplier: number | string
+    max_lot: number | string
+    manual_settings: unknown
+    destination_broker_account_id: string | null
+    destination_platform: string | null
+    destination_broker_name: string | null
+    destination_label: string | null
+    destination_balance: number | string | null
+    destination_equity: number | string | null
+    destination_currency: string | null
+    created_at: string
+    updated_at: string
+  } | null | undefined
+  if (!row?.subscription_id) return null
+  const mapped = mapSubscriptionRow({
+    id: row.subscription_id,
+    source_id: '',
+    destination_broker_account_id: row.destination_broker_account_id ?? '',
+    sizing_mode: row.sizing_mode,
+    fixed_lot: row.fixed_lot,
+    lot_multiplier: row.lot_multiplier,
+    max_lot: row.max_lot,
+    requested_account_mode: 'demo',
+    source_account_mode: 'unknown',
+    destination_account_mode: 'unknown',
+    execution_path: 'broker',
+    manual_settings: row.manual_settings,
+    status: row.status as SocialCopySubscriptionStatus,
+    desired_status: row.desired_status as SocialCopySubscription['desiredStatus'],
+    error_code: null,
+    error_detail: null,
+    worker_acknowledged_at: null,
+    updated_at: row.updated_at,
+  })
+  return {
+    subscriptionId: String(row.subscription_id),
+    subscriberUserId: String(row.subscriber_user_id),
+    displayName: row.display_name,
+    username: row.username,
+    status: row.status,
+    desiredStatus: row.desired_status,
+    sizingMode: mapped.sizingMode,
+    fixedLot: mapped.fixedLot,
+    lotMultiplier: mapped.lotMultiplier,
+    maxLot: mapped.maxLot,
+    copyRisk: mapped.copyRisk,
+    symbolMap: mapped.symbolMap,
+    destinationBrokerAccountId: row.destination_broker_account_id,
+    destinationPlatform: row.destination_platform,
+    destinationBrokerName: row.destination_broker_name,
+    destinationLabel: row.destination_label,
+    destinationBalance: row.destination_balance == null ? null : Number(row.destination_balance),
+    destinationEquity: row.destination_equity == null ? null : Number(row.destination_equity),
+    destinationCurrency: row.destination_currency,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
 }
 
 export type ProviderPaymentRow = {

@@ -33,6 +33,15 @@ verify_jwt = false
 [functions.create-checkout-session]
 verify_jwt = true
 
+[functions.provider-connect]
+verify_jwt = true
+
+[functions.create-social-copy-checkout]
+verify_jwt = true
+
+[functions.social-copy-portal]
+verify_jwt = true
+
 [functions.confirm-checkout]
 verify_jwt = true
 
