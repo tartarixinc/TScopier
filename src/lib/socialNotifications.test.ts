@@ -6,11 +6,11 @@ import { countUnreadNotifications } from './tradeNotifications'
 test('maps a persistent social notification to a linked bell item', () => {
   const item = socialNotificationFromRow({
     id: 'notification-1', event_type: 'social_copy_activated', title: 'New copier activated',
-    body: 'A subscription is active.', action_url: '/social-trading/user-2', read_at: null,
+    body: 'A subscription is active.', action_url: '/social-trading/provider/copiers/sub-1', read_at: null,
     created_at: '2026-10-28T12:00:00.000Z',
   })
   assert.equal(item.headline, 'social_copy_activated')
-  assert.equal(item.actionUrl, '/social-trading/user-2')
+  assert.equal(item.actionUrl, '/social-trading/provider/copiers/sub-1')
   assert.equal(item.readAt, null)
 })
 

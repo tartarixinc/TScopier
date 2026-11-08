@@ -86,7 +86,7 @@ function HeroLiveMoneyValue({
 
   return (
     <p
-      className={clsx('mt-2 text-3xl font-semibold tracking-tight', valueToneClass(tone))}
+      className={clsx('mt-2 text-2xl font-semibold tracking-tight', valueToneClass(tone))}
       aria-live="polite"
       aria-atomic="true"
     >
@@ -105,7 +105,7 @@ function HeroStatBlock({ stat, label }: { stat: LandingHeroHeadlineStat; label: 
       {stat.live ? (
         <HeroLiveMoneyValue live={stat.live} tone={stat.valueTone} />
       ) : (
-        <p className={clsx('mt-2 text-3xl font-semibold tracking-tight', valueToneClass(stat.valueTone))}>
+        <p className={clsx('mt-2 text-2xl font-semibold tracking-tight', valueToneClass(stat.valueTone))}>
           {stat.value}
         </p>
       )}
@@ -371,7 +371,7 @@ export function HeroDashboardPreview() {
 
             <main className="min-h-0 flex-1 overflow-hidden bg-white dark:bg-neutral-950">
               <div className="mx-auto h-full w-full max-w-[1600px] space-y-5 overflow-hidden px-8 py-6">
-                <h1 className="text-3xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
+                <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
                   {heroGreeting(t)}
                 </h1>
 

@@ -5,6 +5,7 @@ import { Button } from '../ui/Button'
 import { Alert } from '../ui/Alert'
 import { SlaveConfigureModal } from '../configure/SlaveConfigureModal'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
+import { useAuth } from '../../context/AuthContext'
 import { useFormatMoney } from '../../hooks/useFormatMoney'
 import { useT } from '../../context/LocaleContext'
 import { interpolate } from '../../i18n/interpolate'
@@ -14,11 +15,15 @@ import type { BrokerAccount } from '../../types/database'
 import {
   changeSocialCopySubscription,
   createSocialCopySubscription,
+  fetchPlatformFeeSettings,
+  fetchSocialCopyBillingForProvider,
+  isActiveSocialCopyBilling,
+  socialCopyChargeBreakdown,
   socialSizingColumnsFromCopyRisk,
-  subscribeSocialCopyIntent,
+  startSocialCopyCheckout,
 } from '../../lib/socialCopy'
 import { DEFAULT_SOCIAL_COPY_FILTER_SETTINGS } from '../../lib/socialCopyFilterSettings'
-import { socialCopySetupToMirrorSetup } from '../../lib/socialCopySetupLabels'
+import { copyRiskLabelsForSocial, socialCopySetupToMirrorSetup } from '../../lib/socialCopySetupLabels'
 import { isSocialDestinationEligible, resolveSocialAccountMode } from '../../lib/socialAccount'
 import { sourceAllowsCopy } from '../../lib/socialCopyAvailability'
 import { eligibilityDiagnosticForReason } from '../../lib/socialEligibility'
@@ -35,6 +40,16 @@ function accountRouteLabel(account: BrokerAccount): string {
   return `${broker} ${account.platform.toUpperCase()}`
 }
 
+function checkoutReturnState(): { success: boolean; providerId: string | null } {
+  if (typeof window === 'undefined') return { success: false, providerId: null }
+  const params = new URLSearchParams(window.location.search)
+  const flag = params.get('social_copy_checkout')
+  return {
+    success: flag === 'success',
+    providerId: params.get('provider'),
+  }
+}
+
 export function CopyTraderModal({
   trader,
   copy,
@@ -48,6 +63,7 @@ export function CopyTraderModal({
 }) {
   const c = copy.copySetup
   const t = useT()
+  const { session } = useAuth()
   const { brokers, loading } = useBrokerAccounts()
   const { formatMoney } = useFormatMoney()
   const [selectedBrokerId, setSelectedBrokerId] = useState('')
@@ -68,12 +84,81 @@ export function CopyTraderModal({
   const [subscriptionState, setSubscriptionState] = useState<'pending' | 'pause_requested' | 'stop_requested'>('pending')
   const pricePaid = isPaidCopyPrice(trader.monthlyCopyPriceCents)
   const [paywallCleared, setPaywallCleared] = useState(!pricePaid)
+  const [billingChecking, setBillingChecking] = useState(pricePaid)
+  const [copierFeePercent, setCopierFeePercent] = useState(0)
 
   const destinations = brokers.filter(isSocialDestinationEligible)
   useEffect(() => {
     if (selectedBrokerId || destinations.length !== 1) return
     setSelectedBrokerId(destinations[0].id)
   }, [destinations, selectedBrokerId])
+
+  useEffect(() => {
+    if (!pricePaid) {
+      setCopierFeePercent(0)
+      return
+    }
+    let active = true
+    void fetchPlatformFeeSettings(supabase)
+      .then(fees => {
+        if (active) setCopierFeePercent(fees.copierFeePercent)
+      })
+      .catch(() => {
+        if (active) setCopierFeePercent(0)
+      })
+    return () => { active = false }
+  }, [pricePaid])
+
+  useEffect(() => {
+    if (!pricePaid) {
+      setPaywallCleared(true)
+      setBillingChecking(false)
+      return
+    }
+    let active = true
+    const returned = checkoutReturnState()
+    const shouldPoll = returned.success && (!returned.providerId || returned.providerId === trader.id)
+
+    const confirmBilling = async () => {
+      setBillingChecking(true)
+      setError(null)
+      try {
+        for (let attempt = 0; attempt < (shouldPoll ? 12 : 1); attempt += 1) {
+          const billing = await fetchSocialCopyBillingForProvider(supabase, trader.id)
+          if (!active) return
+          if (isActiveSocialCopyBilling(billing)) {
+            setPaywallCleared(true)
+            setBillingChecking(false)
+            if (shouldPoll && typeof window !== 'undefined') {
+              const url = new URL(window.location.href)
+              url.searchParams.delete('social_copy_checkout')
+              url.searchParams.delete('provider')
+              url.searchParams.delete('session_id')
+              window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
+            }
+            return
+          }
+          if (!shouldPoll) break
+          await new Promise(resolve => setTimeout(resolve, 1500))
+        }
+        if (active) {
+          setPaywallCleared(false)
+          setBillingChecking(false)
+          if (shouldPoll) {
+            setError('Payment is still confirming. If you were charged, wait a moment and try again.')
+          }
+        }
+      } catch (cause) {
+        if (active) {
+          setBillingChecking(false)
+          setError(cause instanceof Error ? cause.message : 'Unable to confirm copy billing.')
+        }
+      }
+    }
+
+    void confirmBilling()
+    return () => { active = false }
+  }, [pricePaid, trader.id])
 
   const sources = trader.sources?.length ? trader.sources : trader.sourceId ? [{
     sourceId: trader.sourceId,
@@ -99,9 +184,11 @@ export function CopyTraderModal({
   const isSyntheticSimulation = selectedSource?.isSynthetic === true
   const destinationMode = selectedBroker ? resolveSocialAccountMode(selectedBroker) : 'unknown'
   const showPaywall = pricePaid && !paywallCleared
-  const priceLabel = pricePaid && trader.monthlyCopyPriceCents != null
-    ? formatMoney(trader.monthlyCopyPriceCents / 100)
-    : ''
+  const charge = socialCopyChargeBreakdown(trader.monthlyCopyPriceCents ?? 0, copierFeePercent)
+  const basePriceLabel = formatMoney(charge.baseCents / 100)
+  const feePriceLabel = formatMoney(charge.feeCents / 100)
+  const totalPriceLabel = formatMoney(charge.totalCents / 100)
+  const priceLabel = totalPriceLabel
   const sizingPreview = socialSizingColumnsFromCopyRisk(settings)
   const profileLabel = settings.sizing.mode === 'fixed_lot'
     ? `${settings.sizing.fixed_lot.toFixed(2)} ${c.lots}`
@@ -114,6 +201,12 @@ export function CopyTraderModal({
     setSubmitting(true)
     setError(null)
     try {
+      if (pricePaid) {
+        const billing = await fetchSocialCopyBillingForProvider(supabase, trader.id)
+        if (!isActiveSocialCopyBilling(billing)) {
+          throw new Error('An active paid subscription is required before copying this provider')
+        }
+      }
       const sizing = socialSizingColumnsFromCopyRisk(settings)
       const createdSubscriptionId = await createSocialCopySubscription(supabase, {
         sourceId: selectedSource.sourceId,
@@ -153,14 +246,29 @@ export function CopyTraderModal({
 
   const confirmPaywallSubscribe = async () => {
     if (!pricePaid || paywallCleared || submitting) return
+    const accessToken = session?.access_token
+    if (!accessToken) {
+      setError('Sign in again to subscribe.')
+      return
+    }
     setSubmitting(true)
     setError(null)
     try {
-      await subscribeSocialCopyIntent(supabase, trader.id)
-      setPaywallCleared(true)
+      const origin = window.location.origin
+      const result = await startSocialCopyCheckout({
+        accessToken,
+        providerUserId: trader.id,
+        successUrl: `${origin}/social-trading?site=app&social_copy_checkout=success&provider=${trader.id}&session_id={CHECKOUT_SESSION_ID}`,
+        cancelUrl: `${origin}/social-trading?site=app&social_copy_checkout=cancel&provider=${trader.id}`,
+      })
+      if (result.kind === 'already_active') {
+        setPaywallCleared(true)
+        setSubmitting(false)
+        return
+      }
+      window.location.assign(result.url)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Unable to record the subscription intent.')
-    } finally {
+      setError(cause instanceof Error ? cause.message : 'Unable to start Stripe Checkout.')
       setSubmitting(false)
     }
   }
@@ -249,18 +357,39 @@ export function CopyTraderModal({
           <div className="overflow-y-auto px-5 py-4 sm:px-6">
             <section aria-labelledby="copy-paywall-heading" className="mx-auto max-w-md space-y-4 py-4 text-center sm:py-8">
               <p className="text-3xl font-semibold tabular-nums text-neutral-900 dark:text-neutral-50">
-                {priceLabel}<span className="text-base font-medium text-neutral-500 dark:text-neutral-400">/Month</span>
+                {totalPriceLabel}<span className="text-base font-medium text-neutral-500 dark:text-neutral-400">/Month</span>
               </p>
-              <p id="copy-paywall-heading" className="text-sm leading-6 text-neutral-600 dark:text-neutral-300">
+              <dl className="mx-auto w-full max-w-sm space-y-2 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-left text-sm dark:border-neutral-800 dark:bg-neutral-900/60">
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-neutral-600 dark:text-neutral-300">{c.paywallProviderPrice}</dt>
+                  <dd className="tabular-nums font-medium text-neutral-900 dark:text-neutral-50">{basePriceLabel}</dd>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-neutral-600 dark:text-neutral-300">
+                    {charge.feePercent > 0
+                      ? interpolate(c.paywallCopierFeeWithPercent, { percent: String(charge.feePercent) })
+                      : c.paywallCopierFee}
+                  </dt>
+                  <dd className="tabular-nums font-medium text-neutral-900 dark:text-neutral-50">{feePriceLabel}</dd>
+                </div>
+                <div className="flex items-center justify-between gap-3 border-t border-neutral-200 pt-2 dark:border-neutral-700">
+                  <dt id="copy-paywall-heading" className="font-semibold text-neutral-900 dark:text-neutral-50">{c.paywallTotal}</dt>
+                  <dd className="tabular-nums font-semibold text-neutral-900 dark:text-neutral-50">{totalPriceLabel}</dd>
+                </div>
+              </dl>
+              <p className="text-sm leading-6 text-neutral-600 dark:text-neutral-300">
                 {c.paywallBody}
               </p>
               <p className="text-xs leading-5 text-neutral-500 dark:text-neutral-400">{c.paywallPendingNote}</p>
+              {billingChecking ? (
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">Confirming payment…</p>
+              ) : null}
               {error ? <Alert variant="error">{error}</Alert> : null}
             </section>
           </div>
           <footer className="flex shrink-0 flex-col-reverse gap-2 border-t border-neutral-100 bg-white px-5 py-4 dark:border-neutral-800 dark:bg-neutral-950 sm:flex-row sm:justify-end sm:px-6">
             <Button type="button" variant="secondary" disabled={submitting} onClick={onClose}>{c.cancel}</Button>
-            <Button type="button" loading={submitting} disabled={submitting} onClick={() => void confirmPaywallSubscribe()}>
+            <Button type="button" loading={submitting || billingChecking} disabled={submitting || billingChecking} onClick={() => void confirmPaywallSubscribe()}>
               {interpolate(c.paywallSubscribe, { amount: priceLabel })}
             </Button>
           </footer>
@@ -275,7 +404,7 @@ export function CopyTraderModal({
       slave={selectedBroker}
       source={null}
       settings={settings}
-      labels={t.copyRisk}
+      labels={copyRiskLabelsForSocial(t.copyRisk)}
       setup={socialCopySetupToMirrorSetup(c)}
       loginLabel={c.login}
       balanceLabel={c.balance}

@@ -26,6 +26,7 @@ import { Card } from '../../components/ui/Card'
 import { Alert } from '../../components/ui/Alert'
 import { useAddTradingAccount } from '../../context/AddTradingAccountContext'
 import { useAuth } from '../../context/AuthContext'
+import { useConfirm } from '../../context/ConfirmDialogContext'
 import { useLocale, useT } from '../../context/LocaleContext'
 import { useUserProfile } from '../../context/UserProfileContext'
 import { useLiveOwnOpenPnl } from '../../hooks/useLiveOwnOpenPnl'
@@ -131,6 +132,7 @@ function SideLabel({ side, buy, sell }: { side: SocialTradeSide; buy: string; se
 export function SocialTradingPage() {
   const t = useT()
   const copy = t.socialTradingPage
+  const confirm = useConfirm()
   const navigate = useNavigate()
   const { formatMoney } = useFormatMoney()
   const { openAddTradingAccount } = useAddTradingAccount()
@@ -194,17 +196,26 @@ export function SocialTradingPage() {
   )
   const hasSubscriptions = subscribedProviderIds.size > 0
 
-  const stopCopyingTrader = async (traderId: string) => {
+  const stopCopyingTrader = (traderId: string) => {
     const targets = mySubscriptions.filter(row => row.sourceTraderUserId === traderId)
     if (targets.length === 0) return
-    if (!window.confirm(copy.stopCopyingConfirm)) return
-    setStoppingTraderId(traderId)
-    try {
-      await Promise.all(targets.map(row => changeSocialCopySubscription(supabase, row.id, 'stop')))
-      setMySubscriptions(current => current.filter(row => row.sourceTraderUserId !== traderId))
-    } finally {
-      setStoppingTraderId(null)
-    }
+    void confirm({
+      title: copy.stopCopying,
+      body: copy.stopCopyingConfirm,
+      confirmLabel: copy.stopCopying,
+      cancelLabel: t.common.cancel,
+      tone: 'danger',
+      busyLabel: t.common.working ?? 'Working…',
+      onConfirm: async () => {
+        setStoppingTraderId(traderId)
+        try {
+          await Promise.all(targets.map(row => changeSocialCopySubscription(supabase, row.id, 'stop')))
+          setMySubscriptions(current => current.filter(row => row.sourceTraderUserId !== traderId))
+        } finally {
+          setStoppingTraderId(null)
+        }
+      },
+    })
   }
   const viewParam = params.get('view')
   const view: DirectoryView = viewParam === 'discover'
@@ -401,7 +412,7 @@ export function SocialTradingPage() {
                                 if (!subscription) return
                                 setConfigureTarget({ trader, subscription })
                               }}
-                              onStop={() => void stopCopyingTrader(trader.id)}
+                              onStop={() => stopCopyingTrader(trader.id)}
                             />
                           ) : (
                             <CopyActionButton
@@ -757,6 +768,7 @@ export function OwnProviderProfileView() {
 export function SocialTraderActivityPage() {
   const t = useT()
   const copy = t.socialTradingPage
+  const confirm = useConfirm()
   const { formatMoney, formatSignedMoney } = useFormatMoney()
   const { locale } = useLocale()
   const { openAddTradingAccount } = useAddTradingAccount()
@@ -835,16 +847,26 @@ export function SocialTraderActivityPage() {
   }, [copyIntentReady, copyIntentEligible, setProfileParams])
   const [profileTab, setProfileTab] = useState<'performance' | 'trading' | 'portfolio'>('performance')
 
-  const stopCopying = async () => {
+  const stopCopying = () => {
     if (activeSubscriptions.length === 0) return
-    if (!window.confirm(copy.stopCopyingConfirm)) return
-    setStoppingCopy(true)
-    try {
-      await Promise.all(activeSubscriptions.map(row => changeSocialCopySubscription(supabase, row.id, 'stop')))
-      setActiveSubscriptions([])
-    } finally {
-      setStoppingCopy(false)
-    }
+    const targets = activeSubscriptions
+    void confirm({
+      title: copy.stopCopying,
+      body: copy.stopCopyingConfirm,
+      confirmLabel: copy.stopCopying,
+      cancelLabel: t.common.cancel,
+      tone: 'danger',
+      busyLabel: t.common.working ?? 'Working…',
+      onConfirm: async () => {
+        setStoppingCopy(true)
+        try {
+          await Promise.all(targets.map(row => changeSocialCopySubscription(supabase, row.id, 'stop')))
+          setActiveSubscriptions([])
+        } finally {
+          setStoppingCopy(false)
+        }
+      },
+    })
   }
 
   if (isOwnProfile) {
@@ -939,7 +961,7 @@ export function SocialTraderActivityPage() {
                   if (!subscription) return
                   setConfigureSubscription(subscription)
                 }}
-                onStop={() => void stopCopying()}
+                onStop={() => stopCopying()}
               />
             ) : (
               <CopyActionButton

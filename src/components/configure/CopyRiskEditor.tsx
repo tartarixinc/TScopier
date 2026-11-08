@@ -354,7 +354,6 @@ export function CopyRiskEditor({
           protection: { ...settings.protection, emergency_stop: value },
           lifecycle: { ...settings.lifecycle, pause_new: value ? true : settings.lifecycle.pause_new },
         })} />
-        <ToggleField label={labels.protection.recovery} checked={settings.protection.recovery_mode} onLabel={labels.on} offLabel={labels.off} onChange={value => patch({ ...settings, protection: { ...settings.protection, recovery_mode: value } })} />
         <UnitCap
           title={labels.protection.maxDrawdown}
           valueType={settings.protection.drawdown_value_type}
@@ -593,9 +592,7 @@ export function CopyRiskEditor({
         <NumberField label={labels.provider.maxPositions} value={settings.provider.max_open_positions} allowEmpty onCommit={value => commit(looserMax(settings.provider.max_open_positions, value), () => patch({ ...settings, provider: { ...settings.provider, max_open_positions: value } }))} />
         <NumberField label={labels.provider.maxLots} value={settings.provider.max_lots} allowEmpty onCommit={value => commit(looserMax(settings.provider.max_lots, value), () => patch({ ...settings, provider: { ...settings.provider, max_lots: value } }))} />
         <NumberField label={labels.provider.maxDailyTrades} value={settings.provider.max_daily_trades} allowEmpty onCommit={value => commit(looserMax(settings.provider.max_daily_trades, value), () => patch({ ...settings, provider: { ...settings.provider, max_daily_trades: value } }))} />
-        <NumberField label={labels.provider.riskMultiplier} value={settings.provider.risk_multiplier} onCommit={value => value != null && patch({ ...settings, provider: { ...settings.provider, risk_multiplier: value } })} />
         <NumberField label={labels.provider.consecutiveLosses} value={settings.provider.max_consecutive_losses} allowEmpty onCommit={value => commit(looserMax(settings.provider.max_consecutive_losses, value), () => patch({ ...settings, provider: { ...settings.provider, max_consecutive_losses: value } }))} />
-        <ToggleField label={labels.provider.suspended} checked={settings.provider.suspended} onLabel={labels.on} offLabel={labels.off} onChange={value => onChange({ ...settings, provider: { ...settings.provider, suspended: value } })} />
       </Section>
 
       <Section title={labels.sections.advanced}>

@@ -8,7 +8,7 @@ import {
   updateSocialCopySubscriptionSettings,
   type MySocialCopySubscription,
 } from '../../lib/socialCopy'
-import { socialCopySetupToMirrorSetup } from '../../lib/socialCopySetupLabels'
+import { copyRiskLabelsForSocial, socialCopySetupToMirrorSetup } from '../../lib/socialCopySetupLabels'
 import type { SocialTrader } from '../../lib/socialTradingFixture'
 import type { SocialTradingPageTranslations } from '../../i18n/locales/types'
 import type { CopyRiskSettings } from '../../lib/copyRiskTypes'
@@ -67,7 +67,7 @@ export function ConfigureCopyModal({
       slave={destination}
       source={null}
       settings={settings}
-      labels={t.copyRisk}
+      labels={copyRiskLabelsForSocial(t.copyRisk)}
       setup={socialCopySetupToMirrorSetup(c)}
       loginLabel={c.login}
       balanceLabel={c.balance}
