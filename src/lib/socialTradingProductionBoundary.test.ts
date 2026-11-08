@@ -112,9 +112,9 @@ test("real Copy Trader flow persists through the existing subscription RPC", () 
     copyModal,
     /const createdSubscriptionId = await createSocialCopySubscription/,
   );
-  assert.match(copyModal, /maxLot,/);
-  assert.match(copyModal, /manualSettings: filterSettings/);
-  assert.match(copyModal, /SocialCopyFilterSettingsEditor/);
+  assert.match(copyModal, /copyRisk: settings/);
+  assert.match(copyModal, /SlaveConfigureModal/);
+  assert.match(copyModal, /socialSizingColumnsFromCopyRisk/);
   assert.match(
     copyModal,
     /changeSocialCopySubscription\(supabase, subscriptionId, action\)/,
@@ -125,7 +125,6 @@ test("real Copy Trader flow persists through the existing subscription RPC", () 
     /A current subscription already exists|Unable to create the copy subscription/,
   );
   assert.doesNotMatch(copyModal, /copiedLot == null \|\| copiedLot <= 0/);
-  assert.doesNotMatch(copyModal, /<SettingToggle/);
 });
 
 test("synthetic demo flow persists through the guarded subscription RPC", () => {
@@ -138,7 +137,7 @@ test("synthetic demo flow persists through the guarded subscription RPC", () => 
   assert.match(page, /canOpenCopyTrader\(trader\)/);
   assert.match(
     copyModal,
-    /trader\.syntheticDemo \? 'fixed_lot' : 'proportional'/,
+    /trader\.syntheticDemo \? 'fixed_lot' : 'balance_ratio'/,
   );
 });
 test.skip("historical synthetic rejection remains documented by its original migration", () => {

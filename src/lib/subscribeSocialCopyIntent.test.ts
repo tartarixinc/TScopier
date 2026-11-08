@@ -38,11 +38,11 @@ test('copy modal gates paid providers behind subscribe before destination sizing
   assert.match(modal, /subscribeSocialCopyIntent\(supabase, trader\.id\)/)
   assert.match(modal, /paywallSubscribe/)
   assert.match(modal, /c\.startCopying/)
-  assert.match(modal, /destinationAccount/)
+  assert.match(modal, /destinationOptions=\{destinations\}/)
   // Free providers skip the wall: paywallCleared starts true when !pricePaid
   assert.match(modal, /const \[paywallCleared, setPaywallCleared\] = useState\(!pricePaid\)/)
-  // Destination block is behind the paywall gate
-  const paywallBranch = modal.indexOf('{showPaywall ? (')
-  const destinationHeading = modal.indexOf('copy-destination-heading')
-  assert.ok(paywallBranch >= 0 && destinationHeading > paywallBranch, 'destination UI follows the paywall branch')
+  // Destination / Mirror configure UI only renders after the paywall gate
+  const paywallBranch = modal.indexOf('if (showPaywall)')
+  const configureModal = modal.indexOf('<SlaveConfigureModal')
+  assert.ok(paywallBranch >= 0 && configureModal > paywallBranch, 'destination UI follows the paywall branch')
 })

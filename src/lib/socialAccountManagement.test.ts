@@ -45,13 +45,13 @@ test('copy setup uses the provider registered source without a source picker', (
   assert.doesNotMatch(modal, /selectedSourceId/)
   assert.match(modal, /sourceId: selectedSource\.sourceId/)
   assert.match(modal, /sources\.find\(source => source\.isCopyEligible && source\.sourceId === trader\.sourceId\)/)
-  assert.match(modal, /disabled=\{disabled\}/)
+  assert.match(modal, /primaryDisabled=\{disabled\}/)
 })
 
 test('copy setup paywall unlocks Start copying after subscribe for paid providers only', () => {
   assert.match(modal, /subscribeSocialCopyIntent/)
   assert.match(modal, /confirmPaywallSubscribe/)
-  assert.match(modal, /showPaywall \?/)
+  assert.match(modal, /if \(showPaywall\)/)
   assert.match(modal, /c\.startCopying/)
   assert.match(modal, /setPaywallCleared\(true\)/)
 })
