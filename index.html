@@ -5,9 +5,21 @@
     <script>
       (function () {
         try {
-          var k = 'tscopier-theme';
-          var t = localStorage.getItem(k);
-          var dark = t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          var h = location.hostname;
+          var site = new URLSearchParams(location.search).get('site');
+          var marketing =
+            site === 'marketing' ||
+            (site !== 'app' &&
+              (h === 'tscopier.ai' ||
+                h === 'www.tscopier.ai' ||
+                (h.endsWith('.netlify.app') &&
+                  h !== 'legendary-valkyrie-4da363.netlify.app' &&
+                  h !== 'app.tscopier.ai')));
+          var dark = false;
+          if (!marketing) {
+            var t = localStorage.getItem('tscopier-theme');
+            dark = t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          }
           document.documentElement.classList.toggle('dark', dark);
           document.documentElement.dataset.theme = dark ? 'dark' : 'light';
           document.documentElement.style.colorScheme = dark ? 'dark' : 'light';

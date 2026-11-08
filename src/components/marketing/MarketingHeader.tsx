@@ -3,7 +3,6 @@ import clsx from 'clsx'
 import { Link, useLocation } from 'react-router-dom'
 import { Menu, X } from 'lucide-react'
 import { TscopierLogo } from '../ui/TscopierLogo'
-import { ThemeToggle } from '../ui/ThemeToggle'
 import { LanguageSwitcher } from '../auth/LanguageSwitcher'
 import { useLocale, useT } from '../../context/LocaleContext'
 import { HELP_LINKS } from '../../lib/helpLinks'
@@ -159,7 +158,6 @@ export function MarketingHeader({ overDarkHero = false }: { overDarkHero?: boole
 
         <div className="ms-auto flex shrink-0 items-center gap-1 lg:ms-0">
           <LanguageSwitcher />
-          <ThemeToggle className="rounded-full" />
           <MarketingAuthCta variant="header" />
           <button
             type="button"
