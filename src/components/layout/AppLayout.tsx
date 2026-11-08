@@ -214,10 +214,10 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
         'flex items-center px-3 py-2.5 rounded-xl text-sm transition-colors min-h-[20px]',
         isCollapsed ? 'justify-center' : 'gap-2',
         disabled
-          ? 'cursor-pointer font-medium text-neutral-900 opacity-45 hover:bg-neutral-50 hover:text-neutral-900 hover:opacity-80 dark:text-neutral-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-50'
+          ? 'cursor-pointer font-medium text-neutral-900 opacity-45 hover:bg-white hover:text-neutral-900 hover:opacity-80 dark:text-neutral-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-50'
           : isActive
             ? 'bg-green-400 text-neutral-950 font-semibold dark:bg-green-400 dark:text-neutral-950'
-            : 'text-neutral-900 font-medium hover:bg-neutral-50 hover:text-neutral-900 dark:text-neutral-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
+            : 'text-neutral-900 font-medium hover:bg-white hover:text-neutral-900 dark:text-neutral-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
       )
 
   const renderNavItemContent = (
@@ -353,7 +353,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
   )
 
   return (
-    <div className="flex h-full min-h-0 w-full overflow-hidden overscroll-none bg-white dark:bg-neutral-950">
+    <div className="flex h-full min-h-0 w-full overflow-hidden overscroll-none bg-[#F7F8FA] dark:bg-neutral-950">
       {mobileNavOpen && (
         <button
           type="button"
@@ -549,7 +549,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
 
         <main
           className={clsx(
-            'min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain bg-white dark:bg-neutral-950',
+            'min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain bg-[#F7F8FA] dark:bg-neutral-950',
             'pt-[calc(3.5rem+env(safe-area-inset-top,0px))] sm:pt-[calc(4rem+env(safe-area-inset-top,0px))]',
             'lg:pt-0',
           )}
