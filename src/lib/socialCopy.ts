@@ -493,6 +493,41 @@ export async function fetchMySocialCopyBilling(client: SupabaseClient): Promise<
   }))
 }
 
+export type PlatformFeeSettings = {
+  providerFeePercent: number
+  copierFeePercent: number
+  payoutFeePercent: number
+}
+
+export async function fetchPlatformFeeSettings(client: SupabaseClient): Promise<PlatformFeeSettings> {
+  const { data, error } = await client.rpc('get_platform_fee_settings')
+  if (error) throw failure(error)
+  const row = (Array.isArray(data) ? data[0] : data) as {
+    provider_fee_percent?: number | string | null
+    copier_fee_percent?: number | string | null
+    payout_fee_percent?: number | string | null
+  } | null
+  const clamp = (value: number) => Math.max(0, Math.min(100, value))
+  return {
+    providerFeePercent: clamp(Number(row?.provider_fee_percent ?? 0) || 0),
+    copierFeePercent: clamp(Number(row?.copier_fee_percent ?? 0) || 0),
+    payoutFeePercent: clamp(Number(row?.payout_fee_percent ?? 0) || 0),
+  }
+}
+
+/** Provider base price + platform copier fee, matching create-social-copy-checkout. */
+export function socialCopyChargeBreakdown(basePriceCents: number, copierFeePercent: number): {
+  baseCents: number
+  feeCents: number
+  totalCents: number
+  feePercent: number
+} {
+  const baseCents = Math.max(0, Math.round(basePriceCents))
+  const feePercent = Math.max(0, Math.min(100, copierFeePercent))
+  const feeCents = Math.round(baseCents * (feePercent / 100))
+  return { baseCents, feeCents, feePercent, totalCents: baseCents + feeCents }
+}
+
 export type WalletPayoutAsset = 'USDT' | 'USDC'
 
 export async function updateMyWalletPayoutMethod(

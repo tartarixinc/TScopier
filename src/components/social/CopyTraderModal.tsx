@@ -15,8 +15,10 @@ import type { BrokerAccount } from '../../types/database'
 import {
   changeSocialCopySubscription,
   createSocialCopySubscription,
+  fetchPlatformFeeSettings,
   fetchSocialCopyBillingForProvider,
   isActiveSocialCopyBilling,
+  socialCopyChargeBreakdown,
   socialSizingColumnsFromCopyRisk,
   startSocialCopyCheckout,
 } from '../../lib/socialCopy'
@@ -83,12 +85,29 @@ export function CopyTraderModal({
   const pricePaid = isPaidCopyPrice(trader.monthlyCopyPriceCents)
   const [paywallCleared, setPaywallCleared] = useState(!pricePaid)
   const [billingChecking, setBillingChecking] = useState(pricePaid)
+  const [copierFeePercent, setCopierFeePercent] = useState(0)
 
   const destinations = brokers.filter(isSocialDestinationEligible)
   useEffect(() => {
     if (selectedBrokerId || destinations.length !== 1) return
     setSelectedBrokerId(destinations[0].id)
   }, [destinations, selectedBrokerId])
+
+  useEffect(() => {
+    if (!pricePaid) {
+      setCopierFeePercent(0)
+      return
+    }
+    let active = true
+    void fetchPlatformFeeSettings(supabase)
+      .then(fees => {
+        if (active) setCopierFeePercent(fees.copierFeePercent)
+      })
+      .catch(() => {
+        if (active) setCopierFeePercent(0)
+      })
+    return () => { active = false }
+  }, [pricePaid])
 
   useEffect(() => {
     if (!pricePaid) {
@@ -165,9 +184,11 @@ export function CopyTraderModal({
   const isSyntheticSimulation = selectedSource?.isSynthetic === true
   const destinationMode = selectedBroker ? resolveSocialAccountMode(selectedBroker) : 'unknown'
   const showPaywall = pricePaid && !paywallCleared
-  const priceLabel = pricePaid && trader.monthlyCopyPriceCents != null
-    ? formatMoney(trader.monthlyCopyPriceCents / 100)
-    : ''
+  const charge = socialCopyChargeBreakdown(trader.monthlyCopyPriceCents ?? 0, copierFeePercent)
+  const basePriceLabel = formatMoney(charge.baseCents / 100)
+  const feePriceLabel = formatMoney(charge.feeCents / 100)
+  const totalPriceLabel = formatMoney(charge.totalCents / 100)
+  const priceLabel = totalPriceLabel
   const sizingPreview = socialSizingColumnsFromCopyRisk(settings)
   const profileLabel = settings.sizing.mode === 'fixed_lot'
     ? `${settings.sizing.fixed_lot.toFixed(2)} ${c.lots}`
@@ -336,9 +357,27 @@ export function CopyTraderModal({
           <div className="overflow-y-auto px-5 py-4 sm:px-6">
             <section aria-labelledby="copy-paywall-heading" className="mx-auto max-w-md space-y-4 py-4 text-center sm:py-8">
               <p className="text-3xl font-semibold tabular-nums text-neutral-900 dark:text-neutral-50">
-                {priceLabel}<span className="text-base font-medium text-neutral-500 dark:text-neutral-400">/Month</span>
+                {totalPriceLabel}<span className="text-base font-medium text-neutral-500 dark:text-neutral-400">/Month</span>
               </p>
-              <p id="copy-paywall-heading" className="text-sm leading-6 text-neutral-600 dark:text-neutral-300">
+              <dl className="mx-auto w-full max-w-sm space-y-2 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-left text-sm dark:border-neutral-800 dark:bg-neutral-900/60">
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-neutral-600 dark:text-neutral-300">{c.paywallProviderPrice}</dt>
+                  <dd className="tabular-nums font-medium text-neutral-900 dark:text-neutral-50">{basePriceLabel}</dd>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-neutral-600 dark:text-neutral-300">
+                    {charge.feePercent > 0
+                      ? interpolate(c.paywallCopierFeeWithPercent, { percent: String(charge.feePercent) })
+                      : c.paywallCopierFee}
+                  </dt>
+                  <dd className="tabular-nums font-medium text-neutral-900 dark:text-neutral-50">{feePriceLabel}</dd>
+                </div>
+                <div className="flex items-center justify-between gap-3 border-t border-neutral-200 pt-2 dark:border-neutral-700">
+                  <dt id="copy-paywall-heading" className="font-semibold text-neutral-900 dark:text-neutral-50">{c.paywallTotal}</dt>
+                  <dd className="tabular-nums font-semibold text-neutral-900 dark:text-neutral-50">{totalPriceLabel}</dd>
+                </div>
+              </dl>
+              <p className="text-sm leading-6 text-neutral-600 dark:text-neutral-300">
                 {c.paywallBody}
               </p>
               <p className="text-xs leading-5 text-neutral-500 dark:text-neutral-400">{c.paywallPendingNote}</p>

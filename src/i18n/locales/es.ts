@@ -756,6 +756,10 @@ export const es: Translations = {
       paywallBody: 'Este proveedor cobra una cuota mensual por copiar sus operaciones. Confirma para continuar a la vista previa.',
       paywallSubscribe: 'Suscribirse por {amount}/mes',
       paywallPendingNote: 'Serás redirigido a Stripe Checkout. Tras el pago podrás configurar el sizing y empezar a copiar.',
+      paywallProviderPrice: 'Precio del proveedor',
+      paywallCopierFee: 'Comisión de la plataforma',
+      paywallCopierFeeWithPercent: 'Comisión de la plataforma ({percent}%)',
+      paywallTotal: 'Total a pagar hoy',
     },
   },
   configurationsPage: {

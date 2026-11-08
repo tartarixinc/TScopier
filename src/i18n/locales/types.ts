@@ -1342,6 +1342,10 @@ export interface SocialTradingPageTranslations {
     paywallBody: string
     paywallSubscribe: string
     paywallPendingNote: string
+    paywallProviderPrice: string
+    paywallCopierFee: string
+    paywallCopierFeeWithPercent: string
+    paywallTotal: string
   }
 }
 

@@ -773,6 +773,10 @@ broker: {
       paywallBody: 'This provider charges a monthly fee to copy their trades. Pay with Stripe to unlock copy setup.',
       paywallSubscribe: 'Pay {amount}/Month',
       paywallPendingNote: 'You will be redirected to Stripe Checkout. After payment succeeds, you can configure sizing and start copying.',
+      paywallProviderPrice: 'Provider price',
+      paywallCopierFee: 'Platform fee',
+      paywallCopierFeeWithPercent: 'Platform fee ({percent}%)',
+      paywallTotal: 'Total due today',
     },
   },
   configurationsPage: {
