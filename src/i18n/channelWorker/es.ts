@@ -198,6 +198,7 @@ export const channelWorkerEs: ChannelWorkerTranslations = {
       'las instrucciones de cancelación deben enviarse como respuesta al mensaje de la señal original',
     delete_pendings_none: 'no se encontraron órdenes pendientes para cancelar en esta operación',
     delete_pendings_cancel_failed: 'se encontraron órdenes pendientes, pero no se pudo cancelar ninguna (el broker rechazó la operación o no estaba disponible) — inténtalo de nuevo o ciérralas desde la página de Operaciones',
+    partial_close_unavailable_for_position_size: 'no se pudo ejecutar el cierre parcial: la posición es demasiado pequeña para dividirla (la parte solicitada quedaría por debajo del lote mínimo del broker); no se cerró nada y la operación permaneció abierta con su tamaño completo',
   },
   dispatchSkipped: 'No se copió la señal ({reason}).',
   rangeRebalanceSkippedNamed: 'Se omitió el rebalanceo de take profit de {symbol} ({reason})',

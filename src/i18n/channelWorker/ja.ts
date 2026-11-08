@@ -197,6 +197,7 @@ export const channelWorkerJa: ChannelWorkerTranslations = {
       'キャンセル指示は元のシグナルメッセージへの返信として送信する必要があります',
     delete_pendings_none: 'この取引でキャンセルする保留中の注文が見つかりませんでした',
     delete_pendings_cancel_failed: '保留中の注文は見つかりましたが、キャンセルできませんでした（ブローカーが拒否したか利用できませんでした）。再試行するか、Tradesページからキャンセルしてください',
+    partial_close_unavailable_for_position_size: '部分決済は実行できません — このポジションは小さすぎて分割できません（希望した数量がブローカーの最小ロットを下回ります）。何も閉じられず、取引は全量のまま残りました',
   },
   dispatchSkipped: 'このシグナルはコピーされませんでした（{reason}）。',
   rangeRebalanceSkippedNamed: '{symbol}の利益確定リバランスをスキップしました（{reason}）',

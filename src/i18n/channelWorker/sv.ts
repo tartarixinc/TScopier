@@ -197,6 +197,7 @@ export const channelWorkerSv: ChannelWorkerTranslations = {
       'avbrottsinstructioner måste skickas som svar på ursprungliga signaldmeddelandet',
     delete_pendings_none: 'inga väntande order hittades att avbryta för denna affär',
     delete_pendings_cancel_failed: 'väntande orders hittades, men ingen kunde avbrytas (mäklaren avvisade eller var inte tillgänglig) — försök igen, eller stäng dem från Trades-sidan',
+    partial_close_unavailable_for_position_size: 'delvis stängning ej möjlig — denna position är för liten att dela (den begärda delen skulle ligga under brokerns minimumlot); inget stängdes och affären förblev öppen i sin fulla storlek',
   },
   dispatchSkipped: 'Kopierade inte den här signalen ({reason}).',
   rangeRebalanceSkippedNamed: 'Hoppade över take-profit-ombalansering av {symbol} ({reason})',

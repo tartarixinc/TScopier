@@ -1540,6 +1540,8 @@ export const es: Translations = {
     closeCopyErrorFallback: 'No se pudo cerrar la copia. Inténtelo de nuevo.',
     execNotesTitle: 'Notas de ejecución',
     execNoteTpSplit: 'Se omitieron algunos take-profits parciales — este lote es demasiado pequeño para dividirlo (esas porciones quedarían por debajo del mínimo del broker). Los take-profits restantes siguen aplicando.',
+    execNotePartialCloseTooSmall:
+      'No se pudo ejecutar un cierre parcial solicitado — esta posición era demasiado pequeña para dividirla (la parte solicitada habría quedado por debajo del lote mínimo del broker); esa instrucción no cerró nada y la operación quedó con su tamaño completo.',
     execNoteStaleEntry: 'La entrada de la señal era {entry} pero la operación se abrió en {fill} — el precio ya se había movido cuando se envió la orden.',
     imageSignal: '(señal con imagen)',
     loadingSignal: 'Cargando señal…',

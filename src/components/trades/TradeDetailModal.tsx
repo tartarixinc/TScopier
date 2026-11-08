@@ -31,6 +31,7 @@ import {
   type SocialCopyAttribution,
 } from '../../lib/socialCopyAttribution'
 import {
+  fetchPartialCloseTooSmall,
   fetchPlanFallbackReason,
   isTpSplitSkippedReason,
   staleEntryNotice,
@@ -94,6 +95,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
   const [mirrorCloseStatus, setMirrorCloseStatus] = useState<'idle' | 'working' | 'done' | 'timeout' | 'error'>('idle')
   const [mirrorCloseError, setMirrorCloseError] = useState<string | null>(null)
   const [planFallbackReason, setPlanFallbackReason] = useState<string | null>(null)
+  const [partialCloseTooSmall, setPartialCloseTooSmall] = useState(false)
   const [showReport, setShowReport] = useState(false)
 
   useEffect(() => {
@@ -108,6 +110,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
       setMirrorCloseStatus('idle')
       setMirrorCloseError(null)
       setPlanFallbackReason(null)
+      setPartialCloseTooSmall(false)
       return
     }
     if (!userId) {
@@ -119,6 +122,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
       setMirrorCloseStatus('idle')
       setMirrorCloseError(null)
       setPlanFallbackReason(null)
+      setPartialCloseTooSmall(false)
       return
     }
 
@@ -133,6 +137,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
     setMirrorCloseStatus('idle')
     setMirrorCloseError(null)
     setPlanFallbackReason(null)
+    setPartialCloseTooSmall(false)
 
     void (async () => {
       try {
@@ -157,7 +162,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
         setMirrorAttribution(mirror)
         setSocialAttribution(social)
         if (result?.signal) {
-          const [failures, fallbackReason] = await Promise.all([
+          const [failures, fallbackReason, partialCloseRefused] = await Promise.all([
             fetchBrokerFailuresForTrade(supabase, {
               userId,
               signalId: result.signal.id,
@@ -168,10 +173,17 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
               signalId: result.signal.id,
               brokerAccountId: trade.broker_id,
             }),
+            fetchPartialCloseTooSmall(supabase, {
+              userId,
+              signalId: result.signal.id,
+              brokerAccountId: trade.broker_id,
+              ticket: trade.ticket,
+            }),
           ])
           if (cancelled) return
           setBrokerFailures(failures)
           setPlanFallbackReason(fallbackReason)
+          setPartialCloseTooSmall(partialCloseRefused)
         }
       } catch (e) {
         if (!cancelled) {
@@ -348,6 +360,9 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
     (context?.signal?.parsed_data as Record<string, unknown> | null)?.entry_price,
     trade.entry_price,
   )
+  // Only while the trade is open: the note claims it "stayed open at its full
+  // size", which stops being true once the trade closes.
+  const partialCloseNote = partialCloseTooSmall && trade.status === 'open'
   const showTpSplitNote = isTpSplitSkippedReason(planFallbackReason)
 
   const channelLabel = (() => {
@@ -622,7 +637,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
             </section>
           ) : null}
 
-          {staleEntry != null || showTpSplitNote ? (
+          {staleEntry != null || showTpSplitNote || partialCloseNote ? (
             <section className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 space-y-2 dark:border-amber-900/60 dark:bg-amber-950/25">
               <div className="flex items-center gap-2">
                 <TriangleAlert className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" aria-hidden />
@@ -635,6 +650,12 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                   <li className="text-sm text-neutral-900 dark:text-neutral-50">
                     {tr.execNoteTpSplit
                       ?? 'Some partial take-profits were skipped — this lot is too small to split (those slices would be below the broker minimum). The remaining take-profits still apply.'}
+                  </li>
+                ) : null}
+                {partialCloseNote ? (
+                  <li className="text-sm text-neutral-900 dark:text-neutral-50">
+                    {tr.execNotePartialCloseTooSmall
+                      ?? 'A requested partial close could not be executed — this position was too small to split (the requested part would fall below the broker minimum lot), so that instruction closed nothing and the trade was left at its full size.'}
                   </li>
                 ) : null}
                 {staleEntry != null ? (

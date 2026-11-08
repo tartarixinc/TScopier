@@ -864,3 +864,33 @@ test('channelWorkerLogMessage: keeps the generic plan-fallback wording for other
   assert.ok(message)
   assert.match(message!, /Adjusted the order plan for XAUUSD/)
 })
+
+test('channelWorkerLogMessage: explains a partial close refused because the position is too small', () => {
+  const message = channelWorkerLogMessage(
+    {
+      action: 'mgmt_partial_profit',
+      status: 'skipped',
+      request_payload: {
+        skip_reason: 'partial_close_unavailable_for_position_size',
+        current_volume: 0.01,
+        requested_fraction: 0.2,
+        min_volume: 0.01,
+      },
+      response_payload: null,
+      error_message: null,
+      signals: {
+        channel_id: 'ch-1',
+        parsed_data: { action: 'partial_profit', symbol: 'BTCUSD' },
+        status: 'skipped',
+        skip_reason: 'partial_close_unavailable_for_position_size',
+      },
+    },
+    channelWorkerEn,
+    { 'ch-1': 'GoldPro' },
+  )
+  assert.ok(message)
+  // The refusal must be explained, not rendered as a raw key.
+  assert.match(message!, /too small to split/i)
+  assert.match(message!, /nothing was closed/i)
+  assert.ok(!message!.includes('partial_close_unavailable'), message!)
+})

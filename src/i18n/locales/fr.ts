@@ -1540,6 +1540,8 @@ export const fr: Translations = {
     closeCopyErrorFallback: 'Impossible de fermer la copie. Réessayez.',
     execNotesTitle: 'Notes d’exécution',
     execNoteTpSplit: 'Certains take-profits partiels ont été ignorés — ce lot est trop petit pour être fractionné (ces tranches seraient sous le minimum du broker). Les take-profits restants s’appliquent toujours.',
+    execNotePartialCloseTooSmall:
+      'Une clôture partielle demandée n’a pas pu être exécutée — cette position était trop petite pour être fractionnée (la partie demandée serait passée sous le lot minimum du broker) ; cette instruction n’a rien fermé et le trade est resté à sa taille complète.',
     execNoteStaleEntry: 'L’entrée du signal était {entry} mais le trade s’est ouvert à {fill} — le prix avait déjà bougé quand l’ordre a été envoyé.',
     imageSignal: '(signal image)',
     loadingSignal: 'Chargement du signal…',
