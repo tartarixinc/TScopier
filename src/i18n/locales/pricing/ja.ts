@@ -152,23 +152,6 @@ export const pricingJa: PricingBundleTranslations = {
       statusPastDue: '支払い遅延',
       trialEnds: 'トライアル終了',
       choosePlan: '5日間の無料トライアルを始める',
-      copySubscriptionsTitle: 'プロバイダーコピーのサブスクリプション',
-      copySubscriptionsHint:
-        'プロバイダーへの有料サブスクリプションを管理します。コピーを停止しても期間中はいつでも再開できます。',
-      copySubscriptionsEmpty: 'プロバイダーコピーのサブスクリプションはまだありません。',
-      copySubscriptionsRefresh: '更新',
-      copySubscriptionsLoadFailed: 'プロバイダーコピーのサブスクリプションを読み込めませんでした。',
-      copySubscriptionsSignIn: 'コピー請求を管理するには再度サインインしてください。',
-      copySubscriptionsPortalFailed: 'コピー請求ポータルを開けませんでした。',
-      copyManage: '管理',
-      copyStatusActive: '有効',
-      copyStatusPastDue: '支払い遅延',
-      copyStatusCanceled: 'キャンセル済み',
-      copyStatusIncomplete: '未完了',
-      copyCancelsAtPeriodEnd: '期間終了時に解約',
-      copyPeriodEnds: '期間終了日 {date}',
-      copyEntitlementNote:
-        'コピーを停止してもこのサブスクリプションは解約されません。期限まで再度コピーを開始できます。',
     },
     checkoutFailed: 'チェックアウトを開始できませんでした。もう一度お試しください。',
     paywall: {

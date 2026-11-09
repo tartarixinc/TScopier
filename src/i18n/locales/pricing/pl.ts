@@ -152,23 +152,6 @@ export const pricingPl: PricingBundleTranslations = {
       statusPastDue: 'Zaległa',
       trialEnds: 'Koniec okresu próbnego',
       choosePlan: 'Rozpocznij 5-dniowy bezpłatny okres próbny',
-      copySubscriptionsTitle: 'Subskrypcje kopiowania od providerów',
-      copySubscriptionsHint:
-        'Zarządzaj płatnymi subskrypcjami providerów. Możesz znów kopiować w dowolnym momencie, gdy okres jest aktywny, nawet po zatrzymaniu kopiowania.',
-      copySubscriptionsEmpty: 'Brak subskrypcji kopiowania od providerów.',
-      copySubscriptionsRefresh: 'Odśwież',
-      copySubscriptionsLoadFailed: 'Nie udało się wczytać subskrypcji kopiowania.',
-      copySubscriptionsSignIn: 'Zaloguj się ponownie, aby zarządzać rozliczeniami kopiowania.',
-      copySubscriptionsPortalFailed: 'Nie udało się otworzyć portalu rozliczeń kopiowania.',
-      copyManage: 'Zarządzaj',
-      copyStatusActive: 'Aktywna',
-      copyStatusPastDue: 'Zaległa',
-      copyStatusCanceled: 'Anulowana',
-      copyStatusIncomplete: 'Niekompletna',
-      copyCancelsAtPeriodEnd: 'anuluje się na koniec okresu',
-      copyPeriodEnds: 'Okres kończy się {date}',
-      copyEntitlementNote:
-        'Zatrzymanie kopiowania nie anuluje tej subskrypcji. Możesz znów zacząć kopiować do jej wygaśnięcia.',
     },
     checkoutFailed: 'Nie udało się rozpocząć płatności. Spróbuj ponownie.',
     paywall: {

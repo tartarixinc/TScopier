@@ -152,23 +152,6 @@ export const pricingRu: PricingBundleTranslations = {
       statusPastDue: 'Просрочена',
       trialEnds: 'Пробный период закончится',
       choosePlan: 'Начните 5-дневный бесплатный пробный период',
-      copySubscriptionsTitle: 'Подписки на копирование у провайдеров',
-      copySubscriptionsHint:
-        'Управляйте платными подписками на провайдеров. Вы можете снова копировать в любой момент, пока период активен, даже после остановки копирования.',
-      copySubscriptionsEmpty: 'Подписок на копирование у провайдеров пока нет.',
-      copySubscriptionsRefresh: 'Обновить',
-      copySubscriptionsLoadFailed: 'Не удалось загрузить подписки на копирование.',
-      copySubscriptionsSignIn: 'Войдите снова, чтобы управлять оплатой копирования.',
-      copySubscriptionsPortalFailed: 'Не удалось открыть портал оплаты копирования.',
-      copyManage: 'Управлять',
-      copyStatusActive: 'Активна',
-      copyStatusPastDue: 'Просрочена',
-      copyStatusCanceled: 'Отменена',
-      copyStatusIncomplete: 'Незавершена',
-      copyCancelsAtPeriodEnd: 'отменяется в конце периода',
-      copyPeriodEnds: 'Период заканчивается {date}',
-      copyEntitlementNote:
-        'Остановка копирования не отменяет эту подписку. Вы можете снова начать копировать до её окончания.',
     },
     checkoutFailed: 'Не удалось начать оплату. Попробуйте снова.',
     paywall: {
