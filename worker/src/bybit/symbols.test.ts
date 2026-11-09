@@ -102,9 +102,9 @@ test('copierOrderLinkId encodes the signal tail in 36 safe characters and round-
   const id = copierOrderLinkId('TScopier:44sClub:979b6ac0:rg5.tp1', ticket)
   assert.ok(id.length <= 36, id)
   assert.match(id, /^[A-Za-z0-9_-]+$/)
-  assert.equal(id, `TScopier_979b6ac0_rg5-tp1_${ticketToken(ticket)}`)
+  assert.equal(id, `UniCopier_979b6ac0_rg5-tp1_${ticketToken(ticket)}`)
   assert.equal(ticketFromEntryLinkId(id), ticket)
-  assert.equal(commentFromOrderLinkId(id), 'TScopier:979b6ac0:rg5.tp1')
+  assert.equal(commentFromOrderLinkId(id), 'UniCopier:979b6ac0:rg5.tp1')
 })
 
 test('copierOrderLinkId truncates a long tail but keeps the ticket recoverable', () => {
@@ -118,9 +118,9 @@ test('copierOrderLinkId truncates a long tail but keeps the ticket recoverable',
 test('a comment without a signal id still yields a unique valid link id', () => {
   const ticket = 450_000_000_003
   const id = copierOrderLinkId('manual', ticket)
-  assert.equal(id, `TScopier_${ticketToken(ticket)}`)
+  assert.equal(id, `UniCopier_${ticketToken(ticket)}`)
   assert.equal(ticketFromEntryLinkId(id), ticket)
-  assert.equal(commentFromOrderLinkId(id), 'TScopier')
+  assert.equal(commentFromOrderLinkId(id), 'UniCopier')
   assert.equal(copierOrderLinkId(undefined, ticket), id)
 })
 

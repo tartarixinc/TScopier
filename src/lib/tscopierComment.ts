@@ -5,29 +5,30 @@ export interface ParsedTscopierComment {
   signalIdPrefix: string
 }
 
-export const TSCOPIER_COMMENT_PREFIX = 'TScopier:'
-/** Legacy MT comments written before brand casing was standardized. */
+/** Current brand prefix written on new broker orders. */
+export const TSCOPIER_COMMENT_PREFIX = 'UniCopier:'
+/** Prior brand prefixes — still recognized for open / historical trades. */
+export const LEGACY_TSCOPIER_COMMENT_PREFIXES = ['TScopier:', 'TSCopier:'] as const
+/** @deprecated Use LEGACY_TSCOPIER_COMMENT_PREFIXES */
 export const LEGACY_TSCOPIER_COMMENT_PREFIX = 'TSCopier:'
 
 /** Max length of the channel slug segment in MT order comments (matches worker tradeComment). */
 export const CHANNEL_COMMENT_SLUG_MAX = 12
 
+function knownCommentPrefixes(): readonly string[] {
+  return [TSCOPIER_COMMENT_PREFIX, ...LEGACY_TSCOPIER_COMMENT_PREFIXES]
+}
+
 /** True when comment uses the current or legacy UniCopier order prefix. */
 export function isTscopierComment(comment: string | null | undefined): boolean {
   if (!comment?.trim()) return false
   const trimmed = comment.trim()
-  return (
-    trimmed.startsWith(TSCOPIER_COMMENT_PREFIX)
-    || trimmed.startsWith(LEGACY_TSCOPIER_COMMENT_PREFIX)
-  )
+  return knownCommentPrefixes().some(prefix => trimmed.startsWith(prefix))
 }
 
 function stripTscopierCommentPrefix(trimmed: string): string | null {
-  if (trimmed.startsWith(TSCOPIER_COMMENT_PREFIX)) {
-    return trimmed.slice(TSCOPIER_COMMENT_PREFIX.length)
-  }
-  if (trimmed.startsWith(LEGACY_TSCOPIER_COMMENT_PREFIX)) {
-    return trimmed.slice(LEGACY_TSCOPIER_COMMENT_PREFIX.length)
+  for (const prefix of knownCommentPrefixes()) {
+    if (trimmed.startsWith(prefix)) return trimmed.slice(prefix.length)
   }
   return null
 }
@@ -49,7 +50,7 @@ export function signalIdMatchesPrefix(signalId: string, prefix: string): boolean
   return signalId.toLowerCase().startsWith(norm)
 }
 
-/** Parse `TScopier:ChannelSlug:abc12345` or `TScopier:abc12345` from MT order comment. */
+/** Parse `UniCopier:ChannelSlug:abc12345` or `UniCopier:abc12345` from MT order comment. */
 export function parseTscopierComment(comment: string | null | undefined): ParsedTscopierComment | null {
   if (!comment?.trim()) return null
   const trimmed = comment.trim()

@@ -83,7 +83,7 @@ test('comments survive the round trip through an order code', () => {
     now: 1_790_000_000_000,
   })
   const comment = commentFromOrderCode(code)
-  assert.match(comment, /^TScopier:/)
+  assert.match(comment, /^UniCopier:/)
   assert.match(comment, /abcdef12/)
   assert.equal(commentFromOrderCode('manual-order-1'), '')
 })

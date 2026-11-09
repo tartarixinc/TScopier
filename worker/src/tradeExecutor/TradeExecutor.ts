@@ -1982,7 +1982,7 @@ export class TradeExecutor {
 
   /**
    * One-time cleanup of broker-side BuyLimit/SellLimit orders left over from
-   * the pre-virtual-pendings era. Filters by our `TScopier:` comment prefix so
+   * the pre-virtual-pendings era. Filters by our `UniCopier:` comment prefix so
    * we never touch orders placed by the user manually or other systems.
    *
    * Gated by env flag `WORKER_LEGACY_PENDING_CLEANUP=true`. Safe to leave on

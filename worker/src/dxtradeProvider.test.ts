@@ -322,7 +322,7 @@ function makeProvider(fake: FakeDxtrade, overrides: Partial<DxtradeCredential> =
   })
 }
 
-const COMMENT = 'TScopier:gold-room:abcdef12-3456:1'
+const COMMENT = 'UniCopier:gold-room:abcdef12-3456:1'
 
 beforeEach(() => {
   resetDxtradeLoginGateForTests()
@@ -690,7 +690,7 @@ test('opened positions carry lots, protection and the signal comment', async () 
   assert.equal(row.lots, 0.5)
   assert.equal(row.stopLoss, 2400)
   assert.equal(row.takeProfit, 2300)
-  assert.match(row.comment, /^TScopier:/)
+  assert.match(row.comment, /^UniCopier:/)
   assert.equal(row.ticket, 5000)
 })
 

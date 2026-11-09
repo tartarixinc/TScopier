@@ -151,7 +151,7 @@ export function copierClientOrderId(comment: string | undefined, nonce: string):
   const idIndex = parts.findIndex((part, index) => index > 0 && /^[a-f0-9]{8}/i.test(part))
   const tail = idIndex >= 0 ? parts.slice(idIndex).join(':') : ''
   const safe = tail.replace(/[^A-Za-z0-9:._-]/g, '')
-  const head = safe ? `TScopier:${safe}` : 'TScopier'
+  const head = safe ? `UniCopier:${safe}` : 'UniCopier'
   const room = 36 - nonce.length - 1
   return `${head.slice(0, Math.max(9, room))}:${nonce}`
 }
