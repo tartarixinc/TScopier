@@ -60,6 +60,7 @@ export const supportWidgetJa: SupportWidgetTranslations = {
   errorEnterDetails: '続けるには名前とメールを入力してください。',
   errorInvalidImage: 'JPEG、PNG、WebP、または GIF 画像を使用してください。',
   errorImageTooLarge: '画像が大きすぎます。',
+  errorImageLimitReached: '1つのメッセージに添付できる画像は最大3枚です。',
   errorAttachFailed: 'その画像を添付できませんでした。',
   errorLoadMessages: 'メッセージの読み込みに失敗しました',
   errorCreateTicket: 'チケットの作成に失敗しました',

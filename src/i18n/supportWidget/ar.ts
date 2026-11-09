@@ -60,6 +60,7 @@ export const supportWidgetAr: SupportWidgetTranslations = {
   errorEnterDetails: 'أدخل اسمك وبريدك للمتابعة.',
   errorInvalidImage: 'استخدم صورة JPEG أو PNG أو WebP أو GIF.',
   errorImageTooLarge: 'الصورة كبيرة جدًا.',
+  errorImageLimitReached: 'يمكنك إرفاق حتى 3 صور لكل رسالة.',
   errorAttachFailed: 'تعذر إرفاق تلك الصورة.',
   errorLoadMessages: 'فشل تحميل الرسائل',
   errorCreateTicket: 'فشل إنشاء التذكرة',

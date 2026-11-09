@@ -255,7 +255,6 @@ export function SupportWidget({
 }: SupportWidgetProps) {
   const translations = useT()
   const t = translations.supportWidget
-  const imageLimitReached = translations.assistant.imageLimitReached
   const { user, loading: authLoading } = useAuth()
   const { profile } = useUserProfile()
   const [tab, setTab] = useState<Tab>('home')
@@ -675,7 +674,7 @@ export function SupportWidget({
     }
     const room = SUPPORT_MAX_IMAGES - draftImages.length
     if (room <= 0) {
-      setError(imageLimitReached)
+      setError(t.errorImageLimitReached)
       return
     }
     setError('')

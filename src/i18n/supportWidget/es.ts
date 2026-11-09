@@ -60,6 +60,7 @@ export const supportWidgetEs: SupportWidgetTranslations = {
   errorEnterDetails: 'Introduce tu nombre y correo para continuar.',
   errorInvalidImage: 'Usa una imagen JPEG, PNG, WebP o GIF.',
   errorImageTooLarge: 'La imagen es demasiado grande.',
+  errorImageLimitReached: 'Puedes adjuntar hasta 3 imágenes por mensaje.',
   errorAttachFailed: 'No se pudo adjuntar esa imagen.',
   errorLoadMessages: 'No se pudieron cargar los mensajes',
   errorCreateTicket: 'No se pudo crear el ticket',
