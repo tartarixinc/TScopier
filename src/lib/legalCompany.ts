@@ -5,7 +5,7 @@ export const LEGAL_COMPANY = {
   addressLines: ['8 The Green', '#11723', 'Dover, DE 19901', 'United States'],
   phone: '+1 (740) 214-1009',
   emails: {
-    support: 'support@tscopier.ai',
+    support: 'support@unicopier.com',
     legal: 'legal@tscopier.ai',
     disputes: 'disputes@tscopier.ai',
   },

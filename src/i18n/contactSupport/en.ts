@@ -2,7 +2,7 @@ import type { ContactSupportPageTranslations } from './types'
 
 export const contactSupportEn: ContactSupportPageTranslations = {
   channelsTitle: 'How can we help?',
-  channelsSubtitle: 'Reach the UniCopier team by email, browse the docs, or start a live chat.',
+  channelsSubtitle: 'Reach the UniCopier team by email, browse the docs, or open in-app support chat.',
   email: {
     title: 'Email support',
     description: 'Send account, billing, or copier questions — we typically reply within one business day.',
@@ -14,9 +14,9 @@ export const contactSupportEn: ContactSupportPageTranslations = {
     cta: 'Open docs',
   },
   liveChat: {
-    title: 'Live chat',
-    description: 'Chat with us in real time for quick setup help while you are in the dashboard.',
-    cta: 'Start live chat',
+    title: 'Support chat',
+    description: 'Message our AI assistant or request a human agent for quick setup help in the dashboard.',
+    cta: 'Open support chat',
   },
   faq: {
     title: 'Frequently asked questions',

@@ -1,7 +1,7 @@
-import { ChevronDown, BookOpen, Mail, MessageCircle } from 'lucide-react'
+import { ChevronDown, BookOpen, Mail, MessageCircle, Ticket } from 'lucide-react'
 import clsx from 'clsx'
 import { useT } from '../../context/LocaleContext'
-import { useLiveChat } from '../../context/LiveChatContext'
+import { useSupportChat } from '../../context/SupportChatContext'
 import { DOCS_URL, SUPPORT_EMAIL } from '../../lib/supportContacts'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { PageShell } from '../../components/layout/PageShell'
@@ -63,7 +63,7 @@ export function ContactSupportPage() {
   const t = useT()
   const page = t.pages.contactSupport
   const cs = t.contactSupportPage
-  const { openLiveChat } = useLiveChat()
+  const { openSupportWidget, openTicketForm } = useSupportChat()
 
   return (
     <PageShell maxWidth="lg" spacing="loose">
@@ -99,7 +99,7 @@ export function ContactSupportPage() {
             title={cs.liveChat.title}
             description={cs.liveChat.description}
             actionLabel={cs.liveChat.cta}
-            onAction={openLiveChat}
+            onAction={openSupportWidget}
           />
         </div>
       </section>
@@ -134,9 +134,13 @@ export function ContactSupportPage() {
           ))}
         </div>
         <div className="mt-6 flex flex-wrap items-center gap-3">
-          <Button variant="secondary" size="sm" onClick={openLiveChat}>
+          <Button variant="secondary" size="sm" onClick={openSupportWidget}>
             <MessageCircle className="h-4 w-4" />
             {cs.liveChat.cta}
+          </Button>
+          <Button variant="secondary" size="sm" onClick={openTicketForm}>
+            <Ticket className="h-4 w-4" />
+            Create a ticket
           </Button>
           <a
             href={`mailto:${SUPPORT_EMAIL}`}

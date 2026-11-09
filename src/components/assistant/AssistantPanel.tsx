@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { History, ImagePlus, Loader2, Plus, RefreshCw, Send, Sparkles, Trash2, X } from 'lucide-react'
 import { useAssistant } from '../../context/useAssistant'
 import { useAddTradingAccount } from '../../context/AddTradingAccountContext'
-import { useLiveChat } from '../../context/LiveChatContext'
+import { useSupportChat } from '../../context/SupportChatContext'
 import { useUserProfile } from '../../context/UserProfileContext'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
 import { useAuth } from '../../context/AuthContext'
@@ -79,7 +79,7 @@ export function AssistantPanel() {
   const navigate = useNavigate()
   const { session, user } = useAuth()
   const { openAddTradingAccount, requestConfigureBroker } = useAddTradingAccount()
-  const { openLiveChat } = useLiveChat()
+  const { openSupportWidget } = useSupportChat()
   const { refreshProfile } = useUserProfile()
   const { upsertBroker, refreshBrokers } = useBrokerAccounts()
   const {
@@ -239,7 +239,7 @@ export function AssistantPanel() {
       runPendingClientActions(clientActions, {
         navigate,
         openAddTradingAccount,
-        openLiveChat,
+        openLiveChat: openSupportWidget,
         refreshProfile,
         startTelegramLinkFlow,
         startBrokerConnectFlow,
