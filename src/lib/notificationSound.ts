@@ -8,14 +8,16 @@ function getAudioContext(): AudioContext | null {
   return audioContext
 }
 
-/** Short notification chime via Web Audio (no asset file). */
+function resumeContext(ctx: AudioContext): void {
+  if (ctx.state === 'suspended') void ctx.resume()
+}
+
+/** Short trade-notification chime via Web Audio (no asset file). */
 export function playNotificationSound(): void {
   try {
     const ctx = getAudioContext()
     if (!ctx) return
-    if (ctx.state === 'suspended') {
-      void ctx.resume()
-    }
+    resumeContext(ctx)
 
     const now = ctx.currentTime
     const osc = ctx.createOscillator()
@@ -30,6 +32,41 @@ export function playNotificationSound(): void {
     gain.connect(ctx.destination)
     osc.start(now)
     osc.stop(now + 0.24)
+  } catch {
+    // Autoplay or audio API unavailable — ignore
+  }
+}
+
+/**
+ * Soft two-note “message” chime for support chat — distinct from trade alerts.
+ * Ascending triangle tones (C6 → E6), quieter and slightly longer.
+ */
+export function playSupportNotificationSound(): void {
+  try {
+    const ctx = getAudioContext()
+    if (!ctx) return
+    resumeContext(ctx)
+
+    const now = ctx.currentTime
+    const notes = [
+      { freq: 1046.5, start: 0, dur: 0.14 },
+      { freq: 1318.5, start: 0.12, dur: 0.2 },
+    ]
+
+    for (const note of notes) {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'triangle'
+      osc.frequency.setValueAtTime(note.freq, now + note.start)
+      const t0 = now + note.start
+      gain.gain.setValueAtTime(0.0001, t0)
+      gain.gain.exponentialRampToValueAtTime(0.07, t0 + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + note.dur)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(t0)
+      osc.stop(t0 + note.dur + 0.02)
+    }
   } catch {
     // Autoplay or audio API unavailable — ignore
   }
