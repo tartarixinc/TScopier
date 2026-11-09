@@ -30,7 +30,13 @@ export function LoginPage() {
         onSubmit={onSubmit}
         className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-6"
       >
-        <h1 className="text-xl font-semibold">Support inbox sign in</h1>
+        <img
+          src="/uni-support-logo.png"
+          alt="uni Support"
+          className="h-9 w-auto rounded-md"
+          draggable={false}
+        />
+        <h1 className="mt-4 text-xl font-semibold">Sign in</h1>
         <p className="mt-1 text-sm text-neutral-500">Support agents and admins only.</p>
         <div className="mt-4 space-y-3">
           <input

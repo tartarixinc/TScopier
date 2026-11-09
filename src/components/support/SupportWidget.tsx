@@ -17,6 +17,7 @@ import { createSupportTicket } from '../../lib/supportTickets'
 import clsx from 'clsx'
 import { useAuth } from '../../context/AuthContext'
 import { useUserProfile } from '../../context/UserProfileContext'
+import { playSupportNotificationSound } from '../../lib/notificationSound'
 import { supabase } from '../../lib/supabase'
 import { appUrl } from '../../lib/site'
 import { isAssistantImageType } from '../../lib/assistantImages'
@@ -209,9 +210,47 @@ export function SupportWidget({
   const [ticketDescription, setTicketDescription] = useState('')
   const [ticketSubmitting, setTicketSubmitting] = useState(false)
   const [createdTicketNumber, setCreatedTicketNumber] = useState<number | null>(null)
+  const [unreadCount, setUnreadCount] = useState(0)
   const bottomRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const knownMessageIdsRef = useRef<Set<string>>(new Set())
+  const hydratedConversationsRef = useRef<Set<string>>(new Set())
+  const viewStateRef = useRef({ open: false, tab: 'home' as Tab, activeId: null as string | null })
   const open = visibility === 'maximized'
+
+  viewStateRef.current = { open, tab, activeId }
+
+  const markMessagesSeen = useCallback((rows: SupportMessage[]) => {
+    for (const m of rows) knownMessageIdsRef.current.add(m.id)
+  }, [])
+
+  const notifyInboundMessage = useCallback((message: SupportMessage) => {
+    if (!message?.id) return
+    if (message.sender_type !== 'ai' && message.sender_type !== 'agent') return
+    if (knownMessageIdsRef.current.has(message.id)) return
+    knownMessageIdsRef.current.add(message.id)
+
+    const view = viewStateRef.current
+    const viewingThread =
+      view.open && view.tab === 'messages' && view.activeId === message.conversation_id
+    if (viewingThread) return
+
+    setUnreadCount(count => count + 1)
+    playSupportNotificationSound()
+  }, [])
+
+  /** First snapshot for a conversation is silent; later rows notify. */
+  const ingestConversationMessages = useCallback(
+    (rows: SupportMessage[], conversationId: string) => {
+      const hydrated = hydratedConversationsRef.current.has(conversationId)
+      if (hydrated) {
+        for (const row of rows) notifyInboundMessage(row)
+      }
+      markMessagesSeen(rows)
+      hydratedConversationsRef.current.add(conversationId)
+    },
+    [markMessagesSeen, notifyInboundMessage],
+  )
 
   const guestReady = useMemo(() => {
     if (user) return true
@@ -256,6 +295,7 @@ export function SupportWidget({
       try {
         if (user) {
           const rows = await listSupportMessages(conversationId)
+          ingestConversationMessages(rows, conversationId)
           setMessages(rows)
           return
         }
@@ -265,6 +305,7 @@ export function SupportWidget({
           guestToken: token,
           conversationId,
         })
+        ingestConversationMessages(rows, conversation.id)
         setMessages(rows)
         setConversations(prev => {
           const rest = prev.filter(c => c.id !== conversation.id)
@@ -284,7 +325,7 @@ export function SupportWidget({
         setLoadingThread(false)
       }
     },
-    [user, guestSession],
+    [user, guestSession, ingestConversationMessages],
   )
 
   useEffect(() => {
@@ -298,33 +339,42 @@ export function SupportWidget({
   }, [open, activeId, user, guestSession?.token, loadThread])
 
   useEffect(() => {
-    if (user || !open) return
+    if (user) return
     const stored = readSupportGuestSession()
     if (!stored) return
     setGuestSession(stored)
     setGuestName(stored.name)
     setGuestEmail(stored.email)
-    if (stored.conversationId) setActiveId(stored.conversationId)
-  }, [open, user])
+    if (stored.conversationId) setActiveId(prev => prev ?? stored.conversationId)
+  }, [user])
 
+  // Guest poll — keeps running while minimized so new replies can notify
   useEffect(() => {
-    if (!open || user || !guestSession?.token || !activeId) return
-    const token = guestSession.token
-    const conversationId = activeId
+    if (user) return
+    const token = guestSession?.token
+    const conversationId = guestSession?.conversationId ?? activeId
+    if (!token || !conversationId) return
+
     const poll = async () => {
       try {
         const { conversation, messages: rows } = await listGuestSupportMessages({
           guestToken: token,
           conversationId,
         })
-        setMessages(rows)
+        ingestConversationMessages(rows, conversation.id)
+        const view = viewStateRef.current
+        if (view.open && view.activeId === conversation.id) {
+          setMessages(rows)
+        }
         setConversations(prev => {
           const rest = prev.filter(c => c.id !== conversation.id)
           return [conversation, ...rest]
         })
-        if (conversation.id !== guestSession.conversationId) {
+        if (conversation.id !== guestSession?.conversationId) {
           const next: SupportGuestSession = {
-            ...guestSession,
+            name: guestSession!.name,
+            email: guestSession!.email,
+            token,
             conversationId: conversation.id,
           }
           setGuestSession(next)
@@ -334,12 +384,14 @@ export function SupportWidget({
         console.warn('guest support poll failed', err)
       }
     }
+    void poll()
     const id = window.setInterval(() => void poll(), 4000)
     return () => window.clearInterval(id)
-  }, [open, user, guestSession, activeId])
+  }, [user, guestSession, activeId, ingestConversationMessages])
 
+  // Authenticated realtime — listen even when minimized for launcher badge + sound
   useEffect(() => {
-    if (!open || !user) return
+    if (!user) return
     const channel = supabase
       .channel(`support-widget-${user.id}`)
       .on(
@@ -360,7 +412,9 @@ export function SupportWidget({
         payload => {
           const row = payload.new as SupportMessage
           if (!row?.conversation_id) return
-          if (activeId && row.conversation_id === activeId) {
+          notifyInboundMessage(row)
+          const view = viewStateRef.current
+          if (view.open && view.activeId === row.conversation_id) {
             setMessages(prev => (prev.some(m => m.id === row.id) ? prev : [...prev, row]))
           }
           void refreshConversations()
@@ -370,7 +424,7 @@ export function SupportWidget({
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [open, user, activeId, refreshConversations])
+  }, [user, refreshConversations, notifyInboundMessage])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -385,8 +439,16 @@ export function SupportWidget({
     onIntentConsumed?.()
   }, [open, intent, onIntentConsumed, user, guestReady])
 
+  useEffect(() => {
+    if (!open) return
+    setUnreadCount(0)
+  }, [open])
+
   const close = () => onVisibilityChanged?.('minimized')
-  const maximize = () => onVisibilityChanged?.('maximized')
+  const maximize = () => {
+    setUnreadCount(0)
+    onVisibilityChanged?.('maximized')
+  }
 
   const finishGuestDetailsOnHome = () => {
     const name = guestName.trim()
@@ -537,11 +599,12 @@ export function SupportWidget({
           images: uploaded,
         })
         setActiveId(result.conversation_id)
+        const appended = [result.user_message, result.ai_message].filter(Boolean) as SupportMessage[]
+        markMessagesSeen(appended)
         setMessages(prev => {
           const next = [...prev]
-          if (!next.some(m => m.id === result.user_message.id)) next.push(result.user_message)
-          if (result.ai_message && !next.some(m => m.id === result.ai_message!.id)) {
-            next.push(result.ai_message)
+          for (const m of appended) {
+            if (!next.some(x => x.id === m.id)) next.push(m)
           }
           return next
         })
@@ -572,11 +635,12 @@ export function SupportWidget({
         setGuestSession(nextSession)
       }
       setActiveId(result.conversation_id)
+      const appended = [result.user_message, result.ai_message].filter(Boolean) as SupportMessage[]
+      markMessagesSeen(appended)
       setMessages(prev => {
         const next = [...prev]
-        if (!next.some(m => m.id === result.user_message.id)) next.push(result.user_message)
-        if (result.ai_message && !next.some(m => m.id === result.ai_message!.id)) {
-          next.push(result.ai_message)
+        for (const m of appended) {
+          if (!next.some(x => x.id === m.id)) next.push(m)
         }
         return next
       })
@@ -1177,10 +1241,16 @@ export function SupportWidget({
         type="button"
         onClick={() => (open ? close() : maximize())}
         className={clsx(
-          'pointer-events-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-400 text-neutral-950 shadow-lg shadow-green-900/20 transition hover:-translate-y-0.5 hover:bg-green-500',
+          'pointer-events-auto relative flex h-12 w-12 items-center justify-center rounded-full bg-green-400 text-neutral-950 shadow-lg shadow-green-900/20 transition hover:-translate-y-0.5 hover:bg-green-500',
           !open && 'hover:scale-[1.03]',
         )}
-        aria-label={open ? 'Close support chat' : 'Open support chat'}
+        aria-label={
+          open
+            ? 'Close support chat'
+            : unreadCount > 0
+              ? `Open support chat, ${unreadCount} unread`
+              : 'Open support chat'
+        }
       >
         {open ? (
           <X className="h-5 w-5" />
@@ -1194,6 +1264,11 @@ export function SupportWidget({
             draggable={false}
           />
         )}
+        {!open && unreadCount > 0 ? (
+          <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-neutral-900 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white dark:ring-neutral-950">
+            {unreadCount > 9 ? '9+' : unreadCount}
+          </span>
+        ) : null}
       </button>
     </div>
   )
