@@ -94,6 +94,69 @@ function RailLink({
   )
 }
 
+function FilterChip({
+  to,
+  label,
+  count,
+  active,
+}: {
+  to: string
+  label: string
+  count?: number
+  active: boolean
+}) {
+  return (
+    <NavLink
+      to={to}
+      className={clsx(
+        'inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition',
+        active
+          ? 'bg-neutral-900 text-white'
+          : 'bg-white text-neutral-600 ring-1 ring-black/5 hover:bg-neutral-50',
+      )}
+    >
+      {label}
+      {typeof count === 'number' ? (
+        <span className={clsx('tabular-nums', active ? 'text-white/70' : 'text-neutral-400')}>
+          {count}
+        </span>
+      ) : null}
+    </NavLink>
+  )
+}
+
+function MobileTab({
+  to,
+  icon: Icon,
+  label,
+  active,
+  count,
+}: {
+  to: string
+  icon: typeof Inbox
+  label: string
+  active: boolean
+  count?: number
+}) {
+  return (
+    <NavLink
+      to={to}
+      className={clsx(
+        'relative flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-medium transition',
+        active ? 'text-neutral-900' : 'text-neutral-500',
+      )}
+    >
+      <Icon className={clsx('h-5 w-5', active ? 'text-green-600' : 'text-neutral-400')} />
+      <span>{label}</span>
+      {typeof count === 'number' && count > 0 ? (
+        <span className="absolute right-[calc(50%-1.75rem)] top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-green-500 px-1 text-[10px] font-semibold text-neutral-950">
+          {count > 99 ? '99+' : count}
+        </span>
+      ) : null}
+    </NavLink>
+  )
+}
+
 export function AppShell() {
   const { user } = useAuth()
   const location = useLocation()
@@ -161,25 +224,25 @@ export function AppShell() {
 
   return (
     <div className="flex h-dvh min-h-0 flex-col bg-[#F4F5F7] text-neutral-900">
-      <header className="flex shrink-0 items-center gap-3 px-3 py-2.5 sm:px-4">
+      <header className="flex shrink-0 items-center gap-2 px-2 py-2 sm:gap-3 sm:px-4 sm:py-2.5">
         <img
           src="/uni-support-logo.png"
           alt="uni Support"
-          className="hidden h-7 w-auto rounded-md sm:block"
+          className="h-7 w-auto shrink-0 rounded-md"
           draggable={false}
         />
-        <div className="hidden items-center rounded-full bg-white px-3 py-1.5 text-xs font-medium text-neutral-600 shadow-xs ring-1 ring-black/5 sm:inline-flex">
+        <div className="hidden items-center rounded-full bg-white px-3 py-1.5 text-xs font-medium text-neutral-600 shadow-xs ring-1 ring-black/5 md:inline-flex">
           <span className="me-1.5 h-1.5 w-1.5 rounded-full bg-green-400" />
           {servedLabel}
         </div>
-        <form onSubmit={onSearchSubmit} className="mx-auto w-full max-w-xl flex-1">
+        <form onSubmit={onSearchSubmit} className="mx-auto min-w-0 w-full max-w-xl flex-1">
           <label className="relative block">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search chats or go to…"
-              className="w-full rounded-full border-0 bg-white py-2.5 pl-10 pr-16 text-sm text-neutral-900 shadow-xs outline-none ring-1 ring-black/5 placeholder:text-neutral-400 focus:ring-2 focus:ring-green-400/30"
+              placeholder="Search…"
+              className="w-full rounded-full border-0 bg-white py-2 pl-10 pr-3 text-sm text-neutral-900 shadow-xs outline-none ring-1 ring-black/5 placeholder:text-neutral-400 focus:ring-2 focus:ring-green-400/30 sm:py-2.5 sm:pr-16"
             />
             <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-500 sm:inline">
               ⌘K
@@ -189,8 +252,8 @@ export function AppShell() {
         <UserMenu />
       </header>
 
-      <div className="flex min-h-0 flex-1 gap-2 px-2 pb-2 sm:px-3 sm:pb-3">
-        <aside className="flex w-14 shrink-0 flex-col items-center gap-1 rounded-2xl bg-[#ECEEF2] py-3">
+      <div className="flex min-h-0 flex-1 gap-2 px-2 pb-[calc(4.25rem+env(safe-area-inset-bottom))] md:px-3 md:pb-3">
+        <aside className="hidden w-14 shrink-0 flex-col items-center gap-1 rounded-2xl bg-[#ECEEF2] py-3 md:flex">
           <RailLink to="/?filter=queued" icon={Inbox} label="Inbox" active={onChats} />
           <RailLink to="/tickets?filter=open" icon={Ticket} label="Tickets" active={onTickets} />
           <RailLink to="/?filter=all" icon={Users} label="All chats" active={onChats && chatFilter === 'all'} />
@@ -216,7 +279,7 @@ export function AppShell() {
           </div>
         </aside>
 
-        <aside className="hidden w-56 shrink-0 flex-col rounded-2xl bg-[#ECEEF2] px-2.5 py-3 sm:flex">
+        <aside className="hidden w-56 shrink-0 flex-col rounded-2xl bg-[#ECEEF2] px-2.5 py-3 lg:flex">
           <div className="mb-3 flex items-center justify-between px-2">
             <p className="text-sm font-semibold text-neutral-900">Inbox</p>
           </div>
@@ -276,10 +339,79 @@ export function AppShell() {
           </div>
         </aside>
 
-        <main className="min-h-0 min-w-0 flex-1 overflow-hidden rounded-2xl bg-white shadow-xs ring-1 ring-black/5">
-          <Outlet context={{ refreshCounts }} />
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl bg-white shadow-xs ring-1 ring-black/5">
+          <div className="flex shrink-0 gap-2 overflow-x-auto border-b border-neutral-100 px-3 py-2.5 lg:hidden">
+            {onChats ? (
+              <>
+                <FilterChip
+                  to="/?filter=queued"
+                  label="Queued"
+                  count={counts.queued}
+                  active={chatFilter === 'queued'}
+                />
+                <FilterChip
+                  to="/?filter=mine"
+                  label="My chats"
+                  count={counts.mine}
+                  active={chatFilter === 'mine'}
+                />
+                <FilterChip
+                  to="/?filter=all"
+                  label="All"
+                  count={counts.all}
+                  active={chatFilter === 'all'}
+                />
+              </>
+            ) : (
+              <>
+                <FilterChip
+                  to="/tickets?filter=open"
+                  label="Open"
+                  count={counts.ticketsOpen}
+                  active={ticketFilter === 'open'}
+                />
+                <FilterChip
+                  to="/tickets?filter=mine"
+                  label="Mine"
+                  count={counts.ticketsMine}
+                  active={ticketFilter === 'mine'}
+                />
+                <FilterChip
+                  to="/tickets?filter=all"
+                  label="All"
+                  count={counts.ticketsAll}
+                  active={ticketFilter === 'all'}
+                />
+              </>
+            )}
+          </div>
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <Outlet context={{ refreshCounts }} />
+          </div>
         </main>
       </div>
+
+      <nav
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-neutral-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+        aria-label="Primary"
+      >
+        <div className="flex">
+          <MobileTab
+            to="/?filter=queued"
+            icon={Inbox}
+            label="Inbox"
+            active={onChats}
+            count={counts.queued}
+          />
+          <MobileTab
+            to="/tickets?filter=open"
+            icon={Ticket}
+            label="Tickets"
+            active={onTickets}
+            count={counts.ticketsOpen}
+          />
+        </div>
+      </nav>
     </div>
   )
 }
