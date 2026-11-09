@@ -7,8 +7,17 @@ test('every server eligibility reason has actionable, user-safe copy', () => {
     const diagnostic = eligibilityDiagnosticForReason(reason)
     assert.equal(diagnostic.code, reason)
     assert.ok(diagnostic.explanation.length > 20)
-    if (reason === 'eligible') assert.equal(diagnostic.nextAction, null)
-    else assert.ok((diagnostic.nextAction ?? '').length > 20)
+    if (reason === 'eligible' || diagnostic.status === 'passed') {
+      // Passed rows carry nothing to act on: the eligible state itself, and
+      // reasons that were retired or temporarily exempted (they keep their
+      // explanation for older RPC payloads but must not tell the user to do
+      // something). Copy is allowed but not required here.
+      if (reason === 'eligible') assert.equal(diagnostic.nextAction, null)
+      else assert.ok(diagnostic.nextAction == null || diagnostic.nextAction.length > 20)
+    } else {
+      // Anything blocking, pending or warning MUST tell the user what to do.
+      assert.ok((diagnostic.nextAction ?? '').length > 20)
+    }
     assert.doesNotMatch(diagnostic.explanation, /password|token|service.role|stack|exception/i)
   }
 })
