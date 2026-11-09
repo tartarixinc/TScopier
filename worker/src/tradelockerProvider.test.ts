@@ -339,7 +339,7 @@ test('logs in once, sends accNum on trade routes only, and maps array rows by co
   assert.equal(open[0]!.operation, 'Buy')
   assert.equal(open[0]!.lots, 0.5)
   assert.equal(open[0]!.openPrice, 1.09)
-  assert.equal(open[0]!.comment, 'TScopier:3fa85f64abcd')
+  assert.equal(open[0]!.comment, 'UniCopier:3fa85f64abcd')
   assert.equal(fake.calls.find(call => call.path === '/auth/jwt/token')!.headers.accNum, undefined)
   for (const call of fake.calls.filter(item => item.path.startsWith('/trade/'))) assert.equal(call.headers.accNum, '1', call.path)
   await tl.openedOrders('fp-1')
@@ -355,7 +355,7 @@ test('open positions resolve SL and TP from their protection orders and hide the
   const position = open.find(row => row.positionTicket)!
   assert.equal(position.stopLoss, 1.09)
   assert.equal(position.takeProfit, 1.11)
-  assert.equal(position.comment, 'TScopier:3fa85f64abcd')
+  assert.equal(position.comment, 'UniCopier:3fa85f64abcd')
   const pending = open.find(row => row.state === 'Placed')!
   assert.equal(pending.operation, 'BuyLimit')
   assert.equal(pending.openPrice, 1.05)
@@ -689,7 +689,7 @@ test('closed trades come from order history, with a gross profit only when no co
   assert.equal(closed[0]!.openPrice, 1.09)
   assert.equal(closed[0]!.closePrice, 1.085)
   assert.equal(closed[0]!.profit, 50)
-  assert.equal(closed[0]!.comment, 'TScopier:3fa85f64abcd')
+  assert.equal(closed[0]!.comment, 'UniCopier:3fa85f64abcd')
   assert.equal(closed[0]!.stopLoss, 1.1)
   assert.equal(closed[0]!.closeTime, new Date(NOW - 500).toISOString())
 

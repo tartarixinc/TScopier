@@ -19,17 +19,23 @@ describe('signalIdMatchesPrefix', () => {
 
 describe('parseTscopierComment', () => {
   it('extracts signal prefix from slugged comment', () => {
-    const parsed = parseTscopierComment('TScopier:MyChannel:abc12345')
+    const parsed = parseTscopierComment('UniCopier:MyChannel:abc12345')
     assert.deepEqual(parsed, { channelSlug: 'MyChannel', signalIdPrefix: 'abc12345' })
   })
 
   it('extracts signal prefix from bare comment', () => {
-    const parsed = parseTscopierComment('TScopier:abc12345')
+    const parsed = parseTscopierComment('UniCopier:abc12345')
     assert.deepEqual(parsed, { channelSlug: null, signalIdPrefix: 'abc12345' })
   })
 
-  it('parses legacy TSCopier comment prefix', () => {
-    const parsed = parseTscopierComment('TSCopier:MyChannel:abc12345')
-    assert.deepEqual(parsed, { channelSlug: 'MyChannel', signalIdPrefix: 'abc12345' })
+  it('parses legacy TScopier and TSCopier comment prefixes', () => {
+    assert.deepEqual(parseTscopierComment('TScopier:MyChannel:abc12345'), {
+      channelSlug: 'MyChannel',
+      signalIdPrefix: 'abc12345',
+    })
+    assert.deepEqual(parseTscopierComment('TSCopier:MyChannel:abc12345'), {
+      channelSlug: 'MyChannel',
+      signalIdPrefix: 'abc12345',
+    })
   })
 })

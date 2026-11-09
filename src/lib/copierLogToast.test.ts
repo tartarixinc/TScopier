@@ -6,7 +6,9 @@ import {
   copierLogDestinationLabel,
   copierLogSourceIcon,
   copierLogSourceLabel,
+  copierLogToastFingerprint,
   copierLogToastFromSignal,
+  mergeCopierLogToastSeen,
   signalHistoryToastLabels,
 } from './copierLogToast'
 import type { BrokerAccount } from '../types/database'
@@ -65,6 +67,36 @@ test('copier log toast ignores commentary that never appears in the log', () => 
     parsed_data: { action: 'ignore' },
   }, en.copierLogs, labels, route)
   assert.equal(toast, null)
+})
+
+test('mergeCopierLogToastSeen seeds fingerprints so identical status updates are ignored', () => {
+  const seen = new Map<string, string>()
+  mergeCopierLogToastSeen(seen, [{
+    id: 'sig-1',
+    status: 'executed',
+    skip_reason: null,
+  }])
+  assert.equal(seen.get('sig-1'), copierLogToastFingerprint({
+    id: 'sig-1',
+    status: 'executed',
+    skip_reason: null,
+  }))
+  assert.equal(
+    seen.get('sig-1') === copierLogToastFingerprint({
+      id: 'sig-1',
+      status: 'executed',
+      skip_reason: null,
+    }),
+    true,
+  )
+  assert.equal(
+    seen.get('sig-1') === copierLogToastFingerprint({
+      id: 'sig-1',
+      status: 'failed',
+      skip_reason: null,
+    }),
+    false,
+  )
 })
 
 test('copier log route names the channel and the linked broker', () => {

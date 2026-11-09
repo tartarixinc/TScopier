@@ -430,7 +430,7 @@ test('a market buy sizes from margin x leverage in lots, then places reduce-only
   assert.equal(entry!.marginMode, 'ISOLATED')
   assert.equal(entry!.leverage, 10)
   assert.equal(entry!.positionSide, undefined)
-  assert.match(String(entry!.clientOid), /^TScopier_/)
+  assert.match(String(entry!.clientOid), /^UniCopier_/)
 
   const stops = fake.find('POST', '/api/v1/orders').map(c => c.body).filter(body => body.stop !== undefined)
   assert.equal(stops.length, 2)

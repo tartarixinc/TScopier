@@ -133,7 +133,7 @@ function recoveryPrep(args: {
     symbol: args.snapshot.symbol,
     params: { digits: 8, point: 0.00001, stopsLevel: 0, freezeLevel: 0, minLot: 0.01, maxLot: 100, lotStep: 0.01 },
     manual: { range_layering_type: 'pending_order' },
-    commentPrefix: 'TScopier:recovery',
+    commentPrefix: 'UniCopier:recovery',
     legs: [],
   } as unknown as PreparedEntry
 }

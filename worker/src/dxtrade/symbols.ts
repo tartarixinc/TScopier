@@ -82,7 +82,7 @@ function fnv(text: string): number {
   return hash
 }
 
-/** Signal id tail of a copier comment (`TScopier:slug:<signal id>:...`), safe for an order code. */
+/** Signal id tail of a copier comment (`UniCopier:slug:<signal id>:...`), safe for an order code. */
 export function commentTail(comment: string | undefined): string {
   const parts = String(comment ?? '').split(':').map(part => part.trim()).filter(Boolean)
   const idIndex = parts.findIndex((part, index) => index > 0 && /^[a-f0-9]{8}/i.test(part))
@@ -125,7 +125,7 @@ export function isCopierOrderCode(value: unknown): boolean {
   return /^TSC_/.test(String(value ?? ''))
 }
 
-/** Readable `TScopier:<tail>` comment from an entry code. */
+/** Readable `UniCopier:<tail>` comment from an entry code. */
 export function commentFromOrderCode(value: unknown): string {
   const text = String(value ?? '')
   if (!isCopierOrderCode(text)) return ''
@@ -133,7 +133,7 @@ export function commentFromOrderCode(value: unknown): string {
   // Drop `<fingerprint>_<bucket>`.
   const trimmed = body.replace(/_[0-9a-z]{1,8}_[0-9a-z]{1,8}$/, '')
   if (!trimmed || trimmed === body) return ''
-  return `TScopier:${trimmed.replace(/_/g, ':').replace(/-/g, '.')}`
+  return `UniCopier:${trimmed.replace(/_/g, ':').replace(/-/g, '.')}`
 }
 
 /** Position codes equal the opening order id (numeric). Anything else hashes onto a positive 32-bit int. */

@@ -116,11 +116,11 @@ test('sizeBinancePosition rejects missing margin, leverage or price', () => {
   assert.throws(() => sizeBinancePosition({ marginUsdt: 10, leverage: 10, price: 0, rules }), BinanceSizingError)
 })
 
-test('copierClientOrderId stays within 36 characters and keeps the TScopier prefix', () => {
-  const id = copierClientOrderId('TScopier:my-very-long-channel-name-here:abcdef12:tp2:r3', 'k9x2')
+test('copierClientOrderId stays within 36 characters and keeps the UniCopier prefix', () => {
+  const id = copierClientOrderId('UniCopier:my-very-long-channel-name-here:abcdef12:tp2:r3', 'k9x2')
   assert.ok(id.length <= 36, id)
-  assert.ok(id.startsWith('TScopier'))
+  assert.ok(id.startsWith('UniCopier'))
   assert.ok(id.endsWith(':k9x2'))
   assert.match(id, /^[A-Za-z0-9:._-]+$/)
-  assert.equal(copierClientOrderId(undefined, 'k9x2'), 'TScopier:k9x2')
+  assert.equal(copierClientOrderId(undefined, 'k9x2'), 'UniCopier:k9x2')
 })
