@@ -285,7 +285,8 @@ async function agentList(admin: SupabaseClient, body: Record<string, unknown>) {
   if (filter === "open") q = q.in("status", ["open", "pending"]);
   else if (filter === "mine" && agentId) {
     q = q.eq("assignee_id", agentId).in("status", ["open", "pending"]);
-  }
+  } else if (filter === "resolved") q = q.eq("status", "resolved");
+  else if (filter === "closed") q = q.eq("status", "closed");
   const { data, error } = await q;
   if (error) return bad(500, error.message);
   return Response.json({ tickets: data ?? [] }, { headers: corsHeaders });
