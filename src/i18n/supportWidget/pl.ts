@@ -60,6 +60,7 @@ export const supportWidgetPl: SupportWidgetTranslations = {
   errorEnterDetails: 'Podaj imię i e-mail, aby kontynuować.',
   errorInvalidImage: 'Użyj obrazu JPEG, PNG, WebP lub GIF.',
   errorImageTooLarge: 'Obraz jest za duży.',
+  errorImageLimitReached: 'Możesz dołączyć maksymalnie 3 obrazy do wiadomości.',
   errorAttachFailed: 'Nie udało się dołączyć obrazu.',
   errorLoadMessages: 'Nie udało się wczytać wiadomości',
   errorCreateTicket: 'Nie udało się utworzyć zgłoszenia',

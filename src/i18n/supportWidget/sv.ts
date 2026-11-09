@@ -60,6 +60,7 @@ export const supportWidgetSv: SupportWidgetTranslations = {
   errorEnterDetails: 'Ange namn och e-post för att fortsätta.',
   errorInvalidImage: 'Använd en JPEG-, PNG-, WebP- eller GIF-bild.',
   errorImageTooLarge: 'Bilden är för stor.',
+  errorImageLimitReached: 'Du kan bifoga upp till 3 bilder per meddelande.',
   errorAttachFailed: 'Kunde inte bifoga den bilden.',
   errorLoadMessages: 'Kunde inte ladda meddelanden',
   errorCreateTicket: 'Kunde inte skapa ärende',

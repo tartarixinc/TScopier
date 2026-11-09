@@ -58,6 +58,7 @@ export type SupportWidgetTranslations = {
   errorEnterDetails: string
   errorInvalidImage: string
   errorImageTooLarge: string
+  errorImageLimitReached: string
   errorAttachFailed: string
   errorLoadMessages: string
   errorCreateTicket: string

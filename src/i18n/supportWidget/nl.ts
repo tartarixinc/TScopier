@@ -60,6 +60,7 @@ export const supportWidgetNl: SupportWidgetTranslations = {
   errorEnterDetails: 'Vul je naam en e-mail in om door te gaan.',
   errorInvalidImage: 'Gebruik een JPEG-, PNG-, WebP- of GIF-afbeelding.',
   errorImageTooLarge: 'Afbeelding is te groot.',
+  errorImageLimitReached: 'Je kunt maximaal 3 afbeeldingen per bericht toevoegen.',
   errorAttachFailed: 'Kon die afbeelding niet bijvoegen.',
   errorLoadMessages: 'Berichten laden mislukt',
   errorCreateTicket: 'Ticket aanmaken mislukt',

@@ -60,6 +60,7 @@ export const supportWidgetFr: SupportWidgetTranslations = {
   errorEnterDetails: 'Entrez votre nom et e-mail pour continuer.',
   errorInvalidImage: 'Utilisez une image JPEG, PNG, WebP ou GIF.',
   errorImageTooLarge: 'L’image est trop grande.',
+  errorImageLimitReached: 'Vous pouvez joindre jusqu’à 3 images par message.',
   errorAttachFailed: 'Impossible de joindre cette image.',
   errorLoadMessages: 'Échec du chargement des messages',
   errorCreateTicket: 'Échec de la création du ticket',

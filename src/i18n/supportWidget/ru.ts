@@ -60,6 +60,7 @@ export const supportWidgetRu: SupportWidgetTranslations = {
   errorEnterDetails: 'Введите имя и email, чтобы продолжить.',
   errorInvalidImage: 'Используйте изображение JPEG, PNG, WebP или GIF.',
   errorImageTooLarge: 'Изображение слишком большое.',
+  errorImageLimitReached: 'Можно прикрепить не более 3 изображений к сообщению.',
   errorAttachFailed: 'Не удалось прикрепить изображение.',
   errorLoadMessages: 'Не удалось загрузить сообщения',
   errorCreateTicket: 'Не удалось создать тикет',
