@@ -32,15 +32,15 @@ describe('approved Social Trading performance presentation', () => {
     expect(stats.maxOpenTrades).toBe(1)
   })
 
-  it('lists closed-trade months and builds a month grid without shifting into the wrong month', () => {
+  it('lists every month from the first closed trade through the latest', () => {
     const months = socialClosedTradeMonths([
       { closedAt: '2026-09-30T22:00:00Z' },
-      { closedAt: '2026-10-01T01:00:00Z' },
-      { closedAt: '2026-10-15T12:00:00Z' },
+      { closedAt: '2026-11-15T12:00:00Z' },
     ])
     expect(months).toEqual([
       { year: 2026, month: 8 },
       { year: 2026, month: 9 },
+      { year: 2026, month: 10 },
     ])
     const october = socialCalendarDaysForMonth(
       [
