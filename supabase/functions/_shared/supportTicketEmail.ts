@@ -58,6 +58,8 @@ export async function sendTicketAckEmail(opts: {
   subject: string
   requesterName: string
   resendApiKey: string | undefined
+  /** When set, Reply-To uses support+ticket-{id}@ so replies stay on this ticket. */
+  ticketId?: string
 }): Promise<ResendSendResult> {
   const title = `Ticket #${opts.ticketNumber} received`
   const html = layout({
@@ -66,7 +68,7 @@ export async function sendTicketAckEmail(opts: {
       <p>Hi ${escapeHtml(opts.requesterName || "there")},</p>
       <p>We received your support ticket <strong>#${opts.ticketNumber}</strong>.</p>
       <p style="margin:16px 0;padding:12px 14px;background:#f4f4f5;border-radius:8px;"><strong>${escapeHtml(opts.subject)}</strong></p>
-      <p>Our team will follow up by email. You can reply to this thread once an agent responds.</p>
+      <p>Our team will follow up by email. Reply to this message to add more details to your ticket.</p>
       <p style="margin-top:24px;color:#737373;font-size:13px;">— UniCopier Support</p>
     `,
   })
@@ -77,9 +79,9 @@ export async function sendTicketAckEmail(opts: {
     from: supportTicketFrom(),
     resendApiKey: opts.resendApiKey,
     logPrefix: "[support-tickets-ack]",
-    replyTo: supportTicketFrom().includes("<")
-      ? "support@unicopier.com"
-      : supportTicketFrom(),
+    replyTo: opts.ticketId
+      ? supportTicketReplyTo(opts.ticketId)
+      : "support@unicopier.com",
   })
 }
 

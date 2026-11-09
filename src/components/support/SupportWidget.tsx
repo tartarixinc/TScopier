@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  ArrowLeft,
+  CheckCircle2,
+  ChevronRight,
   Headphones,
   Home,
   ImagePlus,
@@ -13,6 +16,7 @@ import {
 import { createSupportTicket } from '../../lib/supportTickets'
 import clsx from 'clsx'
 import { useAuth } from '../../context/AuthContext'
+import { useUserProfile } from '../../context/UserProfileContext'
 import { supabase } from '../../lib/supabase'
 import { appUrl } from '../../lib/site'
 import { isAssistantImageType } from '../../lib/assistantImages'
@@ -38,6 +42,12 @@ export type SupportWidgetVisibility = 'minimized' | 'maximized' | 'hidden'
 
 export type SupportWidgetIntent = 'chat' | 'ticket' | null
 
+/** Team faces shown in the widget header (overlapping stack). */
+export type SupportHeaderAvatar = {
+  name: string
+  src?: string | null
+}
+
 type Tab = 'home' | 'messages'
 
 type HomePane = 'main' | 'ticket' | 'ticket-success'
@@ -47,6 +57,87 @@ type SupportWidgetProps = {
   onVisibilityChanged?: (visibility: SupportWidgetVisibility) => void
   intent?: SupportWidgetIntent
   onIntentConsumed?: () => void
+  /** Optional support-team avatars for the header. Falls back to initials / brand mark. */
+  headerAvatars?: SupportHeaderAvatar[]
+}
+
+const DEFAULT_HEADER_AVATARS: SupportHeaderAvatar[] = [
+  { name: 'Alex' },
+  { name: 'Sam' },
+  { name: 'Jordan' },
+]
+
+function avatarInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length >= 2) return `${parts[0]![0]}${parts[1]![0]}`.toUpperCase()
+  return (parts[0] ?? 'U').slice(0, 2).toUpperCase()
+}
+
+function HeaderAvatarStack({ avatars }: { avatars: SupportHeaderAvatar[] }) {
+  const shown = avatars.slice(0, 4)
+  if (shown.length === 0) {
+    return (
+      <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-white/80 text-green-500 shadow-xs ring-1 ring-black/5 dark:bg-neutral-900 dark:text-teal-300 dark:ring-white/10">
+        <Headphones className="h-4 w-4" aria-hidden />
+      </span>
+    )
+  }
+  return (
+    <div className="flex items-center ps-0.5" aria-hidden>
+      {shown.map((avatar, index) => (
+        <span
+          key={`${avatar.name}-${index}`}
+          className={clsx(
+            'flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-green-400/90 text-[10px] font-semibold text-neutral-950 ring-2 ring-white dark:ring-neutral-950',
+            index > 0 && '-ms-2.5',
+          )}
+          style={{ zIndex: shown.length - index }}
+          title={avatar.name}
+        >
+          {avatar.src ? (
+            <img
+              src={avatar.src}
+              alt=""
+              className="h-full w-full object-cover"
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            avatarInitials(avatar.name)
+          )}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function statusLabel(status: string): string {
+  switch (status) {
+    case 'ai':
+      return 'AI'
+    case 'queued':
+      return 'Waiting'
+    case 'active':
+      return 'Live'
+    case 'resolved':
+      return 'Resolved'
+    default:
+      return status
+  }
+}
+
+function StatusDot({ status }: { status: string }) {
+  const live = status === 'active' || status === 'ai' || status === 'queued'
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-neutral-500 dark:text-neutral-400">
+      <span
+        className={clsx(
+          'h-1.5 w-1.5 rounded-full',
+          live ? 'bg-green-400' : 'bg-neutral-300 dark:bg-neutral-600',
+        )}
+      />
+      {statusLabel(status)}
+    </span>
+  )
 }
 
 function formatTime(iso: string): string {
@@ -96,8 +187,10 @@ export function SupportWidget({
   onVisibilityChanged,
   intent = null,
   onIntentConsumed,
+  headerAvatars = DEFAULT_HEADER_AVATARS,
 }: SupportWidgetProps) {
   const { user, loading: authLoading } = useAuth()
+  const { profile } = useUserProfile()
   const [tab, setTab] = useState<Tab>('home')
   const [conversations, setConversations] = useState<SupportConversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -533,55 +626,79 @@ export function SupportWidget({
   }
 
   const loginHref = appUrl(loginUrlForSupportReturn())
+  // Authenticated: first name only. Guests / signed-out: "Hi there".
+  const greetingName = user ? profile.first_name?.trim() || null : null
 
   if (visibility === 'hidden') return null
+
+  const fieldClass =
+    'mt-1.5 w-full rounded-xl border-0 bg-neutral-100/80 px-3.5 py-2.5 text-sm text-neutral-900 outline-none transition placeholder:text-neutral-400 focus:bg-white focus:ring-2 focus:ring-green-400/30 dark:bg-neutral-900 dark:text-neutral-50 dark:placeholder:text-neutral-500 dark:focus:bg-neutral-900 dark:focus:ring-teal-400/25'
+  const primaryBtnClass =
+    'flex w-full items-center justify-center gap-2 rounded-full bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-45 dark:bg-green-400 dark:text-neutral-950 dark:hover:bg-green-500'
+  const rowClass =
+    'group flex w-full items-center gap-3 px-3.5 py-3 text-left transition hover:bg-neutral-50 dark:hover:bg-white/[0.03]'
 
   return (
     <div className="pointer-events-none fixed bottom-5 right-5 z-[60] flex flex-col items-end gap-3">
       {open ? (
         <div
-          className="pointer-events-auto flex h-[min(560px,calc(100dvh-6.5rem))] w-[min(380px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-2xl shadow-neutral-900/15"
+          className="pointer-events-auto flex h-[min(580px,calc(100dvh-6.5rem))] w-[min(372px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-[1.35rem] border border-black/5 bg-white shadow-[0_20px_50px_-24px_rgba(15,23,42,0.45)] dark:border-white/10 dark:bg-neutral-950 dark:shadow-black/50"
           role="dialog"
           aria-label="Support chat"
         >
-          <header className="flex items-center justify-between bg-gradient-to-br from-emerald-600 to-green-500 px-4 py-3 text-white">
-            <div className="flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15">
-                <Headphones className="h-4 w-4" aria-hidden />
-              </span>
-              <div>
-                <p className="text-sm font-semibold leading-tight">UniCopier Support</p>
-                <p className="text-[11px] text-white/80">We typically reply in minutes</p>
+          <header className="relative overflow-hidden px-4 pb-3.5 pt-3.5">
+            <div
+              className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_0%_0%,rgba(74,222,128,0.16),transparent_55%),linear-gradient(180deg,#f8faf9_0%,#ffffff_100%)] dark:bg-[radial-gradient(120%_80%_at_0%_0%,rgba(45,212,191,0.12),transparent_55%),linear-gradient(180deg,#171717_0%,#0a0a0a_100%)]"
+              aria-hidden
+            />
+            <div className="relative flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <HeaderAvatarStack avatars={headerAvatars} />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
+                    UniCopier Support
+                  </p>
+                  <p className="mt-0.5 flex items-center gap-1.5 truncate text-[11px] text-neutral-500 dark:text-neutral-400">
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-60" />
+                      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-400" />
+                    </span>
+                    Usually replies in a few minutes
+                  </p>
+                </div>
               </div>
+              <button
+                type="button"
+                onClick={close}
+                className="rounded-full p-1.5 text-neutral-400 transition hover:bg-black/5 hover:text-neutral-700 dark:hover:bg-white/10 dark:hover:text-neutral-100"
+                aria-label="Close support"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={close}
-              className="rounded-lg p-1.5 text-white/90 hover:bg-white/15"
-              aria-label="Close support"
-            >
-              <X className="h-4 w-4" />
-            </button>
           </header>
 
-          <div className="min-h-0 flex-1 overflow-y-auto bg-neutral-50">
+          <div className="min-h-0 flex-1 overflow-y-auto">
             {tab === 'home' ? (
-              <div className="space-y-4 p-4">
+              <div className="space-y-5 px-4 pb-4 pt-1">
                 <div>
-                  <p className="text-2xl font-semibold text-neutral-900">Hi there</p>
-                  <p className="mt-1 text-sm text-neutral-600">
-                    Ask our AI anything about UniCopier — or request a human when you need one.
+                  <p className="text-[1.65rem] font-semibold leading-tight tracking-tight text-neutral-900 dark:text-neutral-50">
+                    {greetingName ? `Hi ${greetingName} 👋` : 'Hi there 👋'}
+                  </p>
+                  <p className="mt-1.5 text-sm leading-relaxed text-neutral-500 dark:text-neutral-400">
+                    How can we help you today?
                   </p>
                 </div>
 
                 {authLoading ? (
                   <p className="text-sm text-neutral-500">Checking sign-in…</p>
                 ) : homePane === 'ticket-success' ? (
-                  <div className="rounded-xl border border-green-200 bg-teal-50 p-4">
-                    <p className="text-sm font-semibold text-neutral-900">
+                  <div className="rounded-2xl bg-teal-50/80 px-4 py-5 text-center dark:bg-teal-950/30">
+                    <CheckCircle2 className="mx-auto h-8 w-8 text-green-500 dark:text-teal-300" />
+                    <p className="mt-3 text-sm font-semibold text-neutral-900 dark:text-neutral-50">
                       Ticket #{createdTicketNumber} created
                     </p>
-                    <p className="mt-1 text-sm text-neutral-600">
+                    <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
                       We emailed a confirmation to your inbox.
                     </p>
                     <button
@@ -590,38 +707,58 @@ export function SupportWidget({
                         setHomePane('main')
                         setCreatedTicketNumber(null)
                       }}
-                      className="mt-4 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-50"
+                      className="mt-4 text-sm font-medium text-green-600 hover:underline dark:text-teal-300"
                     >
                       Back to home
                     </button>
                   </div>
                 ) : homePane === 'ticket' ? (
                   <form
-                    className="space-y-3 rounded-xl border border-neutral-200 bg-white p-4"
+                    className="space-y-3"
                     onSubmit={e => {
                       e.preventDefault()
                       void submitTicket()
                     }}
                   >
-                    <p className="text-sm font-medium text-neutral-900">Create a support ticket</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHomePane('main')
+                        setError('')
+                      }}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-neutral-500 transition hover:text-neutral-800 dark:hover:text-neutral-200"
+                    >
+                      <ArrowLeft className="h-3.5 w-3.5" />
+                      Back
+                    </button>
+                    <p className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
+                      Create a ticket
+                    </p>
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                      We’ll follow up by email.
+                    </p>
                     <label className="block">
-                      <span className="text-xs font-medium text-neutral-600">Subject</span>
+                      <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
+                        Subject
+                      </span>
                       <input
                         type="text"
                         value={ticketSubject}
                         onChange={e => setTicketSubject(e.target.value)}
                         maxLength={200}
-                        className="mt-1 w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-green-400 focus:ring-2 focus:ring-green-400/20"
+                        className={fieldClass}
                         placeholder="Brief summary"
                       />
                     </label>
                     <label className="block">
-                      <span className="text-xs font-medium text-neutral-600">Description</span>
+                      <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
+                        Description
+                      </span>
                       <textarea
                         value={ticketDescription}
                         onChange={e => setTicketDescription(e.target.value)}
                         rows={4}
-                        className="mt-1 w-full resize-none rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-green-400 focus:ring-2 focus:ring-green-400/20"
+                        className={`${fieldClass} resize-none`}
                         placeholder="What can we help with?"
                       />
                     </label>
@@ -633,101 +770,85 @@ export function SupportWidget({
                       disabled={
                         ticketSubmitting || !ticketSubject.trim() || !ticketDescription.trim()
                       }
-                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-green-500 px-3 py-2 text-sm font-medium text-neutral-950 hover:bg-green-400 disabled:opacity-50"
+                      className={primaryBtnClass}
                     >
                       {ticketSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                       Submit ticket
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setHomePane('main')
-                        setError('')
-                      }}
-                      className="w-full text-center text-xs font-medium text-neutral-500 hover:text-neutral-800"
-                    >
-                      Cancel
-                    </button>
                   </form>
                 ) : guestReady ? (
-                  <div className="space-y-3">
-                    <button
-                      type="button"
-                      onClick={startMessage}
-                      className="flex w-full items-center gap-3 rounded-xl border border-neutral-200 bg-white p-4 text-left shadow-sm transition hover:border-green-400/60 hover:shadow-md"
-                    >
-                      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-teal-50 text-green-600">
-                        <Send className="h-4 w-4" aria-hidden />
+                  <div className="overflow-hidden rounded-2xl bg-neutral-50/90 dark:bg-white/[0.03]">
+                    <button type="button" onClick={startMessage} className={rowClass}>
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-green-500 shadow-xs ring-1 ring-black/5 dark:bg-neutral-900 dark:text-teal-300 dark:ring-white/10">
+                        <MessageCircle className="h-4 w-4" aria-hidden />
                       </span>
-                      <span>
-                        <span className="block text-sm font-semibold text-neutral-900">
-                          Send us a message
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                          Chat with us
                         </span>
-                        <span className="block text-xs text-neutral-500">
-                          AI answers instantly · humans on request
+                        <span className="block text-xs text-neutral-500 dark:text-neutral-400">
+                          AI and Team can help
                         </span>
                       </span>
+                      <ChevronRight className="h-4 w-4 text-neutral-300 transition group-hover:text-neutral-500 dark:text-neutral-600" />
                     </button>
-                    <button
-                      type="button"
-                      onClick={openTicketPane}
-                      className="flex w-full items-center gap-3 rounded-xl border border-neutral-200 bg-white p-4 text-left shadow-sm transition hover:border-green-400/60 hover:shadow-md"
-                    >
-                      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-teal-50 text-green-600">
+                    <div className="mx-3.5 h-px bg-neutral-200/70 dark:bg-white/5" />
+                    <button type="button" onClick={openTicketPane} className={rowClass}>
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-green-500 shadow-xs ring-1 ring-black/5 dark:bg-neutral-900 dark:text-teal-300 dark:ring-white/10">
                         <Ticket className="h-4 w-4" aria-hidden />
                       </span>
-                      <span>
-                        <span className="block text-sm font-semibold text-neutral-900">
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium text-neutral-900 dark:text-neutral-50">
                           Create a ticket
                         </span>
-                        <span className="block text-xs text-neutral-500">
-                          Email follow-up · tracked request
-                        </span>
                       </span>
+                      <ChevronRight className="h-4 w-4 text-neutral-300 transition group-hover:text-neutral-500 dark:text-neutral-600" />
                     </button>
                   </div>
                 ) : (
                   <form
-                    className="rounded-xl border border-neutral-200 bg-white p-4 space-y-3"
+                    className="space-y-3"
                     onSubmit={e => {
                       e.preventDefault()
                       finishGuestDetailsOnHome()
                     }}
                   >
-                    <p className="text-sm text-neutral-700">Enter your details to start chatting.</p>
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                      Share your name and email to get started.
+                    </p>
                     <label className="block">
-                      <span className="text-xs font-medium text-neutral-600">Name</span>
+                      <span className="text-xs font-medium text-neutral-500">Name</span>
                       <input
                         type="text"
                         value={guestName}
                         onChange={e => setGuestName(e.target.value)}
                         autoComplete="name"
-                        className="mt-1 w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-green-400 focus:ring-2 focus:ring-green-400/20"
+                        className={fieldClass}
                         placeholder="Your name"
                       />
                     </label>
                     <label className="block">
-                      <span className="text-xs font-medium text-neutral-600">Email</span>
+                      <span className="text-xs font-medium text-neutral-500">Email</span>
                       <input
                         type="email"
                         value={guestEmail}
                         onChange={e => setGuestEmail(e.target.value)}
                         autoComplete="email"
-                        className="mt-1 w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-green-400 focus:ring-2 focus:ring-green-400/20"
+                        className={fieldClass}
                         placeholder="you@example.com"
                       />
                     </label>
                     {error && tab === 'home' ? (
                       <p className="text-xs text-red-500">{error}</p>
                     ) : null}
-                    <button
-                      type="submit"
-                      className="w-full rounded-lg bg-green-500 px-3 py-2 text-sm font-medium text-neutral-950 hover:bg-green-400"
-                    >
+                    <button type="submit" className={primaryBtnClass}>
                       Continue
                     </button>
                     <p className="text-center text-xs text-neutral-500">
-                      <a href={loginHref} className="font-medium text-green-600 hover:underline">
+                      <a
+                        href={loginHref}
+                        className="font-medium text-neutral-700 underline-offset-2 hover:underline dark:text-neutral-300"
+                      >
                         Prefer to sign in?
                       </a>
                     </p>
@@ -736,28 +857,30 @@ export function SupportWidget({
 
                 {guestReady && conversations.length > 0 ? (
                   <div>
-                    <p className="mb-2 text-xs font-medium uppercase tracking-wide text-neutral-500">
-                      Recent
-                    </p>
-                    <ul className="space-y-2">
-                      {conversations.slice(0, 3).map(c => (
+                    <p className="mb-1.5 px-0.5 text-xs font-medium text-neutral-400">Recent</p>
+                    <ul className="overflow-hidden rounded-2xl bg-neutral-50/90 dark:bg-white/[0.03]">
+                      {conversations.slice(0, 3).map((c, index) => (
                         <li key={c.id}>
+                          {index > 0 ? (
+                            <div className="mx-3.5 h-px bg-neutral-200/70 dark:bg-white/5" />
+                          ) : null}
                           <button
                             type="button"
                             onClick={() => openConversation(c.id)}
-                            className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-left hover:border-green-400/50"
+                            className={rowClass}
                           >
-                            <span className="flex items-center justify-between gap-2">
-                              <span className="text-sm font-medium text-neutral-900">
-                                {c.subject?.trim() || 'Support chat'}
+                            <span className="min-w-0 flex-1">
+                              <span className="flex items-center justify-between gap-2">
+                                <span className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                                  {c.subject?.trim() || 'Support chat'}
+                                </span>
+                                <StatusDot status={c.status} />
                               </span>
-                              <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-medium uppercase text-neutral-600">
-                                {c.status}
+                              <span className="mt-0.5 block truncate text-xs text-neutral-400">
+                                {formatTime(c.last_message_at)}
                               </span>
                             </span>
-                            <span className="mt-0.5 block truncate text-xs text-neutral-500">
-                              {formatTime(c.last_message_at)}
-                            </span>
+                            <ChevronRight className="h-4 w-4 shrink-0 text-neutral-300 group-hover:text-neutral-500 dark:text-neutral-600" />
                           </button>
                         </li>
                       ))}
@@ -769,19 +892,21 @@ export function SupportWidget({
               <div className="flex h-full min-h-0 flex-col">
                 {!guestReady ? (
                   <form
-                    className="space-y-3 p-4"
+                    className="space-y-3 px-4 py-4"
                     onSubmit={e => {
                       e.preventDefault()
                       continueAsGuest()
                     }}
                   >
-                    <p className="text-sm text-neutral-600">Enter your name and email to chat.</p>
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                      Enter your name and email to chat.
+                    </p>
                     <input
                       type="text"
                       value={guestName}
                       onChange={e => setGuestName(e.target.value)}
                       autoComplete="name"
-                      className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-green-400"
+                      className={fieldClass}
                       placeholder="Name"
                     />
                     <input
@@ -789,62 +914,65 @@ export function SupportWidget({
                       value={guestEmail}
                       onChange={e => setGuestEmail(e.target.value)}
                       autoComplete="email"
-                      className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-green-400"
+                      className={fieldClass}
                       placeholder="Email"
                     />
                     {error ? <p className="text-xs text-red-500">{error}</p> : null}
-                    <button
-                      type="submit"
-                      className="w-full rounded-lg bg-green-500 px-3 py-2 text-sm font-medium text-neutral-950"
-                    >
+                    <button type="submit" className={primaryBtnClass}>
                       Continue
                     </button>
                   </form>
                 ) : (
                   <>
                     {!activeId && user && openConversations.length > 0 ? (
-                      <ul className="space-y-2 p-3">
+                      <ul className="space-y-0 px-3 py-2">
                         {conversations.map(c => (
                           <li key={c.id}>
                             <button
                               type="button"
                               onClick={() => openConversation(c.id)}
-                              className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-left"
+                              className="group flex w-full items-center gap-2 rounded-xl px-3 py-3 text-left transition hover:bg-neutral-50 dark:hover:bg-white/[0.03]"
                             >
-                              <span className="flex justify-between gap-2 text-sm font-medium text-neutral-900">
-                                {c.subject?.trim() || 'Support chat'}
-                                <span className="text-[10px] uppercase text-neutral-500">{c.status}</span>
+                              <span className="min-w-0 flex-1">
+                                <span className="flex items-center justify-between gap-2 text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                                  <span className="truncate">
+                                    {c.subject?.trim() || 'Support chat'}
+                                  </span>
+                                  <StatusDot status={c.status} />
+                                </span>
+                                <span className="mt-0.5 block truncate text-xs text-neutral-400">
+                                  {previewBody(messages, c.id) || formatTime(c.last_message_at)}
+                                </span>
                               </span>
-                              <span className="mt-0.5 block truncate text-xs text-neutral-500">
-                                {previewBody(messages, c.id) || formatTime(c.last_message_at)}
-                              </span>
+                              <ChevronRight className="h-4 w-4 text-neutral-300 dark:text-neutral-600" />
                             </button>
                           </li>
                         ))}
-                        <li>
+                        <li className="px-1 pt-1">
                           <button
                             type="button"
                             onClick={() => {
                               setActiveId(null)
                               setMessages([])
                             }}
-                            className="w-full rounded-xl border border-dashed border-neutral-300 bg-white px-3 py-2.5 text-sm font-medium text-green-600"
+                            className="w-full rounded-full py-2.5 text-sm font-medium text-green-600 transition hover:bg-teal-50 dark:text-teal-300 dark:hover:bg-teal-950/40"
                           >
-                            New conversation
+                            Start a new conversation
                           </button>
                         </li>
                       </ul>
                     ) : (
                       <>
-                        <div className="flex items-center justify-between border-b border-neutral-200 bg-white px-3 py-2">
+                        <div className="flex items-center justify-between gap-2 px-3 py-2">
                           <button
                             type="button"
                             onClick={() => {
                               setActiveId(null)
                               void refreshConversations()
                             }}
-                            className="text-xs font-medium text-neutral-500 hover:text-neutral-800"
+                            className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-800 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
                           >
+                            <ArrowLeft className="h-3.5 w-3.5" />
                             All messages
                           </button>
                           {activeConversation && activeConversation.status === 'ai' ? (
@@ -852,33 +980,38 @@ export function SupportWidget({
                               type="button"
                               disabled={sending}
                               onClick={() => void onEscalate()}
-                              className="inline-flex items-center gap-1 rounded-full bg-teal-50 px-2.5 py-1 text-xs font-medium text-green-700 hover:bg-teal-100 disabled:opacity-50"
+                              className="inline-flex items-center gap-1 rounded-full bg-neutral-100 px-2.5 py-1 text-xs font-medium text-neutral-700 transition hover:bg-neutral-200 disabled:opacity-50 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
                             >
                               <UserRound className="h-3 w-3" aria-hidden />
                               Request human
                             </button>
                           ) : null}
                           {activeConversation?.status === 'queued' ? (
-                            <span className="text-xs font-medium text-amber-600">Waiting for agent…</span>
+                            <span className="text-xs font-medium text-amber-600">
+                              Waiting for agent…
+                            </span>
                           ) : null}
                           {activeConversation?.status === 'active' ? (
-                            <span className="text-xs font-medium text-green-600">Agent connected</span>
+                            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-green-600 dark:text-teal-300">
+                              <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+                              Agent connected
+                            </span>
                           ) : null}
                         </div>
-                        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-3">
+                        <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-3 py-2">
                           {loadingThread ? (
-                            <p className="text-center text-xs text-neutral-500">Loading…</p>
+                            <p className="text-center text-xs text-neutral-400">Loading…</p>
                           ) : null}
                           {messages.map(m => (
                             <div
                               key={m.id}
                               className={clsx(
-                                'max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-relaxed',
+                                'max-w-[88%] px-3.5 py-2 text-sm leading-relaxed',
                                 m.sender_type === 'user'
-                                  ? 'ml-auto bg-green-500 text-neutral-950'
+                                  ? 'ml-auto rounded-2xl rounded-br-md bg-neutral-900 text-white dark:bg-green-400 dark:text-neutral-950'
                                   : m.sender_type === 'system'
-                                    ? 'mx-auto max-w-[95%] bg-transparent text-center text-xs text-neutral-500'
-                                    : 'bg-white text-neutral-800 shadow-sm ring-1 ring-neutral-200',
+                                    ? 'mx-auto max-w-[95%] bg-transparent text-center text-xs text-neutral-400'
+                                    : 'rounded-2xl rounded-bl-md bg-neutral-100 text-neutral-800 dark:bg-neutral-900 dark:text-neutral-100',
                               )}
                             >
                               {m.body &&
@@ -890,7 +1023,9 @@ export function SupportWidget({
                                 <span
                                   className={clsx(
                                     'mt-1 block text-[10px]',
-                                    m.sender_type === 'user' ? 'text-neutral-800/70' : 'text-neutral-400',
+                                    m.sender_type === 'user'
+                                      ? 'text-white/55 dark:text-neutral-800/65'
+                                      : 'text-neutral-400',
                                   )}
                                 >
                                   {formatTime(m.created_at)}
@@ -909,10 +1044,12 @@ export function SupportWidget({
           </div>
 
           {showComposer ? (
-            <div className="border-t border-neutral-200 bg-white p-3">
-              {error ? <p className="mb-2 text-xs text-red-500">{error}</p> : null}
+            <div className="px-3 pb-2 pt-1">
+              {error ? <p className="mb-2 px-1 text-xs text-red-500">{error}</p> : null}
               {activeConversation?.status === 'resolved' ? (
-                <p className="text-xs text-neutral-500">This conversation is resolved. Start a new one from Home.</p>
+                <p className="rounded-2xl bg-neutral-50 px-3 py-3 text-xs text-neutral-500 dark:bg-white/[0.03]">
+                  This conversation is resolved. Start a new one from Home.
+                </p>
               ) : (
                 <form
                   className="space-y-2"
@@ -922,13 +1059,13 @@ export function SupportWidget({
                   }}
                 >
                   {draftImages.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2 px-1">
                       {draftImages.map((src, idx) => (
                         <div key={`${idx}-${src.slice(-12)}`} className="relative h-14 w-14 shrink-0">
                           <img
                             src={src}
                             alt=""
-                            className="h-14 w-14 rounded-lg object-cover ring-1 ring-neutral-200"
+                            className="h-14 w-14 rounded-xl object-cover"
                           />
                           <button
                             type="button"
@@ -943,7 +1080,7 @@ export function SupportWidget({
                       ))}
                     </div>
                   ) : null}
-                  <div className="flex items-end gap-2">
+                  <div className="flex items-end gap-1.5 rounded-2xl bg-neutral-100/90 p-1.5 dark:bg-neutral-900">
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -958,7 +1095,7 @@ export function SupportWidget({
                     />
                     <button
                       type="button"
-                      className="mb-0.5 rounded-lg p-2 text-neutral-600 hover:bg-neutral-100 disabled:opacity-50"
+                      className="mb-0.5 rounded-full p-2 text-neutral-400 transition hover:bg-white hover:text-neutral-700 disabled:opacity-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
                       aria-label="Attach image"
                       disabled={sending || attaching || draftImages.length >= SUPPORT_MAX_IMAGES}
                       onClick={() => fileInputRef.current?.click()}
@@ -974,7 +1111,7 @@ export function SupportWidget({
                       onChange={e => setDraft(e.target.value)}
                       rows={1}
                       placeholder="Write a message…"
-                      className="max-h-28 min-h-[40px] flex-1 resize-none rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-900 outline-none focus:border-green-400 focus:ring-2 focus:ring-green-400/20"
+                      className="max-h-28 min-h-[40px] flex-1 resize-none bg-transparent px-1 py-2 text-sm text-neutral-900 outline-none placeholder:text-neutral-400 dark:text-neutral-50"
                       onPaste={e => {
                         const files = Array.from(e.clipboardData?.files ?? []).filter(f =>
                           f.type.startsWith('image/'),
@@ -994,10 +1131,10 @@ export function SupportWidget({
                     <button
                       type="submit"
                       disabled={sending || attaching || (!draft.trim() && draftImages.length === 0)}
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-green-500 text-neutral-950 disabled:opacity-40"
+                      className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-white transition hover:bg-neutral-800 disabled:opacity-35 dark:bg-green-400 dark:text-neutral-950 dark:hover:bg-green-500"
                       aria-label="Send"
                     >
-                      <Send className="h-4 w-4" />
+                      <Send className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 </form>
@@ -1005,27 +1142,31 @@ export function SupportWidget({
             </div>
           ) : null}
 
-          <nav className="flex border-t border-neutral-200 bg-white">
+          <nav className="flex gap-1 px-3 pb-3 pt-1">
             <button
               type="button"
               onClick={() => setTab('home')}
               className={clsx(
-                'flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[11px] font-medium',
-                tab === 'home' ? 'text-green-600' : 'text-neutral-500',
+                'flex flex-1 items-center justify-center gap-1.5 rounded-full py-2 text-[12px] font-medium transition',
+                tab === 'home'
+                  ? 'bg-neutral-900 text-white dark:bg-green-400 dark:text-neutral-950'
+                  : 'text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800 dark:hover:bg-neutral-900 dark:hover:text-neutral-200',
               )}
             >
-              <Home className="h-4 w-4" />
+              <Home className="h-3.5 w-3.5" />
               Home
             </button>
             <button
               type="button"
               onClick={() => setTab('messages')}
               className={clsx(
-                'flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[11px] font-medium',
-                tab === 'messages' ? 'text-green-600' : 'text-neutral-500',
+                'flex flex-1 items-center justify-center gap-1.5 rounded-full py-2 text-[12px] font-medium transition',
+                tab === 'messages'
+                  ? 'bg-neutral-900 text-white dark:bg-green-400 dark:text-neutral-950'
+                  : 'text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800 dark:hover:bg-neutral-900 dark:hover:text-neutral-200',
               )}
             >
-              <MessageCircle className="h-4 w-4" />
+              <MessageCircle className="h-3.5 w-3.5" />
               Messages
             </button>
           </nav>
@@ -1036,13 +1177,13 @@ export function SupportWidget({
         type="button"
         onClick={() => (open ? close() : maximize())}
         className={clsx(
-          'pointer-events-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-500 shadow-lg shadow-green-900/20 transition hover:bg-green-400',
-          !open && 'hover:scale-105',
+          'pointer-events-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-400 text-neutral-950 shadow-lg shadow-green-900/20 transition hover:-translate-y-0.5 hover:bg-green-500',
+          !open && 'hover:scale-[1.03]',
         )}
         aria-label={open ? 'Close support chat' : 'Open support chat'}
       >
         {open ? (
-          <X className="h-5 w-5 text-neutral-950" />
+          <X className="h-5 w-5" />
         ) : (
           <img
             src="/support-icon.png"

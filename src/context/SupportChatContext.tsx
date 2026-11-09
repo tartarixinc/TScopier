@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useState, type ReactNode } from 'react'
 import {
   SupportWidget,
+  type SupportHeaderAvatar,
   type SupportWidgetIntent,
   type SupportWidgetVisibility,
 } from '../components/support/SupportWidget'
@@ -15,7 +16,14 @@ type SupportChatContextValue = {
 
 const SupportChatContext = createContext<SupportChatContextValue | null>(null)
 
-export function SupportChatProvider({ children }: { children: ReactNode }) {
+export function SupportChatProvider({
+  children,
+  headerAvatars,
+}: {
+  children: ReactNode
+  /** Optional team photos for the support widget header. */
+  headerAvatars?: SupportHeaderAvatar[]
+}) {
   const [visibility, setVisibility] = useState<SupportWidgetVisibility>('minimized')
   const [intent, setIntent] = useState<SupportWidgetIntent>(null)
 
@@ -46,6 +54,7 @@ export function SupportChatProvider({ children }: { children: ReactNode }) {
         onVisibilityChanged={setVisibility}
         intent={intent}
         onIntentConsumed={onIntentConsumed}
+        headerAvatars={headerAvatars}
       />
       {children}
     </SupportChatContext.Provider>
