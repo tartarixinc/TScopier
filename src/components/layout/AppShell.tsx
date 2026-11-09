@@ -8,7 +8,7 @@ import { PendingBrokerConnectionSync } from '../broker/PendingBrokerConnectionSy
 import { ProviderSourceSync } from '../broker/ProviderSourceSync'
 import { BrokerTerminalHealthSync } from '../broker/BrokerTerminalHealthSync'
 import { AppLayout } from './AppLayout'
-import { LiveChatProvider } from '../../context/LiveChatContext'
+import { SupportChatProvider } from '../../context/SupportChatContext'
 import { AssistantProvider } from '../../context/AssistantContext'
 import { useAssistant } from '../../context/useAssistant'
 import { AssistantPanel } from '../assistant/AssistantPanel'
@@ -164,7 +164,7 @@ export function AppShell() {
       <NotificationsProvider enabled={!deferAppBootstrap}>
         <HumanReviewProvider enabled={!deferAppBootstrap}>
           <AddTradingAccountProvider>
-            <LiveChatProvider>
+            <SupportChatProvider>
               <AssistantProvider>
                 <AssistantSurface
                   launcherVisible={assistantLauncherVisible}
@@ -177,7 +177,7 @@ export function AppShell() {
                   onLauncherPositionChange={setAssistantLauncherPosition}
                 />
               </AssistantProvider>
-            </LiveChatProvider>
+            </SupportChatProvider>
           </AddTradingAccountProvider>
         </HumanReviewProvider>
       </NotificationsProvider>
