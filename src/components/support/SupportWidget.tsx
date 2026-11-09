@@ -17,7 +17,7 @@ import { createSupportTicket } from '../../lib/supportTickets'
 import clsx from 'clsx'
 import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
-import { useUserProfile } from '../../context/UserProfileContext'
+import { useOptionalUserProfile } from '../../context/UserProfileContext'
 import type { SupportWidgetTranslations } from '../../i18n/supportWidget/types'
 import { playSupportNotificationSound } from '../../lib/notificationSound'
 import { supabase } from '../../lib/supabase'
@@ -256,7 +256,7 @@ export function SupportWidget({
   const translations = useT()
   const t = translations.supportWidget
   const { user, loading: authLoading } = useAuth()
-  const { profile } = useUserProfile()
+  const profile = useOptionalUserProfile()?.profile
   const [tab, setTab] = useState<Tab>('home')
   const [conversations, setConversations] = useState<SupportConversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -808,7 +808,7 @@ export function SupportWidget({
 
   const loginHref = appUrl(loginUrlForSupportReturn())
   // Authenticated: first name only. Guests / signed-out: "Hi there".
-  const greetingName = user ? profile.first_name?.trim() || null : null
+  const greetingName = user ? profile?.first_name?.trim() || null : null
   const resolvedHeaderAvatars = headerAvatars?.length ? headerAvatars : teamAvatars
 
   if (visibility === 'hidden') return null
