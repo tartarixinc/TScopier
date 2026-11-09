@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { BarChart3, Check, CircleMinus, LineChart, Wallet } from 'lucide-react'
+import { BarChart3, Check, ChevronLeft, ChevronRight, CircleMinus, LineChart, Wallet } from 'lucide-react'
 import clsx from 'clsx'
 import { supabase } from '../../lib/supabase'
 import { summarizeSocialTradesByDay } from '../../lib/socialPerformancePresentation'
+import {
+  socialCalendarDaysForMonth,
+  socialClosedTradeMonths,
+  type SocialCalendarMonth,
+} from '../../lib/socialTradingFixture'
 import { eligibilityDiagnosticForReason } from '../../lib/socialEligibility'
 import { SocialEligibilityDiagnostics } from './SocialEligibilityDiagnostics'
 import { fetchSocialCopySources, type SocialCopySource } from '../../lib/socialCopy'
@@ -66,19 +71,139 @@ function DailyPerformance({ trades, currency }: { trades: SocialTradeHistoryItem
 }
 
 
-function PnlCalendar({ trades, currency }: { trades: SocialTradeHistoryItem[]; currency: string | null }) {
-  const days = summarizeSocialTradesByDay(trades)
-  const latest = days.at(-1)?.key
-  const anchor = latest ? new Date(`${latest}T00:00:00Z`) : new Date()
-  const year = anchor.getUTCFullYear()
-  const month = anchor.getUTCMonth()
-  const monthLabel = anchor.toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' })
-  const weekdays = Array.from({ length: 7 }, (_, index) => new Date(Date.UTC(2026, 8, 6 + index)).toLocaleDateString(undefined, { weekday: 'short', timeZone: 'UTC' }))
-  const leading = new Date(Date.UTC(year, month, 1)).getUTCDay()
-  const count = new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
-  const byDay = new Map(days.filter(day => day.key.startsWith(`${year}-${String(month + 1).padStart(2, '0')}-`)).map(day => [Number(day.key.slice(8)), day]))
+function monthKey(month: SocialCalendarMonth): string {
+  return `${month.year}-${month.month}`
+}
 
-  return <Card><div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">P/L calendar</h2><span className="text-xs text-neutral-500">{monthLabel}</span></div><p className="mt-1 text-xs text-neutral-500">Daily realized P/L from the same closed source trades shown in the table.</p><div className="mt-4 grid grid-cols-7 gap-2">{weekdays.map(label => <div key={label} className="pb-1 text-center text-[11px] font-medium text-neutral-900 dark:text-neutral-50">{label}</div>)}{Array.from({ length: leading }, (_, index) => <div key={`lead-${index}`} aria-hidden="true" />)}{Array.from({ length: count }, (_, index) => { const dayNumber = index + 1; const day = byDay.get(dayNumber); const tone = !day ? 'border-neutral-100 text-neutral-500 dark:border-neutral-800' : day.profit > 0 ? 'border-green-200 bg-green-100 text-green-800 dark:border-green-800 dark:bg-green-400/15 dark:text-green-200' : day.profit < 0 ? 'border-red-100 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200' : 'border-neutral-200 bg-neutral-100 text-neutral-700 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200'; return <div key={dayNumber} title={day ? `${day.key}: ${money(day.profit, currency)}` : undefined} className={clsx('min-h-[72px] rounded-lg border px-2 py-2 text-start text-xs', tone)}><span className="text-[11px]">{String(dayNumber).padStart(2, '0')}</span>{day ? <><p className="mt-1 font-semibold">{money(day.profit, currency)}</p><p className="text-[11px] opacity-80">{day.tradeCount} {day.tradeCount === 1 ? 'trade' : 'trades'}</p></> : <p className="mt-2 text-[11px]">No trades</p>}</div> })}</div></Card>
+function PnlCalendar({ trades, currency }: { trades: SocialTradeHistoryItem[]; currency: string | null }) {
+  const closedForCalendar = useMemo(
+    () => trades
+      .filter(trade => trade.status === 'closed' && trade.closedAt && trade.realizedProfit != null)
+      .map(trade => ({ closedAt: trade.closedAt!, profit: trade.realizedProfit! })),
+    [trades],
+  )
+  const months = useMemo(() => socialClosedTradeMonths(closedForCalendar), [closedForCalendar])
+  const fallbackMonth = useMemo<SocialCalendarMonth>(() => {
+    const now = new Date()
+    return { year: now.getUTCFullYear(), month: now.getUTCMonth() }
+  }, [])
+  const [viewMonth, setViewMonth] = useState<SocialCalendarMonth | null>(null)
+  const activeMonth = viewMonth ?? months.at(-1) ?? fallbackMonth
+  const activeIndex = months.findIndex(month => month.year === activeMonth.year && month.month === activeMonth.month)
+  const canGoPrev = activeIndex > 0 || (activeIndex < 0 && months.length > 0)
+  const canGoNext = activeIndex >= 0 && activeIndex < months.length - 1
+  const days = useMemo(
+    () => socialCalendarDaysForMonth(closedForCalendar, activeMonth.year, activeMonth.month),
+    [closedForCalendar, activeMonth.year, activeMonth.month],
+  )
+  const monthLabel = new Date(Date.UTC(activeMonth.year, activeMonth.month, 1)).toLocaleDateString(undefined, {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
+  const weekdays = Array.from({ length: 7 }, (_, index) =>
+    new Date(Date.UTC(2026, 8, 6 + index)).toLocaleDateString(undefined, { weekday: 'short', timeZone: 'UTC' }),
+  )
+  const leading = new Date(Date.UTC(activeMonth.year, activeMonth.month, 1)).getUTCDay()
+
+  const shiftMonth = (delta: -1 | 1) => {
+    if (months.length === 0) return
+    const index = activeIndex < 0 ? (delta < 0 ? months.length - 1 : 0) : activeIndex + delta
+    if (index < 0 || index >= months.length) return
+    setViewMonth(months[index]!)
+  }
+
+  return (
+    <Card>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">P/L calendar</h2>
+          <p className="mt-0.5 text-xs text-neutral-500">{monthLabel}</p>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => shiftMonth(-1)}
+            disabled={!canGoPrev}
+            aria-label="Previous month"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-700 transition enabled:hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-200 dark:enabled:hover:bg-neutral-800"
+          >
+            <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+          </button>
+          <select
+            value={monthKey(activeMonth)}
+            aria-label="P/L calendar month"
+            onChange={event => {
+              const [yearText, monthText] = event.target.value.split('-')
+              const year = Number(yearText)
+              const month = Number(monthText)
+              if (!Number.isFinite(year) || !Number.isFinite(month)) return
+              setViewMonth({ year, month })
+            }}
+            className="h-8 max-w-[10.5rem] rounded-lg border border-neutral-200 bg-white px-2 text-xs font-medium text-neutral-800 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+          >
+            {(months.length > 0 ? months : [activeMonth]).map(month => {
+              const label = new Date(Date.UTC(month.year, month.month, 1)).toLocaleDateString(undefined, {
+                month: 'short',
+                year: 'numeric',
+                timeZone: 'UTC',
+              })
+              return (
+                <option key={monthKey(month)} value={monthKey(month)}>
+                  {label}
+                </option>
+              )
+            })}
+          </select>
+          <button
+            type="button"
+            onClick={() => shiftMonth(1)}
+            disabled={!canGoNext}
+            aria-label="Next month"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-700 transition enabled:hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-200 dark:enabled:hover:bg-neutral-800"
+          >
+            <ChevronRight className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+      <p className="mt-1 text-xs text-neutral-500">Daily realized P/L from the same closed source trades shown in the table.</p>
+      <div className="mt-4 grid grid-cols-7 gap-2">
+        {weekdays.map(label => (
+          <div key={label} className="pb-1 text-center text-[11px] font-medium text-neutral-900 dark:text-neutral-50">{label}</div>
+        ))}
+        {Array.from({ length: leading }, (_, index) => (
+          <div key={`lead-${index}`} aria-hidden="true" />
+        ))}
+        {days.map(day => {
+          const tone = day.profit == null
+            ? 'border-neutral-100 text-neutral-500 dark:border-neutral-800'
+            : day.profit > 0
+              ? 'border-green-200 bg-green-100 text-green-800 dark:border-green-800 dark:bg-green-400/15 dark:text-green-200'
+              : day.profit < 0
+                ? 'border-red-100 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200'
+                : 'border-neutral-200 bg-neutral-100 text-neutral-700 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200'
+          const key = `${activeMonth.year}-${String(activeMonth.month + 1).padStart(2, '0')}-${String(day.day).padStart(2, '0')}`
+          return (
+            <div
+              key={day.day}
+              title={day.profit == null ? undefined : `${key}: ${money(day.profit, currency)}`}
+              className={clsx('min-h-[72px] rounded-lg border px-2 py-2 text-start text-xs', tone)}
+            >
+              <span className="text-[11px]">{String(day.day).padStart(2, '0')}</span>
+              {day.profit == null ? (
+                <p className="mt-2 text-[11px]">No trades</p>
+              ) : (
+                <>
+                  <p className="mt-1 font-semibold">{money(day.profit, currency)}</p>
+                  <p className="text-[11px] opacity-80">{day.trades} {day.trades === 1 ? 'trade' : 'trades'}</p>
+                </>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </Card>
+  )
 }
 
 export function SocialTradeHistoryPanel({ traderUserId, isSelf }: { traderUserId: string; isSelf: boolean }) {

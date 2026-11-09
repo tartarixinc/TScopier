@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { socialTraderStats, type SocialTrader } from './socialTradingFixture'
+import {
+  socialCalendarDaysForMonth,
+  socialClosedTradeMonths,
+  socialTraderStats,
+  type SocialTrader,
+} from './socialTradingFixture'
 
 const trader: SocialTrader = {
   id: 'test', displayName: 'Test', username: 'test', isYou: false, access: 'open',
@@ -25,6 +30,31 @@ describe('approved Social Trading performance presentation', () => {
     expect(stats.losingTrades).toBe(1)
     expect(stats.profitFactor).toBe(6)
     expect(stats.maxOpenTrades).toBe(1)
+  })
+
+  it('lists closed-trade months and builds a month grid without shifting into the wrong month', () => {
+    const months = socialClosedTradeMonths([
+      { closedAt: '2026-09-30T22:00:00Z' },
+      { closedAt: '2026-10-01T01:00:00Z' },
+      { closedAt: '2026-10-15T12:00:00Z' },
+    ])
+    expect(months).toEqual([
+      { year: 2026, month: 8 },
+      { year: 2026, month: 9 },
+    ])
+    const october = socialCalendarDaysForMonth(
+      [
+        { closedAt: '2026-09-30T22:00:00Z', profit: 50 },
+        { closedAt: '2026-10-01T01:00:00Z', profit: 120 },
+        { closedAt: '2026-10-15T12:00:00Z', profit: -20 },
+      ],
+      2026,
+      9,
+    )
+    expect(october).toHaveLength(31)
+    expect(october[0]).toEqual({ day: 1, profit: 120, trades: 1 })
+    expect(october[14]).toEqual({ day: 15, profit: -20, trades: 1 })
+    expect(october[29]?.profit).toBeNull()
   })
 
   it('keeps metrics unavailable when trade history cannot support them', () => {

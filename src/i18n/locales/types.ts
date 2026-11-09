@@ -1265,6 +1265,8 @@ export interface SocialTradingPageTranslations {
   avgHoldingTime: string
   profitFactor: string
   pnlCalendar: string
+  previousMonth: string
+  nextMonth: string
   noTrades: string
   tradeCount: string
   holdingDays: string
