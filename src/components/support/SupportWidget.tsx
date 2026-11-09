@@ -166,6 +166,7 @@ function statusLabel(
     case 'active':
       return t.statusActive
     case 'resolved':
+    case 'closed':
       return t.statusResolved
     default:
       return status
@@ -288,10 +289,17 @@ export function SupportWidget({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const knownMessageIdsRef = useRef<Set<string>>(new Set())
   const hydratedConversationsRef = useRef<Set<string>>(new Set())
+  const ownedConversationIdsRef = useRef<Set<string>>(new Set())
   const viewStateRef = useRef({ open: false, tab: 'home' as Tab, activeId: null as string | null })
   const open = visibility === 'maximized'
 
   viewStateRef.current = { open, tab, activeId }
+  ownedConversationIdsRef.current = new Set(
+    conversations
+      .filter(c => !user || c.user_id === user.id)
+      .map(c => c.id)
+      .concat(activeId && user ? [activeId] : []),
+  )
 
   const markMessagesSeen = useCallback((rows: SupportMessage[]) => {
     for (const m of rows) knownMessageIdsRef.current.add(m.id)
@@ -332,7 +340,7 @@ export function SupportWidget({
   }, [user, guestSession, guestName, guestEmail])
 
   const openConversations = useMemo(
-    () => conversations.filter(c => c.status !== 'resolved'),
+    () => conversations.filter(c => c.status !== 'resolved' && c.status !== 'closed'),
     [conversations],
   )
 
@@ -354,8 +362,9 @@ export function SupportWidget({
       return
     }
     try {
-      const rows = await listSupportConversations()
+      const rows = await listSupportConversations(user.id)
       setConversations(rows)
+      setActiveId(prev => (prev && !rows.some(c => c.id === prev) ? null : prev))
     } catch (err) {
       console.warn('support conversations load failed', err)
     }
@@ -367,6 +376,13 @@ export function SupportWidget({
       setError('')
       try {
         if (user) {
+          const owned = await listSupportConversations(user.id)
+          setConversations(owned)
+          if (!owned.some(c => c.id === conversationId)) {
+            setActiveId(null)
+            setMessages([])
+            return
+          }
           const rows = await listSupportMessages(conversationId)
           ingestConversationMessages(rows, conversationId)
           setMessages(rows)
@@ -535,6 +551,8 @@ export function SupportWidget({
         payload => {
           const row = payload.new as SupportMessage
           if (!row?.conversation_id) return
+          // Admins/agents pass RLS for all threads; widget must ignore others' chats.
+          if (!ownedConversationIdsRef.current.has(row.conversation_id)) return
           notifyInboundMessage(row)
           const view = viewStateRef.current
           if (view.open && view.activeId === row.conversation_id) {
@@ -640,7 +658,7 @@ export function SupportWidget({
     }
     setError('')
     setTab('messages')
-    const openConvo = conversations.find(c => c.status !== 'resolved')
+    const openConvo = conversations.find(c => c.status !== 'resolved' && c.status !== 'closed')
     if (guestSession?.conversationId) {
       setActiveId(guestSession.conversationId)
     } else if (openConvo) {
@@ -654,7 +672,7 @@ export function SupportWidget({
   const startMessage = () => {
     if (!guestReady) return
     setTab('messages')
-    const openConvo = conversations.find(c => c.status !== 'resolved')
+    const openConvo = conversations.find(c => c.status !== 'resolved' && c.status !== 'closed')
     if (user && openConvo) {
       setActiveId(openConvo.id)
     } else if (!user && guestSession?.conversationId) {
@@ -1270,7 +1288,8 @@ export function SupportWidget({
           {showComposer ? (
             <div className="px-3 pb-2 pt-1">
               {error ? <p className="mb-2 px-1 text-xs text-red-500">{error}</p> : null}
-              {activeConversation?.status === 'resolved' ? (
+              {activeConversation?.status === 'resolved' ||
+              activeConversation?.status === 'closed' ? (
                 <p className="rounded-2xl bg-neutral-50 px-3 py-3 text-xs text-neutral-500 dark:bg-white/[0.03]">
                   {t.conversationResolved}
                 </p>

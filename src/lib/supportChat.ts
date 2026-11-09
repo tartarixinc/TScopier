@@ -10,7 +10,7 @@ export const SUPPORT_MAX_IMAGES = ASSISTANT_MAX_IMAGES
 export const SUPPORT_ATTACHMENTS_BUCKET = 'support-attachments'
 export const SUPPORT_GUEST_STORAGE_KEY = 'tscopier-support-guest'
 
-export type SupportConversationStatus = 'ai' | 'queued' | 'active' | 'resolved'
+export type SupportConversationStatus = 'ai' | 'queued' | 'active' | 'resolved' | 'closed'
 
 export type SupportSenderType = 'user' | 'ai' | 'agent' | 'system'
 
@@ -116,10 +116,12 @@ export function clearSupportGuestSession(): void {
   window.localStorage.removeItem(SUPPORT_GUEST_STORAGE_KEY)
 }
 
-export async function listSupportConversations(): Promise<SupportConversation[]> {
+/** Customer widget only — always scoped to the signed-in user (agents still see all via admin app RLS). */
+export async function listSupportConversations(userId: string): Promise<SupportConversation[]> {
   const { data, error } = await supabase
     .from('support_conversations')
     .select('*')
+    .eq('user_id', userId)
     .order('last_message_at', { ascending: false })
   if (error) throw new Error(error.message)
   return (data ?? []) as SupportConversation[]
