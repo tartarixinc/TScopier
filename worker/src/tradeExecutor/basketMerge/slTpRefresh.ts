@@ -90,7 +90,7 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
     sameSignalRefresh?: boolean
     liveMgmtFast?: boolean
     mergeLinkMeta?: Record<string, unknown>
-  }): Promise<{ success: boolean; summary: MergeModifySummary }> {
+  }): Promise<{ success: boolean; summary: MergeModifySummary; failureReason?: string }> {
     const {
       signal, parsed, broker, channelKeywords, baseLot, params, symbol, uuid,
       strictEntryPrefetch, commentPrefix, anchorSignalId, direction, logAction, mergeLinkMeta,
@@ -289,6 +289,9 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
         console.warn(`[tradeExecutor] basket refresh skipped: no entry anchor signal=${signal.id}`)
         return {
           success: false,
+          // The quote fetch itself failed (transient broker/quote outage), not
+          // a missing anchor — keep it visible to the pipeline monitor.
+          failureReason: 'basket_refresh_no_anchor',
           summary: {
             openLegs: familyTrades.length,
             attempted: 0,
@@ -1056,5 +1059,11 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
       } catch { /* best-effort */ }
     }
 
-    return { success: !mergeFailed, summary }
+    return {
+      success: !mergeFailed,
+      summary,
+      // Genuine broker modify failures must stay visible to the trade-pipeline
+      // monitor. The ghost-basket case is an automatic repair, not a failure.
+      ...(mergeFailed && !allLegsGhostOnBroker && partialMsg ? { failureReason: partialMsg } : {}),
+    }
   }

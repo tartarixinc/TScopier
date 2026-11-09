@@ -197,7 +197,10 @@ export class SignalRangeEntryMonitor {
             preserveExpiresAt: true,
             logUpdates: true,
           })
-          if (!syncResult.ok) continue
+          // A persistence failure must not silence the wake: the in-memory wait
+          // is rebuilt from the signal below and the sync retries next tick
+          // (same behaviour as before upsert failures were surfaced).
+          if (!syncResult.ok && syncResult.reason !== 'upsert_failed') continue
           const freshWait = buildWaitFromParsed({
             manual,
             parsed,

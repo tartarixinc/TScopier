@@ -1545,6 +1545,7 @@ export const fr: Translations = {
     execNotePartialCloseTooSmall:
       'Une clôture partielle demandée n’a pas pu être exécutée — cette position était trop petite pour être fractionnée (la partie demandée serait passée sous le lot minimum du broker) ; cette instruction n’a rien fermé et le trade est resté à sa taille complète.',
     execNoteStaleEntry: 'L’entrée du signal était {entry} mais le trade s’est ouvert à {fill} — le prix avait déjà bougé quand l’ordre a été envoyé.',
+    execNoteTpStripped: 'Les take-profits {levels} ont été retirés — le trade s’est ouvert à {fill}, au-delà du prix de take-profit, car les appliquer aurait clôturé le trade immédiatement.',
     imageSignal: '(signal image)',
     loadingSignal: 'Chargement du signal…',
     loadSignalError: 'Impossible de charger les détails du signal.',

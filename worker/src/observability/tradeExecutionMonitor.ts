@@ -17,11 +17,46 @@ const CONFIG_ERROR_CODES = new Set([
   'SYMBOL_UNSUPPORTED',
 ])
 
+/**
+ * Per-account rejections that say nothing about the health of the pipeline.
+ * They are already reported by the `trade_copy_failed` / `broker_order_rejected`
+ * issues and by the alert-evaluator `executions_failing` rule, so they must not
+ * push the systemic failure rate over the threshold. Matched against the
+ * recorded error code, which is a stable reason code when the message
+ * classifies (see TradeExecutor.recordTradeExecutionOutcome) or the raw broker
+ * message otherwise.
+ *
+ * Session errors split by where they happen: an error *during* an attempted
+ * send carries a failureReason, classifies to BROKER_ACCOUNT_UNAVAILABLE and
+ * stays counted (a whole-broker stop must page). The prepare gate's
+ * `broker_session_not_connected` exit never attempts an order — it is a
+ * logged, retried skip (`logSendSkipped`), reported through the
+ * broker_account_unavailable issue, with platform-wide outages covered by
+ * bridge_down / mtapi_accounts_error / fx_socket critical-health.
+ */
+const EXCLUDED_FAILURE_PATTERNS: RegExp[] = [
+  // Money: the account cannot fund the trade.
+  /not enough money|insufficient margin|insufficient funds|INSUFFICIENT_MARGIN/i,
+  // Credential material: expired or invalid broker login.
+  /missing or invalid access token|invalid account|invalid login/i,
+  // Symbol not offered by the broker — observed as "<SYMBOL> not exist"; the
+  // symbol-token anchor keeps unrelated "… not exist" text counted.
+  /\b[A-Z0-9._#+]{3,15} not exist\b/,
+]
+
 type ExecutionRecord = {
   timestamp: number
   success: boolean
   errorCode?: string
   brokerId: string
+}
+
+/** True when a recorded attempt is a genuine system failure worth alerting on. */
+function countsAsSystemFailure(record: ExecutionRecord): boolean {
+  if (record.success) return false
+  const code = record.errorCode ?? ''
+  if (CONFIG_ERROR_CODES.has(code)) return false
+  return !EXCLUDED_FAILURE_PATTERNS.some(pattern => pattern.test(code))
 }
 
 export interface TradeExecutionMonitorOptions {
@@ -38,18 +73,29 @@ export interface TradeOutcomeLike {
   finalizeSkipReason?: string
   failureReason?: string
   failureReasonCode?: string
+  /** Range entry waiting for price: a deliberate deferral, not a failure. */
+  signalRangeEntryDeferred?: boolean
+  signalEntryRequiredSkip?: boolean
+  signalRangeEntryRequiredSkip?: boolean
+  channelDelayMs?: number
+  channelDelaySkipped?: boolean
 }
 
 /**
- * Classify a trade outcome for the pipeline monitor. Returns true for a genuine
- * success (order opened/merged) and for a deterministic no-op (finalizeSkipReason
- * without a failureReason) — the latter is an expected business outcome, not a
- * failed execution, so it must not inflate the failure denominator.
+ * Classify a trade outcome for the pipeline monitor.
+ *
+ * Only an explicit `failureReason` means the attempt failed. Every other shape
+ * is a success or a deliberate no-op and must not inflate the failure rate:
+ * orders opened/merged, deterministic finalize skips, range-entry deferrals,
+ * entry-required skips, merge/teaser guard refusals (`openedOrMerged: false`
+ * without a reason) and prepare-phase policy exits (empty outcome — symbol
+ * exempted, news blackout, no broker API, empty plan, broker session not
+ * connected at the gate). The send path always sets `failureReason` when
+ * nothing opened (`orderLegExecution.ts`), and session errors during an
+ * attempted send also carry one, so genuine broker failures stay counted.
  */
 export function tradeOutcomeIsSuccess(outcome: TradeOutcomeLike): boolean {
-  if (outcome.failureReason) return false
-  if (outcome.openedOrMerged === true) return true
-  return !!outcome.finalizeSkipReason
+  return !outcome.failureReason
 }
 
 export class TradeExecutionMonitor {
@@ -105,7 +151,7 @@ export class TradeExecutionMonitor {
     // failure rate drops below the threshold, a later spike can alert again.
     // captureCriticalHealthIssue's own cooldown still prevents alert storms.
     if (this.alertEmitted && windowRecords.length >= this.minAttempts) {
-      const systemFailures = windowRecords.filter(r => !r.success && !CONFIG_ERROR_CODES.has(r.errorCode ?? '')).length
+      const systemFailures = windowRecords.filter(countsAsSystemFailure).length
       const failureRatePct = (systemFailures / windowRecords.length) * 100
       if (failureRatePct < this.failureThresholdPct) {
         this.alertEmitted = false
@@ -115,7 +161,7 @@ export class TradeExecutionMonitor {
     if (this.alertEmitted) return
     if (windowRecords.length < this.minAttempts) return
 
-    const systemFailures = windowRecords.filter(r => !r.success && !CONFIG_ERROR_CODES.has(r.errorCode ?? '')).length
+    const systemFailures = windowRecords.filter(countsAsSystemFailure).length
     const failureRatePct = (systemFailures / windowRecords.length) * 100
 
     if (failureRatePct >= this.failureThresholdPct) {
@@ -132,10 +178,19 @@ export class TradeExecutionMonitor {
   ): void {
     const windowStart = now - this.windowMs
     const errorCodes = Array.from(
-      new Set(this.history.filter(r => r.timestamp >= now - this.windowMs && !r.success).map(r => r.errorCode).filter(Boolean))
+      new Set(
+        this.history
+          .filter(r => r.timestamp >= windowStart && countsAsSystemFailure(r))
+          .map(r => r.errorCode)
+          .filter(Boolean),
+      ),
     )
     const affectedBrokers = Array.from(
-      new Set(this.history.filter(r => r.timestamp >= now - this.windowMs && !r.success).map(r => r.brokerId))
+      new Set(
+        this.history
+          .filter(r => r.timestamp >= windowStart && countsAsSystemFailure(r))
+          .map(r => r.brokerId),
+      ),
     )
 
     captureCriticalHealthIssue({
@@ -171,6 +226,7 @@ export class TradeExecutionMonitor {
     this.alertEmitted = false
   }
 
+  /** Raw record counts (includes excluded per-account rejections), unlike the alert threshold. */
   getStats(): { total: number; failures: number; successRate: number; windowMs: number } {
     const now = this.nowMs()
     this.pruneOldRecords(now)

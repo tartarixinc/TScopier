@@ -430,7 +430,11 @@ export async function tryParameterFollowUpMergeModifyOnly(ctx: TradeExecutorCont
         legacy_merge_linking: legacyMergeLinkingEnabled(),
       },
     })
-    return { handled: true, success: outcome.success }
+    return {
+      handled: true,
+      success: outcome.success,
+      ...(outcome.failureReason ? { failureReason: outcome.failureReason } : {}),
+    }
   }
 
 export async function tryMergeSignalIntoExistingOpenTrade(ctx: TradeExecutorContext, args: {
@@ -570,7 +574,11 @@ export async function tryMergeSignalIntoExistingOpenTrade(ctx: TradeExecutorCont
         legacy_merge_linking: legacyMergeLinkingEnabled(),
       },
     })
-    return { handled: true, success: refresh.success }
+    return {
+      handled: true,
+      success: refresh.success,
+      ...(refresh.failureReason ? { failureReason: refresh.failureReason } : {}),
+    }
   }
 
 /**
@@ -720,5 +728,9 @@ export async function tryTeaserCompletionMerge(ctx: TradeExecutorContext, args: 
       }).then(() => undefined, () => undefined)
     }
 
-    return { handled: true, success: outcome.success }
+    return {
+      handled: true,
+      success: outcome.success,
+      ...(outcome.failureReason ? { failureReason: outcome.failureReason } : {}),
+    }
   }

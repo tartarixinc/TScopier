@@ -93,6 +93,19 @@ import {
 } from '../managementBreakevenDiagnostics'
 import { authorityFromBrokerRow, withBrokerWriteAuthority } from '../brokerWriteAuthority'
 import { writeExecutionLog } from '../observability/executionLog'
+import { isLivePositionAbsentReason } from '../failureClassification'
+
+/**
+ * Thrown when identity resolution shows the row's own position is not in the
+ * live OpenedOrders snapshot (stored ticket matched nothing; identical
+ * siblings are why attribute matching refuses). There is nothing to modify —
+ * defer to reconciliation, which confirms closure with two snapshots +
+ * closed-history proof. Never recorded as a failed modification (2026-11-03,
+ * Luis: channel-breakeven wrote customer-facing failures for legs whose
+ * positions had already exited).
+ */
+class PositionAbsentFromLiveError extends Error {}
+
 function mgmtCloseOpts(liveMgmtFast: boolean) {
   return { maxAttempts: 2, slippageEscalation: 50, liveFast: liveMgmtFast }
 }
@@ -1236,6 +1249,9 @@ export async function applyManagement(
             trade,
           })
           if (resolution.status !== 'resolved') {
+            if (isLivePositionAbsentReason(resolution.reason)) {
+              throw new PositionAbsentFromLiveError(resolution.reason)
+            }
             throw new Error(`live position reconciliation required: ${resolution.reason}`)
           }
           livePositionRow = resolution.row
@@ -1678,6 +1694,43 @@ export async function applyManagement(
         })
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
+        if (err instanceof PositionAbsentFromLiveError) {
+          // Nothing to modify: the row's position is absent from the live
+          // snapshot. Record a skip (not a failure — the Copier Engine shows
+          // failed entries to the customer) and let reconciliation confirm
+          // closure via broker history, as it already does for every other
+          // absent row.
+          console.warn(
+            `[tradeExecutor] mgmt ${action} deferred trade=${trade.id} ticket=${effectiveTicket}:`
+            + ` position not in live snapshot (${msg}); awaiting reconciliation closure`,
+          )
+          if (action === 'breakeven' || action === 'partial_breakeven') {
+            // Keep the channel-breakeven memory gate byte-for-byte: a deferred
+            // leg never verified at breakeven, so its symbol must not persist
+            // "at breakeven" to channel memory (symbolBreakevenOk invariant).
+            // This is exactly what the old failed path did via the catch below.
+            breakevenFailedSymbolKeys.add(normBasketSymbolKey(trade.symbol))
+          }
+          await writeExecutionLog(ctx.supabase, {
+            user_id: signal.user_id,
+            signal_id: signal.id,
+            broker_account_id: broker.id,
+            action: `mgmt_${action}`,
+            status: 'skipped',
+            request_payload: {
+              ticket: effectiveTicket,
+              action,
+              basket_anchor_signal_id: trade.signal_id,
+              mgmt_scope: mgmtScopeLabel,
+              mgmt_parent_signal_id: signal.parent_signal_id,
+              deferred_to_reconciliation: true,
+            },
+            error_message:
+              `position not in live snapshot (${msg})`
+              + ' — nothing to modify; awaiting reconciliation closure',
+          })
+          return
+        }
         if (action === 'partial_profit') partialProfitFailures.push(msg)
         let breakevenFailureDiagnostic: ManagementBreakevenFailureDiagnostic | null = null
         // Broker confirmed the referenced position is gone (TP/SL hit, closed or

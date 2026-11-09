@@ -42,6 +42,7 @@ import {
   parsedAction,
   signalMatchesExecutorMode,
 } from '../tradeSignalActions'
+import { classifyBrokerFailureReason } from '../observability/businessEvents'
 import { workerConfig, userBelongsToShard } from '../workerConfig'
 import type { MgmtExecOptions, MgmtExecResult } from '../mgmtExecOptions'
 import {
@@ -1265,7 +1266,7 @@ export class TradeExecutor {
     sameSignalRefresh?: boolean
     liveMgmtFast?: boolean
     mergeLinkMeta?: Record<string, unknown>
-  }): Promise<{ success: boolean; summary: MergeModifySummary }> {
+  }): Promise<{ success: boolean; summary: MergeModifySummary; failureReason?: string }> {
     return await basketMerge.applyBasketSlTpRefresh(this, args)
   }
 
@@ -1818,10 +1819,19 @@ export class TradeExecutor {
     if (outcome.deferredToOtherDispatcher === true) return
     const forcedFailure = testFlagEnabled(process.env, 'TRADE_PIPELINE_TEST_FORCE_FAILURE')
     const succeeded = !forcedFailure && tradeOutcomeIsSuccess(outcome)
+    // Normalise raw broker messages to stable reason codes so the monitor's
+    // exclusions can match codes. classifyBrokerFailureReason always returns a
+    // code; the generic fall-through keeps the raw message so phrases it does
+    // not recognise stay visible to the monitor.
+    let errorCode = outcome.failureReasonCode ?? outcome.failureReason
+    if (!outcome.failureReasonCode && outcome.failureReason) {
+      const classified = classifyBrokerFailureReason(outcome.failureReason)
+      if (classified !== 'BROKER_ORDER_REJECTED') errorCode = classified
+    }
     getTradeExecutionMonitor().recordExecution(
       succeeded,
       brokerId,
-      forcedFailure ? 'TEST_FORCED_TRADE_FAILURE' : (outcome.failureReasonCode ?? outcome.failureReason),
+      forcedFailure ? 'TEST_FORCED_TRADE_FAILURE' : errorCode,
     )
   }
 

@@ -1452,6 +1452,7 @@ export interface TradesTranslations {
   execNoteTpSplit?: string
   execNotePartialCloseTooSmall?: string
   execNoteStaleEntry?: string
+  execNoteTpStripped?: string
   loadingSignal: string
   loadSignalError: string
   viewDetails: string

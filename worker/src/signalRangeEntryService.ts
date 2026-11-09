@@ -160,6 +160,7 @@ export async function cancelWaitWithLog(
 export type WaitSyncResult =
   | { ok: true; updated: boolean }
   | { ok: false; cancelled: true; reason: string }
+  | { ok: false; updated: false; reason: 'upsert_failed' }
 
 export async function syncWaitRow(
   supabase: SupabaseClient,
@@ -232,10 +233,11 @@ export async function syncWaitRow(
     .from('signal_range_entry_waits')
     .upsert(row, { onConflict: 'signal_id,broker_account_id' })
   if (error) {
-    console.warn(
-      `[signalRangeEntry] sync wait failed signal=${args.signal.id} broker=${args.broker.id}: ${error.message}`,
+    console.error(
+      `[signalRangeEntry] sync wait upsert failed signal=${args.signal.id} broker=${args.broker.id}: ${error.message}`
+      + ' — the range wait was not persisted; the wake monitor retries next tick',
     )
-    return { ok: true, updated: false }
+    return { ok: false, updated: false, reason: 'upsert_failed' }
   }
 
   const zoneChanged = existing != null && (
