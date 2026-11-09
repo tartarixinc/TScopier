@@ -197,6 +197,7 @@ async function createTicket(
       subject,
       requesterName,
       resendApiKey: resendKey,
+      ticketId: String(ticket.id),
     });
     if (ack.resendId) {
       await admin.from("support_ticket_messages").insert({
