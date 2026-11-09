@@ -76,11 +76,14 @@ function PersonAvatar({
   name,
   src,
   size = 'md',
+  icon = false,
   className,
 }: {
   name: string
   src?: string | null
   size?: 'sm' | 'md'
+  /** SVG/logo treatment — contain with padding instead of photo crop. */
+  icon?: boolean
   className?: string
 }) {
   const [failed, setFailed] = useState(false)
@@ -101,7 +104,10 @@ function PersonAvatar({
         <img
           src={src}
           alt=""
-          className="h-full w-full object-cover"
+          className={clsx(
+            'h-full w-full',
+            icon ? 'object-contain p-[22%]' : 'object-cover',
+          )}
           referrerPolicy="no-referrer"
           onError={() => setFailed(true)}
         />
@@ -1183,18 +1189,6 @@ export function SupportWidget({
                               {t.waitingForAgent}
                             </span>
                           ) : null}
-                          {activeConversation?.status === 'active' ? (
-                            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-green-600 dark:text-teal-300">
-                              <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
-                              {activeConversation.assignee_id &&
-                              agentProfiles[activeConversation.assignee_id]
-                                ? t.agentConnectedNamed.replace(
-                                    '{name}',
-                                    agentProfiles[activeConversation.assignee_id]!.display_name,
-                                  )
-                                : t.agentConnected}
-                            </span>
-                          ) : null}
                         </div>
                         <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-3 py-2">
                           {loadingThread ? (
@@ -1231,16 +1225,18 @@ export function SupportWidget({
 
                             const agent =
                               (m.sender_user_id && agentProfiles[m.sender_user_id]) || null
+                            const isAi = m.sender_type === 'ai'
                             const agentName =
                               agent?.display_name ||
-                              (m.sender_type === 'ai' ? t.aiName : t.supportName)
+                              (isAi ? t.aiName : t.supportName)
 
                             return (
                               <div key={m.id} className="flex max-w-[92%] items-end gap-2">
                                 <PersonAvatar
                                   name={agentName}
-                                  src={agent?.avatar_url}
+                                  src={isAi ? '/unicoper-icon-white.svg' : agent?.avatar_url}
                                   size="sm"
+                                  icon={isAi}
                                   className="mb-0.5"
                                 />
                                 <div className="min-w-0 rounded-2xl rounded-bl-md bg-neutral-100 px-3.5 py-2 text-sm leading-relaxed text-neutral-800 dark:bg-neutral-900 dark:text-neutral-100">
