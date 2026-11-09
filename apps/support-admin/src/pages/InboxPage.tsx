@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
-import { ImagePlus, Loader2, RefreshCw, Send, X } from 'lucide-react'
+import { ImagePlus, Loader2, MessageSquare, RefreshCw, Send, X } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import {
@@ -35,9 +36,15 @@ function formatWhen(iso: string): string {
   }
 }
 
+function parseInboxFilter(raw: string | null): InboxFilter {
+  if (raw === 'mine' || raw === 'all' || raw === 'queued') return raw
+  return 'queued'
+}
+
 export function InboxPage() {
   const { user } = useAuth()
-  const [filter, setFilter] = useState<InboxFilter>('queued')
+  const [searchParams] = useSearchParams()
+  const filter = parseInboxFilter(searchParams.get('filter'))
   const [conversations, setConversations] = useState<SupportConversation[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [messages, setMessages] = useState<SupportMessage[]>([])
@@ -241,49 +248,44 @@ export function InboxPage() {
       ) : null}
 
       <div className="flex min-h-0 flex-1">
-        <aside className="flex w-80 shrink-0 flex-col border-r border-neutral-200 bg-white">
-          <div className="flex items-center justify-between gap-2 border-b border-neutral-200 p-2">
-            <div className="flex flex-1 gap-1">
-              {(['queued', 'mine', 'all'] as InboxFilter[]).map(f => (
-                <button
-                  key={f}
-                  type="button"
-                  onClick={() => setFilter(f)}
-                  className={clsx(
-                    'flex-1 rounded-lg px-2 py-1.5 text-xs font-medium capitalize',
-                    filter === f
-                      ? 'bg-green-500 text-neutral-950'
-                      : 'text-neutral-600 hover:bg-neutral-50',
-                  )}
-                >
-                  {f}
-                </button>
-              ))}
+        <aside className="flex w-[min(100%,20rem)] shrink-0 flex-col border-r border-neutral-100 bg-white">
+          <div className="flex items-center justify-between gap-2 px-4 pb-2 pt-4">
+            <div>
+              <p className="text-sm font-semibold capitalize text-neutral-900">{filter} chats</p>
+              <p className="text-xs text-neutral-400">{conversations.length} conversations</p>
             </div>
             <button
               type="button"
               onClick={() => void refreshList()}
-              className="rounded-lg border border-neutral-200 p-1.5 text-neutral-600 hover:bg-neutral-50"
+              className="rounded-full p-2 text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-800"
               aria-label="Refresh inbox"
             >
               <RefreshCw className="h-3.5 w-3.5" />
             </button>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
             {loadingList ? (
-              <p className="p-4 text-sm text-neutral-500">Loading…</p>
+              <p className="px-2 py-4 text-sm text-neutral-500">Loading…</p>
             ) : conversations.length === 0 ? (
-              <p className="p-4 text-sm text-neutral-500">No conversations</p>
+              <div className="mx-2 rounded-2xl bg-neutral-50 px-4 py-8 text-center">
+                <MessageSquare className="mx-auto h-8 w-8 text-neutral-300" />
+                <p className="mt-3 text-sm font-medium text-neutral-800">No chats to handle</p>
+                <p className="mt-1 text-xs text-neutral-500">
+                  Queued conversations will show up here.
+                </p>
+              </div>
             ) : (
-              <ul>
+              <ul className="space-y-1">
                 {conversations.map(c => (
                   <li key={c.id}>
                     <button
                       type="button"
                       onClick={() => setSelectedId(c.id)}
                       className={clsx(
-                        'w-full border-b border-neutral-100 px-3 py-3 text-left hover:bg-neutral-50',
-                        selectedId === c.id && 'bg-teal-50',
+                        'w-full rounded-xl px-3 py-3 text-left transition',
+                        selectedId === c.id
+                          ? 'bg-neutral-100'
+                          : 'hover:bg-neutral-50',
                       )}
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -293,11 +295,11 @@ export function InboxPage() {
                             c.guest_email?.trim() ||
                             (c.user_id ? c.user_id.slice(0, 8) : 'Guest')}
                         </span>
-                        <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-medium uppercase text-neutral-600">
+                        <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-medium uppercase text-neutral-500 ring-1 ring-neutral-200">
                           {c.status}
                         </span>
                       </div>
-                      <p className="mt-1 text-[11px] text-neutral-500">{formatWhen(c.last_message_at)}</p>
+                      <p className="mt-1 text-[11px] text-neutral-400">{formatWhen(c.last_message_at)}</p>
                     </button>
                   </li>
                 ))}
@@ -306,14 +308,20 @@ export function InboxPage() {
           </div>
         </aside>
 
-        <section className="flex min-w-0 flex-1 flex-col">
+        <section className="flex min-w-0 flex-1 flex-col bg-[#FAFBFC]">
           {!selected ? (
-            <div className="grid flex-1 place-items-center text-sm text-neutral-500">
-              Select a conversation
+            <div className="grid flex-1 place-items-center px-6 text-center">
+              <div>
+                <MessageSquare className="mx-auto h-10 w-10 text-neutral-300" />
+                <p className="mt-4 text-base font-semibold text-neutral-900">No chats to handle</p>
+                <p className="mt-1 text-sm text-neutral-500">
+                  Pick a conversation from the list, or wait for new messages in the queue.
+                </p>
+              </div>
             </div>
           ) : (
             <>
-              <div className="flex items-center justify-between gap-3 border-b border-neutral-200 bg-white px-4 py-3">
+              <div className="flex items-center justify-between gap-3 border-b border-neutral-100 bg-white px-4 py-3">
                 <div>
                   <p className="text-sm font-semibold text-neutral-900">
                     {selected.subject?.trim() || 'Support conversation'}
@@ -329,7 +337,7 @@ export function InboxPage() {
                       type="button"
                       disabled={busy}
                       onClick={() => void onClaim()}
-                      className="rounded-lg bg-green-500 px-3 py-1.5 text-xs font-medium text-neutral-950 disabled:opacity-50"
+                      className="rounded-full bg-green-400 px-3.5 py-1.5 text-xs font-medium text-neutral-950 transition hover:bg-green-500 disabled:opacity-50"
                     >
                       Claim
                     </button>
@@ -339,7 +347,7 @@ export function InboxPage() {
                       type="button"
                       disabled={busy}
                       onClick={() => void onResolve()}
-                      className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-700 disabled:opacity-50"
+                      className="rounded-full bg-neutral-100 px-3.5 py-1.5 text-xs font-medium text-neutral-700 transition hover:bg-neutral-200 disabled:opacity-50"
                     >
                       Resolve
                     </button>
@@ -347,7 +355,7 @@ export function InboxPage() {
                 </div>
               </div>
 
-              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-neutral-50 px-4 py-4">
+              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4 py-4">
                 {messages.map(m => (
                   <div
                     key={m.id}
@@ -496,8 +504,8 @@ export function InboxPage() {
           )}
         </section>
 
-        <aside className="hidden w-64 shrink-0 border-l border-neutral-200 bg-white p-4 lg:block">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">User</h2>
+        <aside className="hidden w-64 shrink-0 border-l border-neutral-100 bg-white p-4 lg:block">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">User</h2>
           {selected ? (
             <dl className="mt-3 space-y-3 text-sm">
               {selected.guest_name || selected.guest_email ? (

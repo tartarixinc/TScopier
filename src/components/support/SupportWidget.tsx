@@ -24,6 +24,7 @@ import { isAssistantImageType } from '../../lib/assistantImages'
 import {
   ensureOpenSupportConversation,
   escalateSupportConversation,
+  fetchSupportAgentProfiles,
   filesToSupportImageDataUrls,
   listGuestSupportMessages,
   listSupportConversations,
@@ -34,6 +35,7 @@ import {
   SUPPORT_MAX_IMAGES,
   uploadSupportImages,
   writeSupportGuestSession,
+  type SupportAgentProfile,
   type SupportConversation,
   type SupportGuestSession,
   type SupportMessage,
@@ -58,15 +60,9 @@ type SupportWidgetProps = {
   onVisibilityChanged?: (visibility: SupportWidgetVisibility) => void
   intent?: SupportWidgetIntent
   onIntentConsumed?: () => void
-  /** Optional support-team avatars for the header. Falls back to initials / brand mark. */
+  /** Optional support-team avatars for the header. Live agent profiles load when omitted. */
   headerAvatars?: SupportHeaderAvatar[]
 }
-
-const DEFAULT_HEADER_AVATARS: SupportHeaderAvatar[] = [
-  { name: 'Alex' },
-  { name: 'Sam' },
-  { name: 'Jordan' },
-]
 
 function avatarInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
@@ -74,8 +70,50 @@ function avatarInitials(name: string): string {
   return (parts[0] ?? 'U').slice(0, 2).toUpperCase()
 }
 
+function PersonAvatar({
+  name,
+  src,
+  size = 'md',
+  className,
+}: {
+  name: string
+  src?: string | null
+  size?: 'sm' | 'md'
+  className?: string
+}) {
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    setFailed(false)
+  }, [src])
+  const sizeClass = size === 'sm' ? 'h-7 w-7 text-[9px]' : 'h-9 w-9 text-[10px]'
+  return (
+    <span
+      className={clsx(
+        'flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-green-400 font-semibold text-neutral-950',
+        sizeClass,
+        className,
+      )}
+      title={name}
+    >
+      {src && !failed ? (
+        <img
+          src={src}
+          alt=""
+          className="h-full w-full object-cover"
+          referrerPolicy="no-referrer"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        avatarInitials(name)
+      )}
+    </span>
+  )
+}
+
 function HeaderAvatarStack({ avatars }: { avatars: SupportHeaderAvatar[] }) {
-  const shown = avatars.slice(0, 4)
+  const maxFaces = 3
+  const shown = avatars.slice(0, maxFaces)
+  const overflow = Math.max(0, avatars.length - maxFaces)
   if (shown.length === 0) {
     return (
       <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-white/80 text-green-500 shadow-xs ring-1 ring-black/5 dark:bg-neutral-900 dark:text-teal-300 dark:ring-white/10">
@@ -86,27 +124,21 @@ function HeaderAvatarStack({ avatars }: { avatars: SupportHeaderAvatar[] }) {
   return (
     <div className="flex items-center ps-0.5" aria-hidden>
       {shown.map((avatar, index) => (
-        <span
+        <PersonAvatar
           key={`${avatar.name}-${index}`}
-          className={clsx(
-            'flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-green-400/90 text-[10px] font-semibold text-neutral-950 ring-2 ring-white dark:ring-neutral-950',
-            index > 0 && '-ms-2.5',
-          )}
-          style={{ zIndex: shown.length - index }}
-          title={avatar.name}
-        >
-          {avatar.src ? (
-            <img
-              src={avatar.src}
-              alt=""
-              className="h-full w-full object-cover"
-              referrerPolicy="no-referrer"
-            />
-          ) : (
-            avatarInitials(avatar.name)
-          )}
-        </span>
+          name={avatar.name}
+          src={avatar.src}
+          className={clsx('ring-2 ring-white dark:ring-neutral-950', index > 0 && '-ms-2.5')}
+        />
       ))}
+      {overflow > 0 ? (
+        <span
+          className="-ms-2.5 flex h-9 w-9 items-center justify-center rounded-full bg-neutral-900 text-[10px] font-semibold text-white ring-2 ring-white dark:bg-neutral-700 dark:ring-neutral-950"
+          title={`${overflow} more`}
+        >
+          +{overflow > 9 ? '9' : overflow}
+        </span>
+      ) : null}
     </div>
   )
 }
@@ -188,7 +220,7 @@ export function SupportWidget({
   onVisibilityChanged,
   intent = null,
   onIntentConsumed,
-  headerAvatars = DEFAULT_HEADER_AVATARS,
+  headerAvatars,
 }: SupportWidgetProps) {
   const { user, loading: authLoading } = useAuth()
   const { profile } = useUserProfile()
@@ -211,6 +243,8 @@ export function SupportWidget({
   const [ticketSubmitting, setTicketSubmitting] = useState(false)
   const [createdTicketNumber, setCreatedTicketNumber] = useState<number | null>(null)
   const [unreadCount, setUnreadCount] = useState(0)
+  const [teamAvatars, setTeamAvatars] = useState<SupportHeaderAvatar[]>([])
+  const [agentProfiles, setAgentProfiles] = useState<Record<string, SupportAgentProfile>>({})
   const bottomRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const knownMessageIdsRef = useRef<Set<string>>(new Set())
@@ -332,6 +366,56 @@ export function SupportWidget({
     if (!open || !user) return
     void refreshConversations()
   }, [open, user, refreshConversations])
+
+  // Header: agent photos when available, initials when not
+  useEffect(() => {
+    if (headerAvatars?.length) return
+    let cancelled = false
+    void fetchSupportAgentProfiles().then(rows => {
+      if (cancelled) return
+      setTeamAvatars(
+        rows.map(row => ({
+          name: row.display_name,
+          src: row.avatar_url,
+        })),
+      )
+      setAgentProfiles(prev => {
+        const next = { ...prev }
+        for (const row of rows) next[row.user_id] = row
+        return next
+      })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [headerAvatars])
+
+  // Resolve agent photos/names for anyone who has spoken or joined this thread
+  useEffect(() => {
+    const wanted = new Set<string>()
+    for (const m of messages) {
+      if (m.sender_user_id && (m.sender_type === 'agent' || m.sender_type === 'system')) {
+        wanted.add(m.sender_user_id)
+      }
+    }
+    if (activeConversation?.assignee_id) wanted.add(activeConversation.assignee_id)
+    const missing = Array.from(wanted).filter(id => !agentProfiles[id])
+    if (!missing.length) return
+    let cancelled = false
+    void fetchSupportAgentProfiles(missing).then(rows => {
+      if (cancelled || !rows.length) return
+      setAgentProfiles(prev => {
+        const next = { ...prev }
+        for (const row of rows) next[row.user_id] = row
+        return next
+      })
+    })
+    return () => {
+      cancelled = true
+    }
+    // intentionally omit agentProfiles — we only fetch ids missing at effect time
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, activeConversation?.assignee_id])
 
   useEffect(() => {
     if (!open || !activeId) return
@@ -692,6 +776,7 @@ export function SupportWidget({
   const loginHref = appUrl(loginUrlForSupportReturn())
   // Authenticated: first name only. Guests / signed-out: "Hi there".
   const greetingName = user ? profile.first_name?.trim() || null : null
+  const resolvedHeaderAvatars = headerAvatars?.length ? headerAvatars : teamAvatars
 
   if (visibility === 'hidden') return null
 
@@ -717,7 +802,7 @@ export function SupportWidget({
             />
             <div className="relative flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-3">
-                <HeaderAvatarStack avatars={headerAvatars} />
+                <HeaderAvatarStack avatars={resolvedHeaderAvatars} />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
                     UniCopier Support
@@ -1058,7 +1143,10 @@ export function SupportWidget({
                           {activeConversation?.status === 'active' ? (
                             <span className="inline-flex items-center gap-1.5 text-xs font-medium text-green-600 dark:text-teal-300">
                               <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
-                              Agent connected
+                              {activeConversation.assignee_id &&
+                              agentProfiles[activeConversation.assignee_id]
+                                ? `${agentProfiles[activeConversation.assignee_id]!.display_name} connected`
+                                : 'Agent connected'}
                             </span>
                           ) : null}
                         </div>
@@ -1066,37 +1154,67 @@ export function SupportWidget({
                           {loadingThread ? (
                             <p className="text-center text-xs text-neutral-400">Loading…</p>
                           ) : null}
-                          {messages.map(m => (
-                            <div
-                              key={m.id}
-                              className={clsx(
-                                'max-w-[88%] px-3.5 py-2 text-sm leading-relaxed',
-                                m.sender_type === 'user'
-                                  ? 'ml-auto rounded-2xl rounded-br-md bg-neutral-900 text-white dark:bg-green-400 dark:text-neutral-950'
-                                  : m.sender_type === 'system'
-                                    ? 'mx-auto max-w-[95%] bg-transparent text-center text-xs text-neutral-400'
-                                    : 'rounded-2xl rounded-bl-md bg-neutral-100 text-neutral-800 dark:bg-neutral-900 dark:text-neutral-100',
-                              )}
-                            >
-                              {m.body &&
-                              !(m.images?.length && m.body === 'Shared an image')
-                                ? m.body
-                                : null}
-                              <MessageImages images={m.images} onUser={m.sender_type === 'user'} />
-                              {m.sender_type !== 'system' ? (
-                                <span
-                                  className={clsx(
-                                    'mt-1 block text-[10px]',
-                                    m.sender_type === 'user'
-                                      ? 'text-white/55 dark:text-neutral-800/65'
-                                      : 'text-neutral-400',
-                                  )}
+                          {messages.map(m => {
+                            if (m.sender_type === 'system') {
+                              return (
+                                <div
+                                  key={m.id}
+                                  className="mx-auto max-w-[95%] px-2 text-center text-xs leading-relaxed text-neutral-400"
                                 >
-                                  {formatTime(m.created_at)}
-                                </span>
-                              ) : null}
-                            </div>
-                          ))}
+                                  {m.body}
+                                </div>
+                              )
+                            }
+                            if (m.sender_type === 'user') {
+                              return (
+                                <div
+                                  key={m.id}
+                                  className="ml-auto max-w-[88%] rounded-2xl rounded-br-md bg-neutral-900 px-3.5 py-2 text-sm leading-relaxed text-white dark:bg-green-400 dark:text-neutral-950"
+                                >
+                                  {m.body &&
+                                  !(m.images?.length && m.body === 'Shared an image')
+                                    ? m.body
+                                    : null}
+                                  <MessageImages images={m.images} onUser />
+                                  <span className="mt-1 block text-[10px] text-white/55 dark:text-neutral-800/65">
+                                    {formatTime(m.created_at)}
+                                  </span>
+                                </div>
+                              )
+                            }
+
+                            const agent =
+                              (m.sender_user_id && agentProfiles[m.sender_user_id]) || null
+                            const agentName =
+                              agent?.display_name ||
+                              (m.sender_type === 'ai' ? 'UniCopier AI' : 'Support')
+
+                            return (
+                              <div key={m.id} className="flex max-w-[92%] items-end gap-2">
+                                <PersonAvatar
+                                  name={agentName}
+                                  src={agent?.avatar_url}
+                                  size="sm"
+                                  className="mb-0.5"
+                                />
+                                <div className="min-w-0 rounded-2xl rounded-bl-md bg-neutral-100 px-3.5 py-2 text-sm leading-relaxed text-neutral-800 dark:bg-neutral-900 dark:text-neutral-100">
+                                  {m.sender_type === 'agent' ? (
+                                    <p className="mb-0.5 text-[11px] font-medium text-neutral-500 dark:text-neutral-400">
+                                      {agentName}
+                                    </p>
+                                  ) : null}
+                                  {m.body &&
+                                  !(m.images?.length && m.body === 'Shared an image')
+                                    ? m.body
+                                    : null}
+                                  <MessageImages images={m.images} />
+                                  <span className="mt-1 block text-[10px] text-neutral-400">
+                                    {formatTime(m.created_at)}
+                                  </span>
+                                </div>
+                              </div>
+                            )
+                          })}
                           <div ref={bottomRef} />
                         </div>
                       </>
