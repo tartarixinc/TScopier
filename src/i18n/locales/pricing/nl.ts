@@ -137,6 +137,23 @@ export const pricingNl: PricingBundleTranslations = {
       statusPastDue: 'Achterstallig',
       trialEnds: 'Proefperiode eindigt',
       choosePlan: 'Start je gratis proefperiode van 5 dagen',
+      copySubscriptionsTitle: 'Provider-kopieabonnementen',
+      copySubscriptionsHint:
+        'Beheer betaalde abonnementen op providers. Je kunt opnieuw kopiëren zolang de periode actief is, ook nadat je bent gestopt met kopiëren.',
+      copySubscriptionsEmpty: 'Nog geen provider-kopieabonnementen.',
+      copySubscriptionsRefresh: 'Vernieuwen',
+      copySubscriptionsLoadFailed: 'Kon provider-kopieabonnementen niet laden.',
+      copySubscriptionsSignIn: 'Meld je opnieuw aan om kopiefacturering te beheren.',
+      copySubscriptionsPortalFailed: 'Kon het portaal voor kopiefacturering niet openen.',
+      copyManage: 'Beheren',
+      copyStatusActive: 'Actief',
+      copyStatusPastDue: 'Achterstallig',
+      copyStatusCanceled: 'Geannuleerd',
+      copyStatusIncomplete: 'Onvolledig',
+      copyCancelsAtPeriodEnd: 'eindigt aan het einde van de periode',
+      copyPeriodEnds: 'Periode eindigt op {date}',
+      copyEntitlementNote:
+        'Stoppen met kopiëren annuleert dit abonnement niet. Je kunt opnieuw kopiëren tot het verloopt.',
     },
     checkoutFailed: 'Checkout kon niet worden gestart. Probeer opnieuw.',
     paywall: {

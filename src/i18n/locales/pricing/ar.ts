@@ -137,6 +137,23 @@ export const pricingAr: PricingBundleTranslations = {
       statusPastDue: 'متأخر',
       trialEnds: 'انتهاء التجربة',
       choosePlan: 'ابدأ تجربتك المجانية لمدة 5 أيام',
+      copySubscriptionsTitle: 'اشتراكات النسخ من المزودين',
+      copySubscriptionsHint:
+        'أدِر الاشتراكات المدفوعة للمزودين. يمكنك العودة للنسخ في أي وقت أثناء سريان الفترة، حتى بعد إيقاف النسخ.',
+      copySubscriptionsEmpty: 'لا توجد اشتراكات نسخ من مزودين بعد.',
+      copySubscriptionsRefresh: 'تحديث',
+      copySubscriptionsLoadFailed: 'تعذر تحميل اشتراكات النسخ من المزودين.',
+      copySubscriptionsSignIn: 'سجّل الدخول مجددًا لإدارة فوترة النسخ.',
+      copySubscriptionsPortalFailed: 'تعذر فتح بوابة فوترة النسخ.',
+      copyManage: 'إدارة',
+      copyStatusActive: 'نشط',
+      copyStatusPastDue: 'متأخر',
+      copyStatusCanceled: 'ملغى',
+      copyStatusIncomplete: 'غير مكتمل',
+      copyCancelsAtPeriodEnd: 'يُلغى في نهاية الفترة',
+      copyPeriodEnds: 'تنتهي الفترة في {date}',
+      copyEntitlementNote:
+        'إيقاف النسخ لا يلغي هذا الاشتراك. يمكنك بدء النسخ مجددًا حتى ينتهي.',
     },
     checkoutFailed: 'تعذر بدء الدفع. حاول مرة أخرى.',
     paywall: {

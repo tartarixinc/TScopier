@@ -137,6 +137,23 @@ export const pricingSv: PricingBundleTranslations = {
       statusPastDue: 'Förfallen',
       trialEnds: 'Provperiod slutar',
       choosePlan: 'Starta din 5-dagars gratis provperiod',
+      copySubscriptionsTitle: 'Leverantörskopieringsprenumerationer',
+      copySubscriptionsHint:
+        'Hantera betalda prenumerationer på leverantörer. Du kan kopiera igen när som helst medan perioden är aktiv, även efter att du har slutat kopiera.',
+      copySubscriptionsEmpty: 'Inga leverantörskopieringsprenumerationer ännu.',
+      copySubscriptionsRefresh: 'Uppdatera',
+      copySubscriptionsLoadFailed: 'Kunde inte ladda leverantörskopieringsprenumerationer.',
+      copySubscriptionsSignIn: 'Logga in igen för att hantera kopieringsfakturering.',
+      copySubscriptionsPortalFailed: 'Kunde inte öppna portalen för kopieringsfakturering.',
+      copyManage: 'Hantera',
+      copyStatusActive: 'Aktiv',
+      copyStatusPastDue: 'Förfallen',
+      copyStatusCanceled: 'Avbruten',
+      copyStatusIncomplete: 'Ofullständig',
+      copyCancelsAtPeriodEnd: 'avslutas vid periodens slut',
+      copyPeriodEnds: 'Perioden slutar {date}',
+      copyEntitlementNote:
+        'Att sluta kopiera avbryter inte den här prenumerationen. Du kan börja kopiera igen tills den går ut.',
     },
     checkoutFailed: 'Kunde inte starta checkout. Försök igen.',
     paywall: {
