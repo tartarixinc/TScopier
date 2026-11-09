@@ -45,6 +45,12 @@ export type SupportMessage = {
   created_at: string
 }
 
+export type SupportAgentProfile = {
+  user_id: string
+  display_name: string
+  avatar_url: string | null
+}
+
 export type SupportChatSendResult = {
   conversation_id: string
   status: SupportConversationStatus
@@ -117,6 +123,24 @@ export async function listSupportConversations(): Promise<SupportConversation[]>
     .order('last_message_at', { ascending: false })
   if (error) throw new Error(error.message)
   return (data ?? []) as SupportConversation[]
+}
+
+/** Public name/avatar snippets for support agents & admins (safe for widget). */
+export async function fetchSupportAgentProfiles(
+  userIds?: string[] | null,
+): Promise<SupportAgentProfile[]> {
+  const { data, error } = await supabase.rpc('support_public_agent_profiles', {
+    p_user_ids: userIds?.length ? userIds : null,
+  })
+  if (error) {
+    console.warn('support agent profiles failed', error)
+    return []
+  }
+  return ((data ?? []) as SupportAgentProfile[]).map(row => ({
+    user_id: String(row.user_id),
+    display_name: String(row.display_name || 'Support'),
+    avatar_url: row.avatar_url ? String(row.avatar_url) : null,
+  }))
 }
 
 export async function listSupportMessages(conversationId: string): Promise<SupportMessage[]> {
