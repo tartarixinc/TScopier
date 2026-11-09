@@ -123,7 +123,8 @@ export function MarketingHeader({ overDarkHero = false }: { overDarkHero?: boole
       <div
         className={clsx(
           'pointer-events-auto relative mx-auto flex h-14 max-w-7xl items-center gap-2 rounded-full ps-4 pe-2 transition-[background-color,border-color,box-shadow,backdrop-filter] duration-300 sm:ps-5 lg:gap-4',
-          scrolled ? GLASS_BAR_SCROLLED : GLASS_BAR,
+          // Firm up while the drawer is open so controls stay readable over the dark hero.
+          scrolled || mobileOpen ? GLASS_BAR_SCROLLED : GLASS_BAR,
           onDark && 'dark',
         )}
       >
@@ -136,6 +137,7 @@ export function MarketingHeader({ overDarkHero = false }: { overDarkHero?: boole
           <TscopierLogo className="h-10 w-auto sm:h-10" onDark={onDark} />
         </Link>
 
+        {/* Desktop only — mobile uses the switch inside the hamburger drawer. */}
         <MarketingAudienceSwitch className="hidden xl:inline-flex" />
 
         <nav
@@ -157,17 +159,23 @@ export function MarketingHeader({ overDarkHero = false }: { overDarkHero?: boole
         </nav>
 
         <div className="ms-auto flex shrink-0 items-center gap-1 lg:ms-0">
-          <LanguageSwitcher />
+          {/* Language lives in the mobile drawer; keep the bar control for desktop only. */}
+          <LanguageSwitcher className="hidden lg:block" onDark={onDark} />
           <MarketingAuthCta variant="header" />
           <button
             type="button"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-neutral-900 transition-colors hover:bg-neutral-900/6 lg:hidden dark:text-neutral-50 dark:hover:bg-white/10"
+            className={clsx(
+              'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors lg:hidden',
+              onDark
+                ? 'text-white hover:bg-white/10'
+                : 'text-neutral-900 hover:bg-neutral-900/6',
+            )}
             aria-expanded={mobileOpen}
             aria-controls="marketing-mobile-nav"
             aria-label={mobileOpen ? l.menuClose : l.menuOpen}
             onClick={() => setMobileOpen(open => !open)}
           >
-            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            {mobileOpen ? <X className="h-5 w-5" aria-hidden /> : <Menu className="h-5 w-5" aria-hidden />}
           </button>
         </div>
       </div>
