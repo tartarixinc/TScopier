@@ -64,7 +64,7 @@ test('maps genuine source-scoped trade fields without account identifiers', asyn
   } } as unknown as SupabaseClient
   assert.deepEqual(await fetchSocialTradeHistoryAccess(client, 'trader'), { sharingEnabled: true, canView: true })
   assert.deepEqual(await fetchSocialTradeHistory(client, 'source'), [{ tradeId: 'one', symbol: 'EURUSD', direction: 'sell', status: 'closed', openedAt: 'open', closedAt: 'close', realizedProfit: 12.5 }])
-  assert.deepEqual(calls[1], ['get_social_source_trade_history', { p_source_id: 'source', p_limit: 100 }])
+  assert.deepEqual(calls[1], ['get_social_source_trade_history', { p_source_id: 'source', p_limit: 5000 }])
 })
 
 test('maps explicit integrity, freshness and unavailable metric states', async () => {

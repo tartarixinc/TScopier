@@ -63,21 +63,39 @@ export interface SocialCalendarMonth {
 
 type ClosedAtProfit = { closedAt: string; profit: number }
 
-/** Distinct UTC months that have at least one closed trade, oldest → newest. */
+/**
+ * Every UTC month from the first closed trade through the latest (inclusive),
+ * oldest → newest. Empty months in between are kept so the calendar can show
+ * the full account history span.
+ */
 export function socialClosedTradeMonths(trades: Array<{ closedAt: string }>): SocialCalendarMonth[] {
-  const keys = new Set<string>()
-  const months: SocialCalendarMonth[] = []
+  let first: SocialCalendarMonth | null = null
+  let last: SocialCalendarMonth | null = null
   for (const trade of trades) {
     const date = new Date(trade.closedAt)
     if (Number.isNaN(date.getTime())) continue
     const year = date.getUTCFullYear()
     const month = date.getUTCMonth()
-    const key = `${year}-${month}`
-    if (keys.has(key)) continue
-    keys.add(key)
-    months.push({ year, month })
+    if (!first || year < first.year || (year === first.year && month < first.month)) {
+      first = { year, month }
+    }
+    if (!last || year > last.year || (year === last.year && month > last.month)) {
+      last = { year, month }
+    }
   }
-  return months.sort((a, b) => a.year - b.year || a.month - b.month)
+  if (!first || !last) return []
+  const months: SocialCalendarMonth[] = []
+  let year = first.year
+  let month = first.month
+  while (year < last.year || (year === last.year && month <= last.month)) {
+    months.push({ year, month })
+    month += 1
+    if (month > 11) {
+      month = 0
+      year += 1
+    }
+  }
+  return months
 }
 
 /** Daily realized P/L grid for one UTC month (every day of the month, quiet days as null). */
