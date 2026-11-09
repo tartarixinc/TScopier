@@ -1,6 +1,7 @@
 import type { AuthTranslations } from '../auth/types'
 import type { ChannelWorkerTranslations } from '../channelWorker/types'
 import type { ContactSupportPageTranslations } from '../contactSupport/types'
+import type { SupportWidgetTranslations } from '../supportWidget/types'
 import type { RiskDisclaimerPageTranslations } from '../riskDisclaimer/types'
 import type { LegalDocumentPageTranslations } from '../legal/types'
 import type { TradeNotificationsTranslations } from '../tradeNotifications/types'
@@ -2441,6 +2442,7 @@ export interface Translations {
   brokersPage: BrokersPageTranslations
   economicCalendar: EconomicCalendarTranslations
   contactSupportPage: ContactSupportPageTranslations
+  supportWidget: SupportWidgetTranslations
   riskDisclaimerPage: RiskDisclaimerPageTranslations
   termsOfServicePage: LegalDocumentPageTranslations
   privacyPolicyPage: LegalDocumentPageTranslations

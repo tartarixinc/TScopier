@@ -1,6 +1,7 @@
 import { authSv } from '../auth/sv'
 import { channelWorkerSv } from '../channelWorker/sv'
 import { contactSupportSv } from '../contactSupport/sv'
+import { supportWidgetSv } from '../supportWidget/sv'
 import { riskDisclaimerSv } from '../riskDisclaimer/sv'
 import { tradeNotificationsSv } from '../tradeNotifications/sv'
 import { accountConfigSv } from './accountConfig/sv'
@@ -37,6 +38,7 @@ export const sv: Translations = mergeLocaleBundle(en, {
   auth: authSv,
   channelWorker: channelWorkerSv,
   contactSupportPage: contactSupportSv,
+  supportWidget: supportWidgetSv,
   riskDisclaimerPage: riskDisclaimerSv,
   tradeNotifications: tradeNotificationsSv,
   management: {

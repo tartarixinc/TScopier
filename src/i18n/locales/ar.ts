@@ -1,6 +1,7 @@
 import { authAr } from '../auth/ar'
 import { channelWorkerAr } from '../channelWorker/ar'
 import { contactSupportAr } from '../contactSupport/ar'
+import { supportWidgetAr } from '../supportWidget/ar'
 import { riskDisclaimerAr } from '../riskDisclaimer/ar'
 import { tradeNotificationsAr } from '../tradeNotifications/ar'
 import { accountConfigAr } from './accountConfig/ar'
@@ -38,6 +39,7 @@ export const ar: Translations = mergeLocaleBundle(en, {
   auth: authAr,
   channelWorker: channelWorkerAr,
   contactSupportPage: contactSupportAr,
+  supportWidget: supportWidgetAr,
   riskDisclaimerPage: riskDisclaimerAr,
   tradeNotifications: tradeNotificationsAr,
   signalHistoryPage: signalHistoryAr,

@@ -16,7 +16,9 @@ import {
 import { createSupportTicket } from '../../lib/supportTickets'
 import clsx from 'clsx'
 import { useAuth } from '../../context/AuthContext'
+import { useT } from '../../context/LocaleContext'
 import { useUserProfile } from '../../context/UserProfileContext'
+import type { SupportWidgetTranslations } from '../../i18n/supportWidget/types'
 import { playSupportNotificationSound } from '../../lib/notificationSound'
 import { supabase } from '../../lib/supabase'
 import { appUrl } from '../../lib/site'
@@ -143,23 +145,41 @@ function HeaderAvatarStack({ avatars }: { avatars: SupportHeaderAvatar[] }) {
   )
 }
 
-function statusLabel(status: string): string {
+function statusLabel(
+  status: string,
+  t: Pick<
+    SupportWidgetTranslations,
+    'statusAi' | 'statusQueued' | 'statusActive' | 'statusResolved'
+  >,
+): string {
   switch (status) {
     case 'ai':
-      return 'AI'
+      return t.statusAi
     case 'queued':
-      return 'Waiting'
+      return t.statusQueued
     case 'active':
-      return 'Live'
+      return t.statusActive
     case 'resolved':
-      return 'Resolved'
+      return t.statusResolved
     default:
       return status
   }
 }
 
-function StatusDot({ status }: { status: string }) {
+function StatusDot({
+  status,
+  t,
+  label,
+}: {
+  status: string
+  t?: Pick<
+    SupportWidgetTranslations,
+    'statusAi' | 'statusQueued' | 'statusActive' | 'statusResolved'
+  >
+  label?: string
+}) {
   const live = status === 'active' || status === 'ai' || status === 'queued'
+  const text = label ?? (t ? statusLabel(status, t) : status)
   return (
     <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-neutral-500 dark:text-neutral-400">
       <span
@@ -168,7 +188,7 @@ function StatusDot({ status }: { status: string }) {
           live ? 'bg-green-400' : 'bg-neutral-300 dark:bg-neutral-600',
         )}
       />
-      {statusLabel(status)}
+      {text}
     </span>
   )
 }
@@ -181,12 +201,23 @@ function formatTime(iso: string): string {
   }
 }
 
-function previewBody(messages: SupportMessage[], conversationId: string): string {
+function previewBody(
+  messages: SupportMessage[],
+  conversationId: string,
+  labels: Pick<
+    SupportWidgetTranslations,
+    'youPrefix' | 'supportPrefix' | 'noMessagesYet' | 'sentAnImage'
+  >,
+): string {
   const last = [...messages].reverse().find(m => m.conversation_id === conversationId)
-  if (!last) return 'No messages yet'
+  if (!last) return labels.noMessagesYet
   const prefix =
-    last.sender_type === 'user' ? 'You: ' : last.sender_type === 'system' ? '' : 'Support: '
-  const text = last.body?.trim() || (last.images?.length ? 'Sent an image' : '')
+    last.sender_type === 'user'
+      ? labels.youPrefix
+      : last.sender_type === 'system'
+        ? ''
+        : labels.supportPrefix
+  const text = last.body?.trim() || (last.images?.length ? labels.sentAnImage : '')
   return `${prefix}${text}`.slice(0, 96)
 }
 
@@ -222,6 +253,9 @@ export function SupportWidget({
   onIntentConsumed,
   headerAvatars,
 }: SupportWidgetProps) {
+  const translations = useT()
+  const t = translations.supportWidget
+  const imageLimitReached = translations.assistant.imageLimitReached
   const { user, loading: authLoading } = useAuth()
   const { profile } = useUserProfile()
   const [tab, setTab] = useState<Tab>('home')
@@ -354,12 +388,12 @@ export function SupportWidget({
         setGuestSession(nextSession)
         writeSupportGuestSession(nextSession)
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load messages')
+        setError(err instanceof Error ? err.message : t.errorLoadMessages)
       } finally {
         setLoadingThread(false)
       }
     },
-    [user, guestSession, ingestConversationMessages],
+    [user, guestSession, ingestConversationMessages, t.errorLoadMessages],
   )
 
   useEffect(() => {
@@ -538,7 +572,7 @@ export function SupportWidget({
     const name = guestName.trim()
     const email = guestEmail.trim()
     if (!name || !email) {
-      setError('Enter your name and email to continue.')
+      setError(t.errorEnterDetails)
       return
     }
     setError('')
@@ -586,7 +620,7 @@ export function SupportWidget({
       setTicketDescription('')
       setHomePane('ticket-success')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create ticket')
+      setError(err instanceof Error ? err.message : t.errorCreateTicket)
     } finally {
       setTicketSubmitting(false)
     }
@@ -596,7 +630,7 @@ export function SupportWidget({
     const name = guestName.trim()
     const email = guestEmail.trim()
     if (!name || !email) {
-      setError('Enter your name and email to continue.')
+      setError(t.errorEnterDetails)
       return
     }
     setError('')
@@ -636,12 +670,12 @@ export function SupportWidget({
   const addImageFiles = async (files: FileList | File[]) => {
     const list = Array.from(files).filter(f => isAssistantImageType(f.type))
     if (!list.length) {
-      setError('Use a JPEG, PNG, WebP, or GIF image.')
+      setError(t.errorInvalidImage)
       return
     }
     const room = SUPPORT_MAX_IMAGES - draftImages.length
     if (room <= 0) {
-      setError(`You can attach up to ${SUPPORT_MAX_IMAGES} images.`)
+      setError(imageLimitReached)
       return
     }
     setError('')
@@ -651,7 +685,7 @@ export function SupportWidget({
       if (next.length) setDraftImages(prev => [...prev, ...next].slice(0, SUPPORT_MAX_IMAGES))
     } catch (err) {
       const code = err instanceof Error ? err.message : ''
-      setError(code === 'too_large' ? 'Image is too large.' : 'Could not attach that image.')
+      setError(code === 'too_large' ? t.errorImageTooLarge : t.errorAttachFailed)
     } finally {
       setAttaching(false)
     }
@@ -750,7 +784,7 @@ export function SupportWidget({
     } catch (err) {
       setDraft(text)
       setDraftImages(imagesSnapshot)
-      setError(err instanceof Error ? err.message : 'Failed to send')
+      setError(err instanceof Error ? err.message : t.errorSend)
     } finally {
       setSending(false)
     }
@@ -767,7 +801,7 @@ export function SupportWidget({
       if (user) await refreshConversations()
       await loadThread(activeId)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to request agent')
+      setError(err instanceof Error ? err.message : t.errorRequestAgent)
     } finally {
       setSending(false)
     }
@@ -793,7 +827,7 @@ export function SupportWidget({
         <div
           className="pointer-events-auto flex h-[min(580px,calc(100dvh-6.5rem))] w-[min(372px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-[1.35rem] border border-black/5 bg-white shadow-[0_20px_50px_-24px_rgba(15,23,42,0.45)] dark:border-white/10 dark:bg-neutral-950 dark:shadow-black/50"
           role="dialog"
-          aria-label="Support chat"
+          aria-label={t.supportChat}
         >
           <header className="relative overflow-hidden px-4 pb-3.5 pt-3.5">
             <div
@@ -805,14 +839,14 @@ export function SupportWidget({
                 <HeaderAvatarStack avatars={resolvedHeaderAvatars} />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
-                    UniCopier Support
+                    {t.title}
                   </p>
                   <p className="mt-0.5 flex items-center gap-1.5 truncate text-[11px] text-neutral-500 dark:text-neutral-400">
                     <span className="relative flex h-1.5 w-1.5">
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-60" />
                       <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-400" />
                     </span>
-                    Usually replies in a few minutes
+                    {t.replyEta}
                   </p>
                 </div>
               </div>
@@ -820,7 +854,7 @@ export function SupportWidget({
                 type="button"
                 onClick={close}
                 className="rounded-full p-1.5 text-neutral-400 transition hover:bg-black/5 hover:text-neutral-700 dark:hover:bg-white/10 dark:hover:text-neutral-100"
-                aria-label="Close support"
+                aria-label={t.closeSupport}
               >
                 <X className="h-4 w-4" />
               </button>
@@ -832,23 +866,28 @@ export function SupportWidget({
               <div className="space-y-5 px-4 pb-4 pt-1">
                 <div>
                   <p className="text-[1.65rem] font-semibold leading-tight tracking-tight text-neutral-900 dark:text-neutral-50">
-                    {greetingName ? `Hi ${greetingName} 👋` : 'Hi there 👋'}
+                    {greetingName
+                      ? t.hiNamed.replace('{name}', greetingName)
+                      : t.hiThere}
                   </p>
                   <p className="mt-1.5 text-sm leading-relaxed text-neutral-500 dark:text-neutral-400">
-                    How can we help you today?
+                    {t.howCanWeHelp}
                   </p>
                 </div>
 
                 {authLoading ? (
-                  <p className="text-sm text-neutral-500">Checking sign-in…</p>
+                  <p className="text-sm text-neutral-500">{t.checkingSignIn}</p>
                 ) : homePane === 'ticket-success' ? (
                   <div className="rounded-2xl bg-teal-50/80 px-4 py-5 text-center dark:bg-teal-950/30">
                     <CheckCircle2 className="mx-auto h-8 w-8 text-green-500 dark:text-teal-300" />
                     <p className="mt-3 text-sm font-semibold text-neutral-900 dark:text-neutral-50">
-                      Ticket #{createdTicketNumber} created
+                      {t.ticketCreated.replace(
+                        '{number}',
+                        String(createdTicketNumber ?? ''),
+                      )}
                     </p>
                     <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-                      We emailed a confirmation to your inbox.
+                      {t.ticketEmailConfirm}
                     </p>
                     <button
                       type="button"
@@ -858,7 +897,7 @@ export function SupportWidget({
                       }}
                       className="mt-4 text-sm font-medium text-green-600 hover:underline dark:text-teal-300"
                     >
-                      Back to home
+                      {t.backToHome}
                     </button>
                   </div>
                 ) : homePane === 'ticket' ? (
@@ -878,17 +917,17 @@ export function SupportWidget({
                       className="inline-flex items-center gap-1 text-xs font-medium text-neutral-500 transition hover:text-neutral-800 dark:hover:text-neutral-200"
                     >
                       <ArrowLeft className="h-3.5 w-3.5" />
-                      Back
+                      {t.back}
                     </button>
                     <p className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
-                      Create a ticket
+                      {t.createTicket}
                     </p>
                     <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                      We’ll follow up by email.
+                      {t.ticketFollowUp}
                     </p>
                     <label className="block">
                       <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
-                        Subject
+                        {t.ticketSubject}
                       </span>
                       <input
                         type="text"
@@ -896,19 +935,19 @@ export function SupportWidget({
                         onChange={e => setTicketSubject(e.target.value)}
                         maxLength={200}
                         className={fieldClass}
-                        placeholder="Brief summary"
+                        placeholder={t.ticketSubjectPlaceholder}
                       />
                     </label>
                     <label className="block">
                       <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
-                        Description
+                        {t.ticketDescription}
                       </span>
                       <textarea
                         value={ticketDescription}
                         onChange={e => setTicketDescription(e.target.value)}
                         rows={4}
                         className={`${fieldClass} resize-none`}
-                        placeholder="What can we help with?"
+                        placeholder={t.ticketDescriptionPlaceholder}
                       />
                     </label>
                     {error && tab === 'home' ? (
@@ -922,7 +961,7 @@ export function SupportWidget({
                       className={primaryBtnClass}
                     >
                       {ticketSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                      Submit ticket
+                      {t.submitTicket}
                     </button>
                   </form>
                 ) : guestReady ? (
@@ -933,10 +972,10 @@ export function SupportWidget({
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block text-sm font-medium text-neutral-900 dark:text-neutral-50">
-                          Chat with us
+                          {t.chatWithUs}
                         </span>
                         <span className="block text-xs text-neutral-500 dark:text-neutral-400">
-                          AI and Team can help
+                          {t.chatWithUsHint}
                         </span>
                       </span>
                       <ChevronRight className="h-4 w-4 text-neutral-300 transition group-hover:text-neutral-500 dark:text-neutral-600" />
@@ -948,7 +987,7 @@ export function SupportWidget({
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block text-sm font-medium text-neutral-900 dark:text-neutral-50">
-                          Create a ticket
+                          {t.createTicket}
                         </span>
                       </span>
                       <ChevronRight className="h-4 w-4 text-neutral-300 transition group-hover:text-neutral-500 dark:text-neutral-600" />
@@ -963,21 +1002,21 @@ export function SupportWidget({
                     }}
                   >
                     <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                      Share your name and email to get started.
+                      {t.guestPrompt}
                     </p>
                     <label className="block">
-                      <span className="text-xs font-medium text-neutral-500">Name</span>
+                      <span className="text-xs font-medium text-neutral-500">{t.name}</span>
                       <input
                         type="text"
                         value={guestName}
                         onChange={e => setGuestName(e.target.value)}
                         autoComplete="name"
                         className={fieldClass}
-                        placeholder="Your name"
+                        placeholder={t.namePlaceholder}
                       />
                     </label>
                     <label className="block">
-                      <span className="text-xs font-medium text-neutral-500">Email</span>
+                      <span className="text-xs font-medium text-neutral-500">{t.email}</span>
                       <input
                         type="email"
                         value={guestEmail}
@@ -991,14 +1030,14 @@ export function SupportWidget({
                       <p className="text-xs text-red-500">{error}</p>
                     ) : null}
                     <button type="submit" className={primaryBtnClass}>
-                      Continue
+                      {t.continue}
                     </button>
                     <p className="text-center text-xs text-neutral-500">
                       <a
                         href={loginHref}
                         className="font-medium text-neutral-700 underline-offset-2 hover:underline dark:text-neutral-300"
                       >
-                        Prefer to sign in?
+                        {t.preferSignIn}
                       </a>
                     </p>
                   </form>
@@ -1006,7 +1045,7 @@ export function SupportWidget({
 
                 {guestReady && conversations.length > 0 ? (
                   <div>
-                    <p className="mb-1.5 px-0.5 text-xs font-medium text-neutral-400">Recent</p>
+                    <p className="mb-1.5 px-0.5 text-xs font-medium text-neutral-400">{t.recent}</p>
                     <ul className="overflow-hidden rounded-2xl bg-neutral-50/90 dark:bg-white/[0.03]">
                       {conversations.slice(0, 3).map((c, index) => (
                         <li key={c.id}>
@@ -1021,9 +1060,9 @@ export function SupportWidget({
                             <span className="min-w-0 flex-1">
                               <span className="flex items-center justify-between gap-2">
                                 <span className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-50">
-                                  {c.subject?.trim() || 'Support chat'}
+                                  {c.subject?.trim() || t.supportChat}
                                 </span>
-                                <StatusDot status={c.status} />
+                                <StatusDot status={c.status} t={t} />
                               </span>
                               <span className="mt-0.5 block truncate text-xs text-neutral-400">
                                 {formatTime(c.last_message_at)}
@@ -1048,7 +1087,7 @@ export function SupportWidget({
                     }}
                   >
                     <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                      Enter your name and email to chat.
+                      {t.guestChatPrompt}
                     </p>
                     <input
                       type="text"
@@ -1056,7 +1095,7 @@ export function SupportWidget({
                       onChange={e => setGuestName(e.target.value)}
                       autoComplete="name"
                       className={fieldClass}
-                      placeholder="Name"
+                      placeholder={t.name}
                     />
                     <input
                       type="email"
@@ -1064,11 +1103,11 @@ export function SupportWidget({
                       onChange={e => setGuestEmail(e.target.value)}
                       autoComplete="email"
                       className={fieldClass}
-                      placeholder="Email"
+                      placeholder={t.email}
                     />
                     {error ? <p className="text-xs text-red-500">{error}</p> : null}
                     <button type="submit" className={primaryBtnClass}>
-                      Continue
+                      {t.continue}
                     </button>
                   </form>
                 ) : (
@@ -1085,12 +1124,17 @@ export function SupportWidget({
                               <span className="min-w-0 flex-1">
                                 <span className="flex items-center justify-between gap-2 text-sm font-medium text-neutral-900 dark:text-neutral-50">
                                   <span className="truncate">
-                                    {c.subject?.trim() || 'Support chat'}
+                                    {c.subject?.trim() || t.supportChat}
                                   </span>
-                                  <StatusDot status={c.status} />
+                                  <StatusDot status={c.status} t={t} />
                                 </span>
                                 <span className="mt-0.5 block truncate text-xs text-neutral-400">
-                                  {previewBody(messages, c.id) || formatTime(c.last_message_at)}
+                                  {previewBody(messages, c.id, {
+                                    youPrefix: t.youPrefix,
+                                    supportPrefix: t.supportPrefix,
+                                    noMessagesYet: t.noMessagesYet,
+                                    sentAnImage: t.sentAnImage,
+                                  }) || formatTime(c.last_message_at)}
                                 </span>
                               </span>
                               <ChevronRight className="h-4 w-4 text-neutral-300 dark:text-neutral-600" />
@@ -1106,7 +1150,7 @@ export function SupportWidget({
                             }}
                             className="w-full rounded-full py-2.5 text-sm font-medium text-green-600 transition hover:bg-teal-50 dark:text-teal-300 dark:hover:bg-teal-950/40"
                           >
-                            Start a new conversation
+                            {t.newConversation}
                           </button>
                         </li>
                       </ul>
@@ -1122,7 +1166,7 @@ export function SupportWidget({
                             className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-800 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
                           >
                             <ArrowLeft className="h-3.5 w-3.5" />
-                            All messages
+                            {t.allMessages}
                           </button>
                           {activeConversation && activeConversation.status === 'ai' ? (
                             <button
@@ -1132,12 +1176,12 @@ export function SupportWidget({
                               className="inline-flex items-center gap-1 rounded-full bg-neutral-100 px-2.5 py-1 text-xs font-medium text-neutral-700 transition hover:bg-neutral-200 disabled:opacity-50 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
                             >
                               <UserRound className="h-3 w-3" aria-hidden />
-                              Request human
+                              {t.requestHuman}
                             </button>
                           ) : null}
                           {activeConversation?.status === 'queued' ? (
                             <span className="text-xs font-medium text-amber-600">
-                              Waiting for agent…
+                              {t.waitingForAgent}
                             </span>
                           ) : null}
                           {activeConversation?.status === 'active' ? (
@@ -1145,14 +1189,17 @@ export function SupportWidget({
                               <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
                               {activeConversation.assignee_id &&
                               agentProfiles[activeConversation.assignee_id]
-                                ? `${agentProfiles[activeConversation.assignee_id]!.display_name} connected`
-                                : 'Agent connected'}
+                                ? t.agentConnectedNamed.replace(
+                                    '{name}',
+                                    agentProfiles[activeConversation.assignee_id]!.display_name,
+                                  )
+                                : t.agentConnected}
                             </span>
                           ) : null}
                         </div>
                         <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-3 py-2">
                           {loadingThread ? (
-                            <p className="text-center text-xs text-neutral-400">Loading…</p>
+                            <p className="text-center text-xs text-neutral-400">{t.loading}</p>
                           ) : null}
                           {messages.map(m => {
                             if (m.sender_type === 'system') {
@@ -1187,7 +1234,7 @@ export function SupportWidget({
                               (m.sender_user_id && agentProfiles[m.sender_user_id]) || null
                             const agentName =
                               agent?.display_name ||
-                              (m.sender_type === 'ai' ? 'UniCopier AI' : 'Support')
+                              (m.sender_type === 'ai' ? t.aiName : t.supportName)
 
                             return (
                               <div key={m.id} className="flex max-w-[92%] items-end gap-2">
@@ -1230,7 +1277,7 @@ export function SupportWidget({
               {error ? <p className="mb-2 px-1 text-xs text-red-500">{error}</p> : null}
               {activeConversation?.status === 'resolved' ? (
                 <p className="rounded-2xl bg-neutral-50 px-3 py-3 text-xs text-neutral-500 dark:bg-white/[0.03]">
-                  This conversation is resolved. Start a new one from Home.
+                  {t.conversationResolved}
                 </p>
               ) : (
                 <form
@@ -1252,7 +1299,7 @@ export function SupportWidget({
                           <button
                             type="button"
                             className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-neutral-900 text-white shadow-sm"
-                            aria-label="Remove image"
+                            aria-label={t.removeImage}
                             onClick={() => setDraftImages(prev => prev.filter((_, i) => i !== idx))}
                             disabled={sending}
                           >
@@ -1278,7 +1325,7 @@ export function SupportWidget({
                     <button
                       type="button"
                       className="mb-0.5 rounded-full p-2 text-neutral-400 transition hover:bg-white hover:text-neutral-700 disabled:opacity-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
-                      aria-label="Attach image"
+                      aria-label={t.attachImage}
                       disabled={sending || attaching || draftImages.length >= SUPPORT_MAX_IMAGES}
                       onClick={() => fileInputRef.current?.click()}
                     >
@@ -1292,7 +1339,7 @@ export function SupportWidget({
                       value={draft}
                       onChange={e => setDraft(e.target.value)}
                       rows={1}
-                      placeholder="Write a message…"
+                      placeholder={t.writeMessage}
                       className="max-h-28 min-h-[40px] flex-1 resize-none bg-transparent px-1 py-2 text-sm text-neutral-900 outline-none placeholder:text-neutral-400 dark:text-neutral-50"
                       onPaste={e => {
                         const files = Array.from(e.clipboardData?.files ?? []).filter(f =>
@@ -1314,7 +1361,7 @@ export function SupportWidget({
                       type="submit"
                       disabled={sending || attaching || (!draft.trim() && draftImages.length === 0)}
                       className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-white transition hover:bg-neutral-800 disabled:opacity-35 dark:bg-green-400 dark:text-neutral-950 dark:hover:bg-green-500"
-                      aria-label="Send"
+                      aria-label={t.send}
                     >
                       <Send className="h-3.5 w-3.5" />
                     </button>
@@ -1336,7 +1383,7 @@ export function SupportWidget({
               )}
             >
               <Home className="h-3.5 w-3.5" />
-              Home
+              {t.home}
             </button>
             <button
               type="button"
@@ -1349,7 +1396,7 @@ export function SupportWidget({
               )}
             >
               <MessageCircle className="h-3.5 w-3.5" />
-              Messages
+              {t.messages}
             </button>
           </nav>
         </div>
@@ -1364,10 +1411,10 @@ export function SupportWidget({
         )}
         aria-label={
           open
-            ? 'Close support chat'
+            ? t.closeSupportChat
             : unreadCount > 0
-              ? `Open support chat, ${unreadCount} unread`
-              : 'Open support chat'
+              ? t.openSupportUnread.replace('{count}', String(unreadCount))
+              : t.openSupport
         }
       >
         {open ? (
