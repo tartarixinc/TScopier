@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
-import { Loader2, RefreshCw, Send, Ticket } from 'lucide-react'
+import { ArrowLeft, ChevronDown, Loader2, RefreshCw, Send, Ticket } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { fetchUserContext, type UserContext } from '../lib/supportApi'
@@ -47,6 +47,7 @@ export function TicketsPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [loadingList, setLoadingList] = useState(true)
+  const [detailsOpen, setDetailsOpen] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   const refreshList = useCallback(async () => {
@@ -79,6 +80,10 @@ export function TicketsPage() {
   }, [])
 
   useEffect(() => {
+    setSelectedId(null)
+  }, [filter])
+
+  useEffect(() => {
     void refreshList()
   }, [refreshList])
 
@@ -91,6 +96,7 @@ export function TicketsPage() {
       return
     }
     setDraft('')
+    setDetailsOpen(false)
     void loadThread(selectedId, tickets.find(t => t.id === selectedId)?.user_id ?? null)
   }, [selectedId, loadThread, tickets])
 
@@ -164,6 +170,43 @@ export function TicketsPage() {
 
   const closed = selected?.status === 'resolved' || selected?.status === 'closed'
 
+  const requesterDetails = selected ? (
+    <dl className="space-y-3 text-sm">
+      <div>
+        <dt className="text-xs text-neutral-500">Guest name</dt>
+        <dd className="text-neutral-900">{selected.guest_name?.trim() || '—'}</dd>
+      </div>
+      <div>
+        <dt className="text-xs text-neutral-500">Guest email</dt>
+        <dd className="break-all text-neutral-900">{selected.guest_email?.trim() || '—'}</dd>
+      </div>
+      <div>
+        <dt className="text-xs text-neutral-500">User ID</dt>
+        <dd className="break-all font-mono text-xs text-neutral-800">
+          {selected.user_id?.trim() || '—'}
+        </dd>
+      </div>
+      {selected.user_id ? (
+        <>
+          <div>
+            <dt className="text-xs text-neutral-500">Name</dt>
+            <dd className="text-neutral-900">
+              {userCtx?.display_name ||
+                [userCtx?.first_name, userCtx?.last_name].filter(Boolean).join(' ') ||
+                '—'}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-neutral-500">Username</dt>
+            <dd className="text-neutral-900">{userCtx?.username || '—'}</dd>
+          </div>
+        </>
+      ) : null}
+    </dl>
+  ) : (
+    <p className="text-sm text-neutral-500">No ticket selected</p>
+  )
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       {error ? (
@@ -171,7 +214,12 @@ export function TicketsPage() {
       ) : null}
 
       <div className="flex min-h-0 flex-1">
-        <aside className="flex w-[min(100%,20rem)] shrink-0 flex-col border-r border-neutral-100 bg-white">
+        <aside
+          className={clsx(
+            'min-h-0 w-full shrink-0 flex-col border-r border-neutral-100 bg-white md:flex md:w-80',
+            selectedId ? 'hidden' : 'flex',
+          )}
+        >
           <div className="flex items-center justify-between gap-2 px-4 pb-2 pt-4">
             <div>
               <p className="text-sm font-semibold capitalize text-neutral-900">{filter} tickets</p>
@@ -224,7 +272,12 @@ export function TicketsPage() {
           </div>
         </aside>
 
-        <section className="flex min-w-0 flex-1 flex-col bg-[#FAFBFC]">
+        <section
+          className={clsx(
+            'min-h-0 min-w-0 flex-1 flex-col bg-[#FAFBFC]',
+            selectedId ? 'flex' : 'hidden md:flex',
+          )}
+        >
           {!selected ? (
             <div className="grid flex-1 place-items-center px-6 text-center">
               <div>
@@ -237,56 +290,84 @@ export function TicketsPage() {
             </div>
           ) : (
             <>
-              <div className="flex items-center justify-between gap-3 border-b border-neutral-100 bg-white px-4 py-3">
-                <div>
-                  <p className="text-sm font-semibold text-neutral-900">
-                    #{selected.number} — {selected.subject}
-                  </p>
-                  <p className="text-xs text-neutral-500">
-                    Status: {selected.status}
-                    {selected.assignee_id ? ` · assignee ${selected.assignee_id.slice(0, 8)}` : ''}
-                  </p>
+              <div className="border-b border-neutral-100 bg-white px-3 py-3 sm:px-4">
+                <div className="flex items-start justify-between gap-2 sm:items-center sm:gap-3">
+                  <div className="flex min-w-0 items-start gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedId(null)}
+                      className="mt-0.5 rounded-full p-1.5 text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-800 md:hidden"
+                      aria-label="Back to tickets"
+                    >
+                      <ArrowLeft className="h-4 w-4" />
+                    </button>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-neutral-900">
+                        #{selected.number} — {selected.subject}
+                      </p>
+                      <p className="text-xs text-neutral-500">
+                        Status: {selected.status}
+                        {selected.assignee_id ? ` · assignee ${selected.assignee_id.slice(0, 8)}` : ''}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                    {!selected.assignee_id && selected.status !== 'closed' ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void onClaim()}
+                        className="rounded-full bg-green-400 px-3.5 py-1.5 text-xs font-medium text-neutral-950 transition hover:bg-green-500 disabled:opacity-50"
+                      >
+                        Claim
+                      </button>
+                    ) : null}
+                    {!closed ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void onStatus('resolved')}
+                        className="rounded-full bg-neutral-100 px-3.5 py-1.5 text-xs font-medium text-neutral-700 transition hover:bg-neutral-200 disabled:opacity-50"
+                      >
+                        Resolve
+                      </button>
+                    ) : null}
+                    {selected.status !== 'closed' ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void onStatus('closed')}
+                        className="rounded-full bg-neutral-100 px-3.5 py-1.5 text-xs font-medium text-neutral-700 transition hover:bg-neutral-200 disabled:opacity-50"
+                      >
+                        Close
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {!selected.assignee_id && selected.status !== 'closed' ? (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void onClaim()}
-                      className="rounded-full bg-green-400 px-3.5 py-1.5 text-xs font-medium text-neutral-950 transition hover:bg-green-500 disabled:opacity-50"
-                    >
-                      Claim
-                    </button>
-                  ) : null}
-                  {!closed ? (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void onStatus('resolved')}
-                      className="rounded-full bg-neutral-100 px-3.5 py-1.5 text-xs font-medium text-neutral-700 transition hover:bg-neutral-200 disabled:opacity-50"
-                    >
-                      Resolve
-                    </button>
-                  ) : null}
-                  {selected.status !== 'closed' ? (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void onStatus('closed')}
-                      className="rounded-full bg-neutral-100 px-3.5 py-1.5 text-xs font-medium text-neutral-700 transition hover:bg-neutral-200 disabled:opacity-50"
-                    >
-                      Close
-                    </button>
-                  ) : null}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setDetailsOpen(value => !value)}
+                  className="mt-3 flex w-full items-center justify-between rounded-xl bg-neutral-50 px-3 py-2 text-left text-xs font-medium text-neutral-600 xl:hidden"
+                  aria-expanded={detailsOpen}
+                >
+                  Requester details
+                  <ChevronDown
+                    className={clsx('h-3.5 w-3.5 transition', detailsOpen && 'rotate-180')}
+                  />
+                </button>
+                {detailsOpen ? (
+                  <div className="mt-2 rounded-xl border border-neutral-100 bg-white p-3 xl:hidden">
+                    {requesterDetails}
+                  </div>
+                ) : null}
               </div>
 
-              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4 py-4">
+              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-4 sm:px-4">
                 {messages.map(m => (
                   <div
                     key={m.id}
                     className={clsx(
-                      'max-w-[75%] rounded-2xl px-3 py-2 text-sm leading-relaxed',
+                      'max-w-[min(75%,28rem)] rounded-2xl px-3 py-2 text-sm leading-relaxed',
                       m.sender_type === 'agent'
                         ? 'ml-auto bg-green-500 text-neutral-950'
                         : m.sender_type === 'user' || m.sender_type === 'email_inbound'
@@ -338,44 +419,9 @@ export function TicketsPage() {
           )}
         </section>
 
-        <aside className="hidden w-64 shrink-0 border-l border-neutral-100 bg-white p-4 lg:block">
+        <aside className="hidden w-64 shrink-0 border-l border-neutral-100 bg-white p-4 xl:block">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Requester</h2>
-          {selected ? (
-            <dl className="mt-3 space-y-3 text-sm">
-              <div>
-                <dt className="text-xs text-neutral-500">Guest name</dt>
-                <dd className="text-neutral-900">{selected.guest_name?.trim() || '—'}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-neutral-500">Guest email</dt>
-                <dd className="break-all text-neutral-900">{selected.guest_email?.trim() || '—'}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-neutral-500">User ID</dt>
-                <dd className="break-all font-mono text-xs text-neutral-800">
-                  {selected.user_id?.trim() || '—'}
-                </dd>
-              </div>
-              {selected.user_id ? (
-                <>
-                  <div>
-                    <dt className="text-xs text-neutral-500">Name</dt>
-                    <dd className="text-neutral-900">
-                      {userCtx?.display_name ||
-                        [userCtx?.first_name, userCtx?.last_name].filter(Boolean).join(' ') ||
-                        '—'}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-neutral-500">Username</dt>
-                    <dd className="text-neutral-900">{userCtx?.username || '—'}</dd>
-                  </div>
-                </>
-              ) : null}
-            </dl>
-          ) : (
-            <p className="mt-3 text-sm text-neutral-500">No ticket selected</p>
-          )}
+          <div className="mt-3">{requesterDetails}</div>
         </aside>
       </div>
     </div>
