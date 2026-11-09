@@ -2,6 +2,7 @@ import { authFr } from '../auth/fr'
 import { channelWorkerFr } from '../channelWorker/fr'
 import { tradeNotificationsFr } from '../tradeNotifications/fr'
 import { contactSupportFr } from '../contactSupport/fr'
+import { supportWidgetFr } from '../supportWidget/fr'
 import { riskDisclaimerFr } from '../riskDisclaimer/fr'
 import { termsOfServiceFr } from '../legal/termsFr'
 import { privacyPolicyFr } from '../legal/privacyFr'
@@ -17,6 +18,7 @@ export const fr: Translations = {
   channelWorker: channelWorkerFr,
   tradeNotifications: tradeNotificationsFr,
   contactSupportPage: contactSupportFr,
+  supportWidget: supportWidgetFr,
   riskDisclaimerPage: riskDisclaimerFr,
   termsOfServicePage: termsOfServiceFr,
   privacyPolicyPage: privacyPolicyFr,

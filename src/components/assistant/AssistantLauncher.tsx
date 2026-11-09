@@ -11,7 +11,7 @@ import clsx from 'clsx'
 import { useAuth } from '../../context/AuthContext'
 import { useAssistant } from '../../context/useAssistant'
 import { useT } from '../../context/LocaleContext'
-import { useLiveChat } from '../../context/LiveChatContext'
+import { useSupportChat } from '../../context/SupportChatContext'
 
 export type AssistantLauncherPosition = {
   x: number
@@ -76,7 +76,7 @@ export function AssistantLauncher({
 }: AssistantLauncherProps) {
   const { user } = useAuth()
   const { open, openAssistant } = useAssistant()
-  const { visibility: liveChatVisibility } = useLiveChat()
+  const { visibility: supportVisibility } = useSupportChat()
   const t = useT()
   const a = t.nav.assistant
   const rootRef = useRef<HTMLDivElement>(null)
@@ -111,9 +111,9 @@ export function AssistantLauncher({
   }, [getCurrentPosition, onPositionChange, position])
 
   useEffect(() => {
-    if (!visible || open || liveChatVisibility === 'maximized') return
+    if (!visible || open || supportVisibility === 'maximized') return
     clampCurrentPosition()
-  }, [clampCurrentPosition, liveChatVisibility, minimized, open, visible])
+  }, [clampCurrentPosition, supportVisibility, minimized, open, visible])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -187,7 +187,7 @@ export function AssistantLauncher({
     dragRef.current = null
   }
 
-  if (!user || !visible || open || liveChatVisibility === 'maximized') return null
+  if (!user || !visible || open || supportVisibility === 'maximized') return null
 
   const style: CSSProperties | undefined = position
     ? {

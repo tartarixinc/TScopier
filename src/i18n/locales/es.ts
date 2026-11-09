@@ -2,6 +2,7 @@ import { authEs } from '../auth/es'
 import { channelWorkerEs } from '../channelWorker/es'
 import { tradeNotificationsEs } from '../tradeNotifications/es'
 import { contactSupportEs } from '../contactSupport/es'
+import { supportWidgetEs } from '../supportWidget/es'
 import { riskDisclaimerEs } from '../riskDisclaimer/es'
 import { termsOfServiceEs } from '../legal/termsEs'
 import { privacyPolicyEs } from '../legal/privacyEs'
@@ -17,6 +18,7 @@ export const es: Translations = {
   channelWorker: channelWorkerEs,
   tradeNotifications: tradeNotificationsEs,
   contactSupportPage: contactSupportEs,
+  supportWidget: supportWidgetEs,
   riskDisclaimerPage: riskDisclaimerEs,
   termsOfServicePage: termsOfServiceEs,
   privacyPolicyPage: privacyPolicyEs,

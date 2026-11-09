@@ -1,6 +1,7 @@
 import { authPl } from '../auth/pl'
 import { channelWorkerPl } from '../channelWorker/pl'
 import { contactSupportPl } from '../contactSupport/pl'
+import { supportWidgetPl } from '../supportWidget/pl'
 import { riskDisclaimerPl } from '../riskDisclaimer/pl'
 import { tradeNotificationsPl } from '../tradeNotifications/pl'
 import { accountConfigPl } from './accountConfig/pl'
@@ -35,6 +36,7 @@ export const pl: Translations = mergeLocaleBundle(en, {
   auth: authPl,
   channelWorker: channelWorkerPl,
   contactSupportPage: contactSupportPl,
+  supportWidget: supportWidgetPl,
   riskDisclaimerPage: riskDisclaimerPl,
   tradeNotifications: tradeNotificationsPl,
   management: {

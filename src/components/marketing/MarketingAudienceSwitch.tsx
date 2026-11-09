@@ -30,8 +30,10 @@ export function MarketingAudienceSwitch({
       role="group"
       aria-label="Audience"
       className={clsx(
-        'inline-flex shrink-0 items-center gap-0.5 rounded-full bg-neutral-900/[0.07] p-1 dark:bg-black/30',
-        className,
+        // Callers supply display (`inline-flex` / `grid` / `hidden …`) so `hidden` is not
+        // overridden by a baked-in `inline-flex`.
+        'shrink-0 items-center gap-0.5 rounded-full bg-neutral-900/[0.07] p-1 dark:bg-black/30',
+        className ?? 'inline-flex',
       )}
     >
       {items.map(item => {
