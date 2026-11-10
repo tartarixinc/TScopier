@@ -67,5 +67,8 @@ export function describeLiveFetchError(message: string | null | undefined): stri
   if (/too many requests|rate.?limit|throttl/i.test(text)) {
     return 'The broker is rate limiting requests. Live data will resume shortly.'
   }
+  if (/accountsummary timed out|mtapi .* timed out|request timed out|timed out/i.test(text)) {
+    return 'The broker bridge timed out while reading the account summary. Showing the last known numbers until the next successful refresh.'
+  }
   return text || 'The trading account did not return a live balance.'
 }

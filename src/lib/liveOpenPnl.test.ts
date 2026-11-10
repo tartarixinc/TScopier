@@ -70,4 +70,8 @@ describe('describeLiveFetchError', () => {
     expect(describeLiveFetchError('boom')).toBe('boom')
     expect(describeLiveFetchError('')).toMatch(/did not return/i)
   })
+
+  it('explains MTAPI AccountSummary timeouts without the raw bridge string', () => {
+    expect(describeLiveFetchError('MTAPI AccountSummary timed out')).toMatch(/timed out.*last known/i)
+  })
 })
