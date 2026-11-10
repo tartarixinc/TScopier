@@ -34,4 +34,26 @@ test('parseTradingViewAlert rejects unknown actions and missing symbols', () => 
   assert.equal(parseTradingViewAlert('not json').ok, false)
   const unresolved = parseTradingViewAlert('{"action":"buy","symbol":"{{ticker}}"}')
   assert.equal(unresolved.ok, false)
+  if (!unresolved.ok) assert.equal(unresolved.reason, 'unresolved_symbol_placeholder')
+})
+
+test('parseTradingViewAlert recovers unquoted TradingView placeholders and long/short actions', () => {
+  const broken = parseTradingViewAlert(`{
+  "action": "long",
+  "symbol": "OANDA:XAUUSD",
+  "price": {{close}},
+  "id": "abc"
+}`)
+  assert.equal(broken.ok, true)
+  if (!broken.ok) return
+  assert.equal(broken.alert.action, 'buy')
+  assert.equal(broken.alert.symbol, 'XAUUSD')
+
+  const short = parseTradingViewAlert('{"action":"short","symbol":"EURUSD"}')
+  assert.equal(short.ok, true)
+  if (short.ok) assert.equal(short.alert.action, 'sell')
+
+  const unresolvedAction = parseTradingViewAlert('{"action":"{{strategy.order.action}}","symbol":"EURUSD","price":1}')
+  assert.equal(unresolvedAction.ok, false)
+  if (!unresolvedAction.ok) assert.equal(unresolvedAction.reason, 'unresolved_action_placeholder')
 })
