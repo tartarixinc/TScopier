@@ -328,18 +328,13 @@ async function pushSignal(
   }
 }
 
-async function handleIngest(supabase: SupabaseClient, req: Request, token: string): Promise<Response> {
-  if (!ipAllowed(req)) return json(403, { ok: false, status: "error" })
-
-  const tokenHash = await sha256Hex(token)
-  const { data } = await supabase
-    .from("tradingview_webhooks")
-    .select("id, user_id, channel_id, name, is_active")
-    .eq("token_hash", tokenHash)
-    .maybeSingle()
-  const webhook = (data ?? null) as WebhookRow | null
-  if (!webhook) return json(404, { ok: false })
-
+async function persistAcceptedAlert(
+  supabase: SupabaseClient,
+  webhook: WebhookRow,
+  raw: string,
+  parsed: Extract<ReturnType<typeof parseTradingViewAlert>, { ok: true }>,
+  idempotencyKey: string,
+): Promise<void> {
   const since = new Date(Date.now() - 60_000).toISOString()
   const { count } = await supabase
     .from("tradingview_webhook_deliveries")
@@ -347,20 +342,9 @@ async function handleIngest(supabase: SupabaseClient, req: Request, token: strin
     .eq("webhook_id", webhook.id)
     .gte("created_at", since)
   if ((count ?? 0) >= RATE_LIMIT_PER_MINUTE) {
-    return json(429, { ok: false, status: "error" })
+    console.warn(`[tradingview-webhook] rate limited webhook=${webhook.id}`)
+    return
   }
-
-  const raw = await req.text()
-  const bodyHash = await sha256Hex(raw)
-  if (!webhook.is_active) {
-    await recordDelivery(supabase, webhook, "skipped", `inactive:${bodyHash}`, "inactive", null)
-    return json(200, { ok: false, status: "skipped" })
-  }
-
-  const parsed = parseTradingViewAlert(raw)
-  const idempotencyKey = parsed.ok && parsed.alert.idempotencyId
-    ? parsed.alert.idempotencyId
-    : bodyHash
 
   const { data: existing } = await supabase
     .from("tradingview_webhook_deliveries")
@@ -368,19 +352,7 @@ async function handleIngest(supabase: SupabaseClient, req: Request, token: strin
     .eq("webhook_id", webhook.id)
     .eq("idempotency_key", idempotencyKey)
     .maybeSingle()
-  if (existing) return json(200, { ok: true, status: "duplicate" })
-
-  if (!parsed.ok) {
-    const skipStatus = parsed.reason === "unknown_action"
-      || parsed.reason.startsWith("unresolved_")
-      ? "skipped"
-      : "error"
-    console.warn(
-      `[tradingview-webhook] parse failed webhook=${webhook.id} reason=${parsed.reason} body=${JSON.stringify(raw.slice(0, 240))}`,
-    )
-    await recordDelivery(supabase, webhook, skipStatus, idempotencyKey, parsed.reason, null)
-    return json(200, { ok: false, status: skipStatus === "skipped" ? "skipped" : "error" })
-  }
+  if (existing) return
 
   const createdAt = new Date().toISOString()
   const signalId = crypto.randomUUID()
@@ -397,23 +369,62 @@ async function handleIngest(supabase: SupabaseClient, req: Request, token: strin
     created_at: createdAt,
   })
   if (signalErr) {
-    if (signalErr.code === "23505") return json(200, { ok: true, status: "duplicate" })
+    if (signalErr.code === "23505") return
     console.warn(`[tradingview-webhook] signal insert failed webhook=${webhook.id}: ${signalErr.message}`)
     await recordDelivery(supabase, webhook, "error", idempotencyKey, "signal_insert_failed", null)
-    return json(200, { ok: false, status: "error" })
+    return
   }
 
   const recorded = await recordDelivery(supabase, webhook, "accepted", idempotencyKey, null, signalId)
-  if (recorded === "duplicate") return json(200, { ok: true, status: "duplicate" })
+  if (recorded === "duplicate") return
 
-  // Respond to TradingView immediately — awaiting the trade worker can exceed TV's webhook timeout.
-  scheduleBackgroundTask(pushSignal(webhook, {
+  await pushSignal(webhook, {
     id: signalId,
     parsed_data: parsed.alert.parsed,
     status: "parsed",
     telegram_message_id: idempotencyKey,
     created_at: createdAt,
-  }))
+  })
+}
+
+async function handleIngest(supabase: SupabaseClient, req: Request, token: string): Promise<Response> {
+  if (!ipAllowed(req)) return json(403, { ok: false, status: "error" })
+
+  // Read body first so TradingView is not held open during DB work.
+  const raw = await req.text()
+  const [tokenHash, bodyHash] = await Promise.all([sha256Hex(token), sha256Hex(raw)])
+  const { data } = await supabase
+    .from("tradingview_webhooks")
+    .select("id, user_id, channel_id, name, is_active")
+    .eq("token_hash", tokenHash)
+    .maybeSingle()
+  const webhook = (data ?? null) as WebhookRow | null
+  if (!webhook) return json(404, { ok: false })
+
+  if (!webhook.is_active) {
+    scheduleBackgroundTask(recordDelivery(supabase, webhook, "skipped", `inactive:${bodyHash}`, "inactive", null))
+    return json(200, { ok: false, status: "skipped" })
+  }
+
+  const parsed = parseTradingViewAlert(raw)
+  const idempotencyKey = parsed.ok && parsed.alert.idempotencyId
+    ? parsed.alert.idempotencyId
+    : bodyHash
+
+  if (!parsed.ok) {
+    const skipStatus = parsed.reason === "unknown_action"
+      || parsed.reason.startsWith("unresolved_")
+      ? "skipped"
+      : "error"
+    console.warn(
+      `[tradingview-webhook] parse failed webhook=${webhook.id} reason=${parsed.reason} body=${JSON.stringify(raw.slice(0, 240))}`,
+    )
+    // Reply immediately — TradingView times out around ~3s; cold starts + inserts often exceed that.
+    scheduleBackgroundTask(recordDelivery(supabase, webhook, skipStatus, idempotencyKey, parsed.reason, null))
+    return json(200, { ok: false, status: skipStatus === "skipped" ? "skipped" : "error" })
+  }
+
+  scheduleBackgroundTask(persistAcceptedAlert(supabase, webhook, raw, parsed, idempotencyKey))
   return json(200, { ok: true, status: "accepted" })
 }
 
