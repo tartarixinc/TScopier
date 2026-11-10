@@ -15,6 +15,7 @@ import {
   finite,
   isDemo,
   normalizeSourcePosition,
+  normalizeSourcePositions,
   sessionId,
   symbolLimits,
   type NormalizedSourcePosition,
@@ -29,7 +30,7 @@ import {
   upsertSocialCopySourceTrade,
 } from './socialCopySourceTrades'
 
-export { normalizeSourcePosition, constrainedCopyVolume }
+export { normalizeSourcePosition, normalizeSourcePositions, constrainedCopyVolume }
 export type { NormalizedSourcePosition }
 
 type Json = Record<string, unknown>
@@ -92,6 +93,7 @@ type MappingRow = {
   source_take_profit: number | null
   state: string
   broker_comment: string
+  opened_at?: string | null
 }
 
 export type SocialCopyMonitorOptions = {
@@ -335,11 +337,11 @@ export class SocialCopyMonitor {
     const sourceRaw = await sourceApi.openedOrders(sessionId(context.sourceBroker))
     // Mirror every market position on the published source account. Skip fills
     // already written by social/mirror copy (`sc:` / `mc:` comments) so a
-    // published destination is not re-copied as provider intent.
-    const sourcePositions = sourceRaw
-      .filter(row => !isCopyEngineFillComment(row))
-      .map(normalizeSourcePosition)
-      .filter((row): row is NormalizedSourcePosition => row != null)
+    // published destination is not re-copied as provider intent. Dedupe
+    // order/position twin rows so one source fill cannot open two dest copies.
+    const sourcePositions = normalizeSourcePositions(
+      sourceRaw.filter(row => !isCopyEngineFillComment(row)),
+    )
     const destinationOrders = await destinationApi.openedOrders(sessionId(context.destinationBroker))
     const { data: mappings, error } = await this.supabase.from('social_copy_trade_mappings').select('*')
       .eq('subscription_id', subscription.id).in('state', ['opening', 'open', 'closing', 'uncertain', 'error'])
@@ -380,8 +382,21 @@ export class SocialCopyMonitor {
     for (const position of sourcePositions) {
       const mapping = bySource.get(position.ticket)
       try {
-        if (!mapping) await this.openPosition(subscription, context, destinationApi, destinationOrders, position)
-        else await this.syncPosition(subscription, context.destinationBroker, destinationApi, destinationOrders, mapping, position)
+        if (!mapping) {
+          // Defense in depth when OpenedOrders still yields two tickets for one
+          // fill with divergent entry fields: do not open a second dest leg.
+          const nearDuplicate = [...bySource.values()].some(row => {
+            if (row.state === 'closed' || !row.destination_ticket) return false
+            if (row.source_symbol !== position.symbol || row.source_side !== position.side) return false
+            if (Math.abs(Number(row.source_volume) - position.volume) > 1e-8) return false
+            const openedAt = row.opened_at ? Date.parse(row.opened_at) : NaN
+            return Number.isFinite(openedAt) && Date.now() - openedAt < 120_000
+          })
+          if (nearDuplicate) continue
+          await this.openPosition(subscription, context, destinationApi, destinationOrders, position)
+        } else {
+          await this.syncPosition(subscription, context.destinationBroker, destinationApi, destinationOrders, mapping, position)
+        }
       } catch (error) {
         const code = brokerErrorCode(error)
         // Hard account/config failures still suspend; per-ticket broker errors do not.

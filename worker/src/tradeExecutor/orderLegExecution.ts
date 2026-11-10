@@ -22,7 +22,7 @@ import {
   renewSignalBrokerDispatchClaim,
   SIGNAL_DISPATCH_CLAIM_LEASE_MS,
 } from './signalBrokerDispatchClaim'
-import { reconcileUnknownSend } from './reconcileUnknownSend'
+import { reconcileUnknownSend, resolveUnknownSendFromOrders } from './reconcileUnknownSend'
 import { trailingTradeRowSnapshot } from '../trailingStop'
 import { applyPostFillFollowUp, type PostFillTradeLeg } from '../postFillFollowUp'
 import { captureBrokerPositionIdentity } from '../captureBrokerPositionIdentity'
@@ -277,7 +277,45 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
       return work.finally(() => clearInterval(timer))
     }
 
-    for (let attempt = 0; attempt < 2; attempt++) {
+    // If a prior attempt (or twin worker) already filled this comment, adopt it
+    // instead of opening a second market position.
+    const isMarketSend = sendArgs.operation === 'Buy' || sendArgs.operation === 'Sell'
+    if (isMarketSend && sendArgs.comment && api) {
+      try {
+        const opened = (await positionSnapshot()) ?? []
+        const pre = resolveUnknownSendFromOrders(opened, {
+          symbol: sendArgs.symbol,
+          operation: sendArgs.operation,
+          volume: sendArgs.volume,
+          comment: sendArgs.comment,
+        })
+        if (pre.status === 'adopted') {
+          result = {
+            ticket: pre.ticket,
+            openPrice: pre.openPrice,
+            stopLoss: pre.stopLoss,
+            takeProfit: pre.takeProfit,
+            lots: pre.lots ?? sendArgs.volume,
+          }
+          console.warn(
+            `[tradeExecutor] adopted pre-existing fill before OrderSend signal=${signal.id}`
+            + ` broker=${broker.id} ticket=${pre.ticket} symbol=${sendArgs.symbol}`,
+          )
+          void writeExecutionLog(ctx.supabase, {
+            user_id: signal.user_id,
+            signal_id: signal.id,
+            broker_account_id: broker.id,
+            action: 'order_send_adopted',
+            status: 'success',
+            request_payload: { ...sendArgs, adopted_ticket: pre.ticket, phase: 'pre_send' } as never,
+          })
+        }
+      } catch {
+        /* fall through to OrderSend */
+      }
+    }
+
+    for (let attempt = 0; attempt < 2 && result == null; attempt++) {
       // Each attempt decides for itself; a stale value from an earlier attempt
       // must not be attributed to this failure's payload.
       timeoutReconcile = null

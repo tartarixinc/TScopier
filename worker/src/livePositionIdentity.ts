@@ -165,6 +165,72 @@ function closeEnough(left: number, right: number, floor: number, ratio: number):
   return Math.abs(left - right) <= Math.max(floor, Math.abs(right) * ratio)
 }
 
+/**
+ * Collapse OpenedOrders rows that are the same live position under different
+ * ticket fields (order vs position vs deal), or that match as one hedge fill
+ * by symbol/side/lots/entry. Copy engines must mirror one destination open per
+ * cluster — otherwise a single source fill becomes two subscriber positions.
+ */
+export function dedupeOpenedMarketPositions(openedOrders: unknown[]): ParsedLivePosition[] {
+  const parsed = openedOrders
+    .map(parseLivePosition)
+    .filter((position): position is ParsedLivePosition => position != null)
+  if (parsed.length <= 1) return parsed
+
+  const clusters: ParsedLivePosition[][] = []
+  for (const position of parsed) {
+    let merged = false
+    for (const cluster of clusters) {
+      if (cluster.some(member => positionsAreSameLiveFill(member, position))) {
+        cluster.push(position)
+        merged = true
+        break
+      }
+    }
+    if (!merged) clusters.push([position])
+  }
+
+  return clusters.map(cluster => {
+    // Prefer the member whose canonical ticket is a position id when present;
+    // otherwise keep the first row (stable OpenedOrders order).
+    let best = cluster[0]!
+    for (const member of cluster) {
+      const row = member.row
+      const hasPositionField = firstTicket(row, [
+        'positionTicket', 'PositionTicket', 'position_ticket', 'positionId', 'PositionId', 'PositionID',
+        'position', 'Position',
+      ]) != null
+      if (hasPositionField && member.canonicalTicket === firstTicket(row, [
+        'positionTicket', 'PositionTicket', 'position_ticket', 'positionId', 'PositionId', 'PositionID',
+        'position', 'Position',
+      ])) {
+        best = member
+        break
+      }
+    }
+    const identities = new Set<number>()
+    for (const member of cluster) {
+      for (const ticket of member.identities) identities.add(ticket)
+    }
+    return { ...best, identities }
+  })
+}
+
+function positionsAreSameLiveFill(left: ParsedLivePosition, right: ParsedLivePosition): boolean {
+  for (const ticket of left.identities) {
+    if (right.identities.has(ticket)) return true
+  }
+  if (!left.symbol || !right.symbol) return false
+  if (left.symbol.toUpperCase() !== right.symbol.toUpperCase()) return false
+  if (left.isBuy == null || right.isBuy == null || left.isBuy !== right.isBuy) return false
+  if (left.lots == null || right.lots == null) return false
+  if (!closeEnough(left.lots, right.lots, 1e-8, 1e-6)) return false
+  // Without a shared ticket identity, only collapse when both rows report a
+  // fill price — missing prices would incorrectly merge two real scale-ins.
+  if (left.entryPrice == null || right.entryPrice == null) return false
+  return closeEnough(left.entryPrice, right.entryPrice, 0.01, 1e-4)
+}
+
 export function resolveCanonicalOpenPosition(args: {
   trade: LiveTradeIdentity
   openedOrders: unknown[]

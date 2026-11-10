@@ -54,6 +54,7 @@ import {
   explicitMgmtSymbol,
   expandMgmtRowsToFullBaskets,
   isReplyScopedManagement,
+  loadNearDuplicateOrphanTradesForClose,
   loadOpenTradesForChannelWideCwe,
   loadOpenTradesForManagement,
   loadOpenTradesForSignalAcrossBrokers,
@@ -778,6 +779,17 @@ export async function applyManagement(
         rows,
       })
       basketAnchorId = rows[0]?.signal_id ?? basketAnchorId
+    }
+    if (action === 'close' && rows.length > 0) {
+      const orphans = await loadNearDuplicateOrphanTradesForClose(ctx.supabase, {
+        userId: signal.user_id,
+        channelTrades: rows,
+      })
+      if (orphans.length) {
+        const byId = new Map(rows.map(row => [row.id, row]))
+        for (const orphan of orphans) byId.set(orphan.id, orphan)
+        rows = [...byId.values()]
+      }
     }
 
     if (

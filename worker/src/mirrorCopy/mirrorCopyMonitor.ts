@@ -42,6 +42,7 @@ import {
   LEGACY_COPY_BROKER_COLUMNS,
   missingProviderIdColumn,
   normalizeSourcePosition,
+  normalizeSourcePositions,
   sessionId,
   symbolLimits,
   type NormalizedSourcePosition,
@@ -461,9 +462,7 @@ export class MirrorCopyMonitor {
     if (!await destinationApi.verifyTradingReady(sessionId(context.destination))) throw new Error('DESTINATION_DISCONNECTED')
 
     const sourceRaw = await sourceApi.openedOrders(sessionId(context.source))
-    const sourcePositions = sourceRaw
-      .map(normalizeSourcePosition)
-      .filter((row): row is NormalizedSourcePosition => row != null)
+    const sourcePositions = normalizeSourcePositions(sourceRaw)
     const destinationOrders = await destinationApi.openedOrders(sessionId(context.destination))
     const { data: mappings, error: mappingError } = await this.supabase.from('mirror_copy_trade_mappings').select('*')
       .eq('link_id', link.id).in('state', OPEN_MAPPING_STATES)
