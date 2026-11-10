@@ -109,7 +109,11 @@ test('applyPostFillFollowUp: multi override SL 80 restamps from fill and leaves 
   assert.equal(modifies.length, 1)
   assert.equal(modifies[0]?.ticket, 42)
   assert.equal(modifies[0]?.stoploss, 1992)
-  assert.equal(modifies[0]?.takeprofit, undefined)
+  assert.equal(
+    modifies[0]?.takeprofit,
+    2010,
+    'existing TP rides along — MTAPI clears an omitted takeProfit',
+  )
   assert.equal(tradeUpdates.length, 1)
   assert.equal(tradeUpdates[0]?.sl, 1992)
   assert.equal('tp' in (tradeUpdates[0] ?? {}), false)
@@ -214,7 +218,11 @@ test('applyPostFillFollowUp: multi override TP 30 restamps from fill and keeps b
   assert.equal(modifies.length, 1)
   assert.equal(modifies[0]?.ticket, 42)
   assert.equal(modifies[0]?.takeprofit, 1993)
-  assert.equal(modifies[0]?.stoploss, undefined)
+  assert.equal(
+    modifies[0]?.stoploss,
+    1982,
+    'existing SL rides along — MTAPI clears an omitted stopLoss',
+  )
   assert.equal(tradeUpdates.length, 1)
   assert.equal(tradeUpdates[0]?.tp, 1993)
   assert.equal('sl' in (tradeUpdates[0] ?? {}), false)
@@ -410,7 +418,11 @@ test('applyPostFillFollowUp: keeps the chosen single target instead of the deepe
   await scenario.run()
   assert.equal(scenario.modifies.length, 1)
   assert.equal(scenario.modifies[0]?.stoploss, 1992)
-  assert.equal(scenario.modifies[0]?.takeprofit, undefined, 'chosen target must not be replaced')
+  assert.equal(
+    scenario.modifies[0]?.takeprofit,
+    2015,
+    'chosen target rides along unchanged — MTAPI clears an omitted takeProfit',
+  )
   assert.equal(scenario.tradeUpdates[0]?.sl, 1992)
   assert.equal('tp' in (scenario.tradeUpdates[0] ?? {}), false)
 })

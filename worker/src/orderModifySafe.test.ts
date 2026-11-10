@@ -45,7 +45,7 @@ describe('modifyLegSlTpWithFallback', () => {
   })
 
   it('on invalid stops, protects SL and defers the bad TP', async () => {
-    // Combined fails invalid; SL-only ok; TP-only invalid (price passed it).
+    // Combined fails invalid; SL-only ok; SL+TP retries invalid (price passed it).
     const api = mockApi(call =>
       call.stoploss != null && call.takeprofit != null
         ? 'invalid'
@@ -58,15 +58,20 @@ describe('modifyLegSlTpWithFallback', () => {
     assert.equal(out.mode, 'split')
     assert.equal(out.slApplied, true, 'protective SL applied')
     assert.equal(out.tpApplied, false, 'invalid TP deferred, not blocking SL')
-    assert.equal(api.calls.length, 3, 'combined + SL-only + TP-only')
+    assert.equal(api.calls.length, 3, 'combined + SL-only + SL+TP retry')
+    assert.equal(
+      api.calls[2]!.stoploss,
+      4065,
+      'TP retry carries the applied SL (MTAPI clears an omitted stopLoss)',
+    )
   })
 
   it('reassigns the deepest ladder TP when the requested TP was passed by price', async () => {
     // Combined invalid; SL-only ok; requested TP 4083 invalid (passed); deepest 4089 ok.
+    // Retries now arrive as SL+TP pairs, so behaviour keys off the TP value.
     const api = mockApi(call => {
-      if (call.stoploss != null && call.takeprofit != null) return 'invalid'
-      if (call.stoploss != null) return 'ok'
-      if (call.takeprofit === 4083) return 'invalid'
+      if (call.takeprofit === 4089) return 'ok'
+      if (call.takeprofit != null) return 'invalid'
       return 'ok'
     })
     const out = await modifyLegSlTpWithFallback(api, 'u', 111, 4065, 4083, { deepestTp: 4089 })
@@ -75,7 +80,9 @@ describe('modifyLegSlTpWithFallback', () => {
     assert.equal(out.tpApplied, true, 'TP landed on the deepest valid level')
     assert.equal(out.appliedTp, 4089, 'reassigned to the deepest ladder TP')
     assert.equal(out.appliedSl, 4065)
-    assert.equal(api.calls.length, 4, 'combined + SL-only + TP(4083) + TP(4089)')
+    assert.equal(api.calls.length, 4, 'combined + SL-only + SL+TP(4083) + SL+TP(4089)')
+    assert.equal(api.calls[2]!.stoploss, 4065, 'requested-TP retry carries the applied SL')
+    assert.equal(api.calls[3]!.stoploss, 4065, 'deepest-TP retry carries the applied SL')
   })
 
   it('defers TP only when even the deepest ladder TP is rejected', async () => {

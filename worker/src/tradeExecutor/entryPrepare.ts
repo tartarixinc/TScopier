@@ -33,6 +33,8 @@ import {
 } from '../signalEntryZoneSanity'
 import {
   ENTRY_PRICE_MOVED_ADVERSE_REASON,
+  ENTRY_TPS_BEYOND_MARKET_REASON,
+  allTakeProfitsBeyondMarket,
   entryPriceMovedAdverse,
 } from '../signalEntryPriceGuard'
 import { ENTRY_TP_WITHOUT_SL_REASON } from '../signalEntryNowRequirement'
@@ -494,7 +496,7 @@ export async function prepareEntryExecution(
         }
       }
     } catch {
-      // Best-effort guard — proceed when quote is unavailable.
+      // Best-effort guard — proceed when the quote is unavailable.
     }
   }
 
@@ -932,6 +934,65 @@ export async function prepareEntryExecution(
         `[tradeExecutor] limit level check /Quote failed; sending anyway signal=${signal.id}`
         + ` broker=${broker.id} symbol=${symbol}: ${msg}`,
       )
+    }
+  }
+
+  // ── All-TPs-beyond-market guard (all lanes) ─────────────────────────────
+  // When every signal take-profit already sits on the wrong side of the live
+  // market (price ran past the whole ladder before the order was sent), a
+  // market entry would open with no usable take-profit — skip it instead of
+  // silently stripping the ladder (2026-11-09, Luis / Gold PRO: BUY entry 4017
+  // filled at 4116.7 with TPs 4020/4024/4026).
+  //
+  // Deliberately placed AFTER the modify-only / refresh / teaser / merge
+  // routing — those update an existing basket and must never be swallowed by
+  // a new-entry guard — and only for plans that open NOW at market: broker
+  // pendings and virtual waits fill at the signal level, where the ladder is
+  // still valid. Strict/range-strict brokers stay excluded, like the
+  // AI-lane guard.
+  const guardOpensAtMarket = capped.length > 0
+    && capped.every(o => o.operation === 'Buy' || o.operation === 'Sell')
+    && virtualPendings.length === 0
+  if (
+    guardOpensAtMarket
+    && (entryDirection === 'buy' || entryDirection === 'sell')
+    && !signalEntryPriceStrictEnabled(manual)
+    && !signalEntryRangeStrictEnabled(manual)
+    && !plan.strictEntry
+    // Reversed accounts flip the operation AND mirror the stops inside the
+    // planner, so the original direction/ladder this guard reads is not what
+    // would open — judging it would both skip valid reversed trades and miss
+    // naked reversed ladders. Excluded until the guard evaluates the mirrored
+    // ladder (follow-up, 2026-11-09 review).
+    && manual.reverse_signal !== true
+    && sendOpts?.sameSignalRefresh !== true
+    && api
+  ) {
+    try {
+      const q = strictEntryPrefetch ?? await api.quote(uuid, symbol)
+      strictEntryPrefetch = q
+      if (allTakeProfitsBeyondMarket({
+        action: entryDirection as 'buy' | 'sell',
+        tpLevels: parsed.tp,
+        tpUnit: parsed.tp_unit,
+        bid: q.bid,
+        ask: q.ask,
+        symbol,
+      })) {
+        await ctx.logSendSkipped(signal, broker, ENTRY_TPS_BEYOND_MARKET_REASON, {
+          symbol,
+          quote_bid: q.bid,
+          quote_ask: q.ask,
+          tp_levels: parsed.tp ?? null,
+          dispatch_source: signal.dispatch_source ?? null,
+        })
+        return {
+          ok: false,
+          outcome: { finalizeSkipReason: ENTRY_TPS_BEYOND_MARKET_REASON },
+        }
+      }
+    } catch {
+      // Best-effort guard — proceed when the quote is unavailable.
     }
   }
 
