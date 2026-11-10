@@ -30,6 +30,7 @@ import {
   pipelineSummaryPayload,
   setPipelineTimestamp,
 } from '../pipelineTimestamps'
+import { takeEntryBrokerTimings } from '../brokerEntryContext'
 import { signalExecutionProven } from '../signalExecutionProven'
 import { resolveChannelLabelForComment, sanitizeChannelCommentSlug } from '../tradeComment'
 import { ensureSignalRow } from '../ensureSignalRow'
@@ -418,6 +419,7 @@ export function logPipelineSummaryBackground(ctx: TradeExecutorContext,
         )
       }
     }
+    const brokerCallTimings = takeEntryBrokerTimings(signal.id)
     void ctx.supabase
       .from('trade_execution_logs')
       .insert({
@@ -427,6 +429,7 @@ export function logPipelineSummaryBackground(ctx: TradeExecutorContext,
         status: 'success',
         request_payload: pipelineSummaryPayload(ts, {
           ...extra,
+          ...(brokerCallTimings ?? {}),
           listener_to_dispatch_ms: listenerToDispatchMs,
         }) as unknown as Record<string, unknown>,
       })

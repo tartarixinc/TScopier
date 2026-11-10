@@ -1,3 +1,4 @@
+import { runWithEntryBrokerReads, stashEntryBrokerTimings } from '../brokerEntryContext'
 import type { TradeExecutorContext } from './context'
 import type { SendOrderOutcome } from './types'
 import { prepareEntryExecution, type EntryArgs, type PreparedEntry } from './entryPrepare'
@@ -57,12 +58,18 @@ export async function executeEntrySend(
   args: EntryArgs,
   entryMode: EntryMode,
 ): Promise<SendOrderOutcome> {
-  const prepared = await prepareEntryExecution(ctx, args)
-  if (!prepared.ok) return prepared.outcome
-  const prep = prepared.prep
+  return runWithEntryBrokerReads(async () => {
+    try {
+      const prepared = await prepareEntryExecution(ctx, args)
+      if (!prepared.ok) return prepared.outcome
+      const prep = prepared.prep
 
-  const strictBrokerPlaced = await placeStrictSignalEntryPending(ctx, prep, entryMode === 'single')
-  const materializedVirtuals = await materializeVirtualPendingLegs(ctx, prep, strictBrokerPlaced)
+      const strictBrokerPlaced = await placeStrictSignalEntryPending(ctx, prep, entryMode === 'single')
+      const materializedVirtuals = await materializeVirtualPendingLegs(ctx, prep, strictBrokerPlaced)
 
-  return finishEntrySend(prep, strictBrokerPlaced, materializedVirtuals, entryMode === 'range')
+      return finishEntrySend(prep, strictBrokerPlaced, materializedVirtuals, entryMode === 'range')
+    } finally {
+      stashEntryBrokerTimings(args.signal.id)
+    }
+  })
 }

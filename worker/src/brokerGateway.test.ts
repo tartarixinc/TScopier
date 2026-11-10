@@ -49,9 +49,20 @@ test('background channel paces the aggregate', async () => {
 test('an order does not wait behind a background burst', async () => {
   const r = recorder()
   const gw = createBrokerGateway({ orderRps: 1_000, backgroundRps: 1, perAccountRps: 0, now: r.now, sleep: r.sleep })
-  await gw.acquire('a')          // background, no wait, reserves the background channel ~1s out
-  await gw.acquire('a')          // background, waits ~1000ms
-  await gw.acquire('a', 'order') // order, independent channel -> no extra wait
+  assert.equal(await gw.acquire('a'), 0)          // background, no wait, reserves the background channel ~1s out
+  assert.equal(await gw.acquire('a'), 1_000)      // background, waits ~1000ms
+  assert.equal(await gw.acquire('a', 'order'), 0) // order, independent channel -> no extra wait
+  assert.deepEqual(r.waits, [1_000])
+})
+
+test('entry-critical reads on the order lane skip background backlog', async () => {
+  const r = recorder()
+  const gw = createBrokerGateway({ orderRps: 1_000, backgroundRps: 1, perAccountRps: 0, now: r.now, sleep: r.sleep })
+  await gw.acquire('monitor')
+  await gw.acquire('monitor')
+  // Quote/OpenedOrders during entry use the order lane (via ALS), so they must
+  // not inherit the ~1s background wait above.
+  assert.equal(await gw.acquire('entry', 'order'), 0)
   assert.deepEqual(r.waits, [1_000])
 })
 
