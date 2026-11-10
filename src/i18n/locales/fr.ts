@@ -1675,6 +1675,8 @@ export const fr: Translations = {
     tradingViewNoDeliveries: 'Aucune alerte pour le moment.',
     tradingViewAccepted: 'Acceptée',
     tradingViewSkipped: 'Ignorée',
+    tradingViewSkipUnresolvedSymbol: 'Les variables du symbole n’ont pas été développées — mettez un symbole réel dans Message (ex. XAUUSD) et recréez l’alerte',
+    tradingViewSkipUnresolvedAction: 'La variable action n’a pas été développée — utilisez le modèle Buy/Sell ou une alerte stratégie avec condition de graphique',
     tradingViewError: 'Erreur',
     tradingViewDuplicate: 'Doublon',
     tradingViewCopyTo: 'Copier vers',

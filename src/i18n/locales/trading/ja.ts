@@ -149,6 +149,8 @@ export const tradingJa: TradingPagesBundleTranslations = {
     tradingViewNoDeliveries: 'アラートはまだありません。',
     tradingViewAccepted: '受付',
     tradingViewSkipped: 'スキップ',
+    tradingViewSkipUnresolvedSymbol: 'Symbol placeholders were not expanded — edit the Message to a real symbol (e.g. XAUUSD) and recreate the alert',
+    tradingViewSkipUnresolvedAction: 'Action placeholder was not expanded — use the Buy/Sell template or a strategy alert with a chart condition',
     tradingViewError: 'エラー',
     tradingViewDuplicate: '重複',
     tradingViewCopyTo: 'コピー先',

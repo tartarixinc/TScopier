@@ -1988,6 +1988,8 @@ export interface ChannelsPageTranslations {
   tradingViewNoDeliveries: string
   tradingViewAccepted: string
   tradingViewSkipped: string
+  tradingViewSkipUnresolvedSymbol: string
+  tradingViewSkipUnresolvedAction: string
   tradingViewError: string
   tradingViewDuplicate: string
   tradingViewCopyTo: string

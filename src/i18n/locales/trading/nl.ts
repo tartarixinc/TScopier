@@ -149,6 +149,8 @@ export const tradingNl: TradingPagesBundleTranslations = {
     tradingViewNoDeliveries: 'Nog geen alerts.',
     tradingViewAccepted: 'Geaccepteerd',
     tradingViewSkipped: 'Overgeslagen',
+    tradingViewSkipUnresolvedSymbol: 'Symbol placeholders were not expanded — edit the Message to a real symbol (e.g. XAUUSD) and recreate the alert',
+    tradingViewSkipUnresolvedAction: 'Action placeholder was not expanded — use the Buy/Sell template or a strategy alert with a chart condition',
     tradingViewError: 'Fout',
     tradingViewDuplicate: 'Duplicaat',
     tradingViewCopyTo: 'Kopiëren naar',

@@ -1675,6 +1675,8 @@ export const es: Translations = {
     tradingViewNoDeliveries: 'Aún no hay alertas.',
     tradingViewAccepted: 'Aceptada',
     tradingViewSkipped: 'Omitida',
+    tradingViewSkipUnresolvedSymbol: 'Los marcadores del símbolo no se expandieron — edita el Message con un símbolo real (p. ej. XAUUSD) y recrea la alerta',
+    tradingViewSkipUnresolvedAction: 'El marcador de action no se expandió — usa la plantilla Buy/Sell o una alerta de estrategia con condición de gráfico',
     tradingViewError: 'Error',
     tradingViewDuplicate: 'Duplicada',
     tradingViewCopyTo: 'Copiar a',
