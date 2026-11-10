@@ -48,11 +48,12 @@ describe('resolveBuildFlags', () => {
 })
 
 describe('isSignalSourceLocked', () => {
-  it('locks Discord and TradingView only while the switch is off', () => {
+  it('locks Discord only while the switch is off, and never TradingView', () => {
     // This test environment has no variables set, so nothing is locked.
     const locked = buildFlags.extraSourcesLocked
     expect(isSignalSourceLocked('discord')).toBe(locked)
-    expect(isSignalSourceLocked('tradingview')).toBe(locked)
+    // TradingView has a worker, so it stays selectable in every build.
+    expect(isSignalSourceLocked('tradingview')).toBe(false)
     expect(isSignalSourceLocked('whatsapp')).toBe(false)
     expect(isSignalSourceLocked('telegram')).toBe(false)
     expect(isSignalSourceLocked('broker')).toBe(false)
