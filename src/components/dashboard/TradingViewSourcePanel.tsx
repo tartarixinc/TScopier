@@ -152,6 +152,13 @@ export function TradingViewSourcePanel({
     return copy.tradingViewError
   }
 
+  const skipReasonLabel = (reason: string | null | undefined) => {
+    if (!reason) return null
+    if (reason === 'unresolved_symbol_placeholder') return copy.tradingViewSkipUnresolvedSymbol
+    if (reason === 'unresolved_action_placeholder') return copy.tradingViewSkipUnresolvedAction
+    return reason
+  }
+
   const selected = webhooks.find(webhook => webhook.id === selectedId) ?? null
 
   const connectBroker = async (webhook: WebhookRow, brokerId: string) => {
@@ -308,6 +315,7 @@ export function TradingViewSourcePanel({
             copied={copied}
             recent={deliveries.filter(row => row.webhook_id === selected.id).slice(0, 8)}
             statusLabel={statusLabel}
+            skipReasonLabel={skipReasonLabel}
             onCopy={copyText}
             onRotate={() => {
               if (!user?.id) return
@@ -602,6 +610,7 @@ function WebhookDetails({
   copied,
   recent,
   statusLabel,
+  skipReasonLabel,
   onCopy,
   onRotate,
 }: {
@@ -611,6 +620,7 @@ function WebhookDetails({
   copied: string | null
   recent: DeliveryRow[]
   statusLabel: (status: DeliveryRow['status']) => string
+  skipReasonLabel: (reason: string | null | undefined) => string | null
   onCopy: (key: string, value: string) => void
   onRotate: () => void
 }) {
@@ -699,7 +709,11 @@ function WebhookDetails({
                   <Badge variant={row.status === 'accepted' ? 'success' : row.status === 'error' ? 'error' : 'neutral'}>
                     {statusLabel(row.status)}
                   </Badge>
-                  {row.skip_reason ? <span className="text-xs text-neutral-900 dark:text-neutral-50">{row.skip_reason}</span> : null}
+                  {row.skip_reason ? (
+                    <span className="max-w-[14rem] text-xs text-neutral-900 dark:text-neutral-50">
+                      {skipReasonLabel(row.skip_reason)}
+                    </span>
+                  ) : null}
                 </span>
               </li>
             ))}

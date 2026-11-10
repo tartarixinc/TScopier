@@ -224,6 +224,39 @@ describe('normalizeSocialProviderSourceTrades', () => {
       }),
     ])
   })
+
+  it('excludes signal-linked fills so TradingView/Telegram copies are not Manual Execution', () => {
+    const rows = normalizeSocialProviderSourceTrades(
+      [{
+        id: 'tv-fill',
+        broker_account_id: 'src-1',
+        symbol: 'XAUUSDm',
+        direction: 'sell',
+        lot_size: 0.01,
+        status: 'open',
+        opened_at: '2026-11-10T20:39:00Z',
+        closed_at: null,
+        metaapi_order_id: '1',
+        broker_position_ticket: '1',
+        signal_id: 'signal-tv-1',
+      }, {
+        id: 'manual-fill',
+        broker_account_id: 'src-1',
+        symbol: 'BTCUSDm',
+        direction: 'buy',
+        lot_size: 0.1,
+        status: 'open',
+        opened_at: '2026-11-10T20:40:00Z',
+        closed_at: null,
+        metaapi_order_id: '2',
+        broker_position_ticket: '2',
+        signal_id: null,
+      }],
+      { 'src-1': 'MT5 • 476205231' },
+    )
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ id: 'provider-trade:manual-fill:open', symbol: 'BTCUSDm' })
+  })
 })
 
 describe('countSocialCopyOpensInRange', () => {
@@ -350,7 +383,7 @@ describe('fetchManualSourceTradeLogs', () => {
         }
         if (table === 'trades') {
           const api: Record<string, unknown> = {}
-          for (const method of ['select', 'eq', 'in', 'order', 'limit']) api[method] = () => api
+          for (const method of ['select', 'eq', 'in', 'is', 'order', 'limit']) api[method] = () => api
           api.then = (resolve: (v: unknown) => unknown) =>
             Promise.resolve({
               data: [{
@@ -364,6 +397,7 @@ describe('fetchManualSourceTradeLogs', () => {
                 closed_at: null,
                 metaapi_order_id: '547044465',
                 broker_position_ticket: '547044465',
+                signal_id: null,
               }],
               error: null,
             }).then(resolve)

@@ -5,19 +5,23 @@ export const TRADINGVIEW_ALERT_TEMPLATE = `{
   "id": "{{timenow}}"
 }`
 
-/** Indicator alert body with a hardcoded buy side. */
+/**
+ * Indicator buy alert. Use a real symbol (edit XAUUSD to match your chart).
+ * Avoid relying on {{ticker}} — Pine alert()-only webhooks leave placeholders unexpanded.
+ */
 export const TRADINGVIEW_ALERT_TEMPLATE_BUY = `{
   "action": "buy",
-  "symbol": "{{ticker}}",
-  "price": "{{close}}",
+  "symbol": "XAUUSD",
   "id": "{{timenow}}"
 }`
 
-/** Indicator alert body with a hardcoded sell side. */
+/**
+ * Indicator sell alert. Use a real symbol (edit XAUUSD to match your chart).
+ * Avoid relying on {{ticker}} — Pine alert()-only webhooks leave placeholders unexpanded.
+ */
 export const TRADINGVIEW_ALERT_TEMPLATE_SELL = `{
   "action": "sell",
-  "symbol": "{{ticker}}",
-  "price": "{{close}}",
+  "symbol": "XAUUSD",
   "id": "{{timenow}}"
 }`
 
@@ -156,9 +160,13 @@ export function parseTradingViewAlert(raw: string): TradingViewAlertParse {
   const sl = finiteNumber(record.sl)
   const tp = takeLevels(record.tp)
   const idRaw = record.id
-  const idempotencyId = idRaw == null || idRaw === ''
+  let idempotencyId = idRaw == null || idRaw === ''
     ? null
     : String(idRaw).trim().slice(0, 200) || null
+  // Unexpanded {{timenow}} would otherwise collapse every fire onto one idempotency key.
+  if (idempotencyId && /\{\{|\}\}/.test(idempotencyId)) {
+    idempotencyId = null
+  }
 
   return {
     ok: true,

@@ -65,21 +65,18 @@ test('parseTradingViewAlert recovers unquoted TradingView placeholders and long/
 
 test('indicator Buy and Sell templates parse to market buy/sell', () => {
   const buy = parseTradingViewAlert(
-    TRADINGVIEW_ALERT_TEMPLATE_BUY
-      .replace('"{{ticker}}"', '"OANDA:XAUUSD"')
-      .replace('"{{close}}"', '"2650.2"')
-      .replace('"{{timenow}}"', '"alert-buy"'),
+    TRADINGVIEW_ALERT_TEMPLATE_BUY.replace('"{{timenow}}"', '"alert-buy"'),
   )
   assert.equal(buy.ok, true)
   if (buy.ok) {
     assert.equal(buy.alert.action, 'buy')
     assert.equal(buy.alert.symbol, 'XAUUSD')
+    assert.equal(buy.alert.idempotencyId, 'alert-buy')
   }
 
   const sell = parseTradingViewAlert(
     TRADINGVIEW_ALERT_TEMPLATE_SELL
-      .replace('"{{ticker}}"', '"FX:EURUSD"')
-      .replace('"{{close}}"', '"1.085"')
+      .replace('"XAUUSD"', '"FX:EURUSD"')
       .replace('"{{timenow}}"', '"alert-sell"'),
   )
   assert.equal(sell.ok, true)
@@ -87,4 +84,10 @@ test('indicator Buy and Sell templates parse to market buy/sell', () => {
     assert.equal(sell.alert.action, 'sell')
     assert.equal(sell.alert.symbol, 'EURUSD')
   }
+})
+
+test('parseTradingViewAlert ignores unresolved id placeholders', () => {
+  const result = parseTradingViewAlert('{"action":"sell","symbol":"XAUUSD","id":"{{timenow}}"}')
+  assert.equal(result.ok, true)
+  if (result.ok) assert.equal(result.alert.idempotencyId, null)
 })

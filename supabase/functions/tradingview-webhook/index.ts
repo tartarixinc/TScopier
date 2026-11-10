@@ -283,6 +283,7 @@ async function pushSignal(
     status: string
     telegram_message_id: string
     created_at: string
+    raw_message: string
   },
 ): Promise<void> {
   const token = (Deno.env.get("WORKER_INTERNAL_TOKEN") ?? "").trim()
@@ -311,6 +312,7 @@ async function pushSignal(
           telegram_message_id: signal.telegram_message_id,
           reply_to_message_id: null,
           created_at: signal.created_at,
+          raw_message: signal.raw_message,
           dispatch_source: "tradingview_webhook",
         },
         priority: action === "close" ? "high" : "normal",
@@ -356,13 +358,21 @@ async function persistAcceptedAlert(
 
   const createdAt = new Date().toISOString()
   const signalId = crypto.randomUUID()
+  // Compatibility for trade workers that still apply Telegram "buy/sell now"
+  // eligibility to TV JSON: prepend an imperative cue. Newer workers ignore this
+  // for source_kind=tradingview and use alert/config SL+TP instead.
+  const alert = parsed.alert
+  const imperativeCue = (alert.action === "buy" || alert.action === "sell")
+    ? `${alert.symbol} ${alert.action.toUpperCase()} NOW\n`
+    : ""
+  const rawMessage = `${imperativeCue}${raw}`.slice(0, 8_000)
   const { error: signalErr } = await supabase.from("signals").insert({
     id: signalId,
     user_id: webhook.user_id,
     channel_id: webhook.channel_id,
     source_kind: "tradingview",
     source_display_name: webhook.name?.trim() || "TradingView",
-    raw_message: raw.slice(0, 8_000),
+    raw_message: rawMessage,
     parsed_data: parsed.alert.parsed,
     status: "parsed",
     skip_reason: null,
@@ -386,6 +396,7 @@ async function persistAcceptedAlert(
     status: "parsed",
     telegram_message_id: idempotencyKey,
     created_at: createdAt,
+    raw_message: rawMessage,
   })
 }
 
@@ -409,9 +420,12 @@ async function handleIngest(supabase: SupabaseClient, req: Request, token: strin
   }
 
   const parsed = parseTradingViewAlert(raw)
+  // Prefer an expanded alert id. Otherwise mint a unique key so identical static
+  // bodies (common when TradingView does not expand placeholders) still create
+  // a delivery row — and an accepted signal — on every fire.
   const idempotencyKey = parsed.ok && parsed.alert.idempotencyId
     ? parsed.alert.idempotencyId
-    : bodyHash
+    : `${bodyHash}:${crypto.randomUUID()}`
 
   if (!parsed.ok) {
     const skipStatus = parsed.reason === "unknown_action"
