@@ -13,6 +13,7 @@ from telethon.errors import SessionPasswordNeededError
 from telethon.sessions import StringSession
 
 from .config import Config
+from .session_guard import session_value_or_refuse
 from .listener_events import persist_listener_event
 from .telegram_account_claims import (
     assert_telegram_account_available,
@@ -280,7 +281,9 @@ class AuthService:
         ).data
         if not row:
             return None
-        auth_session = row.get("auth_session_string") or ""
+        auth_session = session_value_or_refuse(user_id, row.get("auth_session_string"))
+        if auth_session is None:
+            raise RuntimeError("Pending Telegram auth is encrypted; this listener has no decryption key")
         session = StringSession(auth_session) if auth_session else StringSession("")
         client = TelegramClient(session, self.cfg.telegram_api_id, self.cfg.telegram_api_hash)
         await client.connect()
