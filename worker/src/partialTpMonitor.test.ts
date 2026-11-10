@@ -7,6 +7,7 @@ import {
   isPartialTpTriggered,
   liveTicketAbsent,
   nextPartialFailureCount,
+  parentClosedBeyondGrace,
   partialFailureClass,
   partialRetryDelayMs,
   shouldTerminatePartialLeg,
@@ -88,6 +89,37 @@ test('pending parent trade => zero quote calls and no leg mutation', () => {
   }
   assert.equal(quoteCalls, 0)
   assert.equal(legMutations, 0)
+})
+
+// The grace window exists because the drift sweep reopens `closed → open`
+// rows that are in fact still live at the broker. A leg cancelled too early
+// would leave a reopened trade with no early TPs, permanently. Only a close
+// we can both identify and date authorises a cancel; the two ages below sit
+// outside any value the clamp allows (10–60 min), so the assertions hold for
+// every configuration of PARTIAL_TP_DEAD_LEG_GRACE_MS.
+
+test('parentClosedBeyondGrace: a close inside the grace window is not proof', () => {
+  const now = Date.parse('2026-11-09T16:00:00.000Z')
+  assert.equal(parentClosedBeyondGrace('closed', '2026-11-09T15:59:00.000Z', now), false)
+  assert.equal(parentClosedBeyondGrace('cancelled', '2026-11-09T15:59:00.000+00:00', now), false)
+})
+
+test('parentClosedBeyondGrace: a close older than the grace window authorises a cancel', () => {
+  const now = Date.parse('2026-11-09T16:00:00.000Z')
+  assert.equal(parentClosedBeyondGrace('closed', '2026-11-09T15:00:00.000Z', now), true)
+  assert.equal(parentClosedBeyondGrace('cancelled', '2026-11-09T15:00:00.000+00:00', now), true)
+})
+
+test('parentClosedBeyondGrace: anything unproven fails closed', () => {
+  const now = Date.parse('2026-11-09T16:00:00.000Z')
+  const old = '2026-11-09T15:00:00.000Z'
+  assert.equal(parentClosedBeyondGrace('open', old, now), false)
+  assert.equal(parentClosedBeyondGrace('pending', old, now), false)
+  assert.equal(parentClosedBeyondGrace('closed', null, now), false)
+  assert.equal(parentClosedBeyondGrace('closed', undefined, now), false)
+  assert.equal(parentClosedBeyondGrace('closed', '', now), false)
+  assert.equal(parentClosedBeyondGrace('closed', 'not-a-date', now), false)
+  assert.equal(parentClosedBeyondGrace(null, old, now), false)
 })
 
 // Retry classification. The 2026-10-05 loop came from a failure that no

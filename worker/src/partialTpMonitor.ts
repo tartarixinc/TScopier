@@ -68,6 +68,7 @@ interface ParentTradeRow {
   metaapi_order_id: string | null
   broker_position_ticket?: string | null
   status: string
+  closed_at?: string | null
   symbol: string
   direction: string
   lot_size: number
@@ -81,6 +82,32 @@ interface BrokerRow extends RemoteBrokerState {
 const ACTIVE_MS = monitorActiveIntervalMs('PARTIAL_TP_TICK_MS', 400)
 const IDLE_MS = monitorIdleIntervalMs('PARTIAL_TP_IDLE_MS', 15_000)
 const STALE_CLAIM_AFTER_MS = 30_000
+const LEG_COLUMNS =
+  'id,trade_id,signal_id,user_id,broker_account_id,metaapi_account_id,symbol,is_buy,tp_idx,trigger_price,close_lots,status'
+/** PostgREST `in.(...)` filters go in the URL; keep each request short. */
+const IN_QUERY_CHUNK = 100
+/** Page size for the open-trade read. Supabase caps a response at 1000 rows,
+ *  so an unpaged read would silently truncate at exactly that number — the
+ *  same silent-starvation class the 500-row leg scan caused. */
+const OPEN_TRADE_PAGE_SIZE = 1000
+/** Safety cap on that paging loop so a runaway read can never spin forever. */
+const OPEN_TRADE_MAX_PAGES = 50
+/** How many orphaned pending legs one cleanup pass may cancel. */
+const DEAD_LEG_CLEANUP_BATCH = 200
+/** Run the orphan cleanup every N ticks. */
+const DEAD_LEG_CLEANUP_EVERY_TICKS = 12
+/**
+ * How long a parent must have been closed before its legs may be cancelled.
+ *
+ * The drift sweep reopens `closed → open` rows that are in fact still live at
+ * the broker (`tradeBrokerDrift.ts`), on a 5–15 minute cadence. Cancelling
+ * instantly would always win that race and would permanently strip a reopened
+ * trade of its early TPs, so the reopen path gets first refusal.
+ */
+const DEAD_LEG_GRACE_MS = Math.max(
+  600_000,
+  Math.min(3_600_000, Number(process.env.PARTIAL_TP_DEAD_LEG_GRACE_MS ?? 1_800_000) || 1_800_000),
+)
 
 /**
  * Pure trigger check. Same direction-aware comparison as virtualPendingMonitor's
@@ -107,6 +134,28 @@ export function shouldMonitorPartialTpLeg(
   openParentIds: ReadonlySet<string>,
 ): boolean {
   return !unavailableBrokerIds.has(leg.broker_account_id) && openParentIds.has(leg.trade_id)
+}
+
+/**
+ * True only when the parent trade is provably closed AND that close is old
+ * enough to have outlived the grace window — i.e. its legs may be cancelled.
+ *
+ * The grace exists because the drift sweep reopens `closed → open` rows that
+ * are in fact still live at the broker. Cancelling first would permanently
+ * strip such a trade of its early TPs, so a recent close, an undateable close
+ * (null / unparseable `closed_at`), or a parent that is merely not open yet
+ * all fail this test and leave the leg alone.
+ */
+export function parentClosedBeyondGrace(
+  status: string | null | undefined,
+  closedAt: unknown,
+  nowMs: number = Date.now(),
+): boolean {
+  if (status !== 'closed' && status !== 'cancelled') return false
+  if (typeof closedAt !== 'string' || closedAt.length === 0) return false
+  const closedMs = Date.parse(closedAt)
+  if (!Number.isFinite(closedMs)) return false
+  return nowMs - closedMs >= DEAD_LEG_GRACE_MS
 }
 
 /**
@@ -346,9 +395,11 @@ export class PartialTpMonitor {
   private hostId: string
   private ticking = false
   private firstTickLogged = false
-  /** Heartbeat counter so we log one summary line every ~30s when there's
-   *  work waiting but no triggers crossing. */
+  /** Heartbeat counter so we log one summary line every 20 quiet ticks when
+   *  there's work waiting but no trigger has crossed yet. */
   private quietTicks = 0
+  /** Tick counter so the orphan-leg cleanup runs on a slow cadence. */
+  private cleanupTick = 0
   /** Per-leg retry state so a permanently-failing leg backs off instead of hot-looping. */
   private failureByPartial = new Map<string, { count: number; cls: PartialFailureClass; nextAt: number }>()
   /** Why the last attempt for a leg failed, to pick transient vs unresolvable backoff. */
@@ -436,6 +487,18 @@ export class PartialTpMonitor {
     this.failureLogCooldownUntil.delete(partialId)
   }
 
+  /**
+   * Count one quiet tick and print the periodic summary line.
+   *
+   * Every path that leaves the tick without doing work routes through here, so
+   * "nothing to do" always leaves a trace. The 2026-11-05..09 incident
+   * produced no log line at all for days, which is what made it invisible.
+   */
+  private noteQuiet(summary: string): void {
+    this.quietTicks += 1
+    if (this.quietTicks % 20 === 1) console.log(summary)
+  }
+
   private async runTick(): Promise<void> {
     if (this.ticking) return
     this.ticking = true
@@ -443,6 +506,153 @@ export class PartialTpMonitor {
       await this.tick()
     } finally {
       this.ticking = false
+    }
+  }
+
+  /**
+   * Ids of the trades currently open on this worker's shard.
+   *
+   * Paged rather than a single read: Supabase caps a response at 1000 rows, so
+   * an unpaged read would silently drop every open trade past that number —
+   * recreating the exact starvation this fix removes. Returns null when any
+   * page fails, so the caller proves nothing instead of acting on a partial
+   * set.
+   */
+  private async loadOpenTradeIds(): Promise<Set<string> | null> {
+    const ids = new Set<string>()
+    let from = 0
+    for (let page = 0; page < OPEN_TRADE_MAX_PAGES; page += 1) {
+      const q = await applyShardToQuery(
+        this.supabase,
+        this.supabase
+          .from('trades')
+          .select('id')
+          .eq('status', 'open')
+          .order('id', { ascending: true })
+          .range(from, from + OPEN_TRADE_PAGE_SIZE - 1),
+      )
+      if (!q) return null
+      const { data, error } = await q
+      if (error) {
+        console.error('[partialTpMonitor] open trade load failed:', error.message)
+        return null
+      }
+      const rows = (data ?? []) as Array<{ id?: unknown }>
+      for (const row of rows) {
+        const id = String(row.id ?? '')
+        if (id) ids.add(id)
+      }
+      if (rows.length < OPEN_TRADE_PAGE_SIZE) return ids
+      from += OPEN_TRADE_PAGE_SIZE
+    }
+    console.warn(
+      `[partialTpMonitor] open trade read stopped at ${OPEN_TRADE_MAX_PAGES * OPEN_TRADE_PAGE_SIZE} rows`
+      + ' — open trades beyond that point stay unmonitored until the total drops below the cap',
+    )
+    return ids
+  }
+
+  /**
+   * Pending legs for the given trades, chunked so the request URL stays small.
+   *
+   * Returns null when any chunk fails: a partial set must not reach the tick,
+   * because the backoff-pruning step would then read "this leg is missing" as
+   * "this leg is no longer pending" and reset a leg's unresolvable-failure
+   * counter (and its log throttle) on a mere read error.
+   */
+  private async loadPendingLegsForTrades(tradeIds: string[]): Promise<PartialRow[] | null> {
+    const out: PartialRow[] = []
+    for (let i = 0; i < tradeIds.length; i += IN_QUERY_CHUNK) {
+      const chunk = tradeIds.slice(i, i + IN_QUERY_CHUNK)
+      const q = await applyShardToQuery(
+        this.supabase,
+        this.supabase
+          .from('partial_tp_legs')
+          .select(LEG_COLUMNS)
+          .eq('status', 'pending')
+          .in('trade_id', chunk),
+      )
+      if (!q) return null
+      const { data, error } = await q
+      if (error) {
+        console.error('[partialTpMonitor] select failed:', error.message)
+        return null
+      }
+      out.push(...((data ?? []) as PartialRow[]))
+    }
+    return out
+  }
+
+  /**
+   * Cancel `pending` legs whose parent trade is already `closed` or
+   * `cancelled`. They can never fire, and leaving them in place is what let
+   * the backlog starve live legs out of the old 500-row window.
+   *
+   * Two safety properties:
+   *  - the parent row is read through the `trades` join in the same request,
+   *    so legs on live trades are excluded by the query itself and can never
+   *    block the cleanup window (a plain "oldest 200 pending legs" scan is
+   *    head-of-line blocked as soon as 200 older live legs sit ahead of the
+   *    backlog);
+   *  - a leg is only cancelled once the close is older than
+   *    `DEAD_LEG_GRACE_MS`, because the drift sweep reopens `closed → open`
+   *    rows that are in fact still live at the broker, and cancelling first
+   *    would permanently strip a reopened trade of its early TPs.
+   *
+   * The write is CAS'd on `status='pending'` + no owner, so a concurrent
+   * close or another replica is never clobbered. A failed read cancels
+   * nothing.
+   */
+  private async cancelLegsForClosedParents(): Promise<void> {
+    // Computed before the read so the query itself excludes closes still
+    // inside the window (and SQL drops a NULL `closed_at` too); the JS check
+    // below re-verifies the same rule before anything is written.
+    const nowMs = Date.now()
+    const cutoffIso = new Date(nowMs - DEAD_LEG_GRACE_MS).toISOString()
+    const q = await applyShardToQuery(
+      this.supabase,
+      this.supabase
+        .from('partial_tp_legs')
+        .select('id,trade_id,trades!inner(status,closed_at)')
+        .eq('status', 'pending')
+        .is('claimed_by', null)
+        .in('trades.status', ['closed', 'cancelled'])
+        .lt('trades.closed_at', cutoffIso)
+        .order('created_at', { ascending: true })
+        .limit(DEAD_LEG_CLEANUP_BATCH),
+    )
+    if (!q) return
+    const { data, error } = await q
+    if (error) {
+      console.warn(`[partialTpMonitor] orphan scan failed: ${error.message}`)
+      return
+    }
+    const deadIds = ((data ?? []) as Array<{
+      id: string
+      trades?: { status?: string | null; closed_at?: string | null } | null
+    }>)
+      .filter(row => parentClosedBeyondGrace(row.trades?.status, row.trades?.closed_at, nowMs))
+      .map(row => row.id)
+    if (!deadIds.length) return
+    const firedAt = new Date().toISOString()
+    let cancelled = 0
+    for (let i = 0; i < deadIds.length; i += IN_QUERY_CHUNK) {
+      const chunk = deadIds.slice(i, i + IN_QUERY_CHUNK)
+      const { data: cancelledRows, error: cancelErr } = await this.supabase
+        .from('partial_tp_legs')
+        .update({ status: 'cancelled', fired_at: firedAt, error_message: 'parent trade not open' })
+        .in('id', chunk)
+        .eq('status', 'pending')
+        .is('claimed_by', null)
+        .select('id')
+      if (cancelErr) {
+        console.warn(`[partialTpMonitor] orphan cancel failed: ${cancelErr.message}`)
+      } else {
+        cancelled += (cancelledRows ?? []).length
+      }
+    }
+    if (cancelled > 0) {
+      console.log(`[partialTpMonitor] cancelled ${cancelled} orphan leg(s) — parent trade closed`)
     }
   }
 
@@ -456,29 +666,32 @@ export class PartialTpMonitor {
       .eq('status', 'claimed')
       .lt('claimed_at', staleCutoff)
 
-    const legsQ = await applyShardToQuery(
-      this.supabase,
-      this.supabase
-        .from('partial_tp_legs')
-        .select('id,trade_id,signal_id,user_id,broker_account_id,metaapi_account_id,symbol,is_buy,tp_idx,trigger_price,close_lots,status')
-        .eq('status', 'pending')
-        .limit(500),
-    )
-    if (!legsQ) return
-    const { data, error } = await legsQ
-    if (error) {
-      console.error('[partialTpMonitor] select failed:', error.message)
-      return
+    // Drain legs whose parent has closed. Nothing can ever fire them, and a
+    // long-lived `pending` backlog is what starved the live legs out of the
+    // old 500-row window. Slow cadence, bounded batch.
+    if (this.cleanupTick++ % DEAD_LEG_CLEANUP_EVERY_TICKS === 0) {
+      await this.cancelLegsForClosedParents()
     }
-    // Every pending row, before any filtering. Retry state is pruned against
-    // this set, not against the paused-filtered one: a paused copier must not
-    // wipe that user's backoff counters (the unresolvable count toward the
-    // terminal-cancel threshold would restart at 1 on unpause).
-    const pendingRows = (data ?? []) as PartialRow[]
+
+    // Only legs on an OPEN trade can fire. Resolve the open trade ids first,
+    // then read the legs for exactly those trades. A bare `.limit(500)` over
+    // this table returns whichever rows the planner reaches first; once the
+    // orphan backlog passed 500 it returned NONE of the live legs, so partials
+    // silently stopped firing for days (prod 2026-11-05..09) while the monitor
+    // still looked idle from the outside: those ticks returned before the
+    // heartbeat, which is why the silence produced no log line at all.
+    const openTradeIds = await this.loadOpenTradeIds()
+    if (openTradeIds === null) return
+    const pendingRows = openTradeIds.size
+      ? await this.loadPendingLegsForTrades([...openTradeIds])
+      : []
+    if (pendingRows === null) return
     const rows = pendingRows.filter(r => !isUserCopierPausedCached(r.user_id))
     if (!this.firstTickLogged) {
       this.firstTickLogged = true
-      console.log(`[partialTpMonitor] first tick ok pending_rows=${rows.length}`)
+      console.log(
+        `[partialTpMonitor] first tick ok open_trades=${openTradeIds.size} pending_rows=${rows.length}`,
+      )
     }
 
     // Drop retry state for legs that are no longer pending (and cooldowns for
@@ -492,8 +705,13 @@ export class PartialTpMonitor {
     const liveGroupKeys = new Set(pendingRows.map(r => `${r.broker_account_id}|${r.symbol}`))
     for (const key of this.quoteBackoff.keys()) if (!liveGroupKeys.has(key)) this.quoteBackoff.delete(key)
 
+    // Nothing monitorable. Still emit the periodic summary so "no work" is
+    // distinguishable from "the monitor is wedged" — the original incident
+    // produced no log line at all, which is what made it invisible.
     if (!rows.length) {
-      this.quietTicks = 0
+      this.noteQuiet(
+        `[partialTpMonitor] heartbeat rows=${rows.length} open_trades=${openTradeIds.size} nothing to monitor`,
+      )
       return
     }
 
@@ -502,7 +720,12 @@ export class PartialTpMonitor {
     // or a failed log row on every tick.
     const tickNow = Date.now()
     const workRows = rows.filter(r => (this.failureByPartial.get(r.id)?.nextAt ?? 0) <= tickNow)
-    if (!workRows.length) return
+    if (!workRows.length) {
+      this.noteQuiet(
+        `[partialTpMonitor] heartbeat rows=${rows.length} open_trades=${openTradeIds.size} all legs in retry backoff`,
+      )
+      return
+    }
 
     // A removed dormant-subscription session intentionally remains as a broker
     // row/trade history. Never turn that known cleanup state into /Quote spam.
@@ -521,24 +744,20 @@ export class PartialTpMonitor {
         .map(broker => broker.id),
     )
 
-    // A pending parent has no live broker position. Filter before grouping so
-    // it cannot produce a quote request or mutate the partial leg.
-    const tradeIds = [...new Set(workRows.map(r => r.trade_id))]
-    const { data: parents, error: parentErr } = await this.supabase
-      .from('trades')
-      .select('id,status')
-      .in('id', tradeIds)
-    if (parentErr) {
-      console.warn(`[partialTpMonitor] parent trade load failed: ${parentErr.message}`)
+    // Every row already has an open parent (the read was keyed on it), so this
+    // guard now only does the broker-availability half. A trade that closed
+    // between that read and this filter is not missed: `firePartial` re-reads
+    // the parent after taking the claim and cancels the leg instead of
+    // closing at the broker.
+    const monitorableRows = workRows.filter(row =>
+      shouldMonitorPartialTpLeg(row, unavailableBrokerIds, openTradeIds),
+    )
+    if (!monitorableRows.length) {
+      this.noteQuiet(
+        `[partialTpMonitor] heartbeat rows=${rows.length} monitorable=0 (no usable broker writer)`,
+      )
       return
     }
-    const openParentIds = new Set(
-      ((parents ?? []) as ParentTradeRow[]).filter(parent => parent.status === 'open').map(parent => parent.id),
-    )
-    const monitorableRows = workRows.filter(row =>
-      shouldMonitorPartialTpLeg(row, unavailableBrokerIds, openParentIds),
-    )
-    if (!monitorableRows.length) return
 
     // Resolve each account's live connection at execution time, so a leg is
     // only grouped when its broker has a stable, current writer.
@@ -620,15 +839,12 @@ export class PartialTpMonitor {
       )
       this.quietTicks = 0
     } else {
-      this.quietTicks += 1
-      if (this.quietTicks % 20 === 1) {
-        const summary = distances
-          .map(d => `${d.symbol} bid=${d.bid} ask=${d.ask} nearest_gap=${Number.isFinite(d.gap) ? d.gap.toFixed(5) : 'n/a'} (${d.legs} legs)`)
-          .join('; ')
-        console.log(
-          `[partialTpMonitor] heartbeat rows=${rows.length} groups=${groups.size} no triggers crossed yet — ${summary}`,
-        )
-      }
+      const summary = distances
+        .map(d => `${d.symbol} bid=${d.bid} ask=${d.ask} nearest_gap=${Number.isFinite(d.gap) ? d.gap.toFixed(5) : 'n/a'} (${d.legs} legs)`)
+        .join('; ')
+      this.noteQuiet(
+        `[partialTpMonitor] heartbeat rows=${rows.length} groups=${groups.size} no triggers crossed yet — ${summary}`,
+      )
     }
   }
 
@@ -646,8 +862,10 @@ export class PartialTpMonitor {
    *
    * Order of operations (CAS-first so duplicate workers can't both fire):
    *   1. CAS UPDATE status: 'pending' → 'claimed'. Lose ⇒ bail.
-   *   2. Look up the parent trade's ticket. If the parent is closed
-   *      already (SL hit, manual close, etc.), cancel the partial leg.
+   *   2. Look up the parent trade. A failed read rolls the claim back; a
+   *      parent that is not open cancels the leg only once its close is older
+   *      than the dead-leg grace window, otherwise the claim is rolled back
+   *      and the drain cancels it later.
    *   3. /OrderClose with `lots = close_lots`.
    *   4. UPDATE status: 'claimed' → 'fired'.
    */
@@ -738,13 +956,50 @@ export class PartialTpMonitor {
 
     // Parent trade lookup — if it's already closed we cancel this partial
     // (no position to slice) so the row doesn't keep retrying forever.
-    const { data: parent } = await this.supabase
+    const { data: parent, error: parentErr } = await this.supabase
       .from('trades')
-      .select('id,metaapi_order_id,broker_position_ticket,status,symbol,direction,lot_size,entry_price')
+      .select('id,metaapi_order_id,broker_position_ticket,status,closed_at,symbol,direction,lot_size,entry_price')
       .eq('id', partial.trade_id)
       .maybeSingle()
     const parentRow = (parent ?? null) as ParentTradeRow | null
-    if (!parentRow || parentRow.status !== 'open') {
+    // A failed read proves nothing: treating it as "no parent" would cancel
+    // the leg on a mere network error, so roll the claim back instead.
+    if (parentErr) {
+      this.failureClassByPartial.set(partial.id, 'transient')
+      await this.supabase
+        .from('partial_tp_legs')
+        .update({ status: 'pending', claimed_at: null, claimed_by: null, error_message: `parent read failed: ${parentErr.message}` })
+        .eq('id', partial.id)
+        .eq('status', 'claimed')
+        .eq('claimed_by', this.hostId)
+      return 'failed'
+    }
+    // No row at all: the trade is gone (the FK cascades on delete, so this
+    // is a corner case, not the normal close path) and nothing can ever fire.
+    if (!parentRow) {
+      await this.supabase
+        .from('partial_tp_legs')
+        .update({ status: 'cancelled', fired_at: new Date().toISOString(), error_message: 'parent trade not open' })
+        .eq('id', partial.id)
+        .eq('status', 'claimed')
+        .eq('claimed_by', this.hostId)
+      return 'skipped'
+    }
+    if (parentRow.status !== 'open') {
+      // Same rule as `cancelLegsForClosedParents`: a close that is still
+      // inside the grace window is not proof — the drift sweep may reopen
+      // this row. Roll the claim back and let the drain cancel it once the
+      // close has aged out.
+      if (!parentClosedBeyondGrace(parentRow.status, parentRow.closed_at)) {
+        this.failureClassByPartial.set(partial.id, 'transient')
+        await this.supabase
+          .from('partial_tp_legs')
+          .update({ status: 'pending', claimed_at: null, claimed_by: null, error_message: 'parent trade not open yet' })
+          .eq('id', partial.id)
+          .eq('status', 'claimed')
+          .eq('claimed_by', this.hostId)
+        return 'failed'
+      }
       await this.supabase
         .from('partial_tp_legs')
         .update({ status: 'cancelled', fired_at: new Date().toISOString(), error_message: 'parent trade not open' })
