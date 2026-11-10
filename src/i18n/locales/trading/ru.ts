@@ -122,6 +122,7 @@ export const tradingRu: TradingPagesBundleTranslations = {
     tradingViewTemplateIndicators: 'Индикаторы',
     tradingViewTemplateBuy: 'Для сигналов на покупку',
     tradingViewTemplateSell: 'Для сигналов на продажу',
+    tradingViewTemplateSymbolHint: 'Для других инструментов замените "XAUUSD" в поле "symbol" в TradingView.',
     tradingViewTemplateHelp: 'Используйте Для стратегий, когда оповещение приходит из стратегии (action заполняется buy или sell). Используйте Для сигналов на покупку или Для сигналов на продажу для оповещений индикатора с фиксированной стороной. Укажите action: close, чтобы закрыть скопированные сделки по этому символу.',
     tradingViewHowToTitle: 'Как добавить в TradingView',
     tradingViewHowTo1: 'В TradingView откройте Alerts и создайте новое оповещение (или отредактируйте существующее).',

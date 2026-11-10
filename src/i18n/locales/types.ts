@@ -1959,6 +1959,7 @@ export interface ChannelsPageTranslations {
   tradingViewTemplateIndicators: string
   tradingViewTemplateBuy: string
   tradingViewTemplateSell: string
+  tradingViewTemplateSymbolHint: string
   tradingViewTemplateHelp: string
   tradingViewHowToTitle: string
   tradingViewHowTo1: string

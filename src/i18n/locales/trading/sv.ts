@@ -122,6 +122,7 @@ export const tradingSv: TradingPagesBundleTranslations = {
     tradingViewTemplateIndicators: 'Indikatorer',
     tradingViewTemplateBuy: 'För köpsignaler',
     tradingViewTemplateSell: 'För säljsignaler',
+    tradingViewTemplateSymbolHint: 'För andra symboler, ändra "XAUUSD" i "symbol" i TradingView.',
     tradingViewTemplateHelp: 'Använd För strategier när aviseringen kommer från en strategi (action fylls med buy eller sell). Använd För köpsignaler eller För säljsignaler för indikatoraviseringar med fast sida. Sätt action till close för att stänga kopierade affärer för den symbolen.',
     tradingViewHowToTitle: 'Så lägger du till i TradingView',
     tradingViewHowTo1: 'Öppna Alerts i TradingView och skapa en ny avisering (eller redigera en befintlig).',

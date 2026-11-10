@@ -1751,6 +1751,7 @@ broker: {
     tradingViewTemplateIndicators: 'Indicators',
     tradingViewTemplateBuy: 'For Buy Signals',
     tradingViewTemplateSell: 'For Sell Signals',
+    tradingViewTemplateSymbolHint: 'For other symbols, change the "XAUUSD" in "symbol" in TradingView.',
     tradingViewTemplateHelp: 'Use For Strategies when the alert comes from a strategy (action fills with buy or sell). Use For Buy Signals or For Sell Signals for indicator alerts with a fixed side — edit the symbol in the JSON to match your chart. Set action to close to close copied trades for that symbol.',
     tradingViewHowToTitle: 'How to Add to TradingView',
     tradingViewHowTo1: 'In TradingView, open Alerts and create a new alert from the chart (use a chart condition — not “Any alert() function call only”).',
