@@ -122,6 +122,7 @@ export const tradingPl: TradingPagesBundleTranslations = {
     tradingViewTemplateIndicators: 'Wskaźniki',
     tradingViewTemplateBuy: 'Dla sygnałów kupna',
     tradingViewTemplateSell: 'Dla sygnałów sprzedaży',
+    tradingViewTemplateSymbolHint: 'Dla innych symboli zmień "XAUUSD" w polu "symbol" w TradingView.',
     tradingViewTemplateHelp: 'Użyj Dla strategii, gdy alert pochodzi ze strategii (action wypełnia się buy lub sell). Użyj Dla sygnałów kupna lub Dla sygnałów sprzedaży dla alertów wskaźnika ze stałą stroną. Ustaw action na close, aby zamknąć skopiowane transakcje dla tego symbolu.',
     tradingViewHowToTitle: 'Jak dodać w TradingView',
     tradingViewHowTo1: 'W TradingView otwórz Alerts i utwórz nowy alert (lub edytuj istniejący).',

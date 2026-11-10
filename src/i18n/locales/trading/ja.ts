@@ -122,6 +122,7 @@ export const tradingJa: TradingPagesBundleTranslations = {
     tradingViewTemplateIndicators: 'インジケーター',
     tradingViewTemplateBuy: '買いシグナル用',
     tradingViewTemplateSell: '売りシグナル用',
+    tradingViewTemplateSymbolHint: '他の銘柄の場合は、TradingView の "symbol" 内の "XAUUSD" を変更してください。',
     tradingViewTemplateHelp: 'ストラテジー用はストラテジーアラート向けです（actionがbuyまたはsellで埋まります）。買い／売りシグナル用はインジケーターアラート向けで、方向を固定します。そのシンボルのコピー済み取引を閉じるには action を close にしてください。',
     tradingViewHowToTitle: 'TradingViewへの追加方法',
     tradingViewHowTo1: 'TradingViewでアラートを開き、新しいアラートを作成（または既存を編集）します。',

@@ -651,7 +651,12 @@ function WebhookDetails({
       <div className="space-y-4">
         <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{copy.tradingViewTemplate}</p>
         {(() => {
-          const renderTemplate = (template: { key: string; label: string; body: string }) => {
+          const renderTemplate = (template: {
+            key: string
+            label: string
+            body: string
+            hint?: string
+          }) => {
             const copyKey = `${webhook.id}:template-${template.key}`
             return (
               <div key={template.key}>
@@ -669,6 +674,9 @@ function WebhookDetails({
                 <pre className="overflow-x-auto rounded-lg bg-neutral-50 p-3 text-xs text-neutral-900 dark:bg-neutral-900 dark:text-neutral-50">
                   {template.body}
                 </pre>
+                {template.hint ? (
+                  <p className="mt-1.5 text-xs text-neutral-900 dark:text-neutral-50">{template.hint}</p>
+                ) : null}
               </div>
             )
           }
@@ -686,11 +694,13 @@ function WebhookDetails({
                 key: 'buy',
                 label: copy.tradingViewTemplateBuy,
                 body: TRADINGVIEW_ALERT_TEMPLATE_BUY,
+                hint: copy.tradingViewTemplateSymbolHint,
               })}
               {renderTemplate({
                 key: 'sell',
                 label: copy.tradingViewTemplateSell,
                 body: TRADINGVIEW_ALERT_TEMPLATE_SELL,
+                hint: copy.tradingViewTemplateSymbolHint,
               })}
             </>
           )

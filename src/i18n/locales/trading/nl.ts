@@ -122,6 +122,7 @@ export const tradingNl: TradingPagesBundleTranslations = {
     tradingViewTemplateIndicators: 'Indicatoren',
     tradingViewTemplateBuy: 'Voor koopsignalen',
     tradingViewTemplateSell: 'Voor verkoopsignalen',
+    tradingViewTemplateSymbolHint: 'Voor andere symbolen: wijzig "XAUUSD" in "symbol" in TradingView.',
     tradingViewTemplateHelp: 'Gebruik Voor strategieën wanneer de alert van een strategie komt (action wordt buy of sell). Gebruik Voor koopsignalen of Voor verkoopsignalen voor indicator-alerts met een vaste kant. Zet action op close om gekopieerde trades voor dat symbool te sluiten.',
     tradingViewHowToTitle: 'Hoe toe te voegen in TradingView',
     tradingViewHowTo1: 'Open in TradingView Alerts en maak een nieuwe alert (of bewerk een bestaande).',

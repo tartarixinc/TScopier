@@ -122,6 +122,7 @@ export const tradingAr: TradingPagesBundleTranslations = {
     tradingViewTemplateIndicators: 'المؤشرات',
     tradingViewTemplateBuy: 'لإشارات الشراء',
     tradingViewTemplateSell: 'لإشارات البيع',
+    tradingViewTemplateSymbolHint: 'للرموز الأخرى، غيّر "XAUUSD" في "symbol" داخل TradingView.',
     tradingViewTemplateHelp: 'استخدم للاستراتيجيات عندما يأتي التنبيه من استراتيجية (يُملأ action بـ buy أو sell). استخدم لإشارات الشراء أو لإشارات البيع لتنبيهات المؤشر باتجاه ثابت. عيّن action إلى close لإغلاق الصفقات المنسوخة لهذا الرمز.',
     tradingViewHowToTitle: 'كيفية الإضافة في TradingView',
     tradingViewHowTo1: 'في TradingView، افتح التنبيهات وأنشئ تنبيهًا جديدًا (أو عدّل تنبيهًا موجودًا).',

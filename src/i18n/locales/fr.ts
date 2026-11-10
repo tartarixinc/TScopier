@@ -1644,6 +1644,7 @@ export const fr: Translations = {
     tradingViewTemplateIndicators: 'Indicateurs',
     tradingViewTemplateBuy: 'Pour les signaux d’achat',
     tradingViewTemplateSell: 'Pour les signaux de vente',
+    tradingViewTemplateSymbolHint: 'Pour d’autres symboles, remplacez le "XAUUSD" dans "symbol" dans TradingView.',
     tradingViewTemplateHelp: 'Utilisez Pour les stratégies quand l’alerte vient d’une stratégie (action est rempli avec buy ou sell). Utilisez Pour les signaux d’achat ou Pour les signaux de vente pour les alertes d’indicateur avec un sens fixe. Mettez action à close pour fermer les trades copiés de ce symbole.',
     tradingViewHowToTitle: 'Comment ajouter dans TradingView',
     tradingViewHowTo1: 'Dans TradingView, ouvrez Alertes et créez une nouvelle alerte (ou modifiez une existante).',
