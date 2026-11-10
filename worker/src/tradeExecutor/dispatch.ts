@@ -192,11 +192,17 @@ export function revisionInflightWaitMs(row: SignalRow, dispatchSource?: string):
 
 const tradingViewSourceCache = new Map<string, { at: number; value: boolean }>()
 
-const NON_TELEGRAM_SIGNAL_SOURCES = new Set(['tradingview', 'discord', 'whatsapp'])
+const NON_TELEGRAM_SIGNAL_SOURCES = new Set(['tradingview', 'tradingview_webhook', 'discord', 'whatsapp'])
+const TRADINGVIEW_SIGNAL_SOURCES = new Set(['tradingview', 'tradingview_webhook'])
 
 /** Dispatch hints and channel rows that are not a Telegram chat. */
 export function isNonTelegramSignalSource(...hints: Array<string | null | undefined>): boolean {
   return hints.some(hint => NON_TELEGRAM_SIGNAL_SOURCES.has(String(hint ?? '').trim().toLowerCase()))
+}
+
+/** Structured TradingView webhook alerts (JSON buy/sell) — not free-text Telegram copy. */
+export function isTradingViewSignalSource(...hints: Array<string | null | undefined>): boolean {
+  return hints.some(hint => TRADINGVIEW_SIGNAL_SOURCES.has(String(hint ?? '').trim().toLowerCase()))
 }
 
 /** TradingView, Discord, and WhatsApp rows are not Telegram chats, so the listener-live gate does not apply. */
@@ -218,6 +224,21 @@ export async function isTradingViewSourceChannel(
   const value = isNonTelegramSignalSource(kind)
   tradingViewSourceCache.set(key, { at: Date.now(), value })
   return value
+}
+
+/** Channel is specifically a TradingView webhook source (not Discord/WhatsApp). */
+export async function isTradingViewChannelSource(
+  supabase: TradeExecutorContext['supabase'],
+  channelId: string | null,
+): Promise<boolean> {
+  if (!channelId) return false
+  const { data, error } = await supabase
+    .from('telegram_channels')
+    .select('source_kind')
+    .eq('id', channelId)
+    .maybeSingle()
+  if (error || !data) return false
+  return isTradingViewSignalSource((data as { source_kind?: string | null }).source_kind)
 }
 
 export function enqueueSignal(ctx: TradeExecutorContext, 
@@ -726,13 +747,24 @@ export async function handleSignal(ctx: TradeExecutorContext,
       if (!parsed || !parsed.action) return
       const action = String(parsed.action).toLowerCase()
       if (action === 'ignore') return
-      const executionEligibility = evaluateParsedSignalExecutionEligibility(
-        parsed,
-        String((row as { raw_message?: string | null }).raw_message ?? parsed.raw_instruction ?? ''),
-      )
-      if (!executionEligibility.eligible) {
-        await ctx.logDispatchSkipped(row, executionEligibility.skipReason ?? 'entry_not_execution_eligible')
-        return
+      // TradingView JSON alerts are structured orders (action + symbol). Do not require
+      // Telegram free-text cues like "buy now" or labeled SL/TP in the raw message.
+      const tradingViewSource = isTradingViewSignalSource(opts?.dispatchSource, row.dispatch_source)
+        || await isTradingViewChannelSource(ctx.supabase, row.channel_id)
+      if (tradingViewSource) {
+        if ((action === 'buy' || action === 'sell') && !String(parsed.symbol ?? '').trim()) {
+          await ctx.logDispatchSkipped(row, 'symbol_required')
+          return
+        }
+      } else {
+        const executionEligibility = evaluateParsedSignalExecutionEligibility(
+          parsed,
+          String((row as { raw_message?: string | null }).raw_message ?? parsed.raw_instruction ?? ''),
+        )
+        if (!executionEligibility.eligible) {
+          await ctx.logDispatchSkipped(row, executionEligibility.skipReason ?? 'entry_not_execution_eligible')
+          return
+        }
       }
 
       const rawMatchingBrokers = (ctx.brokersByUser.get(row.user_id) ?? []).filter(b =>
