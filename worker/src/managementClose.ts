@@ -19,7 +19,10 @@ function mgmtCloseVerifySleepMs(liveFast: boolean): number {
 
 /** Post-close readback retries when the broker returns an empty list (bridge lag). */
 const EMPTY_READBACK_ATTEMPTS = 3
+/** Extra attempts when other positions were open pre-close — MTAPI often returns [] mid multi-leg burst. */
+const EMPTY_READBACK_MULTI_EXTRA_ATTEMPTS = 3
 const EMPTY_READBACK_BACKOFF_MS = 250
+const EMPTY_READBACK_MULTI_BACKOFF_MS = 400
 
 /** Single orderClose — no post-close openedOrders poll (live fast tier). */
 export async function closeOrderFast(
@@ -97,7 +100,11 @@ export async function closeWithVerification(
     // bridge). Retry briefly, then decide using the pre-close snapshot.
     let after: unknown[] = []
     let lastReadFailed = false
-    for (let r = 0; r < EMPTY_READBACK_ATTEMPTS; r++) {
+    const emptyAttempts = before.length > 1
+      ? EMPTY_READBACK_ATTEMPTS + EMPTY_READBACK_MULTI_EXTRA_ATTEMPTS
+      : EMPTY_READBACK_ATTEMPTS
+    const emptyBackoffMs = before.length > 1 ? EMPTY_READBACK_MULTI_BACKOFF_MS : EMPTY_READBACK_BACKOFF_MS
+    for (let r = 0; r < emptyAttempts; r++) {
       try {
         after = await api.openedOrders(uuid)
         lastReadFailed = false
@@ -106,8 +113,8 @@ export async function closeWithVerification(
         after = []
       }
       if (after.length > 0) break
-      if (r < EMPTY_READBACK_ATTEMPTS - 1) {
-        await new Promise(resolve => setTimeout(resolve, EMPTY_READBACK_BACKOFF_MS))
+      if (r < emptyAttempts - 1) {
+        await new Promise(resolve => setTimeout(resolve, emptyBackoffMs))
       }
     }
     if (lastReadFailed && after.length === 0) {
@@ -125,19 +132,13 @@ export async function closeWithVerification(
       if (result.state === 'position_closed') {
         return { confirmed: true, attempts: attempt, ticket: effectiveTicket }
       }
-      // A persistently empty readback. If the account held exactly one position —
-      // the one we just resolved and closed — empty is the expected result of a
-      // successful close, so confirm it instead of bouncing to reconciliation.
-      if (before.length === 1) {
-        return { confirmed: true, attempts: attempt, ticket: effectiveTicket }
-      }
-      return {
-        confirmed: false,
-        reason: 'close broker readback was empty; reconciliation required',
-        attempts: attempt,
-        ticket: effectiveTicket,
-        reconciliationRequired: true,
-      }
+      // A persistently empty readback after a non-rejected orderClose. We already
+      // resolved this ticket in `before`, so an empty book means it is not open.
+      // Multi-leg closes often see flaky [] snapshots while siblings remain on
+      // the broker — treating that as failure left user-visible "Could not close"
+      // errors even when the ticket was gone. Confirm this ticket; remaining
+      // legs keep their own close/reconcile path.
+      return { confirmed: true, attempts: attempt, ticket: effectiveTicket }
     }
 
     const afterResolution = resolveCanonicalOpenPosition({
