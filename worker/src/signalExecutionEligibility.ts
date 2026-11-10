@@ -6,10 +6,14 @@ import {
   entryMissingSlTpRequiresNow,
   messageHasExplicitSlTpLabels,
   messageHasExplicitStopLabel,
+  parsedHasPositiveSl,
+  parsedHasPositiveTp,
   parsedHasSlOrTp,
   type MarketNowKeywordFields,
 } from './signalEntryNowRequirement'
 import { looksLikeChannelManagementUpdate } from './signalManagementIntent'
+import { resolvePredefinedSlPips, resolvePredefinedTpPips } from './manualPlanning/manualStops'
+import type { ManualSettings } from './manualPlanning/types'
 import { minPlausibleQuotePrice, reconcileSymbolWithQuoteLevels, sanitizeParsedSymbol, filterPlausibleInstrumentPrices } from './tradableSymbol'
 
 export { ENTRY_REQUIRES_NOW_REASON } from './signalEntryNowRequirement'
@@ -18,6 +22,38 @@ export const COMMENTARY_NOT_SIGNAL_REASON = 'commentary_not_trade_signal'
 export const ENTRY_MISSING_STRUCTURE_REASON = 'entry_missing_sl_tp_structure'
 export const ENTRY_REQUIRES_IMPERATIVE_OR_LABELED_STOPS_REASON =
   'entry_requires_imperative_or_labeled_stops'
+export const TRADINGVIEW_MISSING_SL_TP_REASON = 'tradingview_missing_sl_tp'
+
+/** TradingView alert JSON includes both absolute SL and TP prices. */
+export function parsedHasSlAndTp(parsed: { sl?: unknown; tp?: unknown } | null | undefined): boolean {
+  return parsedHasPositiveSl(parsed ?? {}) && parsedHasPositiveTp(parsed ?? {})
+}
+
+/** Channel config overrides both SL and TP (predefined pips). */
+export function manualHasSlAndTpOverride(
+  manual: Pick<
+    ManualSettings,
+    'use_predefined_sl_pips' | 'predefined_sl_pips' | 'use_predefined_tp_pips' | 'predefined_tp_pips'
+  > | null | undefined,
+): boolean {
+  if (!manual) return false
+  return resolvePredefinedSlPips(manual) != null && resolvePredefinedTpPips(manual) != null
+}
+
+/**
+ * TradingView entries may skip Telegram phrasing, but still need stops:
+ * either on the alert (SL + TP prices) or via config Override SL + Override TP.
+ */
+export function tradingViewEntryStopsSatisfied(
+  parsed: { sl?: unknown; tp?: unknown } | null | undefined,
+  manuals: Array<Pick<
+    ManualSettings,
+    'use_predefined_sl_pips' | 'predefined_sl_pips' | 'use_predefined_tp_pips' | 'predefined_tp_pips'
+  > | null | undefined>,
+): boolean {
+  if (parsedHasSlAndTp(parsed)) return true
+  return manuals.some(manual => manualHasSlAndTpOverride(manual))
+}
 
 export function evaluateParsedSignalExecutionEligibility(
   parsed: {

@@ -7,6 +7,8 @@ import {
   ENTRY_REQUIRES_NOW_REASON,
   deterministicEntryNeedsAiRepair,
   evaluateParsedSignalExecutionEligibility,
+  parsedHasSlAndTp,
+  tradingViewEntryStopsSatisfied,
 } from './signalExecutionEligibility'
 
 describe('evaluateParsedSignalExecutionEligibility', () => {
@@ -380,6 +382,49 @@ describe('deterministicEntryNeedsAiRepair stop-label fallback', () => {
         'SL.TP 4105',
         null,
       ),
+      false,
+    )
+  })
+})
+
+describe('tradingViewEntryStopsSatisfied', () => {
+  it('accepts alert JSON that includes both SL and TP prices', () => {
+    assert.equal(parsedHasSlAndTp({ sl: 4000, tp: [4050, 4100] }), true)
+    assert.equal(
+      tradingViewEntryStopsSatisfied({ sl: 4000, tp: [4050] }, []),
+      true,
+    )
+  })
+
+  it('rejects alert JSON with only SL or only TP', () => {
+    assert.equal(parsedHasSlAndTp({ sl: 4000, tp: [] }), false)
+    assert.equal(parsedHasSlAndTp({ sl: null, tp: [4050] }), false)
+    assert.equal(
+      tradingViewEntryStopsSatisfied({ sl: null, tp: null }, []),
+      false,
+    )
+  })
+
+  it('accepts when config overrides both SL and TP pips', () => {
+    assert.equal(
+      tradingViewEntryStopsSatisfied({ sl: null, tp: null }, [{
+        use_predefined_sl_pips: true,
+        predefined_sl_pips: 80,
+        use_predefined_tp_pips: true,
+        predefined_tp_pips: [40, 80],
+      }]),
+      true,
+    )
+  })
+
+  it('rejects when only SL override is configured', () => {
+    assert.equal(
+      tradingViewEntryStopsSatisfied({ sl: null, tp: null }, [{
+        use_predefined_sl_pips: true,
+        predefined_sl_pips: 80,
+        use_predefined_tp_pips: false,
+        predefined_tp_pips: [],
+      }]),
       false,
     )
   })

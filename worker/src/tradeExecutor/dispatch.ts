@@ -61,7 +61,11 @@ import {
   subscriptionBlocksSignalExecution,
   isSubscriptionActive,
 } from '../subscriptionAccess'
-import { evaluateParsedSignalExecutionEligibility } from '../signalExecutionEligibility'
+import {
+  evaluateParsedSignalExecutionEligibility,
+  TRADINGVIEW_MISSING_SL_TP_REASON,
+  tradingViewEntryStopsSatisfied,
+} from '../signalExecutionEligibility'
 import { evaluateChannelCopyLimitPauseForBroker } from '../copyLimitDispatch'
 import { isV2 } from '../engine/executionMode'
 import { upsertBasketSlTpTarget } from '../basketTargetStore'
@@ -747,8 +751,8 @@ export async function handleSignal(ctx: TradeExecutorContext,
       if (!parsed || !parsed.action) return
       const action = String(parsed.action).toLowerCase()
       if (action === 'ignore') return
-      // TradingView JSON alerts are structured orders (action + symbol). Do not require
-      // Telegram free-text cues like "buy now" or labeled SL/TP in the raw message.
+      // TradingView JSON alerts are structured orders — do not require Telegram free-text
+      // cues like "buy now". SL/TP must still come from the alert or config overrides.
       const tradingViewSource = isTradingViewSignalSource(opts?.dispatchSource, row.dispatch_source)
         || await isTradingViewChannelSource(ctx.supabase, row.channel_id)
       if (tradingViewSource) {
@@ -787,6 +791,17 @@ export async function handleSignal(ctx: TradeExecutorContext,
       const wakeBrokerId = opts?.wakeBrokerAccountId ?? row.wake_broker_account_id
       if (isRangeWake && wakeBrokerId) {
         brokers = brokers.filter(b => b.id === wakeBrokerId)
+      }
+      if (
+        tradingViewSource
+        && (action === 'buy' || action === 'sell')
+        && !tradingViewEntryStopsSatisfied(
+          parsed,
+          brokers.map(b => resolveChannelTradingConfig(b, row.channel_id).manual_settings),
+        )
+      ) {
+        await ctx.logDispatchSkipped(row, TRADINGVIEW_MISSING_SL_TP_REASON)
+        return
       }
       const signalSymbolForWarm = parsed.symbol?.trim() ?? ''
       if (liveFast && signalSymbolForWarm && brokers.length > 0) {
