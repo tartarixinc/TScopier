@@ -264,6 +264,17 @@ async function recordDelivery(
   return "inserted"
 }
 
+function scheduleBackgroundTask(promise: Promise<unknown>): void {
+  const runtime = (globalThis as typeof globalThis & {
+    EdgeRuntime?: { waitUntil(task: Promise<unknown>): void }
+  }).EdgeRuntime
+  if (runtime?.waitUntil) {
+    runtime.waitUntil(promise)
+    return
+  }
+  void promise
+}
+
 async function pushSignal(
   webhook: WebhookRow,
   signal: {
@@ -281,33 +292,39 @@ async function pushSignal(
     console.warn(`[tradingview-webhook] trade worker not configured user=${webhook.user_id}`)
     return
   }
-  const res = await fetch(`${baseUrl}/internal/dispatch-signal`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-internal-token": token,
-    },
-    body: JSON.stringify({
-      signal: {
-        id: signal.id,
-        user_id: webhook.user_id,
-        channel_id: webhook.channel_id,
-        parsed_data: signal.parsed_data,
-        status: signal.status,
-        parent_signal_id: null,
-        is_modification: false,
-        telegram_message_id: signal.telegram_message_id,
-        reply_to_message_id: null,
-        created_at: signal.created_at,
-        dispatch_source: "tradingview_webhook",
+  try {
+    const res = await fetch(`${baseUrl}/internal/dispatch-signal`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-internal-token": token,
       },
-      priority: action === "close" ? "high" : "normal",
-      source: "tradingview_webhook",
-      await: false,
-    }),
-  })
-  if (!res.ok) {
-    console.warn(`[tradingview-webhook] dispatch failed status=${res.status} user=${webhook.user_id}`)
+      body: JSON.stringify({
+        signal: {
+          id: signal.id,
+          user_id: webhook.user_id,
+          channel_id: webhook.channel_id,
+          parsed_data: signal.parsed_data,
+          status: signal.status,
+          parent_signal_id: null,
+          is_modification: false,
+          telegram_message_id: signal.telegram_message_id,
+          reply_to_message_id: null,
+          created_at: signal.created_at,
+          dispatch_source: "tradingview_webhook",
+        },
+        priority: action === "close" ? "high" : "normal",
+        source: "tradingview_webhook",
+        await: false,
+      }),
+    })
+    if (!res.ok) {
+      console.warn(`[tradingview-webhook] dispatch failed status=${res.status} user=${webhook.user_id}`)
+    }
+  } catch (err) {
+    console.warn(
+      `[tradingview-webhook] dispatch error user=${webhook.user_id}: ${err instanceof Error ? err.message : String(err)}`,
+    )
   }
 }
 
@@ -391,13 +408,14 @@ async function handleIngest(supabase: SupabaseClient, req: Request, token: strin
   const recorded = await recordDelivery(supabase, webhook, "accepted", idempotencyKey, null, signalId)
   if (recorded === "duplicate") return json(200, { ok: true, status: "duplicate" })
 
-  await pushSignal(webhook, {
+  // Respond to TradingView immediately — awaiting the trade worker can exceed TV's webhook timeout.
+  scheduleBackgroundTask(pushSignal(webhook, {
     id: signalId,
     parsed_data: parsed.alert.parsed,
     status: "parsed",
     telegram_message_id: idempotencyKey,
     created_at: createdAt,
-  })
+  }))
   return json(200, { ok: true, status: "accepted" })
 }
 
