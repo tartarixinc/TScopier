@@ -8,7 +8,11 @@ import { useAuth } from '../../context/AuthContext'
 import { useConfirm } from '../../context/ConfirmDialogContext'
 import { useT } from '../../context/LocaleContext'
 import { interpolate } from '../../i18n/interpolate'
-import { TRADINGVIEW_ALERT_TEMPLATE } from '../../../supabase/functions/_shared/tradingViewAlert'
+import {
+  TRADINGVIEW_ALERT_TEMPLATE,
+  TRADINGVIEW_ALERT_TEMPLATE_BUY,
+  TRADINGVIEW_ALERT_TEMPLATE_SELL,
+} from '../../../supabase/functions/_shared/tradingViewAlert'
 import {
   brokersMatchingChannel,
   brokersNotMatchingChannel,
@@ -610,9 +614,18 @@ function WebhookDetails({
   onCopy: (key: string, value: string) => void
   onRotate: () => void
 }) {
+  const [howToOpen, setHowToOpen] = useState(false)
+
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={() => setHowToOpen(true)}
+          className="text-sm font-medium text-green-500 underline-offset-2 hover:underline"
+        >
+          {copy.tradingViewHowToTitle}
+        </button>
         <Button variant="secondary" size="sm" onClick={onRotate}>
           <RefreshCw className="h-3.5 w-3.5" />
           {copy.tradingViewRotate}
@@ -625,22 +638,53 @@ function WebhookDetails({
         copyLabel={copied === webhook.id ? copy.tradingViewCopied : copy.tradingViewCopy}
         onCopy={() => onCopy(webhook.id, webhookUrl(webhook.token))}
       />
-      <div>
-        <div className="mb-1.5 flex items-center justify-between gap-3">
-          <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{copy.tradingViewTemplate}</p>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => onCopy(`${webhook.id}:template`, TRADINGVIEW_ALERT_TEMPLATE)}
-          >
-            <Copy className="h-3.5 w-3.5" />
-            {copied === `${webhook.id}:template` ? copy.tradingViewCopied : copy.tradingViewCopy}
-          </Button>
-        </div>
-        <pre className="overflow-x-auto rounded-lg bg-neutral-50 p-3 text-xs text-neutral-900 dark:bg-neutral-900 dark:text-neutral-50">
-          {TRADINGVIEW_ALERT_TEMPLATE}
-        </pre>
-        <p className="mt-2 text-xs text-neutral-900 dark:text-neutral-50">{copy.tradingViewTemplateHelp}</p>
+      <div className="space-y-4">
+        <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{copy.tradingViewTemplate}</p>
+        {(() => {
+          const renderTemplate = (template: { key: string; label: string; body: string }) => {
+            const copyKey = `${webhook.id}:template-${template.key}`
+            return (
+              <div key={template.key}>
+                <div className="mb-1.5 flex items-center justify-between gap-3">
+                  <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{template.label}</p>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => onCopy(copyKey, template.body)}
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                    {copied === copyKey ? copy.tradingViewCopied : copy.tradingViewCopy}
+                  </Button>
+                </div>
+                <pre className="overflow-x-auto rounded-lg bg-neutral-50 p-3 text-xs text-neutral-900 dark:bg-neutral-900 dark:text-neutral-50">
+                  {template.body}
+                </pre>
+              </div>
+            )
+          }
+          return (
+            <>
+              {renderTemplate({
+                key: 'strategy',
+                label: copy.tradingViewTemplateStrategy,
+                body: TRADINGVIEW_ALERT_TEMPLATE,
+              })}
+              <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                {copy.tradingViewTemplateIndicators}
+              </p>
+              {renderTemplate({
+                key: 'buy',
+                label: copy.tradingViewTemplateBuy,
+                body: TRADINGVIEW_ALERT_TEMPLATE_BUY,
+              })}
+              {renderTemplate({
+                key: 'sell',
+                label: copy.tradingViewTemplateSell,
+                body: TRADINGVIEW_ALERT_TEMPLATE_SELL,
+              })}
+            </>
+          )
+        })()}
       </div>
       <div>
         <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{copy.tradingViewDeliveries}</p>
@@ -662,6 +706,17 @@ function WebhookDetails({
           </ul>
         )}
       </div>
+
+      {howToOpen ? (
+        <ModalFrame title={copy.tradingViewHowToTitle} nested onClose={() => setHowToOpen(false)}>
+          <ol className="list-decimal space-y-2 pl-4 text-sm text-neutral-900 dark:text-neutral-50">
+            <li>{copy.tradingViewHowTo1}</li>
+            <li>{copy.tradingViewHowTo2}</li>
+            <li>{copy.tradingViewHowTo3}</li>
+            <li>{copy.tradingViewHowTo4}</li>
+          </ol>
+        </ModalFrame>
+      ) : null}
     </div>
   )
 }
@@ -670,23 +725,34 @@ function ModalFrame({
   title,
   onClose,
   children,
+  nested = false,
 }: {
   title: string
   onClose: () => void
   children: ReactNode
+  nested?: boolean
 }) {
   const closeLabel = useT().accountConfig.configureModal.close
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+      if (event.key !== 'Escape') return
+      if (nested) event.stopImmediatePropagation()
+      onClose()
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+    window.addEventListener('keydown', onKey, nested)
+    return () => window.removeEventListener('keydown', onKey, nested)
+  }, [nested, onClose])
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-6" role="dialog" aria-modal="true">
+    <div
+      className={clsx(
+        'fixed inset-0 flex items-end justify-center p-0 sm:items-center sm:p-6',
+        nested ? 'z-[60]' : 'z-50',
+      )}
+      role="dialog"
+      aria-modal="true"
+    >
       <button type="button" className="absolute inset-0 bg-neutral-950/55" aria-label={closeLabel} onClick={onClose} />
       <div className="relative flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl border border-neutral-200/65 bg-white shadow-2xl dark:border-neutral-800/55 dark:bg-neutral-950 sm:max-w-lg sm:rounded-2xl">
         <div className="flex items-center justify-between gap-3 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">

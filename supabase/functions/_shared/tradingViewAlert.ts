@@ -5,6 +5,22 @@ export const TRADINGVIEW_ALERT_TEMPLATE = `{
   "id": "{{timenow}}"
 }`
 
+/** Indicator alert body with a hardcoded buy side. */
+export const TRADINGVIEW_ALERT_TEMPLATE_BUY = `{
+  "action": "buy",
+  "symbol": "{{ticker}}",
+  "price": "{{close}}",
+  "id": "{{timenow}}"
+}`
+
+/** Indicator alert body with a hardcoded sell side. */
+export const TRADINGVIEW_ALERT_TEMPLATE_SELL = `{
+  "action": "sell",
+  "symbol": "{{ticker}}",
+  "price": "{{close}}",
+  "id": "{{timenow}}"
+}`
+
 export type TradingViewTradeAction = 'buy' | 'sell' | 'close'
 
 export type TradingViewParsedAlert = {
