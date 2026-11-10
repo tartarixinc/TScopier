@@ -363,9 +363,17 @@ async function persistAcceptedAlert(
   // for source_kind=tradingview and use alert/config SL+TP instead.
   const alert = parsed.alert
   const imperativeCue = (alert.action === "buy" || alert.action === "sell")
-    ? `${alert.symbol} ${alert.action.toUpperCase()} NOW\n`
+    ? `${alert.symbol} ${alert.action.toUpperCase()} NOW`
     : ""
-  const rawMessage = `${imperativeCue}${raw}`.slice(0, 8_000)
+  const rawMessage = (imperativeCue ? `${imperativeCue}\n${raw}` : raw).slice(0, 8_000)
+  // Trade-worker sweep often loads signals without raw_message and with
+  // dispatch_source=sweep (not tradingview_webhook). Put the cue on
+  // parsed_data.raw_instruction so eligibility still passes on that path.
+  const parsedData = {
+    ...parsed.alert.parsed,
+    ...(imperativeCue ? { raw_instruction: imperativeCue } : {}),
+    signal_source: "tradingview",
+  }
   const { error: signalErr } = await supabase.from("signals").insert({
     id: signalId,
     user_id: webhook.user_id,
@@ -373,7 +381,7 @@ async function persistAcceptedAlert(
     source_kind: "tradingview",
     source_display_name: webhook.name?.trim() || "TradingView",
     raw_message: rawMessage,
-    parsed_data: parsed.alert.parsed,
+    parsed_data: parsedData,
     status: "parsed",
     skip_reason: null,
     telegram_message_id: idempotencyKey,
@@ -392,7 +400,7 @@ async function persistAcceptedAlert(
 
   await pushSignal(webhook, {
     id: signalId,
-    parsed_data: parsed.alert.parsed,
+    parsed_data: parsedData,
     status: "parsed",
     telegram_message_id: idempotencyKey,
     created_at: createdAt,
@@ -400,11 +408,16 @@ async function persistAcceptedAlert(
   })
 }
 
-async function handleIngest(supabase: SupabaseClient, req: Request, token: string): Promise<Response> {
-  if (!ipAllowed(req)) return json(403, { ok: false, status: "error" })
-
-  // Read body first so TradingView is not held open during DB work.
-  const raw = await req.text()
+/**
+ * Full ingest after TradingView has already been ACKed. Keep this off the
+ * request path — TV aborts around ~3s and cold starts + DB lookup alone can
+ * exceed that even when the trade still executes in the background.
+ */
+async function processIngest(token: string, raw: string): Promise<void> {
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  )
   const [tokenHash, bodyHash] = await Promise.all([sha256Hex(token), sha256Hex(raw)])
   const { data } = await supabase
     .from("tradingview_webhooks")
@@ -412,11 +425,14 @@ async function handleIngest(supabase: SupabaseClient, req: Request, token: strin
     .eq("token_hash", tokenHash)
     .maybeSingle()
   const webhook = (data ?? null) as WebhookRow | null
-  if (!webhook) return json(404, { ok: false })
+  if (!webhook) {
+    console.warn(`[tradingview-webhook] unknown token hash=${tokenHash.slice(0, 12)}`)
+    return
+  }
 
   if (!webhook.is_active) {
-    scheduleBackgroundTask(recordDelivery(supabase, webhook, "skipped", `inactive:${bodyHash}`, "inactive", null))
-    return json(200, { ok: false, status: "skipped" })
+    await recordDelivery(supabase, webhook, "skipped", `inactive:${bodyHash}`, "inactive", null)
+    return
   }
 
   const parsed = parseTradingViewAlert(raw)
@@ -435,12 +451,21 @@ async function handleIngest(supabase: SupabaseClient, req: Request, token: strin
     console.warn(
       `[tradingview-webhook] parse failed webhook=${webhook.id} reason=${parsed.reason} body=${JSON.stringify(raw.slice(0, 240))}`,
     )
-    // Reply immediately — TradingView times out around ~3s; cold starts + inserts often exceed that.
-    scheduleBackgroundTask(recordDelivery(supabase, webhook, skipStatus, idempotencyKey, parsed.reason, null))
-    return json(200, { ok: false, status: skipStatus === "skipped" ? "skipped" : "error" })
+    await recordDelivery(supabase, webhook, skipStatus, idempotencyKey, parsed.reason, null)
+    return
   }
 
-  scheduleBackgroundTask(persistAcceptedAlert(supabase, webhook, raw, parsed, idempotencyKey))
+  await persistAcceptedAlert(supabase, webhook, raw, parsed, idempotencyKey)
+}
+
+async function handleIngest(req: Request, token: string): Promise<Response> {
+  if (!ipAllowed(req)) return json(403, { ok: false, status: "error" })
+
+  // Read body, ACK immediately, then persist/dispatch in the background.
+  // TradingView's webhook timeout is ~3s; looking up the webhook + cold start
+  // often exceeds that even when the trade still runs successfully.
+  const raw = await req.text()
+  scheduleBackgroundTask(processIngest(token, raw))
   return json(200, { ok: true, status: "accepted" })
 }
 
@@ -448,11 +473,12 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders })
   if (req.method !== "POST") return json(405, { error: "method_not_allowed" })
 
+  const token = pathToken(req)
+  if (token) return handleIngest(req, token)
+
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   )
-  const token = pathToken(req)
-  if (token) return handleIngest(supabase, req, token)
   return handleManage(supabase, req)
 })

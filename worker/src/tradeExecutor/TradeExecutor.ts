@@ -718,7 +718,7 @@ export class TradeExecutor {
       this.supabase
         .from('signals')
         .select(
-          'id,user_id,channel_id,parsed_data,status,parent_signal_id,is_modification,created_at,telegram_message_id,reply_to_message_id',
+          'id,user_id,channel_id,parsed_data,status,parent_signal_id,is_modification,created_at,telegram_message_id,reply_to_message_id,raw_message',
         )
         .eq('status', 'parsed')
         .gte('created_at', since)
