@@ -10,6 +10,7 @@ import {
   parentClosedBeyondGrace,
   partialFailureClass,
   partialRetryDelayMs,
+  remainingLotSizeToPersist,
   shouldTerminatePartialLeg,
   shouldMonitorPartialTpLeg,
 } from './partialTpMonitor'
@@ -120,6 +121,28 @@ test('parentClosedBeyondGrace: anything unproven fails closed', () => {
   assert.equal(parentClosedBeyondGrace('closed', '', now), false)
   assert.equal(parentClosedBeyondGrace('closed', 'not-a-date', now), false)
   assert.equal(parentClosedBeyondGrace(null, old, now), false)
+})
+
+// `trades.lot_size` is what the dashboard and the risk maths read, so it has
+// to shrink with the position. Only a genuine reduction reported by the broker
+// is worth writing; anything else leaves the row alone.
+
+test('remainingLotSizeToPersist: a real reduction is written back', () => {
+  assert.equal(remainingLotSizeToPersist(0.5, 0.25), 0.25)
+  assert.equal(remainingLotSizeToPersist(1, 0.75), 0.75)
+  // Numeric columns arrive as strings from PostgREST.
+  assert.equal(remainingLotSizeToPersist('0.50', '0.25'), 0.25)
+})
+
+test('remainingLotSizeToPersist: anything that is not a reduction is refused', () => {
+  assert.equal(remainingLotSizeToPersist(0.5, 0.5), null, 'unchanged volume proves nothing')
+  assert.equal(remainingLotSizeToPersist(0.25, 0.5), null, 'a larger position is not ours to record')
+  assert.equal(remainingLotSizeToPersist(0.5, 0), null, 'a vanished position belongs to the reconcile path')
+  assert.equal(remainingLotSizeToPersist(0.5, -1), null)
+  assert.equal(remainingLotSizeToPersist(0.5, null), null, 'no readback, no write')
+  assert.equal(remainingLotSizeToPersist(0.5, undefined), null)
+  assert.equal(remainingLotSizeToPersist('bad', 0.25), null)
+  assert.equal(remainingLotSizeToPersist(0, 0), null)
 })
 
 // Retry classification. The 2026-10-05 loop came from a failure that no

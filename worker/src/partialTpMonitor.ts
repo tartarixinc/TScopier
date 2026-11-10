@@ -15,7 +15,12 @@ import {
   type BrokerApiByAccountId,
 } from './mtApiByAccount'
 import { stopRangeLayeringUnlessEnabled } from './rangeLayerTillClose'
-import { resolveCanonicalOpenPosition, resolveCurrentLivePosition } from './livePositionIdentity'
+import {
+  livePositionVolume,
+  resolveCanonicalOpenPosition,
+  resolveCurrentLivePosition,
+  type LiveTradeIdentity,
+} from './livePositionIdentity'
 import { isUserCopierPausedCached } from './copierPause'
 import { isExplicitlyUnavailableRemoteBroker, type RemoteBrokerState } from './brokerRemoteAvailability'
 import { isUnresolvableFailure } from './failureClassification'
@@ -156,6 +161,27 @@ export function parentClosedBeyondGrace(
   const closedMs = Date.parse(closedAt)
   if (!Number.isFinite(closedMs)) return false
   return nowMs - closedMs >= DEAD_LEG_GRACE_MS
+}
+
+/**
+ * The position size that is safe to write back to `trades.lot_size` after a
+ * partial close, or null when the broker readback cannot be trusted.
+ *
+ * `trades.lot_size` is what the dashboard and the risk maths read, so it must
+ * shrink with the position. The broker is the source of truth: we only persist
+ * what it actually reports, and only when that number is a real reduction of
+ * the size we recorded. Anything else (a missing read, an unchanged volume, a
+ * larger one) leaves the row alone rather than writing a figure we cannot back.
+ */
+export function remainingLotSizeToPersist(
+  recordedVolume: unknown,
+  observedRemaining: unknown,
+): number | null {
+  const recorded = Number(recordedVolume)
+  const observed = Number(observedRemaining)
+  if (!Number.isFinite(recorded) || recorded <= 0) return null
+  if (!Number.isFinite(observed) || !(observed > 0 && observed < recorded)) return null
+  return observed
 }
 
 /**
@@ -932,6 +958,102 @@ export class PartialTpMonitor {
     return 'error'
   }
 
+  /**
+   * Write the size the broker now reports back onto `trades.lot_size`.
+   *
+   * That column is what the dashboard and the risk maths read, and the
+   * channel's own close path already refreshes it (`managementExecutor`
+   * persists `observedRemaining`). The automatic partial path did not, so a
+   * partial profit left the row claiming the position was still its original
+   * size — the broker correct, our record stale.
+   *
+   * Best effort, and deliberately so: the broker close has already happened
+   * and the leg is already `fired`, so a failed readback or a refused write
+   * only costs a warning. A position that has vanished entirely is left to the
+   * reconciliation path, which owns closing the trade row.
+   */
+  private async refreshTradeLotSizeAfterPartial(
+    partial: PartialRow,
+    api: FxsocketBrokerClient,
+    sessionId: string,
+    parent: ParentTradeRow,
+    closedLots: number,
+    effectiveTicket: number,
+  ): Promise<void> {
+    const recorded = Number(parent.lot_size)
+    let observed: number | null = null
+    let matchedBy: string | null = null
+    let skipReason: string | null = null
+    try {
+      const orders = await api.openedOrders(sessionId)
+      if (!Array.isArray(orders)) {
+        skipReason = 'OpenedOrders response is not a complete list'
+      } else {
+        // Key the read on the ticket the close was actually sent with: the
+        // claim-time row can carry a ticket the reconciliation step has since
+        // replaced (managementExecutor documents the same hazard).
+        // The expected remaining size also helps attribute matching.
+        const identity: LiveTradeIdentity = {
+          id: parent.id,
+          metaapi_order_id: String(effectiveTicket),
+          broker_position_ticket: parent.broker_position_ticket == null
+            ? null
+            : String(effectiveTicket),
+          symbol: parent.symbol,
+          direction: parent.direction,
+          lot_size: recorded - closedLots,
+          entry_price: parent.entry_price,
+        }
+        const resolution = resolveCanonicalOpenPosition({ trade: identity, openedOrders: orders })
+        if (resolution.status === 'resolved') {
+          observed = livePositionVolume(resolution.row)
+          matchedBy = resolution.matchedBy
+        } else {
+          skipReason = `${resolution.status}: ${resolution.reason}`
+        }
+      }
+    } catch (err) {
+      console.warn(
+        `[partialTpMonitor] lot size readback failed partial=${partial.id}:`
+        + ` ${err instanceof Error ? err.message : String(err)}`,
+      )
+      return
+    }
+    const remaining = remainingLotSizeToPersist(recorded, observed)
+    if (remaining == null) {
+      // Every skipped path is reported. Silence here is what let the original
+      // stale-column bug go unnoticed for so long.
+      console.warn(
+        `[partialTpMonitor] lot size not refreshed partial=${partial.id}`
+        + ` recorded=${recorded} observed=${observed ?? 'n/a'}${skipReason ? ` reason=${skipReason}` : ''}`,
+      )
+      return
+    }
+    // An attribute-only match is a guess about which position is ours. It is
+    // only trusted when the reduction it implies is the one we just asked for.
+    if (matchedBy === 'attributes') {
+      const tolerance = Math.max(0.001, closedLots * 0.05)
+      if (Math.abs((recorded - remaining) - closedLots) > tolerance) {
+        console.warn(
+          `[partialTpMonitor] lot size attribute match not corroborated partial=${partial.id}`
+          + ` recorded=${recorded} observed=${remaining} closed=${closedLots}`,
+        )
+        return
+      }
+    }
+    const { error } = await this.supabase
+      .from('trades')
+      .update({ lot_size: remaining })
+      .eq('id', partial.trade_id)
+      .in('status', ['open', 'pending'])
+      // Only write when the column still holds the value our read was based
+      // on, so a fresher writer is never overwritten with an older figure.
+      .eq('lot_size', recorded)
+    if (error) {
+      console.warn(`[partialTpMonitor] lot size update failed partial=${partial.id}: ${error.message}`)
+    }
+  }
+
   private async firePartial(
     partial: PartialRow,
     api: FxsocketBrokerClient,
@@ -1086,6 +1208,19 @@ export class PartialTpMonitor {
             userId: partial.user_id,
           },
           'partial_tp_close',
+        )
+      }
+      // Last, and guarded: this is bookkeeping, so a slow read or an unexpected
+      // throw must never turn a close that already happened into a reported
+      // failure (which would roll the leg back and re-send the close).
+      try {
+        await this.refreshTradeLotSizeAfterPartial(
+          partial, api, sessionId, parentRow, partial.close_lots, effectiveTicket,
+        )
+      } catch (err) {
+        console.warn(
+          `[partialTpMonitor] lot size refresh threw partial=${partial.id}:`
+          + ` ${err instanceof Error ? err.message : String(err)}`,
         )
       }
       return 'fired'
