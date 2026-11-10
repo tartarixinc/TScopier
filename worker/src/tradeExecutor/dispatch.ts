@@ -648,8 +648,13 @@ export async function handleSignal(ctx: TradeExecutorContext,
       let userSub: Awaited<ReturnType<typeof loadCachedUserSubscription>>
       let isAdmin: boolean
       let extensionEndMs: number | null = null
-      const nonTelegramSource = isNonTelegramSignalSource(opts?.dispatchSource, row.dispatch_source)
-        || await isTradingViewSourceChannel(ctx.supabase, row.channel_id)
+      const nonTelegramSource = isNonTelegramSignalSource(
+        opts?.dispatchSource,
+        row.dispatch_source,
+        typeof (row.parsed_data as { signal_source?: unknown } | null)?.signal_source === 'string'
+          ? String((row.parsed_data as { signal_source?: unknown }).signal_source)
+          : null,
+      ) || await isTradingViewSourceChannel(ctx.supabase, row.channel_id)
       if (
         !nonTelegramSource
         && (liveFast || liveMgmtFast)
@@ -753,17 +758,40 @@ export async function handleSignal(ctx: TradeExecutorContext,
       if (action === 'ignore') return
       // TradingView JSON alerts are structured orders — do not require Telegram free-text
       // cues like "buy now". SL/TP must still come from the alert or config overrides.
-      const tradingViewSource = isTradingViewSignalSource(opts?.dispatchSource, row.dispatch_source)
-        || await isTradingViewChannelSource(ctx.supabase, row.channel_id)
+      const tradingViewSource = isTradingViewSignalSource(
+        opts?.dispatchSource,
+        row.dispatch_source,
+        typeof (parsed as { signal_source?: unknown }).signal_source === 'string'
+          ? String((parsed as { signal_source?: unknown }).signal_source)
+          : null,
+      ) || await isTradingViewChannelSource(ctx.supabase, row.channel_id)
       if (tradingViewSource) {
         if ((action === 'buy' || action === 'sell') && !String(parsed.symbol ?? '').trim()) {
           await ctx.logDispatchSkipped(row, 'symbol_required')
           return
         }
       } else {
+        let rawForEligibility = String(
+          (row as { raw_message?: string | null }).raw_message
+            ?? parsed.raw_instruction
+            ?? '',
+        ).trim()
+        // Sweep historically omitted raw_message; hydrate from DB so TV cues survive.
+        if (!rawForEligibility && row.id) {
+          const { data: rawRow } = await ctx.supabase
+            .from('signals')
+            .select('raw_message')
+            .eq('id', row.id)
+            .maybeSingle()
+          const fromDb = String((rawRow as { raw_message?: string | null } | null)?.raw_message ?? '').trim()
+          if (fromDb) {
+            rawForEligibility = fromDb
+            ;(row as { raw_message?: string | null }).raw_message = fromDb
+          }
+        }
         const executionEligibility = evaluateParsedSignalExecutionEligibility(
           parsed,
-          String((row as { raw_message?: string | null }).raw_message ?? parsed.raw_instruction ?? ''),
+          rawForEligibility,
         )
         if (!executionEligibility.eligible) {
           await ctx.logDispatchSkipped(row, executionEligibility.skipReason ?? 'entry_not_execution_eligible')
