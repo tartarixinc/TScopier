@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { parseTradingViewAlert, stripTradingViewSymbol } from '../../supabase/functions/_shared/tradingViewAlert'
+import {
+  parseTradingViewAlert,
+  stripTradingViewSymbol,
+  TRADINGVIEW_ALERT_TEMPLATE_BUY,
+  TRADINGVIEW_ALERT_TEMPLATE_SELL,
+} from '../../supabase/functions/_shared/tradingViewAlert'
 
 test('stripTradingViewSymbol removes the exchange prefix', () => {
   assert.equal(stripTradingViewSymbol('OANDA:XAUUSD'), 'XAUUSD')
@@ -56,4 +61,30 @@ test('parseTradingViewAlert recovers unquoted TradingView placeholders and long/
   const unresolvedAction = parseTradingViewAlert('{"action":"{{strategy.order.action}}","symbol":"EURUSD","price":1}')
   assert.equal(unresolvedAction.ok, false)
   if (!unresolvedAction.ok) assert.equal(unresolvedAction.reason, 'unresolved_action_placeholder')
+})
+
+test('indicator Buy and Sell templates parse to market buy/sell', () => {
+  const buy = parseTradingViewAlert(
+    TRADINGVIEW_ALERT_TEMPLATE_BUY
+      .replace('"{{ticker}}"', '"OANDA:XAUUSD"')
+      .replace('"{{close}}"', '"2650.2"')
+      .replace('"{{timenow}}"', '"alert-buy"'),
+  )
+  assert.equal(buy.ok, true)
+  if (buy.ok) {
+    assert.equal(buy.alert.action, 'buy')
+    assert.equal(buy.alert.symbol, 'XAUUSD')
+  }
+
+  const sell = parseTradingViewAlert(
+    TRADINGVIEW_ALERT_TEMPLATE_SELL
+      .replace('"{{ticker}}"', '"FX:EURUSD"')
+      .replace('"{{close}}"', '"1.085"')
+      .replace('"{{timenow}}"', '"alert-sell"'),
+  )
+  assert.equal(sell.ok, true)
+  if (sell.ok) {
+    assert.equal(sell.alert.action, 'sell')
+    assert.equal(sell.alert.symbol, 'EURUSD')
+  }
 })

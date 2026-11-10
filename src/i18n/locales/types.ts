@@ -1952,7 +1952,16 @@ export interface ChannelsPageTranslations {
   tradingViewName: string
   tradingViewUrl: string
   tradingViewTemplate: string
+  tradingViewTemplateStrategy: string
+  tradingViewTemplateIndicators: string
+  tradingViewTemplateBuy: string
+  tradingViewTemplateSell: string
   tradingViewTemplateHelp: string
+  tradingViewHowToTitle: string
+  tradingViewHowTo1: string
+  tradingViewHowTo2: string
+  tradingViewHowTo3: string
+  tradingViewHowTo4: string
   tradingViewCopy: string
   tradingViewCopied: string
   tradingViewRotate: string
