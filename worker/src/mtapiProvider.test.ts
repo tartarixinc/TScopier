@@ -8,6 +8,8 @@ import {
   resetProviderResolverForTests,
   setMtapiProviderForResolverTests,
 } from './providerResolver'
+import { createBrokerGateway, type BrokerPriority } from './brokerGateway'
+import { runWithEntryBrokerReads, takeEntryBrokerTimings } from './brokerEntryContext'
 
 const oldBase = process.env.MTAPI_BASE_URL
 const oldInternalToken = process.env.MTAPI_INTERNAL_TOKEN
@@ -677,6 +679,46 @@ test('orderHistory on persistent transport failure makes exactly two attempts', 
   })
   await assert.rejects(() => api.orderHistory('session', 'from', 'to'))
   assert.equal(calls, 2)
+})
+
+test('entry broker context promotes Quote/OpenedOrders off the background lane', async () => {
+  const priorities: BrokerPriority[] = []
+  const base = createBrokerGateway({ orderRps: 0, backgroundRps: 0, perAccountRps: 0 })
+  const gateway = {
+    acquire: async (accountKey: string, priority: BrokerPriority = 'background') => {
+      priorities.push(priority)
+      return base.acquire(accountKey, priority)
+    },
+    stats: () => base.stats(),
+  }
+  const api = new MtapiProvider({
+    gateway,
+    fetchImpl: (async (input: string | URL | Request) => {
+      const raw = input instanceof Request ? input.url : String(input)
+      const url = new URL(raw)
+      if (url.pathname === '/GetQuote' || url.pathname === '/Quote') {
+        return new Response(JSON.stringify({ bid: 1.1, ask: 1.2 }))
+      }
+      if (url.pathname === '/OpenedOrders') return new Response('[]')
+      if (url.pathname === '/AccountSummary') {
+        return new Response(JSON.stringify({ balance: 100, equity: 100, synced: true }))
+      }
+      return new Response('{}', { status: 404 })
+    }) as typeof fetch,
+    timeoutMs: 2_000,
+  })
+
+  await api.accountSummary('session')
+  assert.deepEqual(priorities, ['background'])
+
+  await runWithEntryBrokerReads(async () => {
+    await api.quote('session', 'XAUUSD')
+    await api.openedOrders('session')
+  })
+  assert.deepEqual(priorities, ['background', 'order', 'order'])
+
+  // Timings are recorded into the ALS bag even when not stashed by the caller.
+  assert.equal(takeEntryBrokerTimings('unused'), null)
 })
 
 test('orderHistory recovers a session-gone reply without a second transport retry', async () => {

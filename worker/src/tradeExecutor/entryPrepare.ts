@@ -271,14 +271,20 @@ export async function prepareEntryExecution(
     sendOpts?.commentPrefix,
   )
 
+  // Live-fast market entries always need one Quote for TP/zone/limit guards.
+  // Prefetch once here so later guards reuse `strictEntryPrefetch` instead of
+  // serial background-lane round-trips that inflate send_plan_ms.
   const needsQuotePrefetch =
     isManual
     && (
-      (signalEntryPriceStrictEnabled(manual) && parsedHasExplicitEntryAnchor(parsed))
+      liveEntryFast
+      || (signalEntryPriceStrictEnabled(manual) && parsedHasExplicitEntryAnchor(parsed))
       || signalEntryRangeStrictEnabled(manual)
       || manual.reverse_signal === true
       || manual.use_predefined_sl_pips === true
       || manual.use_predefined_tp_pips === true
+      || signal.dispatch_source === 'ai_parsed'
+      || signal.dispatch_source === 'ai_reconciled'
     )
 
   if (signal.pipeline_ts) {

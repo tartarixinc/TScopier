@@ -48,6 +48,7 @@ import {
   type ChannelStopApplyResult,
 } from '../channelStopApply'
 import type { MgmtExecOptions, MgmtExecResult } from '../mgmtExecOptions'
+import { runWithPriorityBrokerReads, stashEntryBrokerTimings } from '../brokerEntryContext'
 import { loadExactProviderCloseArtifacts, loadRangePendingLegsInMgmtScope, pendingLegsToCancelScopes, updateRangePendingLegsForManagement } from '../managementPendingLegs'
 import {
   explicitMgmtSymbol,
@@ -1169,6 +1170,8 @@ export async function applyManagement(
     const breakevenOrdersByUuid = new Map<string, unknown[]>()
     const breakevenAssignedTicket = new Map<string, number>()
     const breakevenExcludeByTradeId = new Map<string, Set<number>>()
+    /** Shared OpenedOrders snapshot for close/partial live-fast legs (one read per session). */
+    const mgmtLiveOrdersByUuid = new Map<string, unknown[]>()
     const prepareBreakevenTickets = async (): Promise<void> => {
       const byUuid = new Map<string, MgmtTradeRow[]>()
       for (const trade of eligibleTrades) {
@@ -1185,6 +1188,7 @@ export async function applyManagement(
         if (!api) return
         const raw = (await api.openedOrders(u).catch(() => [])) ?? []
         breakevenOrdersByUuid.set(u, raw)
+        mgmtLiveOrdersByUuid.set(u, raw)
         const used = new Set<number>()
         for (const leg of legs) {
           const reconciled = resolveReconciledTicketForTrade(leg, raw, used)
@@ -1202,6 +1206,27 @@ export async function applyManagement(
           for (const t of used) if (t !== mine) excl.add(t)
           breakevenExcludeByTradeId.set(leg.id, excl)
         }
+      }))
+    }
+    const prepareMgmtLiveOrderSnapshots = async (): Promise<void> => {
+      if (!liveMgmtFast) return
+      if (action !== 'close' && action !== 'partial_profit') return
+      const byUuid = new Map<string, MgmtTradeRow[]>()
+      for (const trade of eligibleTrades) {
+        const broker = byBroker.get(trade.broker_account_id)
+        const u = broker ? brokerSessionUuid(broker) : null
+        if (!u) continue
+        const list = byUuid.get(u) ?? []
+        list.push(trade)
+        byUuid.set(u, list)
+      }
+      await Promise.all([...byUuid.entries()].map(async ([u, legs]) => {
+        if (mgmtLiveOrdersByUuid.has(u)) return
+        const broker = byBroker.get(legs[0]!.broker_account_id)
+        const api = broker ? ctx.apiFor(broker) : null
+        if (!api) return
+        const raw = (await api.openedOrders(u).catch(() => [])) ?? []
+        mgmtLiveOrdersByUuid.set(u, raw)
       }))
     }
 
@@ -1247,6 +1272,7 @@ export async function applyManagement(
             api,
             sessionId: uuid,
             trade,
+            openedOrders: mgmtLiveOrdersByUuid.get(uuid) ?? breakevenOrdersByUuid.get(uuid),
           })
           if (resolution.status !== 'resolved') {
             if (isLivePositionAbsentReason(resolution.reason)) {
@@ -1890,27 +1916,43 @@ export async function applyManagement(
       )
     }
 
-    if (action === 'breakeven' || action === 'partial_breakeven') {
-      // Pre-reconcile each leg to a distinct ticket from a single OpenedOrders
-      // snapshot per broker, so legs can run in parallel without racing on a
-      // shared ticket-exclusion map (the old serial-per-session bottleneck).
-      await prepareBreakevenTickets()
-      if (eligibleTrades.length > 1) {
+    const runMgmtLegs = async (): Promise<void> => {
+      if (action === 'breakeven' || action === 'partial_breakeven') {
+        // Pre-reconcile each leg to a distinct ticket from a single OpenedOrders
+        // snapshot per broker, so legs can run in parallel without racing on a
+        // shared ticket-exclusion map (the old serial-per-session bottleneck).
+        await prepareBreakevenTickets()
+        if (eligibleTrades.length > 1) {
+          await Promise.allSettled(
+            await parallelMap(eligibleTrades, legConcurrency, trade => processTrade(trade)),
+          )
+        } else {
+          for (const trade of eligibleTrades) {
+            await processTrade(trade)
+          }
+        }
+        await enqueueBreakevenReconcileFallback()
+        return
+      }
+      await prepareMgmtLiveOrderSnapshots()
+      if (liveMgmtFast && eligibleTrades.length > 1) {
         await Promise.allSettled(
           await parallelMap(eligibleTrades, legConcurrency, trade => processTrade(trade)),
         )
       } else {
-        for (const trade of eligibleTrades) {
-          await processTrade(trade)
-        }
+        await Promise.allSettled(eligibleTrades.map(trade => processTrade(trade)))
       }
-      await enqueueBreakevenReconcileFallback()
-    } else if (liveMgmtFast && eligibleTrades.length > 1) {
-      await Promise.allSettled(
-        await parallelMap(eligibleTrades, legConcurrency, trade => processTrade(trade)),
-      )
+    }
+    if (liveMgmtFast) {
+      await runWithPriorityBrokerReads('order', async () => {
+        try {
+          await runMgmtLegs()
+        } finally {
+          stashEntryBrokerTimings(signal.id)
+        }
+      })
     } else {
-      await Promise.allSettled(eligibleTrades.map(trade => processTrade(trade)))
+      await runMgmtLegs()
     }
 
     if (action === 'close' && liveMgmtFast && signal.channel_id && !hasExplicitMgmtParent) {

@@ -6,8 +6,9 @@
  * (health sweeps, management, reconciliation, entries). Calls are split into
  * two independent channels:
  *
- *   - 'order'      — order operations (send/modify/close)
- *   - 'background' — health, reads, management, reconciliation
+ *   - 'order'      — order operations (send/modify/close) and entry-critical
+ *                    reads (Quote / OpenedOrders during prepare+send)
+ *   - 'background' — health, monitor reads, reconciliation
  *
  * The channels are separate so a background burst can never delay an order;
  * each has its own global start rate, and together they stay under the
@@ -15,12 +16,14 @@
  *
  * Deliberately a pacer, not a rejector: acquire() waits its turn and never
  * throws, so a rate limit can delay work but can never fail an order.
+ * Returns the milliseconds spent waiting so callers can attribute latency.
  */
 
 export type BrokerPriority = 'order' | 'background'
 
 export type BrokerGateway = {
-  acquire(accountKey: string, priority?: BrokerPriority): Promise<void>
+  /** Resolves with the milliseconds spent waiting for the lane (0 when immediate). */
+  acquire(accountKey: string, priority?: BrokerPriority): Promise<number>
   /** Test/introspection helper. */
   stats(): { trackedAccounts: number; orderNextAt: number; backgroundNextAt: number }
 }
@@ -55,12 +58,13 @@ export function createBrokerGateway(options: BrokerGatewayOptions = {}): BrokerG
   let orderNextAt = 0
   let backgroundNextAt = 0
 
-  async function acquire(accountKey: string, priority: BrokerPriority = 'background'): Promise<void> {
+  async function acquire(accountKey: string, priority: BrokerPriority = 'background'): Promise<number> {
     const key = accountKey || '__global__'
     const t = now()
     let start = t
     if (priority === 'order') {
-      // Orders use their own channel only: never wait behind background pacing.
+      // Orders (and entry-critical reads) use their own channel only: never wait
+      // behind background pacing from monitors / health sweeps.
       start = Math.max(t, orderNextAt)
       if (orderInterval > 0) orderNextAt = start + orderInterval
     } else {
@@ -74,6 +78,7 @@ export function createBrokerGateway(options: BrokerGatewayOptions = {}): BrokerG
     if (accountNextAt.size > 4096) {
       for (const [k, v] of accountNextAt) if (v < t) accountNextAt.delete(k)
     }
+    return wait > 0 ? wait : 0
   }
 
   function stats() {
