@@ -699,11 +699,6 @@ export function OwnProviderProfileView() {
             <ProfileTab icon={<Wallet className="h-4 w-4" />} active={profileTab === 'portfolio'} onClick={() => setProfileTab('portfolio')}>{copy.tabPortfolio}</ProfileTab>
           </div>
           <PerformanceNotice trader={trader} />
-          {liveOwn.error ? (
-            <Alert variant={'warning'}>
-              Couldn&apos;t get live data from your trading account, so some values show a dash or the last known number. {liveOwn.error}
-            </Alert>
-          ) : null}
           {profileTab === 'performance' ? (
             <>
               <MonthlyProfitChart title={copy.monthlyStatistics} data={stats.monthly} />
