@@ -37,6 +37,9 @@ class Query implements PromiseLike<{ data: unknown; error: Row | null }> {
   order(): this { return this }
   eq(key: string, value: unknown): this { this.filters.push(row => row[key] === value); return this }
   in(key: string, values: unknown[]): this { this.filters.push(row => values.includes(row[key])); return this }
+  order(): this { return this }
+  limit(): this { return this }
+  gte(): this { return this }
   single(): this { this.wantsSingle = true; return this }
   maybeSingle(): this { this.wantsSingle = true; this.allowMissing = true; return this }
   insert(payload: Row): this { this.mutation = 'insert'; this.payload = payload; return this }
@@ -182,6 +185,28 @@ test('skips source positions that are already social/mirror copy fills', async (
   await monitor.tick()
   assert.equal(destination.sends, 0)
   assert.equal(db.tables.social_copy_trade_mappings.length, 0)
+})
+
+test('dedupes order/position twin source rows to a single destination open', async () => {
+  const db = new FakeDb()
+  const sub = subscription({ status: 'active' })
+  db.claimed = [sub]
+  db.tables.social_copy_subscriptions = [{ ...sub }]
+  const source = provider({
+    orders: [
+      { ...sourcePosition, ticket: 100, orderTicket: 100, positionTicket: 200, openPrice: 1.1 },
+      { ...sourcePosition, ticket: 200, orderTicket: 100, positionTicket: 200, openPrice: 1.1 },
+    ],
+  })
+  const destination = provider()
+  const monitor = new SocialCopyMonitor(db as never, {
+    executionEnabled: true,
+    providerFor: row => String((row as Row).id) === 'src' ? source : destination,
+  })
+  await monitor.tick()
+  assert.equal(destination.sends, 1)
+  assert.equal(db.tables.social_copy_trade_mappings.length, 1)
+  assert.equal(db.tables.social_copy_trade_mappings[0]?.source_ticket, '200')
 })
 
 test('source disconnection fails closed with an actionable persisted error', async () => {

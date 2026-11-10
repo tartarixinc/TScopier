@@ -3,12 +3,42 @@ import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 import { normalizeOrderResponse } from './fxsocketClient'
 import {
+  dedupeOpenedMarketPositions,
   livePositionVolume,
   persistCanonicalPositionTicket,
   resolveCanonicalOpenPosition,
   resolveCurrentLivePosition,
   snapshotLogins,
 } from './livePositionIdentity'
+
+describe('dedupeOpenedMarketPositions', () => {
+  it('collapses order and position twin rows that share an identity set', () => {
+    const rows = dedupeOpenedMarketPositions([
+      { type: 0, ticket: 100, orderTicket: 100, positionTicket: 200, symbol: 'XAUUSDm', lots: 0.01, openPrice: 4100 },
+      { type: 0, ticket: 200, orderTicket: 100, positionTicket: 200, symbol: 'XAUUSDm', lots: 0.01, openPrice: 4100 },
+    ])
+    assert.equal(rows.length, 1)
+    assert.equal(rows[0]?.canonicalTicket, 200)
+    assert.equal(rows[0]?.identities.has(100), true)
+    assert.equal(rows[0]?.identities.has(200), true)
+  })
+
+  it('collapses same-symbol same-size fills with matching entry prices', () => {
+    const rows = dedupeOpenedMarketPositions([
+      { operation: 'Buy', ticket: 3448056134, symbol: 'XAUUSDm', lots: 0.01, openPrice: 4116.6 },
+      { operation: 'Buy', ticket: 3448056611, symbol: 'XAUUSDm', lots: 0.01, openPrice: 4116.61 },
+    ])
+    assert.equal(rows.length, 1)
+  })
+
+  it('keeps two real scale-ins with clearly different entry prices', () => {
+    const rows = dedupeOpenedMarketPositions([
+      { operation: 'Buy', ticket: 1, symbol: 'XAUUSDm', lots: 0.01, openPrice: 4100 },
+      { operation: 'Buy', ticket: 2, symbol: 'XAUUSDm', lots: 0.01, openPrice: 4120 },
+    ])
+    assert.equal(rows.length, 2)
+  })
+})
 
 describe('MTAPI live identity normalization', () => {
   it('preserves MT5 order, deal, and position tickets and chooses the position for a market trade', () => {

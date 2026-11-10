@@ -306,6 +306,67 @@ export async function loadOpenTradesForManagement(
   return rows
 }
 
+/** Orphan social-upsert rows (signal_id null) that opened beside a channel fill. */
+export const NEAR_DUPLICATE_ORPHAN_CLOSE_WINDOW_MS = 120_000
+
+/**
+ * CLOSE ALL / channel close only loads signal-attributed trades. Twin OpenedOrders
+ * tickets get persisted as signal_id=null orphans and survive the close — then
+ * social copy keeps (or re-opens) a destination leg. Fold those orphans into the
+ * close set when they share broker/symbol/side and opened within the window.
+ */
+export async function loadNearDuplicateOrphanTradesForClose(
+  supabase: SupabaseClient,
+  args: {
+    userId: string
+    channelTrades: MgmtTradeRow[]
+    windowMs?: number
+  },
+): Promise<MgmtTradeRow[]> {
+  if (!args.channelTrades.length) return []
+  const windowMs = args.windowMs ?? NEAR_DUPLICATE_ORPHAN_CLOSE_WINDOW_MS
+  const brokerIds = [...new Set(args.channelTrades.map(trade => trade.broker_account_id))]
+  const { data } = await supabase
+    .from('trades')
+    .select(MGMT_TRADE_SELECT)
+    .eq('user_id', args.userId)
+    .in('broker_account_id', brokerIds)
+    .in('status', ['open', 'pending'])
+    .is('signal_id', null)
+    .limit(200)
+  const orphans = (data ?? []) as MgmtTradeRow[]
+  const knownIds = new Set(args.channelTrades.map(trade => trade.id))
+  const out: MgmtTradeRow[] = []
+  for (const orphan of orphans) {
+    if (knownIds.has(orphan.id)) continue
+    const ticket = Number(orphan.metaapi_order_id)
+    if (!Number.isFinite(ticket) || ticket <= 0) continue
+    const sibling = args.channelTrades.find(channel => {
+      if (channel.broker_account_id !== orphan.broker_account_id) return false
+      if (!symbolsCompatibleForBasket(channel.symbol, orphan.symbol)) return false
+      const channelDir = String(channel.direction ?? '').toLowerCase()
+      const orphanDir = String(orphan.direction ?? '').toLowerCase()
+      if (channelDir && orphanDir && channelDir !== orphanDir) return false
+      const channelLots = Number(channel.lot_size)
+      const orphanLots = Number(orphan.lot_size)
+      if (
+        Number.isFinite(channelLots)
+        && Number.isFinite(orphanLots)
+        && Math.abs(channelLots - orphanLots) > 1e-8
+      ) {
+        return false
+      }
+      const channelOpen = channel.opened_at ? Date.parse(channel.opened_at) : NaN
+      const orphanOpen = orphan.opened_at ? Date.parse(orphan.opened_at) : NaN
+      if (!Number.isFinite(channelOpen) || !Number.isFinite(orphanOpen)) return false
+      return Math.abs(orphanOpen - channelOpen) <= windowMs
+    })
+    if (!sibling) continue
+    out.push({ ...orphan, signal_id: sibling.signal_id })
+  }
+  return out
+}
+
 /** Channel-wide CWE without explicit symbol: active basket = newest open symbol bucket. */
 export function resolveChannelCweTargets(
   trades: MgmtTradeRow[],
