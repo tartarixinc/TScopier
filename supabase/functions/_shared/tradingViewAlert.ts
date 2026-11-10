@@ -1,7 +1,7 @@
 export const TRADINGVIEW_ALERT_TEMPLATE = `{
   "action": "{{strategy.order.action}}",
   "symbol": "{{ticker}}",
-  "price": {{close}},
+  "price": "{{close}}",
   "id": "{{timenow}}"
 }`
 
@@ -58,15 +58,58 @@ function takeLevels(value: unknown): number[] | null {
 
 function normalizeAction(value: unknown): TradingViewTradeAction | null {
   const action = String(value ?? '').trim().toLowerCase()
-  if (action === 'buy' || action === 'sell' || action === 'close') return action
+  if (action === 'buy' || action === 'long' || action === 'entry_long') return 'buy'
+  if (action === 'sell' || action === 'short' || action === 'entry_short') return 'sell'
+  if (
+    action === 'close'
+    || action === 'exit'
+    || action === 'flat'
+    || action === 'close_all'
+    || action === 'exit_long'
+    || action === 'exit_short'
+  ) {
+    return 'close'
+  }
   return null
 }
 
-export function parseTradingViewAlert(raw: string): TradingViewAlertParse {
-  const body = raw.trim()
-  if (!body) return { ok: false, reason: 'empty_body' }
-  if (body.length > MAX_BODY_CHARS) return { ok: false, reason: 'body_too_large' }
+/**
+ * TradingView alert messages are often almost-JSON but not strict:
+ * unquoted `{{close}}` when a placeholder is left unresolved, smart quotes,
+ * or a JSON object wrapped in surrounding alert text.
+ */
+export function coerceTradingViewAlertJson(raw: string): string {
+  let body = raw.trim().replace(/^\uFEFF/, '')
+  if (!body) return body
 
+  // Prefer the first JSON object if TV prepends text.
+  if (!body.startsWith('{')) {
+    const start = body.indexOf('{')
+    const end = body.lastIndexOf('}')
+    if (start >= 0 && end > start) body = body.slice(start, end + 1)
+  }
+
+  body = body
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2018\u2019]/g, "'")
+
+  // Quote bare TradingView placeholders so unresolved {{close}} is valid JSON.
+  body = body.replace(
+    /(:\s*)\{\{([^{}]+)\}\}(\s*[,}\]])/g,
+    (_match, prefix: string, inner: string, suffix: string) => `${prefix}"{{${inner}}}"${suffix}`,
+  )
+
+  // Trailing commas before } or ] are common after hand-edited templates.
+  body = body.replace(/,\s*([}\]])/g, '$1')
+  return body
+}
+
+export function parseTradingViewAlert(raw: string): TradingViewAlertParse {
+  const original = raw.trim()
+  if (!original) return { ok: false, reason: 'empty_body' }
+  if (original.length > MAX_BODY_CHARS) return { ok: false, reason: 'body_too_large' }
+
+  const body = coerceTradingViewAlertJson(original)
   let payload: unknown
   try {
     payload = JSON.parse(body)
@@ -78,11 +121,19 @@ export function parseTradingViewAlert(raw: string): TradingViewAlertParse {
   }
   const record = payload as Record<string, unknown>
 
+  const actionRaw = String(record.action ?? '').trim()
+  if (/\{\{|\}\}/.test(actionRaw)) {
+    return { ok: false, reason: 'unresolved_action_placeholder' }
+  }
   const action = normalizeAction(record.action)
   if (!action) return { ok: false, reason: 'unknown_action' }
 
-  const symbol = stripTradingViewSymbol(String(record.symbol ?? ''))
-  if (!symbol || symbol.includes('{') || symbol.includes('}')) {
+  const symbolRaw = String(record.symbol ?? '')
+  if (/\{\{|\}\}/.test(symbolRaw)) {
+    return { ok: false, reason: 'unresolved_symbol_placeholder' }
+  }
+  const symbol = stripTradingViewSymbol(symbolRaw)
+  if (!symbol) {
     return { ok: false, reason: 'symbol_required' }
   }
 

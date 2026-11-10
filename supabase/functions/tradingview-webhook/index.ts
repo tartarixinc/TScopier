@@ -354,8 +354,15 @@ async function handleIngest(supabase: SupabaseClient, req: Request, token: strin
   if (existing) return json(200, { ok: true, status: "duplicate" })
 
   if (!parsed.ok) {
-    await recordDelivery(supabase, webhook, parsed.reason === "unknown_action" ? "skipped" : "error", idempotencyKey, parsed.reason, null)
-    return json(200, { ok: false, status: parsed.reason === "unknown_action" ? "skipped" : "error" })
+    const skipStatus = parsed.reason === "unknown_action"
+      || parsed.reason.startsWith("unresolved_")
+      ? "skipped"
+      : "error"
+    console.warn(
+      `[tradingview-webhook] parse failed webhook=${webhook.id} reason=${parsed.reason} body=${JSON.stringify(raw.slice(0, 240))}`,
+    )
+    await recordDelivery(supabase, webhook, skipStatus, idempotencyKey, parsed.reason, null)
+    return json(200, { ok: false, status: skipStatus === "skipped" ? "skipped" : "error" })
   }
 
   const createdAt = new Date().toISOString()
