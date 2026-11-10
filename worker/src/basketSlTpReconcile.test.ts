@@ -511,10 +511,17 @@ describe('runBasketLegModifies modify outcome observability counters', () => {
 
   it('keeps invalid-stops split fallback as success when SL/TP fallback lands', async () => {
     const calls: Array<{ stoploss?: number; takeprofit?: number }> = []
+    // Realistic split: only the FIRST combined attempt is rejected; the retries
+    // now arrive as SL+TP pairs (the TP retry carries the applied SL so MTAPI
+    // cannot clear it), so a "both fields present" rule would reject them too.
+    let combinedTried = false
     const { summary, legErrors } = await runOne({
       orderModify: async (_uuid, args) => {
         calls.push(args)
-        if (args.stoploss != null && args.takeprofit != null) throw new Error('Invalid stops')
+        if (args.stoploss != null && args.takeprofit != null && !combinedTried) {
+          combinedTried = true
+          throw new Error('Invalid stops')
+        }
         return { stopLoss: args.stoploss ?? null, takeProfit: args.takeprofit ?? null }
       },
     })
@@ -522,7 +529,8 @@ describe('runBasketLegModifies modify outcome observability counters', () => {
     assert.equal(summary.modified, 1)
     assert.equal(summary.failed, 0)
     assert.equal(legErrors.length, 0)
-    assert.equal(calls.length, 3, 'combined + SL-only + TP-only')
+    assert.equal(calls.length, 3, 'combined + SL-only + SL+TP retry')
+    assert.equal(calls[2]!.stoploss, 4376, 'TP retry carries the applied SL')
   })
 
   it('does not treat MT4 4108 invalid request as benign for modify semantics', async () => {

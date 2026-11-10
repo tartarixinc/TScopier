@@ -21,6 +21,7 @@ import { lastPositiveParsedTpPrice } from './manualPlanning/parsedEntry'
 import type { ChannelKeywords, ManualSettings, ParsedSignal } from './manualPlanning/types'
 import type { SignalRow } from './tradeExecutor'
 import { isBenignOrderModifyError } from './orderModifyBenign'
+import { modifyLegSlTpWithFallback } from './orderModifySafe'
 import { captureDeferredBusinessFailure } from './observability/deferredBusinessEvents'
 import { resolvePostFillIsBuy } from './postFillSide'
 import { writeExecutionLog } from './observability/executionLog'
@@ -263,19 +264,46 @@ async function applyPipAndChannelStops(args: ApplyPostFillFollowUpArgs): Promise
       const modifyArgs: { ticket: number; stoploss?: number | null; takeprofit?: number | null } = {
         ticket: leg.ticket,
       }
-      if (slChanged) modifyArgs.stoploss = newSl
-      if (tpChanged) modifyArgs.takeprofit = newTp
-      await api.orderModify(uuid, modifyArgs)
+      // MTAPI clears an omitted side to 0 — carry the side this update is not
+      // changing so an SL-only refresh cannot wipe the TP (and vice versa).
+      const slToSend = slChanged ? newSl : leg.openSl
+      const tpToSend = tpChanged ? newTp : leg.openTp
+      if (slToSend != null && slToSend > 0) modifyArgs.stoploss = slToSend
+      if (tpToSend != null && tpToSend > 0) modifyArgs.takeprofit = tpToSend
+      // SL-first with split fallback: a stale carried counterpart must not
+      // block the side we actually want to change (combined invalid-stops →
+      // SL-only retry), while a successful combined modify keeps both sides.
+      const safe = await modifyLegSlTpWithFallback(
+        api,
+        uuid,
+        leg.ticket,
+        modifyArgs.stoploss ?? 0,
+        modifyArgs.takeprofit ?? 0,
+      )
+      if (safe.benign) {
+        await recordPostFillStopsChange(args, { ...changePayload, error: safe.error ?? 'No changes' }, 'skipped')
+        continue
+      }
+      if (!safe.ok) {
+        throw new Error(safe.error ?? 'OrderModify failed')
+      }
       if (leg.tradeRowId) {
         const patch: { sl?: number | null; tp?: number | null } = {}
-        if (slChanged) patch.sl = newSl
-        if (tpChanged) patch.tp = newTp
+        if (slChanged && safe.slApplied) patch.sl = newSl
+        if (tpChanged && safe.tpApplied) patch.tp = newTp
         if (Object.keys(patch).length > 0) {
           await args.supabase
             .from('trades')
             .update(patch)
             .eq('id', leg.tradeRowId)
         }
+      }
+      // A requested TP the split could not land must not be recorded as full
+      // success: the SL-only step cleared the broker TP to 0, and postFill has
+      // no reconcile pass to heal it. Record the failure (catch block) so the
+      // telemetry fires — the applied SL is already patched above.
+      if ((modifyArgs.takeprofit ?? 0) > 0 && !safe.tpApplied) {
+        throw new Error(safe.error ?? 'take profit not applied')
       }
       await recordPostFillStopsChange(args, changePayload, 'success')
     } catch (err) {

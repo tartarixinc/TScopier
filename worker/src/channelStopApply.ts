@@ -1053,8 +1053,11 @@ export async function applyChannelStopsToBaskets(
       if (dryRun) continue
 
       const modifyArgs: { ticket: number; stoploss?: number; takeprofit?: number } = { ticket }
-      if (!tpOnly && target.stoploss > 0) modifyArgs.stoploss = target.stoploss
-      if (!slOnly && target.takeprofit > 0) modifyArgs.takeprofit = target.takeprofit
+      // Always send both sides: MTAPI treats an omitted field as "clear to 0",
+      // so an SL-only modify would wipe the TP (and a TP-only modify the SL).
+      // `target` already carries the side not being changed (keepSl/keepTp).
+      if (target.stoploss > 0) modifyArgs.stoploss = target.stoploss
+      if (target.takeprofit > 0) modifyArgs.takeprofit = target.takeprofit
       if (modifyArgs.stoploss == null && modifyArgs.takeprofit == null) {
         baseResult.skipped += 1
         totalSkipped += 1
@@ -1174,6 +1177,12 @@ export async function applyChannelStopsToBaskets(
         const dbPatch: { sl?: number | null; tp?: number | null } = {}
         if (!tpOnly && target.stoploss > 0 && safe.slApplied) dbPatch.sl = safe.appliedSl
         if (!slOnly && target.takeprofit > 0 && safe.tpApplied) dbPatch.tp = safe.appliedTp
+        // An SL-only instruction carried keepTp along; when the split fallback
+        // reassigned a deeper candidate, the broker holds a different TP than
+        // the DB — record what actually landed (reconcile still heals gaps).
+        if (slOnly && safe.tpApplied && safe.appliedTp > 0 && safe.appliedTp !== (modifyArgs.takeprofit ?? 0)) {
+          dbPatch.tp = safe.appliedTp
+        }
         if (Object.keys(dbPatch).length > 0) {
           await supabase.from('trades').update(dbPatch).eq('id', tr.id)
         }

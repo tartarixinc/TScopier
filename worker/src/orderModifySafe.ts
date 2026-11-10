@@ -153,7 +153,7 @@ export async function modifyLegSlTpWithFallback(
     }
     // Never fall through to a TP-only modify when a requested SL could not be
     // applied. A TP-only OrderModify omits stopLoss, and MTAPI treats an
-    // omitted stopLoss as "clear the stop to 0" (docs/mtapi-conformance.md).
+    // omitted stopLoss as "clear the stop to 0" (docs/mtapi-conformance-sanitized.md).
     // The split fallback exists to protect the stop, not to trade it away: the
     // SL-only retry already failed, so the leg must stay untouched and the
     // failure must reach the caller/reconcile path rather than landing a
@@ -187,7 +187,11 @@ export async function modifyLegSlTpWithFallback(
     let appliedTp = 0
     for (const candidate of tpCandidates) {
       try {
-        await api.orderModify(uuid, { ticket, takeprofit: candidate })
+        // Carry the SL that was just applied: a TP-only OrderModify omits
+        // stopLoss, and MTAPI treats an omitted stopLoss as "clear to 0"
+        // (docs/mtapi-conformance-sanitized.md) — the retry would land the TP
+        // and destroy the protective stop one call later.
+        await api.orderModify(uuid, { ticket, stoploss, takeprofit: candidate })
         tpApplied = true
         appliedTp = candidate
         break
