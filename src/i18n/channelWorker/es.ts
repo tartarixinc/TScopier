@@ -190,6 +190,8 @@ export const channelWorkerEs: ChannelWorkerTranslations = {
       'puente del bróker no disponible — active Algo Trading en MT5 y confirme que Trade EA esté listo',
     entry_requires_imperative_or_labeled_stops:
       'el mensaje no incluía una frase de entrada (p. ej. buy now, gold sell now) ni SL/TP etiquetados',
+    tradingview_missing_sl_tp:
+      'la alerta de TradingView no tenía precios de SL y TP — añádalos al mensaje, o active Override SL y Override TP en la configuración',
     entry_tp_without_sl: 'SL no indicado — use pips de SL predefinidos en la configuración del bróker',
     signal_missing_required_sl: 'SL no indicado — use pips de SL predefinidos en la configuración del bróker',
     delete_pendings_no_parent:
