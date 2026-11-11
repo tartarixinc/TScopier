@@ -20,6 +20,7 @@ export interface GlobalSearchTranslations {
 export interface NavTranslations {
   sections: {
     general: string
+    copy: string
     signals: string
     discover: string
     tradingTools: string

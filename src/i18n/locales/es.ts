@@ -24,6 +24,7 @@ export const es: Translations = {
   nav: {
     sections: {
       general: 'GENERAL',
+      copy: 'COPIA',
       signals: 'SEÑALES',
       discover: 'DESCUBRIR',
       tradingTools: 'HERRAMIENTAS',
@@ -35,16 +36,16 @@ export const es: Translations = {
     items: {
       dashboard: 'Panel',
       configuration: 'Configuraciones',
-      brokers: 'Configuración de trading',
-      mirrorTrading: 'Cuenta espejo',
+      brokers: 'Configuración de cuenta',
+      mirrorTrading: 'Cuentas espejo',
       socialTrading: 'Trading social',
-      trades: 'Operaciones',
-      management: 'Actividades',
-      channels: 'Fuente de señales',
+      trades: 'Operaciones de cuenta',
+      management: 'Proceso del copiador',
+      channels: 'Señales',
       popularChannels: 'Canales populares',
       backtest: 'Backtest',
-      copierLogs: 'Registros',
-      signalHistory: 'Gestionar señales',
+      copierLogs: 'Registros del copiador',
+      signalHistory: 'Gestionar operaciones',
       reportedTrades: 'Operaciones reportadas',
       updates: 'Actualizaciones',
       marketNews: 'Noticias',
@@ -442,7 +443,7 @@ export const es: Translations = {
   },
   copyRisk: copyRiskEs,
   mirrorTradingPage: {
-    title: 'Cuenta espejo',
+    title: 'Cuentas espejo',
     subtitle: 'Copia operaciones de una cuenta maestra a cuentas esclavas.',
     searchDescription: 'Copia operaciones de una cuenta maestra a cuentas esclavas.',
     masters: 'Cuentas maestras',
@@ -1508,7 +1509,7 @@ export const es: Translations = {
     updatesReceivedThisMonth: 'Este mes',
   },
   trades: {
-    title: 'Operaciones',
+    title: 'Operaciones de cuenta',
     subtitle: 'Posiciones en vivo y cierres recientes de tus cuentas',
     filterOpen: 'Abiertas',
     filterClosed: 'Cerradas',
@@ -1610,7 +1611,7 @@ export const es: Translations = {
     reasonMirrorCopyClosed: 'Esta operación copiada se cerró antes de que se registraran los motivos de cierre.',
   },
   channelsPage: {
-    title: 'Fuente de señales',
+    title: 'Señales',
     subtitle: 'Gestiona qué canales de Telegram estás monitorizando',
     addChannel: 'Añadir canal',
     addFormTitle: 'Añadir canal manualmente',
@@ -2347,7 +2348,7 @@ export const es: Translations = {
   },
   pages: {
     accountConfiguration: {
-      title: 'Configuración de trading',
+      title: 'Configuración de cuenta',
       description: 'Conecta cuentas MetaTrader y ajusta cómo copia cada una.',
     },
     brokers: {
@@ -2419,11 +2420,11 @@ export const es: Translations = {
       description: 'Gráficos avanzados y herramientas de análisis con IA.',
     },
     signalHistory: {
-      title: 'Gestionar señales',
+      title: 'Gestionar operaciones',
       description: 'Señales analizadas de tu cuenta. Filtra por canal y fecha.',
     },
     copierEngine: {
-      title: 'Fuente de señales',
+      title: 'Señales',
       description: 'Gestiona canales de Telegram y ajustes del copiador.',
     },
     settings: {

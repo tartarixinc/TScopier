@@ -2663,7 +2663,7 @@ export function DashboardPage() {
           <OverviewStat
             label={t.dashboard.tradingAccountsConnected}
             value={String(stats.accounts)}
-            onAdd={() => openAddTradingAccount()}
+            addTo="/brokers"
             addLabel={t.dashboard.addOrManageAccounts}
           />
           <OverviewStat

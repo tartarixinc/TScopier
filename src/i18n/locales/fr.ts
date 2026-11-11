@@ -24,6 +24,7 @@ export const fr: Translations = {
   nav: {
     sections: {
       general: 'GÉNÉRAL',
+      copy: 'COPIE',
       signals: 'SIGNAUX',
       discover: 'DÉCOUVRIR',
       tradingTools: 'OUTILS',
@@ -35,16 +36,16 @@ export const fr: Translations = {
     items: {
       dashboard: 'Tableau de bord',
       configuration: 'Configurations',
-      brokers: 'Configuration de trading',
-      mirrorTrading: 'Compte miroir',
+      brokers: 'Configuration du compte',
+      mirrorTrading: 'Comptes miroir',
       socialTrading: 'Trading social',
-      trades: 'Trades',
-      management: 'Activités',
-      channels: 'Source de signaux',
+      trades: 'Trades du compte',
+      management: 'Processus du copieur',
+      channels: 'Signaux',
       popularChannels: 'Chaînes populaires',
       backtest: 'Backtest',
-      copierLogs: 'Journaux',
-      signalHistory: 'Gérer les signaux',
+      copierLogs: 'Journaux du copieur',
+      signalHistory: 'Gérer les trades',
       reportedTrades: 'Transactions signalées',
       updates: 'Mises à jour',
       marketNews: 'Actualités',
@@ -442,7 +443,7 @@ export const fr: Translations = {
   },
   copyRisk: copyRiskFr,
   mirrorTradingPage: {
-    title: 'Compte miroir',
+    title: 'Comptes miroir',
     subtitle: 'Copiez les trades d’un compte maître vers des comptes esclaves.',
     searchDescription: 'Copiez les trades d’un compte maître vers des comptes esclaves.',
     masters: 'Comptes maîtres',
@@ -1508,7 +1509,7 @@ export const fr: Translations = {
     updatesReceivedThisMonth: 'Ce mois',
   },
   trades: {
-    title: 'Trades',
+    title: 'Trades du compte',
     subtitle: 'Positions en direct et clôtures récentes de vos comptes',
     filterOpen: 'Ouverts',
     filterClosed: 'Clôturés',
@@ -1610,7 +1611,7 @@ export const fr: Translations = {
     reasonMirrorCopyClosed: 'Cette opération copiée a été clôturée avant que les motifs de clôture ne soient enregistrés.',
   },
   channelsPage: {
-    title: 'Source de signaux',
+    title: 'Signaux',
     subtitle: 'Gérez les canaux Telegram que vous surveillez',
     addChannel: 'Ajouter un canal',
     addFormTitle: 'Ajouter un canal manuellement',
@@ -2347,7 +2348,7 @@ export const fr: Translations = {
   },
   pages: {
     accountConfiguration: {
-      title: 'Configuration de trading',
+      title: 'Configuration du compte',
       description: 'Connectez des comptes MetaTrader et réglez la copie pour chacun.',
     },
     brokers: {
@@ -2419,11 +2420,11 @@ export const fr: Translations = {
       description: 'Graphiques avancés et outils d\'analyse IA.',
     },
     signalHistory: {
-      title: 'Gérer les signaux',
+      title: 'Gérer les trades',
       description: 'Signaux analysés liés à votre compte. Filtrez par canal et date.',
     },
     copierEngine: {
-      title: 'Source de signaux',
+      title: 'Signaux',
       description: 'Gérez les canaux Telegram et les réglages du copieur.',
     },
     settings: {
