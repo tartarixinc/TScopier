@@ -377,7 +377,7 @@ test('planMultiManualOrders: 100% SELL range can produce zero immediates plus on
   assert.equal(plan.virtualPendings?.[0]?.isBuy, false)
 })
 
-test('planMultiManualOrders: override SL 80 pips is per range trigger, not shared basket SL', () => {
+test('planMultiManualOrders: override SL freezes absolute price from first entry for all range legs', () => {
   const plan = planManualOrders({
     parsed: {
       ...baseParsed,
@@ -403,25 +403,15 @@ test('planMultiManualOrders: override SL 80 pips is per range trigger, not share
   })
   const virtuals = plan.virtualPendings ?? []
   assert.ok(virtuals.length >= 2, `expected >=2 range legs, got ${virtuals.length}`)
-  assert.notEqual(virtuals[0]!.stoploss, virtuals[1]!.stoploss)
   const pip = plan.pip ?? 0
   assert.ok(pip > 0)
-  const triggerMap = buildRangeLayerTriggerMap({
-    virtualPendings: virtuals,
-    anchor: 2650,
-    digits: 2,
-    rangeLayering: plan.rangeLayering,
-    pip,
-  })
-  for (const v of virtuals.slice(0, 2)) {
-    const trigger = triggerMap.get(v.stepIdx)
-    assert.ok(trigger != null && trigger > 0)
-    const expected = Number((trigger - 80 * pip).toFixed(2))
-    assert.equal(v.stoploss, expected)
-  }
+  const expectedSl = Number((2650 - 80 * pip).toFixed(2))
+  assert.equal(virtuals[0]!.stoploss, expectedSl)
+  assert.equal(virtuals[1]!.stoploss, expectedSl)
+  assert.equal(virtuals[0]!.stoploss, virtuals[1]!.stoploss)
 })
 
-test('planMultiManualOrders: empty-TP range override SL is still per trigger', () => {
+test('planMultiManualOrders: empty-TP range override SL still freezes from first entry', () => {
   const plan = planManualOrders({
     parsed: {
       ...baseParsed,
@@ -447,24 +437,14 @@ test('planMultiManualOrders: empty-TP range override SL is still per trigger', (
   })
   const virtuals = plan.virtualPendings ?? []
   assert.ok(virtuals.length >= 2)
-  assert.notEqual(virtuals[0]!.stoploss, virtuals[1]!.stoploss)
   const pip = plan.pip ?? 0
   assert.ok(pip > 0)
-  const triggerMap = buildRangeLayerTriggerMap({
-    virtualPendings: virtuals,
-    anchor: 2650,
-    digits: 2,
-    rangeLayering: plan.rangeLayering,
-    pip,
-  })
-  for (const v of virtuals.slice(0, 2)) {
-    const trigger = triggerMap.get(v.stepIdx)
-    assert.ok(trigger != null && trigger > 0)
-    assert.equal(v.stoploss, Number((trigger - 80 * pip).toFixed(2)))
-  }
+  const expectedSl = Number((2650 - 80 * pip).toFixed(2))
+  assert.equal(virtuals[0]!.stoploss, expectedSl)
+  assert.equal(virtuals[1]!.stoploss, expectedSl)
 })
 
-test('planMultiManualOrders: override TP 30 pips is per range trigger, not shared basket TP', () => {
+test('planMultiManualOrders: override TP ladder freezes from first entry across range legs', () => {
   const plan = planManualOrders({
     parsed: {
       ...baseParsed,
@@ -476,12 +456,17 @@ test('planMultiManualOrders: override TP 30 pips is per range trigger, not share
     baseOperation: 'Buy',
     manual: {
       ...baseManual,
-      multi_trade_leg_percent: 50,
+      multi_trade_leg_percent: 25,
       range_percent: 100,
       range_step_pips: 10,
       range_distance_pips: 100,
       use_predefined_tp_pips: true,
-      predefined_tp_pips: [30],
+      predefined_tp_pips: [30, 50, 80],
+      tp_lots: [
+        { label: 'TP1', lot: 0, percent: 34, enabled: true },
+        { label: 'TP2', lot: 0, percent: 33, enabled: true },
+        { label: 'TP3', lot: 0, percent: 33, enabled: true },
+      ],
     },
     channelKeywords: null,
     manualLot: 1.0,
@@ -489,24 +474,19 @@ test('planMultiManualOrders: override TP 30 pips is per range trigger, not share
     commentPrefix: 'TScopier:abc',
   })
   const virtuals = plan.virtualPendings ?? []
-  assert.ok(virtuals.length >= 2, `expected >=2 range legs, got ${virtuals.length}`)
-  assert.notEqual(virtuals[0]!.takeprofit, virtuals[1]!.takeprofit)
+  assert.ok(virtuals.length >= 3, `expected >=3 range legs, got ${virtuals.length}`)
   const pip = plan.pip ?? 0
   assert.ok(pip > 0)
-  const triggerMap = buildRangeLayerTriggerMap({
-    virtualPendings: virtuals,
-    anchor: 2650,
-    digits: 2,
-    rangeLayering: plan.rangeLayering,
-    pip,
-  })
-  for (const v of virtuals.slice(0, 2)) {
-    const trigger = triggerMap.get(v.stepIdx)
-    assert.ok(trigger != null && trigger > 0)
-    assert.equal(v.takeprofit, Number((trigger + 30 * pip).toFixed(2)))
+  const ladder = [30, 50, 80].map((pips) => Number((2650 + pips * pip).toFixed(2)))
+  for (const v of virtuals) {
+    assert.ok(
+      ladder.includes(Number(v.takeprofit)),
+      `range TP ${v.takeprofit} should be one of frozen ladder ${ladder.join(',')}`,
+    )
   }
+  const uniqueTps = new Set(virtuals.map((v) => v.takeprofit))
+  assert.ok(uniqueTps.size >= 2, 'Targets % should still distribute the frozen ladder across legs')
 })
-
 test('planMultiManualOrders: passes rangeLayeringType from manual settings', () => {
   const manual: ManualSettings = {
     ...baseManual,
