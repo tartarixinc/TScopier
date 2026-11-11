@@ -22,7 +22,7 @@ import {
   Share2,
   SlidersHorizontal,
   Wallet,
-  Sparkles,
+  Megaphone,
   TrendingUp,
   Users,
   type LucideIcon,
@@ -54,7 +54,7 @@ export const APP_ROUTE_ICONS: Record<string, LucideIcon> = {
   '/wallet': Wallet,
   '/billing': CreditCard,
   '/subscriptions': Repeat,
-  '/updates': Sparkles,
+  '/updates': Megaphone,
 }
 
 export const APP_HELP_ICONS = {

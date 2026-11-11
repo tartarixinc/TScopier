@@ -19,13 +19,6 @@ import { resolveMultiTradeTargetUnits, multiTradeUnitsToLot } from './multiTrade
 import { resolveRangeDistancePips } from './signalEntryRange'
 import { resolvedParsedEntryZone } from './parsedEntry'
 import { normalizeAutoBeConfig, resolveAutoBeTpHitTriggerPrice } from '../autoManagement'
-import {
-  matchPredefinedTpPipsIndex,
-  predefinedSlPriceFromEntry,
-  predefinedTpPriceFromEntry,
-  resolvePredefinedSlPips,
-  resolvePredefinedTpPips,
-} from './manualStops'
 
 export interface PlanMultiManualOrdersArgs {
   parsed: ParsedSignal
@@ -227,45 +220,9 @@ export function planMultiManualOrders(args: PlanMultiManualOrdersArgs): PlannerR
         })
       : new Map<number, number>()
 
-  const stoplossForRangeStep = (stepIdx: number): number | null => {
-    const slPips = resolvePredefinedSlPips(manual)
-    if (slPips != null && entryAnchor != null && entryAnchor > 0) {
-      const trigger = rangeLayerTriggerForStep({
-        stepIdx,
-        leg: { stepPriceOffset, isBuy },
-        anchor: entryAnchor,
-        digits: rangeDigits,
-        legCount: rangeLegCount,
-        rangeLayering: rangeLayeringMeta,
-        pip,
-        triggerMap: rangeTriggerMap,
-      })
-      const sl = predefinedSlPriceFromEntry({
-        entry: trigger,
-        isBuy,
-        pip,
-        slPips,
-        digits: rangeDigits,
-      })
-      if (sl != null) return sl
-    }
-    return finalSl
-  }
-
-  const triggerForRangeStep = (stepIdx: number): number | null => {
-    if (entryAnchor == null || entryAnchor <= 0) return null
-    const trigger = rangeLayerTriggerForStep({
-      stepIdx,
-      leg: { stepPriceOffset, isBuy },
-      anchor: entryAnchor,
-      digits: rangeDigits,
-      legCount: rangeLegCount,
-      rangeLayering: rangeLayeringMeta,
-      pip,
-      triggerMap: rangeTriggerMap,
-    })
-    return trigger > 0 ? trigger : null
-  }
+  // Override SL/TP freezes absolute prices from the first entry (entryAnchor).
+  // Later range layers inherit those same prices — never recompute from trigger.
+  const stoplossForRangeStep = (_stepIdx: number): number | null => finalSl
 
   const tpForRangeIndex = (idx: number): number | null => {
     if (finalTps.length === 0) return null
@@ -317,35 +274,11 @@ export function planMultiManualOrders(args: PlanMultiManualOrdersArgs): PlannerR
     return finalTps[finalTps.length - 1] ?? null
   }
 
-  const takeprofitForRangeStep = (idx: number): number | null => {
-    const assigned = tpForRangeIndex(idx)
-    const tpPips = resolvePredefinedTpPips(manual)
-    const trigger = triggerForRangeStep(idx + 1)
-    if (tpPips != null && trigger != null && entryAnchor != null && entryAnchor > 0) {
-      const bucket = matchPredefinedTpPipsIndex({
-        existingTp: assigned,
-        entry: entryAnchor,
-        isBuy,
-        pip,
-        tpPips,
-      })
-      const tp = predefinedTpPriceFromEntry({
-        entry: trigger,
-        isBuy,
-        pip,
-        tpPips: tpPips[bucket] ?? tpPips[0]!,
-        digits: rangeDigits,
-      })
-      if (tp != null) return tp
-    }
-    return assigned
-  }
+  const takeprofitForRangeStep = (idx: number): number | null => tpForRangeIndex(idx)
 
-  // Teaser / no-TP signals: never burst-split into N *full-lot* clones.
-  // - No range: one full-lot immediate (classic teaser).
-  // - With range: one OrderSend per immediate leg at targetLeg size (matches UI
-  //   "N instant"), plus virtual range legs — never one aggregated instant
-  //   order of immediateLegs × targetLeg (that looked like a single fat fill).
+  // No-TP signals ("Gold buy now" teasers): still honor multi / Range Trading
+  // lot split (UI "0.25 × 20"). Never emit N *full-lot* clones — only targetLeg
+  // sized immediates (+ remainder). With range layering on, also attach virtuals.
   if (finalTps.length === 0) {
     const virtualPendings: VirtualPendingLeg[] = []
     if (rangeLegCount > 0) {
@@ -374,62 +307,76 @@ export function planMultiManualOrders(args: PlanMultiManualOrdersArgs): PlannerR
       fallback_reason: 'multi_trade_fallback_empty_tps' as const,
     }
 
-    // Range path: emit granular instant legs (same volume as layered virtuals).
-    if (rangeLegCount > 0) {
-      if (immediateLegs > 0 && targetUnits < minUnits) {
-        return {
-          orders: [],
-          delay_ms,
-          ...emptyTpFallback,
-          ...(virtualPendings.length ? { virtualPendings } : {}),
-          ...rangeLayeringFields,
-        }
-      }
-      const orders: OrderSendArgs[] = []
-      for (let i = 0; i < immediateLegs; i++) {
-        orders.push({
-          ...orderBase,
-          volume: targetLeg,
-          stoploss: roundPrice(finalSl),
-          takeprofit: roundPrice(null),
-          ...expirationFields,
-          comment: appendOrderCommentSuffix(commentPrefix, `:tp${i + 1}`),
-        })
-      }
+    if (immediateLegs > 0 && targetUnits < minUnits) {
       return {
-        orders,
+        orders: [],
         delay_ms,
-        anchor: { source: entryAnchor != null ? 'signal' : 'unknown', value: entryAnchor },
-        pip,
-        pipQuote,
-        isBuy,
-        ...(strictEntry ? { strictEntry } : {}),
+        ...emptyTpFallback,
         ...(virtualPendings.length ? { virtualPendings } : {}),
         ...rangeLayeringFields,
-        ...emptyTpFallback,
       }
     }
 
-    // No range: classic teaser — one full-lot immediate.
-    const single = buildSingleOrder({
-      orderBase,
-      expirationFields,
-      strictEntry,
-      manualLot,
-      finalSl,
-      finalTps,
-      manual,
-      ctx,
+    const orders: OrderSendArgs[] = []
+    const immCount = Math.max(0, immediateLegs)
+    for (let i = 0; i < immCount; i++) {
+      orders.push({
+        ...orderBase,
+        volume: targetLeg,
+        stoploss: roundPrice(finalSl),
+        takeprofit: roundPrice(null),
+        ...expirationFields,
+        comment: appendOrderCommentSuffix(commentPrefix, `:tp${i + 1}`),
+      })
+    }
+    // Match TP path: remainder only when no range reservation ate the leftover.
+    if (rangeLegCount === 0) {
+      const remainderUnits = manualUnits - totalLegs * targetUnits
+      if (remainderUnits >= minUnits && orders.length < ABS_MAX_LEGS) {
+        orders.push({
+          ...orderBase,
+          volume: multiTradeUnitsToLot(remainderUnits, lotStep),
+          stoploss: roundPrice(finalSl),
+          takeprofit: roundPrice(null),
+          ...expirationFields,
+          comment: appendOrderCommentSuffix(commentPrefix, ':tp.rem'),
+        })
+      }
+    }
+    // Degenerate: no room for even one targetLeg (should be rare after min-lot guard).
+    if (orders.length === 0 && virtualPendings.length === 0) {
+      const single = buildSingleOrder({
+        orderBase,
+        expirationFields,
+        strictEntry,
+        manualLot,
+        finalSl,
+        finalTps,
+        manual,
+        ctx,
+        delay_ms,
+        entryAnchor,
+        isBuy,
+        pip,
+        pipQuote,
+        roundPrice,
+        fallbackReason: 'multi_trade_fallback_empty_tps',
+      })
+      return { ...single }
+    }
+    return {
+      orders,
       delay_ms,
-      entryAnchor,
-      isBuy,
+      anchor: { source: entryAnchor != null ? 'signal' : 'unknown', value: entryAnchor },
       pip,
       pipQuote,
-      roundPrice,
-      fallbackReason: 'multi_trade_fallback_empty_tps',
-    })
-    return {
-      ...single,
+      isBuy,
+      ...(strictEntry ? { strictEntry } : {}),
+      ...(virtualPendings.length ? { virtualPendings } : {}),
+      ...rangeLayeringFields,
+      ...(rangeFallbackReason
+        ? { fallback_reason: rangeFallbackReason }
+        : emptyTpFallback),
     }
   }
 

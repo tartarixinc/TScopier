@@ -2,6 +2,160 @@
 
 ## Changelog
 
+### 2026-11-11 — Cut Adjust SL pre-modify stall (OpenedOrders + listener pre-parse)
+
+- **Context:** After edit-path cuts, channel “Adjust SL to 4023” (`0784c972`) still sat ~12s from `execution_planning_started` (14:13:18.95Z) to first `mgmt_modify` (14:13:31.10Z) on 20 Demo legs; user also saw listener delay before the instruction “started.”
+- **Plain English:** Adjust SL was waiting on a full open-orders snapshot (and extra DB) before touching the broker. Live Adjust now uses the parsed SL + one quote and starts modifying immediately; the listener also runs its early DB checks in parallel so Telegram→parse is shorter.
+- **Root cause (technical):** Live modify always went through `applyChannelStopsToBaskets`, which serially awaited Quote → `hasClosedBasketLegs`/`hasTpTouchedLock` → `OpenedOrders` before Phase-2 OrderModify; default `slFrom` also hit channel memory first. Listener stamped `message_normalized_at` only after serial `resolveSignalChannelId` + parse-context + dedup (~0.6–0.9s on top of ~0.5–1s Telegram→`handleMessage`).
+- **Fix (files):**
+  - [`channelStopApply.ts`](worker/src/channelStopApply.ts) — `liveFast` skips OpenedOrders preflight when verify-after-modify is off; SL-only skips TP-freeze DB; parallelize quote/freeze/orders; accept `prewarmedByUuid` + `onFirstBrokerSend`; honor `slFrom:'parsed'`.
+  - [`managementExecutor.ts`](worker/src/tradeExecutor/managementExecutor.ts) — warm Quote during basket expand on live modify; pass `liveFast`/`slFrom:'parsed'`/prewarm into channel-stop apply; stamp `t_first_broker_send`.
+  - [`userListener.ts`](worker/src/userListener.ts) — parallelize channel-id / parent / parse-context / dedup before normalize stamp (`parentSignalId` kept as `let` for post-parse provider-number linking — Railway `tsc` TS2588).
+- **Tests/verification:** `channelStopApply.test.ts` liveFast SL-only does not call `openedOrders` and uses prewarmed quote; `tsc --noEmit` green after const→let fix.
+- **Deploy state:** Worker code (Migration); Railway listener + trade redeploy needed.
+- **Follow-ups:** Retest Adjust SL — expect first `mgmt_modify` within ~1–2s of dispatch receive; `ms_to_norm` well under prior ~700ms once listener is live.
+
+### 2026-11-11 — Cut message-edit SL/TP pre-modify stalls (~20s SymbolParams + N×Quote)
+
+- **Context:** Edit on `e05e9e95` applied (`mgmt_fast=true`) but wall ~54s; OrderModify span only ~4.3s for 20 legs. ~20s sat on SymbolParams after symbol resolve; another ~24s before first modify (ghost OpenedOrders + per-leg GetQuote).
+- **Plain English:** Editing SL/TP on an open basket no longer waits on a cold symbol-params refetch or twenty separate price quotes before the parallel modifies start.
+- **Root cause (technical):** Revision modify-only still awaited `getSymbolParams(resolvedBrokerSymbol)` when `XAUUSD→XAUUSDm`; early path passed `strictEntryPrefetch: null` so `runBasketLegModifies` quoted per leg; live edits still ran full `reconcileGhostBasketLegs` OpenedOrders.
+- **Fix (files):**
+  - [`entryPrepare.ts`](worker/src/tradeExecutor/entryPrepare.ts) — overlap materialization; peek/cache resolved-symbol params on live materialized revisions; prefetch one quote into modify-only.
+  - [`brokerSymbolCache.ts`](worker/src/tradeExecutor/brokerSymbolCache.ts) / TradeExecutor — `peekCachedSymbolParams`.
+  - [`mergeRouting.ts`](worker/src/tradeExecutor/basketMerge/mergeRouting.ts) — skip ghost OpenedOrders on `liveMgmtFast` + sameSignalRefresh; non-blocking anchor log.
+  - [`slTpRefresh.ts`](worker/src/tradeExecutor/basketMerge/slTpRefresh.ts) — reuse warm `entryBrokerReadCache.openedOrders`.
+  - [`basketSlTpReconcile.ts`](worker/src/basketSlTpReconcile.ts) — one shared quote for the basket before parallel legs.
+- **Tests/verification:** shared-quote + peekCachedSymbolParams node:tests; existing basket modify suite.
+- **Deploy state:** Worker code (Migration); Railway trade redeploy needed.
+- **Follow-ups:** Retest edit on 20-leg Gold — expect `t_params_resolved`≈`t_symbol_resolved`, `quote_count`≈1, first modify soon after anchor.
+
+### 2026-11-11 — Demo 0.1 XAU ghost lot = active social copy follower (not signal double-send)
+
+- **Context:** Demo `46cd046d` (login `81765183`) showed buy 5 + buy 0.1 on XAUUSDm around signal `abeeb0a0` (“Gold buy now”); no 0.1 `trades` / `trade_execution_logs.order_send` row for that broker.
+- **Plain English:** The big lot came from the normal signal copier. The extra 0.1 lot came from Social Trading — this Demo account is actively copying another published provider at a fixed 0.1 lot. Social copies do not write the usual trade/order-send logs, so they looked “missing” in those tables.
+- **Root cause (technical):** Active `social_copy_subscriptions` `4985d304…` → source `0f6ded02…` (provider user `20733d28…`, MT5 Demo login `476205231`), `sizing_mode=fixed_lot`, `fixed_lot=0.1`, `max_lot=0.1`. Worker `SocialCopyMonitor.openPosition` / edge `social-copy-reconcile` call `orderSend` with comment `sc:<sub8>:<ticket>` and ledger only in `social_copy_trade_mappings` + `social_copy_execution_events`. Incident window: signal `order_send` volume 5 at 13:10:35 → dest ticket `557707632`; social open 13:10:48 source `3452591669` → dest `557709065` volume 0.1 (`sc:4985d304:3452591669`). Provider had no TScopier `signals` row in that minute (manual/other); frequent provider gold opens explain “whenever I signal” correlation. Mirror link `11f14bae…` has Demo as **source** only (slave `10144392`) — cannot open 0.1 on Demo. Demo also published as social source `146aec8a…` (`copy_source=true`). Empty `fxsocket_account_id`; provider `mtapi` — no FxSocket copy feature involved.
+- **Fix (files):** Investigation only; subscription stop applied on Migration (see next entry).
+- **Tests/verification:** Migration SQL on `supmsgcubipmmowrzoub` as above.
+- **Deploy state:** N/A (read-only diagnosis).
+- **Follow-ups:** optional UI/query on Copier Logs for `social_copy_*` so destination fills are visible beside `trades`.
+
+### 2026-11-11 — Stopped Demo social copy from James Peter
+
+- **Context:** User confirmed 0.1 XAU `#557803885` is “Copied from James Peter” and asked to stop Demo from copying that provider.
+- **Plain English:** The Demo→James Peter social copy subscription is stopped. The worker will also close any remaining copied positions from that link (same as the in-app “Stop and close copies” action).
+- **Root cause (technical):** N/A (ops).
+- **Fix (files):** Migration SQL on `supmsgcubipmmowrzoub` — `social_copy_subscriptions` `4985d304…` set `desired_status='stopped'`, `status='pending'`, `stopped_at=now()` (RPC `set_social_copy_subscription_status` requires `auth.uid()`, so mirrored its update as service SQL).
+- **Tests/verification:** Row returned pending/stopped intent; open mappings at stop time included dest tickets `557803885` and `556103671`.
+- **Deploy state:** Migration DB only; worker reconcile acknowledges stop.
+- **Follow-ups:** Confirm `status='stopped'` and open social mappings cleared after worker tick.
+
+### 2026-11-11 — Edited signals refresh SL/TP (merge materialization + mgmt fast path)
+
+- **Context:** Migration signal `050b93ec` (live edit SL 4038→4028 after teaser completion into `bffc09f6`) parsed + pushed (`message_revision`, `http_push_ok`) but open legs stayed at 4038. Pipeline `any_opened=false` with no `basket_leg_modify` after the edit.
+- **Plain English:** When a channel edits a signal to change stop/targets, those changes now update the open trades again — and the updates run on the same fast parallel modify path as closes.
+- **Root cause (technical):** Teaser-completion `merge_modify_summary` does not create `trades`/`order_send` on the completion signal, so `manualDispatchAlreadyMaterialized` was false. The edit then lost the still-leased entry claim and skipped without modify. Live accept also dropped revisions while the first handle was in-flight; `isLiveMgmtFast` ignored market-now buy/sell edits that fail `shouldRouteAsBasketParameterRefresh`.
+- **Fix (files):**
+  - [`helpers.ts`](worker/src/tradeExecutor/basketMerge/helpers.ts) — successful `merge_modify_summary` counts as materialized.
+  - [`TradeExecutor.ts`](worker/src/tradeExecutor/TradeExecutor.ts) — message_revision waits on inflight instead of dropping; claim-lost revisions attempt SL/TP-only refresh before stale-claim takeover.
+  - [`dispatch.ts`](worker/src/tradeExecutor/dispatch.ts) — `message_revision` + SL/TP → `shouldUseMgmtFastPath` / `isLiveMgmtFast`.
+- **Tests/verification:** materialization + fastPath + entry-guard node:tests pass (13).
+- **Deploy state:** Worker code only (Migration); Railway trade (+ listener if separate) redeploy required.
+- **Follow-ups:** Redeploy; retest edit SL on an open Gold basket → expect `merge_modify_summary` + broker SL change; confirm parallel modifies (`liveMgmtFast`).
+
+### 2026-11-11 — Range Trading empty-TP no longer collapses to 1×full lot
+
+- **Context:** Risk UI “Range Trading” (`trade_style=multi`, Fixed Lot 5, per-leg 5% → preview `0.25 × 20`) but MT5 opened a single **buy 5** on bare “Gold buy now” (signals `abeeb0a0` / `6f7303bf`). Range Layering was off.
+- **Plain English:** Multi / Range Trading now opens the many small legs the Risk preview shows even when the signal has no TP list — not one fat order for the whole fixed lot.
+- **Root cause (technical):** `planMultiManualOrders` empty-`finalTps` path treated `range_trading=false` as a classic teaser → `buildSingleOrder` at full `manualLot` (`multi_trade_fallback_empty_tps`). UI label “Range Trading” maps to `trade_style=multi` and does not set `range_trading`.
+- **Fix (files):** [`planMultiManualOrders.ts`](worker/src/manualPlanning/planMultiManualOrders.ts) — empty-TP always emits `immediateLegs × targetLeg` (+ remainder when no range reservation); [`manualPlanner.test.ts`](worker/src/manualPlanner.test.ts) — teaser expectation → N×leg + 5@5%→20×0.25 regression.
+- **Tests/verification:** `node --import tsx --test src/manualPlanner.test.ts` — 95 pass.
+- **Deploy state:** Worker code only (Migration); Railway trade worker redeploy needed before live retest.
+- **Follow-ups:** Redeploy trade worker; retest bare Gold buy now → expect ~20×0.25 not 1×5; optional UI copy to separate Range Layering from Trade Style.
+
+### 2026-11-11 — Management sub-3s (close / SL·TP / modify)
+
+- **Context:** After entry latency work, Close-all + basket SL/TP still felt slow. Migration close `4c7f8543` had `parse_ms≈2367` (stage-2 AI), `mgmt_wall_ms≈10464`, `mgmt_scope_load_ms≈939`, `other_gateway_wait_ms≈3068` on 34 legs; concurrent serial `basket_leg_modify` fought the same MTAPI gate.
+- **Plain English:** “Close all” and SL/TP edits no longer wait on AI when the phrase is clear, can modify several tickets at once (like the faster buys), warm the open-order book while loading scope, and skip an extra broker re-read after live partial closes.
+- **Root cause (technical):** Management confidence 0.92 failed `FASTPATH_CONFIDENCE=0.99` → stage-2; `MT_TRADE_OP_CONCURRENCY=1` serialized OrderModify; close/scope/OpenedOrders were partly serial; partial close always re-read OpenedOrders; order RPS 12 paced large baskets.
+- **Fix (files):**
+  - [`universalSignalParser.ts`](worker/src/signalIntent/universalSignalParser.ts) / [`parseRouting.ts`](worker/src/signalIntent/parseRouting.ts) — management actions always fast-lane (incl. primary mode).
+  - [`mtapiProvider.ts`](worker/src/mtapiProvider.ts) — `MT_MODIFY_OP_CONCURRENCY` (default 3) + throttle step-down; close default concurrency 6.
+  - [`managementExecutor.ts`](worker/src/tradeExecutor/managementExecutor.ts) — expand∥orphan∥OpenedOrders; live partial skips post-readback; stamp first/last broker on live close.
+  - Env: `MT_MODIFY_OP_CONCURRENCY=3`, `MT_CLOSE_OP_CONCURRENCY=6`, `MTAPI_ORDER_PER_ACCOUNT_RPS=20`, `UNIVERSAL_PARSE_MODE=fastpath`.
+- **Tests/verification:** `tsc --noEmit` clean; parseRouting tests (incl. close @ 0.92 confidence). Live Close-all / SL·TP retest pending Railway deploy.
+- **Deploy state:** Code + local `worker/.env`; Railway trade+listener need same env.
+- **Follow-ups:** Redeploy Migration; avoid testing during post-entry TP sync; confirm close `parse_ms` &lt;100, `mgmt_wall_ms` &lt;3000 for ≤34 legs, modify span &lt;5s.
+
+### 2026-11-11 — Fix post-handoff buy/range latency (send concurrency + prep + listener)
+
+- **Context:** After handoff was healthy (`http_push_ok`), Migration 34-leg Gold buy (`30c10c24`) still spent ~3s prep + ~12s serial OrderSend; Telegram→listener could lose 10–40s on deploy restart.
+- **Plain English:** Multi-leg buys can now send a few orders at once instead of one-by-one, skip a useless 3-second wait when there is no teaser to merge, warm quotes on the fast path, and reclaim the Telegram listener within 1–2s after a deploy instead of waiting half a minute.
+- **Root cause (technical):** `MT_TRADE_OP_CONCURRENCY=1` gated OrderSend; live-fast teaser merge polled `PARAMETER_FOLLOW_UP_ANCHOR_RETRY_MS=3000`; lease-held skips waited for 30s `syncSessions`; sweep selected nonexistent `signals.dispatch_source`.
+- **Fix (files):**
+  - [`worker/src/mtapiProvider.ts`](worker/src/mtapiProvider.ts) — `MT_SEND_OP_CONCURRENCY` (default 3, max 6) for OrderSend; throttle step-down to 1 for ~45s; OrderModify stays on `MT_TRADE_OP_CONCURRENCY`.
+  - [`worker/src/multiTradeMerge.ts`](worker/src/multiTradeMerge.ts) + [`mergeRouting.ts`](worker/src/tradeExecutor/basketMerge/mergeRouting.ts) + [`entryPrepare.ts`](worker/src/tradeExecutor/entryPrepare.ts) — live-fast `retryMs: 0` (no 3s teaser poll).
+  - [`TradeExecutor.ts`](worker/src/tradeExecutor/TradeExecutor.ts) — claim∥light-config; sweep SELECT drops `dispatch_source`; entry read cache.
+  - [`brokerSymbolCache.ts`](worker/src/tradeExecutor/brokerSymbolCache.ts) / [`orderLegExecution.ts`](worker/src/tradeExecutor/orderLegExecution.ts) — order-lane Quote/OpenedOrders prewarm; stamp `t_first_broker_send` immediately before OrderSend.
+  - [`dispatch.ts`](worker/src/tradeExecutor/dispatch.ts) — cache `source_kind` in channel meta.
+  - [`sessionManager.ts`](worker/src/sessionManager.ts) — 1–2s lease retry after held; [`userListener.ts`](worker/src/userListener.ts) — `lastLiveMessageAt` only for monitored chats; `ingest_path` live|catchup.
+  - Env: `MT_SEND_OP_CONCURRENCY=3`, `MTAPI_ORDER_PER_ACCOUNT_RPS=12`, `MTAPI_ORDER_THROTTLE_RETRY=true`, `TELEGRAM_SHUTDOWN_DRAIN_MS=3000`.
+- **Tests/verification:** `npx tsc --noEmit` clean; gateway/concurrency node:tests. Live 34-leg retest pending Railway deploy of trade+listener with new env.
+- **Deploy state:** Code + local `worker/.env` updated for Migration; Railway env/redeploy required before timing proof.
+- **Follow-ups:** Deploy Migration trade+listener; avoid testing within ~45s of redeploy; confirm 34 legs, `t_dispatch_received→t_first_broker_send` &lt;1s, send span &lt;5s; if MTAPI “too many requests”, drop send concurrency to 2.
+
+### 2026-11-11 — Sub-3s latency master plan implementation (Phase 0–3 code)
+
+- **Context:** Close-all felt slow to *start* because live handoff failed (401 → 15s idle sweep). Goal: Telegram → first broker op p95 &lt; 3s.
+- **Plain English:** We stopped treating a failed hand-off as “success”, made the backup scan much faster, and cut waiting in the close/send path so the system can react in under three seconds once Railway tokens/URLs match.
+- **Root cause (technical):** Push treated any HTTP 200 as OK (including `accepted:false`); entry push hard-coded success; 401 was non-retryable with no breaker; idle sweep default 15s; queue auto-enabled when Redis env present; serial DB/broker waits before first close.
+- **Fix (files):**
+  - [`worker/src/internalToken.ts`](worker/src/internalToken.ts) — trim token both sides; fingerprint logs.
+  - [`worker/src/httpServer.ts`](worker/src/httpServer.ts) — trimmed auth; `/internal/dispatch-ping`.
+  - [`worker/src/tradeSignalPush.ts`](worker/src/tradeSignalPush.ts) — require `accepted:true`; 1s timeout / 2 attempts; probe loop + breaker on 401/403/404.
+  - [`worker/src/userListener.ts`](worker/src/userListener.ts) — await accept for entry+mgmt; stamp `receivedAt` at handleMessage start.
+  - [`worker/src/index.ts`](worker/src/index.ts) — start push probe on listener boot.
+  - Sweep idle default **5s**; queue default **off**; Realtime INSERT+UPDATE; wake resubscribe; sweep preserves `pipeline_ts` + fresh-sweep alert.
+  - Mgmt accept dedupe; shorter claim retry; skip redundant `ensureSignalRow`; persist `pipeline_ts` after handle; parallel orphan+OpenedOrders warm; per-account order pacing; session health 60s; channel listener sync 15s; queue idempotency revision + release on retry.
+  - Diagnostics: [`scripts/diagnostics/pipeline_latency.sql`](scripts/diagnostics/pipeline_latency.sql) SLO gate section.
+- **Tests/verification:** `npm --prefix worker run build` clean; targeted node:test **30/30** (push accept/breaker, queue config, gateway, publisher).
+- **Deploy state:** **code in working tree** — Railway must set identical `WORKER_INTERNAL_TOKEN` on listener+trade, `EXECUTOR_SWEEP_IDLE_MS=5000`, `TRADE_SIGNAL_QUEUE_ENABLED=false`, push timeouts, and trade-only `TRADE_*_WORKER_URL` before Migration retest can prove p95 &lt; 3s.
+- **Follow-ups:** (1) sync Railway env + redeploy Migration; (2) re-run Close-all + buy and confirm `http_push_ok=true` / `dispatch_source≠sweep`; (3) run SLO SQL; (4) promote only after p95 gate passes.
+
+### 2026-11-11 — Close-all “~6s before closing starts”: listener→trade push 401, then idle DB sweep
+
+- **Context:** After the OrderCloseSafe / close-concurrency speedup, Migration retest `Close all trades now` (signal `90de4b11…`, msg 646, 2026-11-11 10:16:59Z) still felt slow to *start*. User guessed the trade endpoint was not receiving the instruction on time.
+- **Plain English:** The close message was parsed fine, but the live hand-off from the listener to the trade worker was rejected as unauthorized. With the Redis queue also off for that user, the trade worker only found the close on its slower backup scan — so closing sat idle for about twelve seconds before the first ticket closed. Once it did start, the faster close path ran (34 legs).
+- **Root cause (technical):**
+  - `dispatch_route_decision`: `queue_enabled=false`, `queue_skipped_reason=queue_not_enabled_for_user`, `http_push_fallback=true`, `http_push_ok=false`, `mgmt_push_accept_only=true`.
+  - `dispatch_push_attempt` → `https://tscopier-staging.up.railway.app` `/internal/dispatch-signal` returned **401 Unauthorized** in 102ms (`retryable=false`) — `WORKER_INTERNAL_TOKEN` mismatch (or missing) between listener and that Railway service.
+  - Fallback `dispatch_source=sweep`: `queue_consumed_at` 10:17:11.543Z (**+12.5s** after `signals.created_at`); first `mgmt_close` 10:17:15.816Z; `pipeline_summary` `mgmt_wall_ms=10208`, `mgmt_scope_load_ms=890`, `other_gateway_wait_ms=4571`, `mgmt_fast_path=true`. Idle sweep default `EXECUTOR_SWEEP_IDLE_MS=15000` explains the multi-second pickup gap.
+- **Fix (files):** Ops — align `WORKER_INTERNAL_TOKEN` on the Migration/staging **listener** and the service behind `TRADE_MGMT_WORKER_URL` / `TRADE_WORKER_URL` (`tscopier-staging.up.railway.app`); confirm push URL points at a `trade_mgmt` (or `all`) role. Optional: enable Redis queue for this user / fleet so a failed HTTP push is not the only live path. No worker code change in this diagnosis pass.
+- **Tests/verification:** Migration SQL on `trade_execution_logs` for `90de4b11…` (push 401 + route decision + sweep summary). Timing: created→consumed ≈12.5s; consumed→first close ≈4.3s.
+- **Deploy state:** Diagnosis only (Migration DB). Token/URL fix is Railway env, not yet applied from this session.
+- **Follow-ups:** (1) sync internal token + re-run Close-all and confirm `http_push_ok=true` / `dispatch_source` ≠ `sweep`; (2) if gateway wait (~4.5s) still dominates after push is fixed, inspect MTAPI session acquire under close burst; (3) consider shorter mgmt idle sweep or push-failure alert when 401 is non-retryable.
+
+### 2026-11-11 — Instant management closes (OrderCloseSafe-first): drop per-leg OpenedOrders verify; modest MTAPI close concurrency
+
+- **Context:** Channel `Close all trades now` on SIGNALS TESTER / Demo `81765183` (Migration `supmsgcubipmmowrzoub`) closed 34 legs in ~20s (`mgmt_wall_ms≈20447`, `mgmt_fast_path: true`). Same session left a comment-less / naked broker orphan that the comment-only straggler sweep missed (`broker_fallback` closes = 0).
+- **Plain English:** Closing many legs was slow because every leg re-read the open-order book before and after the close, and MTAPI only allowed one trade call at a time on the account. We now close from one shared snapshot, trust `OrderCloseSafe`’s acknowledgement (or “already closed”), and allow a few closes in parallel. A second pass still catches leftover tickets that were open when Close-all started, including naked positions without our comment.
+- **Root cause (technical):**
+  - `closeWithVerification` (`worker/src/managementClose.ts`) always did pre + post `OpenedOrders` (up to 6 empty-book retries on multi-leg books) even when `liveFast: true`.
+  - `prepareMgmtLiveOrderSnapshots` already cached the book, but the verify helper ignored it.
+  - `MT_TRADE_OP_CONCURRENCY` default **1** serialized all `OrderCloseSafe` calls despite `MGMT_LEG_CONCURRENCY=8`.
+  - Straggler sweep (`filterTscopierOrdersForChannelClose`) required a Tscopier comment, so comment-less orphans survived.
+- **Fix (files):**
+  - `worker/src/managementClose.ts` — new `closeMarketPositionFast` (trusted ack; already-closed / unknown-ticket → confirmed; hard reject → not confirmed). `closeOrderFast` aliases it.
+  - `worker/src/tradeExecutor/managementExecutor.ts` — live-fast full close uses trusted-ack; `mgmtCloseFn` routes straggler/CWE/deferred cleanup the same way; non-fast path keeps `closeWithVerification`.
+  - `worker/src/forceCloseSignalTrades.ts` — UI/force close + broker fallback use `closeMarketPositionFast`.
+  - `worker/src/managementBrokerClose.ts` — `filterSnapshotStragglerOrdersForClose` + `preCloseTicketsBySession` so Close-all also closes pre-close tickets that are Tscopier-commented **or** naked (no SL/TP).
+  - `worker/src/mtapiProvider.ts` — `orderClose` / `orderCancel` use `MT_CLOSE_OP_CONCURRENCY` (default **4**, max 8); send/modify stay on `MT_TRADE_OP_CONCURRENCY` (default 1).
+  - `worker/.env.example` — documents `MT_CLOSE_OP_CONCURRENCY` / `MT_TRADE_OP_CONCURRENCY`.
+  - Tests: `managementClose.test.ts` (trusted-ack + no OpenedOrders); existing force-close / reply-scope suites green.
+- **Tests/verification:** `npm --prefix worker run build` **0**; `managementClose` **11/11**; `forceCloseSignalTrades` **12/12**; `managementExecutor.replyScope` **24/24**.
+- **Deploy state:** **local / migration working tree only — not pushed.** Needs Railway worker rebuild on the Migration env after push to `migration`.
+- **Follow-ups:** (1) push + deploy Migration worker and re-time a ~30-leg Close-all; (2) watch MTAPI throttle under `MT_CLOSE_OP_CONCURRENCY=4` and lower if “too many requests” returns; (3) consider the same trusted-ack path for FxSocket if its close RTT dominates similarly.
+
 ### 2026-11-10 — Trades opened without a take-profit (Luis / Gold PRO Alerts): a stale channel ladder was stripped at send, and one-sided modifies could wipe the other stop on MTAPI (fixed in the working tree, NOT yet deployed; the customer-facing execution note shipped to production earlier on 2026-11-09)
 
 - **Context:** Luis reported "Trades without TP" on 2026-11-09 for channel "Gold Pro Alerts🏆" (prod `sxkpcovbyaficvtkpsdo`, channel `9932c132…`). Signal `2e2b1a1f…` (msg 448) read `BUY NOW XAUUSD Entry 4017 SL 4011 TP 4020/4024/4026`, but gold was trading at ~4116.7 — the whole ladder sat ~100 points behind the market. Live MTAPI reads proved the broker state: all 11 buy tickets (`2074139481`, `2074139508`…`2074139603`) open with `stopLoss: 4011` and **`takeProfit: 0`**; the earlier sell basket (`63e7ec73…`) still carried its TPs and closed by SL (`closeComment "[sl 4127.23]"`, `placedType "OnSL"`), so TP handling was not globally broken. Full evidence: `docs/scratchpad-trades-without-tp-2026-11-09.md`.

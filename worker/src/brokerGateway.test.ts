@@ -68,8 +68,25 @@ test('entry-critical reads on the order lane skip background backlog', async () 
 
 test('rates of 0 disable pacing', async () => {
   const r = recorder()
-  const gw = createBrokerGateway({ orderRps: 0, backgroundRps: 0, perAccountRps: 0, now: r.now, sleep: r.sleep })
+  const gw = createBrokerGateway({ orderRps: 0, backgroundRps: 0, perAccountRps: 0, orderPerAccountRps: 0, now: r.now, sleep: r.sleep })
   await gw.acquire('a', 'order')
   await gw.acquire('a')
   assert.deepEqual(r.waits, [])
+})
+
+test('order channel paces per account independently under a global ceiling', async () => {
+  const r = recorder()
+  const gw = createBrokerGateway({
+    orderRps: 0, // no global spacing — isolate per-account lane
+    orderPerAccountRps: 2,
+    backgroundRps: 0,
+    perAccountRps: 0,
+    now: r.now,
+    sleep: r.sleep,
+  })
+  await gw.acquire('a', 'order')
+  await gw.acquire('b', 'order')
+  assert.deepEqual(r.waits, [])
+  await gw.acquire('a', 'order')
+  assert.deepEqual(r.waits, [500])
 })

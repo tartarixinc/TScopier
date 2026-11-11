@@ -125,11 +125,10 @@ async function applyPipAndChannelStops(args: ApplyPostFillFollowUpArgs): Promise
   } = args
   const manual = (broker.manual_settings ?? {}) as ManualSettings
   const isMulti = (manual.trade_style ?? 'single') === 'multi'
-  // Multi legs already carry per-bucket TPs; flattening to tp[0] here was wrong.
-  // Still stamp Override signal SL/TP from *this* fill when those settings are on.
-  const multiPredefinedSl = isMulti && resolvePredefinedSlPips(manual) != null
-  const multiPredefinedTp = isMulti && resolvePredefinedTpPips(manual) != null
-  if (isMulti && !multiPredefinedSl && !multiPredefinedTp) {
+  // Multi/range baskets freeze absolute Override SL/TP from the first entry at
+  // plan time. Never restamp from later fills — that moved stops and collapsed
+  // the Targets % ladder.
+  if (isMulti) {
     return
   }
   const reverse = manual.reverse_signal === true
@@ -146,8 +145,7 @@ async function applyPipAndChannelStops(args: ApplyPostFillFollowUpArgs): Promise
 
     let plannerParsed: ParsedSignal = { ...parsed }
     if (
-      !isMulti
-      && signal.channel_id
+      signal.channel_id
       && shouldMergeChannelParamsForEntry(plannerParsed)
       && !shouldPreferParsedStopsOnEntry(plannerParsed)
     ) {
@@ -184,28 +182,7 @@ async function applyPipAndChannelStops(args: ApplyPostFillFollowUpArgs): Promise
     const openTp = Number(leg.openTp)
     const allowTpReplace = resolvePredefinedTpPips(manual) != null || !(openTp > 0)
     let stopSource = 'unchanged'
-    if (isMulti) {
-      stopSource = multiPredefinedSl || multiPredefinedTp ? 'multi_predefined_from_fill' : 'multi_unchanged'
-      const derived = deriveManualStopsWithClamp({
-        parsed: plannerParsed,
-        manual,
-        channelKeywords,
-        resolvedSymbol: symbol,
-        ctx,
-        entryAnchor: entry,
-        isBuy,
-      })
-      if (multiPredefinedSl && derived.finalSl != null) targetSl = derived.roundPrice(derived.finalSl)
-      if (multiPredefinedTp && derived.finalTps.length) {
-        const existing = Number(leg.openTp)
-        const picked = Number.isFinite(existing) && existing > 0
-          ? derived.finalTps.reduce((best, tp) => (
-            Math.abs(tp - existing) < Math.abs(best - existing) ? tp : best
-          ), derived.finalTps[0]!)
-          : derived.finalTps[0]!
-        targetTp = derived.roundPrice(picked)
-      }
-    } else if (hasPartialTpSchedule && plannedBrokerTp != null && plannedBrokerTp > 0) {
+    if (hasPartialTpSchedule && plannedBrokerTp != null && plannedBrokerTp > 0) {
       stopSource = 'planned_partial_tp'
       targetTp = plannedBrokerTp
     } else if (usesPredefinedStops(manual)) {
@@ -235,16 +212,14 @@ async function applyPipAndChannelStops(args: ApplyPostFillFollowUpArgs): Promise
 
     const stripped = stripInvalidStopsForSide({
       stoploss: Number(targetSl) || 0,
-      takeprofit: (isMulti && !multiPredefinedTp) ? 0 : (Number(targetTp) || 0),
+      takeprofit: Number(targetTp) || 0,
       referencePrice: entry,
       isBuy,
     })
     const newSl = stripped.stoploss > 0 ? stripped.stoploss : null
-    const newTp = (isMulti && !multiPredefinedTp)
-      ? leg.openTp
-      : (stripped.takeprofit > 0 ? stripped.takeprofit : null)
+    const newTp = stripped.takeprofit > 0 ? stripped.takeprofit : null
     const slChanged = newSl != null && newSl !== leg.openSl
-    const tpChanged = newTp != null && newTp !== leg.openTp && (!isMulti || multiPredefinedTp)
+    const tpChanged = newTp != null && newTp !== leg.openTp
     if (!slChanged && !tpChanged) continue
     const changePayload = {
       symbol,

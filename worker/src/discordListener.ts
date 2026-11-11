@@ -26,6 +26,7 @@ import { pushParsedSignalToTradeWorker } from './tradeSignalPush'
 type Subscriber = {
   user_id: string
   channel_id: string
+  source_display_name: string
 }
 
 export type DiscordListenerHandle = {
@@ -99,7 +100,7 @@ async function loadSubscribers(
 ): Promise<Subscriber[]> {
   const { data, error } = await supabase
     .from('discord_channels')
-    .select('user_id, channel_id, is_active, telegram_channels!inner(is_active, source_kind)')
+    .select('user_id, channel_id, is_active, telegram_channels!inner(is_active, source_kind, display_name, channel_username)')
     .eq('guild_id', guildId)
     .eq('discord_channel_id', discordChannelId)
   if (error) {
@@ -110,12 +111,25 @@ async function loadSubscribers(
     user_id: string
     channel_id: string
     is_active: boolean
-    telegram_channels: { is_active?: boolean; source_kind?: string } | { is_active?: boolean; source_kind?: string }[]
+    telegram_channels: {
+      is_active?: boolean
+      source_kind?: string
+      display_name?: string | null
+      channel_username?: string | null
+    } | Array<{
+      is_active?: boolean
+      source_kind?: string
+      display_name?: string | null
+      channel_username?: string | null
+    }>
   }>
   return rows.flatMap(row => {
     const shadow = Array.isArray(row.telegram_channels) ? row.telegram_channels[0] : row.telegram_channels
     if (!row.is_active || !shadow?.is_active || shadow.source_kind !== 'discord') return []
-    return [{ user_id: row.user_id, channel_id: row.channel_id }]
+    const name = shadow.display_name?.trim()
+      || (shadow.channel_username?.trim() ? `@${shadow.channel_username.trim().replace(/^@/, '')}` : '')
+      || 'Discord'
+    return [{ user_id: row.user_id, channel_id: row.channel_id, source_display_name: name }]
   })
 }
 
@@ -140,6 +154,8 @@ async function copyMessage(supabase: SupabaseClient, message: Message): Promise<
         id: signalId,
         user_id: subscriber.user_id,
         channel_id: subscriber.channel_id,
+        source_kind: 'discord',
+        source_display_name: subscriber.source_display_name,
         raw_message: text,
         parsed_data: parsed.parsed,
         status: 'parsed',

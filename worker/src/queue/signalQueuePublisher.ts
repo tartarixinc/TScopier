@@ -53,6 +53,9 @@ function buildJob(row: TradeSignalPushPayload, lane: SignalQueueLane): SignalQue
       signalId: row.id,
       userId: row.user_id,
       actionClass: action,
+      revision: row.dispatch_source === 'message_revision'
+        ? (row.pipeline_ts?.t_dispatch_sent ?? row.created_at ?? Date.now())
+        : (row.created_at ?? '_'),
     }),
     attempts: 1,
     enqueued_at: Date.now(),

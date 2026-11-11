@@ -193,6 +193,8 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
   const positionSnapshot = (): Promise<unknown[] | null> => {
     positionSnapshotPromise ??= (async () => {
       try {
+        const warm = ctx.entryBrokerReadCache.get(uuid)?.openedOrders
+        if (warm && Date.now() - warm.at < 2_500) return warm.rows
         return (await api.openedOrders(uuid)) ?? null
       } catch {
         return null
@@ -247,12 +249,6 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
     let sendArgs = args
     const plannedSl = Number(args.stoploss) || 0
     const plannedTp = Number(args.takeprofit) || 0
-    const t0 = Date.now()
-    if (liveEntryFast && signal.pipeline_ts && signal.pipeline_ts.t_first_broker_send == null) {
-      setPipelineTimestamp(signal.pipeline_ts, 'broker_request_started_at', t0)
-    } else if (signal.pipeline_ts && signal.pipeline_ts.broker_request_started_at == null) {
-      setPipelineTimestamp(signal.pipeline_ts, 'broker_request_started_at', t0)
-    }
 
     let result: NormalizedFill | null = null
     let lastAttemptError: string
@@ -266,6 +262,15 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
       brokerRequestId: `${signal.id}:${broker.id}:${leg.idx}`,
       dispatchSource: signal.dispatch_source,
     })
+
+    /** Stamp only when the real OrderSend is about to fire (not during prep / gate wait). */
+    const stampFirstBrokerSend = (): void => {
+      if (!signal.pipeline_ts) signal.pipeline_ts = {}
+      if (signal.pipeline_ts.t_first_broker_send != null && signal.pipeline_ts.broker_request_started_at != null) {
+        return
+      }
+      setPipelineTimestamp(signal.pipeline_ts, 'broker_request_started_at', Date.now())
+    }
 
     // Refresh the lease while the broker call is pending, including the wait
     // for the per-account send gate. A slow but healthy send must not be
@@ -339,6 +344,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
           dispatchSource: signal.dispatch_source,
         })
         if (useV2) {
+          stampFirstBrokerSend()
           const sendPromise = withBrokerWriteAuthority(
             authorityFromBrokerRow(broker),
             'v2_orderSend',
@@ -401,6 +407,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
             lots: r.volume ?? sendArgs.volume,
           }
         } else {
+          stampFirstBrokerSend()
           const sendPromise = api.orderSend(uuid, sendArgs)
           emitPipelineEvent({
             event: 'broker_request_started',
@@ -643,7 +650,10 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
 
     if (!result) return false
 
-    const latencyMs = Date.now() - t0
+    const sendStartedAt = signal.pipeline_ts?.broker_request_started_at
+      ?? signal.pipeline_ts?.t_first_broker_send
+      ?? Date.now()
+    const latencyMs = Date.now() - sendStartedAt
     if (liveEntryFast && signal.pipeline_ts) {
       setPipelineTimestamp(signal.pipeline_ts, 'broker_response_received_at', Date.now())
       setPipelineTimestamp(signal.pipeline_ts, 'broker_execution_confirmed_at', Date.now())

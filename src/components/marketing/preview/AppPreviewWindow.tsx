@@ -47,18 +47,21 @@ export function AppPreviewWindow({ activeRoute, children, className }: AppPrevie
       items: [
         { to: '/dashboard', label: t.nav.items.dashboard },
         { to: '/brokers', label: t.nav.items.brokers },
-        { to: '/mirror-trading', label: t.nav.items.mirrorTrading },
-        { to: '/social-trading', label: t.nav.items.socialTrading },
         { to: '/account-trades', label: t.nav.items.trades },
+        { to: '/manage-signals', label: t.nav.items.signalHistory },
+        { to: '/activities', label: t.nav.items.management },
+        { to: '/copier-logs', label: t.nav.items.copierLogs },
+        { to: '/reported-trades', label: t.nav.items.reportedTrades },
       ],
     },
     {
-      label: t.nav.sections.signals,
+      label: t.nav.sections.copy,
       items: [
+        { to: '/mirror-trading', label: t.nav.items.mirrorTrading },
+        { to: '/social-trading', label: t.nav.items.socialTrading },
         { to: '/channels', label: t.nav.items.channels },
         { to: '/backtest', label: t.nav.items.backtest },
-        { to: '/activities', label: t.nav.items.management },
-        { to: '/copier-logs', label: t.nav.items.copierLogs },
+        { to: '/performance', label: t.nav.items.performance },
       ],
     },
   ]

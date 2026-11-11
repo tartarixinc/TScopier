@@ -20,6 +20,7 @@ import {
 import { DashboardMetricsSkeleton } from '../../components/dashboard/DashboardMetricsSkeleton'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { PageShell } from '../../components/layout/PageShell'
+import { APP_CARD, APP_ROW_HOVER, APP_SECTION_LABEL } from '../../lib/appSurface'
 import { useAddTradingAccount } from '../../context/AddTradingAccountContext'
 import { Toggle } from '../../components/ui/Toggle'
 import { Button } from '../../components/ui/Button'
@@ -69,7 +70,7 @@ import {
   fetchSocialCopyLogs,
   type SocialCopyLogRow,
 } from '../../lib/socialCopyLogs'
-import { buildChannelSourceKinds, SIGNAL_SOURCE_MARKS, type SignalSourceKind } from '../../lib/signalSourceMark'
+import { buildChannelSourceKinds, resolveSignalSourceKind, resolveSignalSourceName, SIGNAL_SOURCE_MARKS, type SignalSourceKind } from '../../lib/signalSourceMark'
 import { SignalSourceLogo } from '../../components/dashboard/SignalSourceLogo'
 import { TradeActivityCard } from '../../components/dashboard/TradeActivityCard'
 import {
@@ -149,11 +150,10 @@ const DASHBOARD_METRICS_LOADER_DISMISS_MS = 5_000
 const DASHBOARD_COPIER_LOG_GRID =
   'grid grid-cols-[5.75rem_minmax(0,1fr)_minmax(4rem,0.85fr)_minmax(4.75rem,auto)_minmax(6.75rem,auto)] gap-x-3 items-center'
 
-const DASHBOARD_CARD =
-  'rounded-2xl border border-neutral-200/65 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-neutral-800/55 dark:bg-neutral-950 dark:shadow-none'
+const DASHBOARD_CARD = APP_CARD
 
 const DASHBOARD_SECTION_LINK =
-  'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-neutral-900 transition-colors hover:text-neutral-900 dark:text-neutral-50 dark:hover:text-neutral-100'
+  'inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-neutral-600 transition-colors hover:bg-neutral-50 hover:text-neutral-900 dark:text-neutral-300 dark:hover:bg-white/5 dark:hover:text-neutral-100'
 
 function isNonTradeSkipReason(value: string | null | undefined): boolean {
   const normalized = String(value ?? '')
@@ -987,7 +987,7 @@ export function DashboardPage() {
   const dashboardGreeting = greetingParts ? (
     <>
       {greetingParts[0]}
-      <span className="text-green-500 dark:text-green-400">{greetingName}</span>
+      <span className="text-neutral-900 dark:text-neutral-50">{greetingName}</span>
       {greetingParts[1] ?? ''}
     </>
   ) : (
@@ -1346,16 +1346,14 @@ export function DashboardPage() {
     const signalRows: DashboardCopierLogRow[] = copierLogs.map(signal => {
       const parsed = signal.parsed_data as Record<string, unknown> | null
       const action = typeof parsed?.action === 'string' ? parsed.action : null
-      const sourceKind = signal.channel_id
-        ? (channelSourceKinds[signal.channel_id] ?? 'telegram')
-        : null
-      const channelName = channelLabel(signal.channel_id, channelDisplayNames)
+      const sourceKind = resolveSignalSourceKind(signal, channelSourceKinds)
+      const channelName = resolveSignalSourceName(signal, channelDisplayNames, channelSourceKinds)
       return {
         key: signal.id,
         at: signal.created_at,
         status: signal.status,
         channelName,
-        channelTitle: sourceKind ? `${SIGNAL_SOURCE_MARKS[sourceKind].label} · ${channelName}` : channelName,
+        channelTitle: `${SIGNAL_SOURCE_MARKS[sourceKind].label} · ${channelName}`,
         symbol: copierLogSymbols[signal.id] ?? '—',
         action,
         sourceKind,
@@ -2567,7 +2565,7 @@ export function DashboardPage() {
   const showDashboardLoader = dashboardMetricsLoading
 
   return (
-    <PageShell maxWidth="xl" spacing="none" className="space-y-8">
+    <PageShell maxWidth="xl" spacing="none" className="space-y-6 px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
       <SubscriptionReminderModal />
       <PageHeader
         title={dashboardGreeting}
@@ -2651,7 +2649,7 @@ export function DashboardPage() {
           />
       </div>
 
-      <div className={`${DASHBOARD_CARD} grid grid-cols-2 divide-x divide-y divide-neutral-100 dark:divide-neutral-800/70 lg:grid-cols-4 lg:divide-y-0`}>
+      <div className={`${DASHBOARD_CARD} grid grid-cols-2 divide-x divide-y divide-neutral-100/90 dark:divide-white/8 lg:grid-cols-4 lg:divide-y-0`}>
           <OverviewStat
             label={t.dashboard.activeSignalChannels}
             value={String(stats.activeChannels)}
@@ -2665,7 +2663,7 @@ export function DashboardPage() {
           <OverviewStat
             label={t.dashboard.tradingAccountsConnected}
             value={String(stats.accounts)}
-            onAdd={() => openAddTradingAccount()}
+            addTo="/brokers"
             addLabel={t.dashboard.addOrManageAccounts}
           />
           <OverviewStat
@@ -2688,7 +2686,7 @@ export function DashboardPage() {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-5">
           <div className={`${DASHBOARD_CARD} min-w-0 overflow-hidden`}>
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800/80">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100/90 px-5 py-4 dark:border-white/8">
             <div className="flex items-center gap-2">
               <h2 className="text-[15px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">{t.dashboard.tradeActivities}</h2>
               <InfoTooltip text={t.dashboard.tradeActivitiesHint} />
@@ -2713,7 +2711,9 @@ export function DashboardPage() {
               ))}
             </div>
           ) : visibleTradeActivities.length === 0 ? (
-            <div className="px-5 py-10 text-sm text-neutral-900 dark:text-neutral-50">{t.dashboard.noTradeActivities}</div>
+            <div className="m-4 rounded-2xl bg-neutral-50 px-4 py-10 text-center text-sm text-neutral-500 dark:bg-white/3 dark:text-neutral-400">
+              {t.dashboard.noTradeActivities}
+            </div>
           ) : (
             <div className="divide-y divide-neutral-100 dark:divide-neutral-800 max-h-96 overflow-y-auto">
               {visibleTradeActivities.map(activity => (
@@ -2725,7 +2725,7 @@ export function DashboardPage() {
 
         {/* Copier Logs */}
         <div className={`${DASHBOARD_CARD} min-w-0 overflow-hidden`}>
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800/80">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100/90 px-5 py-4 dark:border-white/8">
             <div className="flex items-center gap-2">
               <h2 className="text-[15px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">{t.dashboard.copierLogs}</h2>
               <InfoTooltip text={t.copierLogs.subtitle} />
@@ -2743,7 +2743,7 @@ export function DashboardPage() {
           <div className="overflow-x-auto">
           {/* Table header */}
           <div
-            className={`${DASHBOARD_COPIER_LOG_GRID} min-w-md border-b border-neutral-100 px-5 py-2.5 text-xs font-regular uppercase tracking-[0.06em] text-neutral-900 dark:text-neutral-50 dark:border-neutral-800/80`}
+            className={`${DASHBOARD_COPIER_LOG_GRID} min-w-md border-b border-neutral-100/90 px-5 py-2.5 ${APP_SECTION_LABEL} dark:border-white/8`}
           >
             <span>{t.copierLogs.colStatus}</span>
             <span className="min-w-0">{t.copierLogs.colChannel}</span>
@@ -2763,8 +2763,8 @@ export function DashboardPage() {
               ))}
             </div>
           ) : visibleCopierLogRows.length === 0 ? (
-            <div className="flex flex-col items-center justify-center px-5 py-16 text-center">
-              <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{t.dashboard.noData}</p>
+            <div className="m-4 flex flex-col items-center justify-center rounded-2xl bg-neutral-50 px-4 py-16 text-center dark:bg-white/3">
+              <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400">{t.dashboard.noData}</p>
             </div>
           ) : (
             <div className="divide-y divide-neutral-100 dark:divide-neutral-800 max-h-80 overflow-y-auto min-w-md">
@@ -2779,7 +2779,7 @@ export function DashboardPage() {
 
       {/* Linked Accounts */}
       <div className={`${DASHBOARD_CARD} overflow-hidden`}>
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800/80">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100/90 px-5 py-4 dark:border-white/8">
           <h2 className="inline-flex items-center gap-2 text-[15px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
             {la.title}
             <span className="text-xs font-medium tabular-nums text-neutral-900 dark:text-neutral-50">
@@ -2944,8 +2944,8 @@ function StatBlock({ label, labelHint, value, sub, subColor, valueColor = 'text-
   valueColor?: string
 }) {
   return (
-    <div className="rounded-2xl bg-white px-4 py-4 sm:px-5 dark:bg-white/3 dark:ring-1 dark:ring-inset dark:ring-white/6">
-      <p className="inline-flex items-center gap-1 text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-900 dark:text-neutral-50">
+    <div className={clsx(APP_CARD, 'px-4 py-4 sm:px-5')}>
+      <p className={clsx('inline-flex items-center gap-1', APP_SECTION_LABEL)}>
         {label}
         {labelHint ? <InfoTooltip text={labelHint} /> : null}
       </p>
@@ -2978,7 +2978,7 @@ function OverviewStat({
 
   return (
     <div className="px-4 py-4 sm:px-5">
-      <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-900 dark:text-neutral-50">{label}</p>
+      <p className={APP_SECTION_LABEL}>{label}</p>
       <p className="mt-2 text-xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">{value}</p>
       {onAdd ? (
         <button type="button" onClick={onAdd} className={actionClass}>
@@ -3030,7 +3030,7 @@ function LogRow({ row }: { row: DashboardCopierLogRow }) {
   const typeLabel = action ? action.replace(/_/g, ' ') : '—'
 
   return (
-    <div className={`${DASHBOARD_COPIER_LOG_GRID} px-5 py-3 transition-colors hover:bg-[#F7F8FA] dark:hover:bg-white/3`}>
+    <div className={clsx(DASHBOARD_COPIER_LOG_GRID, 'px-5 py-3 transition-colors', APP_ROW_HOVER)}>
       <span className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-sm font-regular ${s.color}`}>
         {s.label}
       </span>
@@ -3211,7 +3211,7 @@ function LinkedAccountRow({
           onOpenStats()
         }
       }}
-      className="grid cursor-pointer grid-cols-9 items-center gap-2 px-5 py-3.5 transition-colors hover:bg-[#F7F8FA] dark:hover:bg-white/3"
+      className={clsx('grid cursor-pointer grid-cols-9 items-center gap-2 px-5 py-3.5 transition-colors', APP_ROW_HOVER)}
     >
       <div className="flex flex-col min-w-0">
         <span

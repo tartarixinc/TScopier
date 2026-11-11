@@ -1,5 +1,6 @@
 import type { FxsocketBrokerClient } from './fxsocketClient'
 import { resolveCanonicalOpenPosition } from './livePositionIdentity'
+import { isPositionGoneCloseError } from './orderModifyBenign'
 
 export interface CloseVerificationResult {
   confirmed: boolean
@@ -24,24 +25,56 @@ const EMPTY_READBACK_MULTI_EXTRA_ATTEMPTS = 3
 const EMPTY_READBACK_BACKOFF_MS = 250
 const EMPTY_READBACK_MULTI_BACKOFF_MS = 400
 
-/** Single orderClose — no post-close openedOrders poll (live fast tier). */
+function isHardRejectedCloseState(state: string | null | undefined): boolean {
+  return Boolean(state && /^(rejected|cancelled|expired)/i.test(state))
+}
+
+/**
+ * Live management close: one OrderCloseSafe/OrderClose, trust the ack.
+ * No OpenedOrders pre/post read — ticket must already be resolved by the caller
+ * (shared pre-close snapshot). Already-closed / unknown-ticket is confirmed
+ * (idempotent full close). Hard rejects stay unconfirmed.
+ */
+export async function closeMarketPositionFast(
+  api: FxsocketBrokerClient,
+  uuid: string,
+  ticket: number,
+  opts: { slippage?: number } = {},
+): Promise<CloseVerificationResult> {
+  const slippage = opts.slippage ?? 20
+  try {
+    const result = await api.orderClose(uuid, { ticket, slippage })
+    if (isHardRejectedCloseState(result.state)) {
+      return {
+        confirmed: false,
+        reason: `orderClose state=${result.state}`,
+        attempts: 1,
+        ticket,
+      }
+    }
+    return { confirmed: true, attempts: 1, ticket }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (isPositionGoneCloseError(msg)) {
+      return { confirmed: true, attempts: 1, ticket }
+    }
+    return {
+      confirmed: false,
+      reason: msg.trim().slice(0, 200) || 'orderClose failed',
+      attempts: 1,
+      ticket,
+    }
+  }
+}
+
+/** @deprecated Prefer closeMarketPositionFast for live closes that must confirm. */
 export async function closeOrderFast(
   api: FxsocketBrokerClient,
   uuid: string,
   ticket: number,
   slippage = 20,
 ): Promise<CloseVerificationResult> {
-  const result = await api.orderClose(uuid, { ticket, slippage })
-  if (result.state && /^(rejected|cancelled|expired)/i.test(result.state)) {
-    return { confirmed: false, reason: `orderClose state=${result.state}`, attempts: 1 }
-  }
-  return {
-    confirmed: false,
-    reason: 'orderClose accepted but broker readback was skipped',
-    attempts: 1,
-    ticket,
-    reconciliationRequired: true,
-  }
+  return closeMarketPositionFast(api, uuid, ticket, { slippage })
 }
 
 export async function closeWithVerification(

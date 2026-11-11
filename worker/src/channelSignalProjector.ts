@@ -29,14 +29,24 @@ export interface ProjectorDispatchFn {
 async function loadActiveSubscriptions(
   supabase: SupabaseClient,
   signalChannelId: string,
-): Promise<Array<{ id: string; user_id: string }>> {
+): Promise<Array<{ id: string; user_id: string; source_display_name: string }>> {
   const { data } = await supabase
     .from('telegram_channels')
-    .select('id, user_id')
+    .select('id, user_id, display_name, channel_username')
     .eq('signal_channel_id', signalChannelId)
     .eq('is_active', true)
 
-  return (data ?? []) as Array<{ id: string; user_id: string }>
+  return ((data ?? []) as Array<{
+    id: string
+    user_id: string
+    display_name?: string | null
+    channel_username?: string | null
+  }>).map(row => {
+    const name = row.display_name?.trim()
+      || (row.channel_username?.trim() ? `@${row.channel_username.trim().replace(/^@/, '')}` : '')
+      || 'Telegram'
+    return { id: row.id, user_id: row.user_id, source_display_name: name }
+  })
 }
 
 async function resolveParentSignalId(
@@ -60,7 +70,7 @@ async function resolveParentSignalId(
 export async function projectChannelSignalToUser(
   supabase: SupabaseClient,
   canonical: CanonicalChannelSignal,
-  subscription: { id: string; user_id: string },
+  subscription: { id: string; user_id: string; source_display_name?: string },
 ): Promise<SignalRow | null> {
   const parentSignalId = await resolveParentSignalId(
     supabase,
@@ -83,6 +93,8 @@ export async function projectChannelSignalToUser(
     id: signalId,
     user_id: subscription.user_id,
     channel_id: subscription.id,
+    source_kind: 'telegram' as const,
+    source_display_name: subscription.source_display_name?.trim() || 'Telegram',
     channel_signal_id: canonical.id,
     raw_message: canonical.raw_message,
     parsed_data: canonical.parsed_data,

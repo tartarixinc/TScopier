@@ -26,6 +26,7 @@ export const fr: Translations = {
   nav: {
     sections: {
       general: 'GÉNÉRAL',
+      copy: 'COPIE',
       signals: 'SIGNAUX',
       discover: 'DÉCOUVRIR',
       tradingTools: 'OUTILS',
@@ -37,16 +38,16 @@ export const fr: Translations = {
     items: {
       dashboard: 'Tableau de bord',
       configuration: 'Configurations',
-      brokers: 'Configuration de trading',
-      mirrorTrading: 'Compte miroir',
+      brokers: 'Configuration du compte',
+      mirrorTrading: 'Comptes miroir',
       socialTrading: 'Trading social',
-      trades: 'Trades',
-      management: 'Activités',
-      channels: 'Source de signaux',
+      trades: 'Trades du compte',
+      management: 'Processus du copieur',
+      channels: 'Signaux',
       popularChannels: 'Chaînes populaires',
       backtest: 'Backtest',
-      copierLogs: 'Journaux',
-      signalHistory: 'Gérer les signaux',
+      copierLogs: 'Journaux du copieur',
+      signalHistory: 'Gérer les trades',
       reportedTrades: 'Transactions signalées',
       updates: 'Mises à jour',
       marketNews: 'Actualités',
@@ -153,10 +154,10 @@ export const fr: Translations = {
       cancel: 'Annuler',
       welcomeTitle: 'Je peux vous aider à configurer et utiliser UniCopier.',
       suggestions: [
-        'Mon Telegram est-il lié ?',
+        'Mes Signaux sont-ils connectés ?',
+        'Ajouter un compte dans Configuration du compte',
+        'Afficher mes Trades du compte',
         'Mettre le copieur en pause',
-        'Connecter un compte MT5',
-        'Que sont les préréglages ?',
       ],
       emptyReply: 'Comment puis-je encore vous aider ?',
       actionDone: 'Terminé.',
@@ -444,7 +445,7 @@ export const fr: Translations = {
   },
   copyRisk: copyRiskFr,
   mirrorTradingPage: {
-    title: 'Compte miroir',
+    title: 'Comptes miroir',
     subtitle: 'Copiez les trades d’un compte maître vers des comptes esclaves.',
     searchDescription: 'Copiez les trades d’un compte maître vers des comptes esclaves.',
     masters: 'Comptes maîtres',
@@ -1512,7 +1513,7 @@ export const fr: Translations = {
     updatesReceivedThisMonth: 'Ce mois',
   },
   trades: {
-    title: 'Trades',
+    title: 'Trades du compte',
     subtitle: 'Positions en direct et clôtures récentes de vos comptes',
     filterOpen: 'Ouverts',
     filterClosed: 'Clôturés',
@@ -1614,7 +1615,7 @@ export const fr: Translations = {
     reasonMirrorCopyClosed: 'Cette opération copiée a été clôturée avant que les motifs de clôture ne soient enregistrés.',
   },
   channelsPage: {
-    title: 'Source de signaux',
+    title: 'Signaux',
     subtitle: 'Gérez les canaux Telegram que vous surveillez',
     addChannel: 'Ajouter un canal',
     addFormTitle: 'Ajouter un canal manuellement',
@@ -1645,11 +1646,11 @@ export const fr: Translations = {
     tradingViewUrl: 'URL du webhook',
     tradingViewTemplate: 'Message d’alerte',
     tradingViewTemplateStrategy: 'Pour les stratégies uniquement',
-    tradingViewTemplateIndicators: 'Indicateurs',
-    tradingViewTemplateBuy: 'Pour les signaux d’achat',
-    tradingViewTemplateSell: 'Pour les signaux de vente',
+    tradingViewTemplateIndicators: 'Pour les indicateurs',
+    tradingViewTemplateBuy: 'Signaux d’achat',
+    tradingViewTemplateSell: 'Signaux de vente',
     tradingViewTemplateSymbolHint: 'Pour d’autres symboles, remplacez le "XAUUSD" dans "symbol" dans TradingView.',
-    tradingViewTemplateHelp: 'Utilisez Pour les stratégies quand l’alerte vient d’une stratégie (action est rempli avec buy ou sell). Utilisez Pour les signaux d’achat ou Pour les signaux de vente pour les alertes d’indicateur avec un sens fixe. Mettez action à close pour fermer les trades copiés de ce symbole.',
+    tradingViewTemplateHelp: 'Utilisez Pour les stratégies quand l’alerte vient d’une stratégie (action est rempli avec buy ou sell). Utilisez Signaux d’achat ou Signaux de vente pour les alertes d’indicateur avec un sens fixe. Mettez action à close pour fermer les trades copiés de ce symbole.',
     tradingViewHowToTitle: 'Comment ajouter dans TradingView',
     tradingViewHowTo1: 'Dans TradingView, ouvrez Alertes et créez une nouvelle alerte (ou modifiez une existante).',
     tradingViewHowTo2: 'Activez Webhook URL et collez l’URL du webhook de ce modal.',
@@ -2351,7 +2352,7 @@ export const fr: Translations = {
   },
   pages: {
     accountConfiguration: {
-      title: 'Configuration de trading',
+      title: 'Configuration du compte',
       description: 'Connectez des comptes MetaTrader et réglez la copie pour chacun.',
     },
     brokers: {
@@ -2423,11 +2424,11 @@ export const fr: Translations = {
       description: 'Graphiques avancés et outils d\'analyse IA.',
     },
     signalHistory: {
-      title: 'Gérer les signaux',
+      title: 'Gérer les trades',
       description: 'Signaux analysés liés à votre compte. Filtrez par canal et date.',
     },
     copierEngine: {
-      title: 'Source de signaux',
+      title: 'Signaux',
       description: 'Gérez les canaux Telegram et les réglages du copieur.',
     },
     settings: {

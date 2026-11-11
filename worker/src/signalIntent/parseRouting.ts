@@ -421,7 +421,7 @@ async function runStageThree(args: {
 }): Promise<UniversalParseResult | null> {
   if (!universalParseReconcileEnabled()) return null
   if (!shouldReconcileSignal(args.det, args.universal)) return null
-  const stamp = (key: keyof import('../pipelineTimestamps').PipelineTimestamps): void => {
+  const stamp = (key: import('../pipelineTimestamps').PipelineTimestampNumberKey): void => {
     if (args.pipelineTs) setPipelineTimestamp(args.pipelineTs, key, Date.now())
   }
   stamp('t_stage3_started_at')
@@ -471,7 +471,7 @@ export async function routeSignalParse(args: {
     stage3_ms: null,
   }
 
-  const stamp = (key: keyof import('../pipelineTimestamps').PipelineTimestamps): void => {
+  const stamp = (key: import('../pipelineTimestamps').PipelineTimestampNumberKey): void => {
     if (args.pipelineTs) setPipelineTimestamp(args.pipelineTs, key, Date.now())
   }
 
@@ -553,7 +553,9 @@ export async function routeSignalParse(args: {
 
   const fastPathOk = deterministicQualifiesForFastPath(det, args.rawMessage, args.keywords)
 
-  if (mode === 'fastpath' && fastPathOk) {
+  // Management phrases (Close all / BE / modify SL·TP) skip stage-2/3 even in
+  // primary mode — AI adds ~2s and does not improve these deterministic commands.
+  if (fastPathOk && (mode === 'fastpath' || mode === 'primary')) {
     return {
       parseResult: det,
       aiMeta: { intent: String(det.parsed.action), source: 'deterministic' },

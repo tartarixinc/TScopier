@@ -33,7 +33,7 @@ import {
   type LiveTradeIdentity,
 } from '../livePositionIdentity'
 import { planPartialClose, verifyPartialCloseReduction } from '../partialClosePolicy'
-import { closeWithVerification } from '../managementClose'
+import { closeMarketPositionFast, closeWithVerification } from '../managementClose'
 import { findOpenedRowByTicket, readBrokerOrderStopLoss } from '../signalEntryPendingHelpers'
 import { cancelSignalRangeEntryWaitsForSignal } from '../signalRangeEntryHelpers'
 import { applyMgmtModifyToBasketGroups } from '../managementModifyBaskets'
@@ -46,9 +46,11 @@ import {
   mgmtRowsToStopLegs,
   mgmtUseChannelStopApply,
   type ChannelStopApplyResult,
+  type ChannelStopPrewarm,
 } from '../channelStopApply'
 import type { MgmtExecOptions, MgmtExecResult } from '../mgmtExecOptions'
 import { runWithPriorityBrokerReads, stashEntryBrokerTimings } from '../brokerEntryContext'
+import { setPipelineTimestamp } from '../pipelineTimestamps'
 import { loadExactProviderCloseArtifacts, loadRangePendingLegsInMgmtScope, pendingLegsToCancelScopes, updateRangePendingLegsForManagement } from '../managementPendingLegs'
 import {
   explicitMgmtSymbol,
@@ -110,6 +112,22 @@ class PositionAbsentFromLiveError extends Error {}
 
 function mgmtCloseOpts(liveMgmtFast: boolean) {
   return { maxAttempts: 2, slippageEscalation: 50, liveFast: liveMgmtFast }
+}
+
+/** Live-fast closes trust OrderCloseSafe ack; verified path keeps OpenedOrders readback. */
+function mgmtCloseFn(liveMgmtFast: boolean) {
+  if (liveMgmtFast) {
+    return (
+      api: Parameters<typeof closeMarketPositionFast>[0],
+      uuid: string,
+      ticket: number,
+    ) => closeMarketPositionFast(api, uuid, ticket)
+  }
+  return (
+    api: Parameters<typeof closeWithVerification>[0],
+    uuid: string,
+    ticket: number,
+  ) => closeWithVerification(api, uuid, ticket, mgmtCloseOpts(false))
 }
 
 function normBasketSymbolKey(sym: string): string {
@@ -178,6 +196,17 @@ async function finalizeMgmtSignal(ctx: TradeExecutorContext, signalId: string): 
 }
 
 /** Pending/range cancel + broker straggler sweep — safe after open legs are closed. */
+function ticketsFromOpenedOrdersSnapshot(rawOrders: unknown[] | undefined): Set<number> {
+  const tickets = new Set<number>()
+  for (const raw of rawOrders ?? []) {
+    if (!raw || typeof raw !== 'object') continue
+    const o = raw as Record<string, unknown>
+    const ticket = Number(o.ticket ?? o.Ticket ?? o.order ?? o.Order ?? 0)
+    if (Number.isFinite(ticket) && ticket > 0) tickets.add(ticket)
+  }
+  return tickets
+}
+
 function deferMgmtCloseCleanup(args: {
   ctx: TradeExecutorContext
   signal: SignalRow
@@ -187,6 +216,7 @@ function deferMgmtCloseCleanup(args: {
   byBroker: Map<string, BrokerRow>
   cancelledPendingScopes: Set<string>
   liveMgmtFast: boolean
+  preCloseTicketsBySession?: Map<string, Set<number>>
   onPendingCancelled?: (n: number) => void
   onBrokerStragglersClosed?: (n: number) => void
 }): void {
@@ -200,6 +230,7 @@ function deferMgmtCloseCleanup(args: {
       byBroker,
       cancelledPendingScopes,
       liveMgmtFast,
+      preCloseTicketsBySession,
       onPendingCancelled,
       onBrokerStragglersClosed,
     } = args
@@ -260,8 +291,8 @@ function deferMgmtCloseCleanup(args: {
           brokers: [broker],
           channelDisplayName: channelMeta.commentSlug,
           channelUsername: null,
-          closeWithVerification: (a, u, ticket) =>
-            closeWithVerification(a, u, ticket, mgmtCloseOpts(liveMgmtFast)),
+          preCloseTicketsBySession,
+          closeWithVerification: mgmtCloseFn(liveMgmtFast),
         })
         brokerClosed += one.closed
       }))
@@ -759,38 +790,146 @@ export async function applyManagement(
     let basketAnchorId: string | null = explicitBasketAnchorId ?? rows[0]?.signal_id ?? null
 
     const byBroker = new Map(brokers.map(b => [b.id, b]))
+    /** Shared OpenedOrders snapshot for close/partial live-fast legs (one read per session). */
+    const mgmtLiveOrdersByUuid = new Map<string, unknown[]>()
+    /** Quote (+ optional OpenedOrders) warmed during modify scope expand. */
+    const modifyPrewarmByUuid = new Map<string, ChannelStopPrewarm>()
     const action = String(parsed.action).toLowerCase()
+    const modifyHasNewSl = action === 'modify'
+      && parsed.sl != null
+      && Number(parsed.sl) > 0
+    const modifyHasNewTp = action === 'modify'
+      && Array.isArray(parsed.tp)
+      && parsed.tp.some(v => Number(v) > 0)
 
-    if (action === 'modify' && rows.length > 0) {
-      rows = await expandMgmtRowsToFullBaskets(ctx.supabase, {
-        userId: signal.user_id,
-        rows,
-      })
-      basketAnchorId = rows[0]?.signal_id ?? basketAnchorId
-    }
-    const scopeLoadMs = Date.now() - scopeLoadStart
+    const needsBasketExpand =
+      action === 'modify'
+      || action === 'close'
+      || action === 'breakeven'
+      || action === 'partial_profit'
+      || action === 'partial_breakeven'
 
-    if (
-      (action === 'close' || action === 'breakeven' || action === 'partial_profit' || action === 'partial_breakeven')
-      && rows.length > 0
-    ) {
-      rows = await expandMgmtRowsToFullBaskets(ctx.supabase, {
+    // Expand baskets ∥ orphan DB ∥ OpenedOrders/Quote warm so first OrderClose/Modify
+    // is not blocked on serial scope prep (~1s measured on Migration close-all;
+    // Adjust SL previously waited on Quote+OpenedOrders only after expand finished).
+    if (needsBasketExpand && rows.length > 0) {
+      const seedRows = rows
+      const earlySnapshotUuids = new Set<string>()
+      for (const trade of seedRows) {
+        const broker = byBroker.get(trade.broker_account_id)
+        const u = broker ? brokerSessionUuid(broker) : null
+        if (u) earlySnapshotUuids.add(u)
+      }
+      const expandPromise = expandMgmtRowsToFullBaskets(ctx.supabase, {
         userId: signal.user_id,
-        rows,
+        rows: seedRows,
       })
+      const orphanPromise = action === 'close'
+        ? loadNearDuplicateOrphanTradesForClose(ctx.supabase, {
+            userId: signal.user_id,
+            channelTrades: seedRows,
+          })
+        : Promise.resolve([] as typeof seedRows)
+      const snapshotPromise = (action === 'close' || action === 'partial_profit')
+        ? Promise.all([...earlySnapshotUuids].map(async u => {
+            if (mgmtLiveOrdersByUuid.has(u)) return
+            const trade = seedRows.find(r => {
+              const b = byBroker.get(r.broker_account_id)
+              return b ? brokerSessionUuid(b) === u : false
+            })
+            if (!trade) return
+            const broker = byBroker.get(trade.broker_account_id)
+            const api = broker ? ctx.apiFor(broker) : null
+            if (!api) return
+            const raw = (await api.openedOrders(u).catch(() => [])) ?? []
+            mgmtLiveOrdersByUuid.set(u, raw)
+          }))
+        : Promise.resolve()
+      // Live Adjust SL / Set TP: start Quote (and OpenedOrders only when verify is on)
+      // while basket expand runs so applyChannelStopsToBaskets does not pay that RTT
+      // after DB scope work.
+      const modifyWarmPromise = (
+        liveMgmtFast
+        && action === 'modify'
+        && (modifyHasNewSl || modifyHasNewTp)
+      )
+        ? Promise.all([...earlySnapshotUuids].map(async u => {
+            const trade = seedRows.find(r => {
+              const b = byBroker.get(r.broker_account_id)
+              return b ? brokerSessionUuid(b) === u : false
+            })
+            if (!trade) return
+            const broker = byBroker.get(trade.broker_account_id)
+            const api = broker ? ctx.apiFor(broker) : null
+            if (!api) return
+            const symbol = String(trade.symbol ?? '')
+            const needQuote = modifyHasNewSl && symbol.length > 0
+            const needOrders = mgmtVerifyAfterModify()
+            const [quote, orders] = await Promise.all([
+              needQuote
+                ? api.quote(u, symbol).then(q => ({ bid: q.bid, ask: q.ask })).catch(() => null)
+                : Promise.resolve(null),
+              needOrders
+                ? api.openedOrders(u).then(raw => {
+                    const tickets = new Set<number>()
+                    const ordersByTicket = new Map<number, unknown>()
+                    for (const row of raw ?? []) {
+                      if (!row || typeof row !== 'object') continue
+                      const o = row as Record<string, unknown>
+                      const ticket = Number(o.ticket ?? o.Ticket ?? o.orderId ?? o.OrderID ?? 0)
+                      if (Number.isFinite(ticket) && ticket > 0) {
+                        tickets.add(ticket)
+                        ordersByTicket.set(ticket, row)
+                      }
+                    }
+                    return { tickets, ordersByTicket }
+                  }).catch(() => null)
+                : Promise.resolve(null),
+            ])
+            modifyPrewarmByUuid.set(u, {
+              quote: quote ?? undefined,
+              orders: orders ?? undefined,
+            })
+          }))
+        : Promise.resolve()
+
+      const [expanded, orphans] = await Promise.all([
+        expandPromise,
+        orphanPromise,
+        snapshotPromise,
+        modifyWarmPromise,
+      ]).then(([exp, orph]) => [exp, orph] as const)
+
+      rows = expanded
       basketAnchorId = rows[0]?.signal_id ?? basketAnchorId
-    }
-    if (action === 'close' && rows.length > 0) {
-      const orphans = await loadNearDuplicateOrphanTradesForClose(ctx.supabase, {
-        userId: signal.user_id,
-        channelTrades: rows,
-      })
       if (orphans.length) {
         const byId = new Map(rows.map(row => [row.id, row]))
         for (const orphan of orphans) byId.set(orphan.id, orphan)
         rows = [...byId.values()]
+        // Orphans may introduce new sessions — warm those after merge.
+        const extraUuids = new Set<string>()
+        for (const trade of orphans) {
+          const broker = byBroker.get(trade.broker_account_id)
+          const u = broker ? brokerSessionUuid(broker) : null
+          if (u && !mgmtLiveOrdersByUuid.has(u)) extraUuids.add(u)
+        }
+        if (extraUuids.size) {
+          await Promise.all([...extraUuids].map(async u => {
+            const trade = orphans.find(r => {
+              const b = byBroker.get(r.broker_account_id)
+              return b ? brokerSessionUuid(b) === u : false
+            })
+            if (!trade) return
+            const broker = byBroker.get(trade.broker_account_id)
+            const api = broker ? ctx.apiFor(broker) : null
+            if (!api) return
+            const raw = (await api.openedOrders(u).catch(() => [])) ?? []
+            mgmtLiveOrdersByUuid.set(u, raw)
+          }))
+        }
       }
     }
+    const scopeLoadMs = Date.now() - scopeLoadStart
 
     if (
       action === 'close_worse_entries'
@@ -808,6 +947,8 @@ export async function applyManagement(
 
     const cancelledPendingScopes = new Set<string>()
 
+    // Pending-leg scope is independent of OpenedOrders/Quote warm and can run after
+    // expand; for live modify we already overlapped warm with expand above.
     const pendingLegs = await loadRangePendingLegsInMgmtScope(ctx.supabase, {
       userId: signal.user_id,
       brokerAccountIds,
@@ -1006,8 +1147,7 @@ export async function applyManagement(
             brokers: [broker],
             channelDisplayName: channelMeta.commentSlug,
             channelUsername: null,
-            closeWithVerification: (a, u, ticket) =>
-              closeWithVerification(a, u, ticket, mgmtCloseOpts(liveMgmtFast)),
+            closeWithVerification: mgmtCloseFn(liveMgmtFast),
           })
           brokerClosed += one.closed
         }))
@@ -1182,8 +1322,6 @@ export async function applyManagement(
     const breakevenOrdersByUuid = new Map<string, unknown[]>()
     const breakevenAssignedTicket = new Map<string, number>()
     const breakevenExcludeByTradeId = new Map<string, Set<number>>()
-    /** Shared OpenedOrders snapshot for close/partial live-fast legs (one read per session). */
-    const mgmtLiveOrdersByUuid = new Map<string, unknown[]>()
     const prepareBreakevenTickets = async (): Promise<void> => {
       const byUuid = new Map<string, MgmtTradeRow[]>()
       for (const trade of eligibleTrades) {
@@ -1221,8 +1359,9 @@ export async function applyManagement(
       }))
     }
     const prepareMgmtLiveOrderSnapshots = async (): Promise<void> => {
-      if (!liveMgmtFast) return
-      if (action !== 'close' && action !== 'partial_profit') return
+      // Always snapshot before close so the broker straggler sweep can catch
+      // comment-less / naked orphans that were already open when Close all started.
+      if (action !== 'close' && !(liveMgmtFast && action === 'partial_profit')) return
       const byUuid = new Map<string, MgmtTradeRow[]>()
       for (const trade of eligibleTrades) {
         const broker = byBroker.get(trade.broker_account_id)
@@ -1240,6 +1379,14 @@ export async function applyManagement(
         const raw = (await api.openedOrders(u).catch(() => [])) ?? []
         mgmtLiveOrdersByUuid.set(u, raw)
       }))
+    }
+
+    const preCloseTicketsBySession = (): Map<string, Set<number>> => {
+      const out = new Map<string, Set<number>>()
+      for (const [uuid, raw] of mgmtLiveOrdersByUuid) {
+        out.set(uuid, ticketsFromOpenedOrdersSnapshot(raw))
+      }
+      return out
     }
 
     const processTrade = async (trade: MgmtTradeRow): Promise<void> => {
@@ -1327,14 +1474,26 @@ export async function applyManagement(
                 }
               }
             }
+          } else if (liveMgmtFast) {
+            // Ticket already resolved from the shared pre-close OpenedOrders
+            // snapshot — fire OrderCloseSafe and trust the ack (no per-leg readback).
+            if (signal.pipeline_ts) {
+              setPipelineTimestamp(signal.pipeline_ts, 'broker_request_started_at', Date.now())
+            }
+            const closeResult = await closeMarketPositionFast(api, uuid, effectiveTicket)
+            closeConfirmed = closeResult.confirmed
+            lastCloseReason = closeResult.reason
+            if (signal.pipeline_ts) {
+              setPipelineTimestamp(signal.pipeline_ts, 'broker_response_received_at', Date.now())
+            }
           } else {
-            const maxAttempts = liveMgmtFast ? 1 : 3
+            const maxAttempts = 3
             for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
               const closeResult = await closeWithVerification(
                 api,
                 uuid,
                 effectiveTicket,
-                mgmtCloseOpts(liveMgmtFast),
+                mgmtCloseOpts(false),
               )
               if (closeResult.ticket && closeResult.ticket !== effectiveTicket) {
                 ticketReconciledFrom = ticketReconciledFrom ?? effectiveTicket
@@ -1442,15 +1601,15 @@ export async function applyManagement(
           }
 
 
+          if (liveMgmtFast && signal.pipeline_ts) {
+            setPipelineTimestamp(signal.pipeline_ts, 'broker_request_started_at', Date.now())
+          }
           await api.orderClose(uuid, { ticket: effectiveTicket, lots: plan.closeVolume })
-          const postOrders = await api.openedOrders(uuid)
-          // The in-memory row can carry a stale captured ticket (the pre-read
-          // may have reconciled `effectiveTicket` without rewriting `trade`).
-          // Key the verification read on the ticket we just acted on, and keep
-          // the captured column present when it was present before: a
-          // captured-only row diverges (`broker_position_ticket` = position,
-          // `metaapi_order_id` = order ticket), so the persist must CAS on the
-          // column that actually holds `effectiveTicket`.
+          if (liveMgmtFast && signal.pipeline_ts) {
+            setPipelineTimestamp(signal.pipeline_ts, 'broker_response_received_at', Date.now())
+          }
+          // Live-fast: trust OrderCloseSafe ack + planned remaining volume.
+          // A mandatory post OpenedOrders read doubles per-leg RTT on large baskets.
           const postCloseTrade: LiveTradeIdentity = {
             ...trade,
             broker_position_ticket: trade.broker_position_ticket == null
@@ -1459,40 +1618,42 @@ export async function applyManagement(
             metaapi_order_id: String(effectiveTicket),
             lot_size: plan.expectedRemainingVolume,
           }
-          const postResolution = resolveCanonicalOpenPosition({
-            trade: postCloseTrade,
-            openedOrders: postOrders,
-          })
-          if (postResolution.status !== 'resolved') {
-            throw new Error(
-              `partial close reconciliation required: ${postResolution.status} (${postResolution.reason})`,
-            )
-
-          }
-          const observedRemaining = livePositionVolume(postResolution.row)
-          const verified = verifyPartialCloseReduction({
-            originalVolume,
-            requestedCloseVolume: plan.closeVolume,
-            observedRemainingVolume: observedRemaining ?? Number.NaN,
-            volumeStep: symbolParams.lotStep,
-          })
-          if (!verified.ok) throw new Error(verified.reason)
-
-          if (postResolution.replacement) {
-            const persisted = await persistCanonicalPositionTicket(
-              ctx.supabase,
-              postCloseTrade,
-              postResolution,
-              // The partial close was just verified against a fresh broker read
-              // and the volume reduction, so the remaining position is provably
-              // this trade's — an attribute match here is not a blind guess.
-              { allowAttributeMatch: true },
-            )
-            if (!persisted) {
-              throw new Error('partial close replacement ticket persistence failed')
+          let observedRemaining = plan.expectedRemainingVolume
+          if (!liveMgmtFast) {
+            const postOrders = await api.openedOrders(uuid)
+            const postResolution = resolveCanonicalOpenPosition({
+              trade: postCloseTrade,
+              openedOrders: postOrders,
+            })
+            if (postResolution.status !== 'resolved') {
+              throw new Error(
+                `partial close reconciliation required: ${postResolution.status} (${postResolution.reason})`,
+              )
             }
-            ticketReconciledFrom = ticketReconciledFrom ?? effectiveTicket
-            effectiveTicket = postResolution.ticket
+            observedRemaining = livePositionVolume(postResolution.row) ?? plan.expectedRemainingVolume
+            const verified = verifyPartialCloseReduction({
+              originalVolume,
+              requestedCloseVolume: plan.closeVolume,
+              observedRemainingVolume: observedRemaining ?? Number.NaN,
+              volumeStep: symbolParams.lotStep,
+            })
+            if (!verified.ok) throw new Error(verified.reason)
+            if (postResolution.replacement) {
+              const persisted = await persistCanonicalPositionTicket(
+                ctx.supabase,
+                postCloseTrade,
+                postResolution,
+                // The partial close was just verified against a fresh broker read
+                // and the volume reduction, so the remaining position is provably
+                // this trade's — an attribute match here is not a blind guess.
+                { allowAttributeMatch: true },
+              )
+              if (!persisted) {
+                throw new Error('partial close replacement ticket persistence failed')
+              }
+              ticketReconciledFrom = ticketReconciledFrom ?? effectiveTicket
+              effectiveTicket = postResolution.ticket
+            }
           }
           const { data: partialUpdated, error: partialUpdateError } = await ctx.supabase
             .from('trades')
@@ -1978,6 +2139,7 @@ export async function applyManagement(
         byBroker,
         cancelledPendingScopes,
         liveMgmtFast,
+        preCloseTicketsBySession: preCloseTicketsBySession(),
         onPendingCancelled: n => { legsTotal += n },
         onBrokerStragglersClosed: n => { legsTotal += n },
       })
@@ -2050,6 +2212,17 @@ export async function applyManagement(
             hasNewTp,
             parsedSl: effectiveSl,
             parsedTpLevels: effectiveTpLevels,
+            // Live Adjust / Set TP must honor the parsed levels, not channel memory
+            // (which also cost an extra DB round-trip per basket before first modify).
+            slFrom: 'parsed',
+            liveFast: liveMgmtFast,
+            prewarmedByUuid: modifyPrewarmByUuid.size ? modifyPrewarmByUuid : undefined,
+            onFirstBrokerSend: liveMgmtFast && signal.pipeline_ts
+              ? () => {
+                  const pts = signal.pipeline_ts!
+                  if (pts.t_first_broker_send == null) pts.t_first_broker_send = Date.now()
+                }
+              : undefined,
             // Inline broker re-read/verify is off by default — the v2 reconciler
             // (or v1 basket reconcile monitor) re-verifies broker drift, so this
             // synchronous per-leg snapshot check is redundant and previously caused
@@ -2316,8 +2489,8 @@ export async function applyManagement(
           brokers: [broker],
           channelDisplayName: channelMeta.commentSlug,
           channelUsername: null,
-          closeWithVerification: (a, u, ticket) =>
-            closeWithVerification(a, u, ticket, mgmtCloseOpts(liveMgmtFast)),
+          preCloseTicketsBySession: preCloseTicketsBySession(),
+          closeWithVerification: mgmtCloseFn(liveMgmtFast),
         })
         brokerClosed += one.closed
       }))
@@ -2592,7 +2765,7 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
         const ticket = Number(trade.broker_position_ticket ?? trade.metaapi_order_id)
         if (!Number.isFinite(ticket) || ticket <= 0) return 0
         try {
-          const closeResult = await closeWithVerification(api, uuid, ticket, mgmtCloseOpts(liveMgmtFast))
+          const closeResult = await mgmtCloseFn(liveMgmtFast)(api, uuid, ticket)
           if (!closeResult.confirmed) {
             throw new Error(closeResult.reason ?? 'cwe orderClose: ticket still open')
           }

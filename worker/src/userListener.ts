@@ -33,7 +33,6 @@ import type { SignalRow } from './tradeExecutor'
 import { enqueueParsedSignal } from './queue/signalQueuePublisher'
 import { signalQueueConfig } from './queue/signalQueueConfig'
 import {
-  pushParsedSignalToTradeWorker,
   pushParsedSignalToTradeWorkerAccept,
 } from './tradeSignalPush'
 import { persistListenerEvent } from './listenerEvents'
@@ -401,10 +400,19 @@ interface ChannelRow {
   id: string
   channel_id: string
   channel_username: string
+  display_name?: string | null
   signal_channel_id?: string | null
   last_seen_message_id: number | string | null
   last_seen_at?: string | null
   last_live_at?: string | null
+}
+
+function channelSourceDisplayName(row: ChannelRow): string {
+  const name = row.display_name?.trim()
+  if (name) return name
+  const username = row.channel_username?.trim().replace(/^@/, '')
+  if (username) return `@${username}`
+  return 'Telegram'
 }
 
 type Handler = (event: NewMessageEvent) => void
@@ -1340,7 +1348,7 @@ export class UserListener {
     }
     const { data: rows } = await this.supabase
       .from('telegram_channels')
-      .select('id, channel_id, channel_username, signal_channel_id, last_seen_message_id, last_seen_at, last_live_at')
+      .select('id, channel_id, channel_username, display_name, signal_channel_id, last_seen_message_id, last_seen_at, last_live_at')
       .eq('user_id', this.userId)
       .eq('is_active', true)
       .eq('source_kind', 'telegram')
@@ -1492,7 +1500,7 @@ export class UserListener {
   private async loadChannels(): Promise<Set<string>> {
     const { data } = await this.supabase
       .from('telegram_channels')
-      .select('id, channel_id, channel_username')
+      .select('id, channel_id, channel_username, display_name')
       .eq('user_id', this.userId)
       .eq('is_active', true)
       .eq('source_kind', 'telegram')
@@ -1517,7 +1525,7 @@ export class UserListener {
   ): Promise<ChannelRow | null> {
     const { data: rows, error } = await this.supabase
       .from('telegram_channels')
-      .select('id, channel_id, channel_username, last_seen_message_id')
+      .select('id, channel_id, channel_username, display_name, last_seen_message_id')
       .eq('user_id', this.userId)
       .eq('is_active', true)
       .eq('source_kind', 'telegram')
@@ -1684,7 +1692,7 @@ export class UserListener {
     const lookbackDays = Math.max(1, Math.min(90, Number(days || 30)))
     const { data: row, error } = await this.supabase
       .from('telegram_channels')
-      .select('id, channel_id, channel_username, last_seen_message_id')
+      .select('id, channel_id, channel_username, display_name, last_seen_message_id')
       .eq('user_id', this.userId)
       .eq('id', channelRowId)
       .eq('is_active', true)
@@ -1714,7 +1722,7 @@ export class UserListener {
 
     const { data: row, error } = await this.supabase
       .from('telegram_channels')
-      .select('id, channel_id, channel_username, last_seen_message_id')
+      .select('id, channel_id, channel_username, display_name, last_seen_message_id')
       .eq('user_id', this.userId)
       .eq('id', channelRowId)
       .eq('is_active', true)
@@ -1769,7 +1777,7 @@ export class UserListener {
 
     const { data: row, error } = await this.supabase
       .from('telegram_channels')
-      .select('id, channel_id, channel_username, last_seen_message_id')
+      .select('id, channel_id, channel_username, display_name, last_seen_message_id')
       .eq('user_id', this.userId)
       .eq('id', channelRowId)
       .eq('is_active', true)
@@ -1961,8 +1969,10 @@ export class UserListener {
   // ── live message handling ─────────────────────────────────────────────
 
   private async handleMessage(event: NewMessageEvent) {
-    this.lastEventAt = Date.now()
-    this.lastLiveMessageAt = Date.now()
+    // Stamp before any awaited chat/channel lookup — otherwise telegram_receipt
+    // includes DB RTT and understates Telegram delivery / overstates listener work.
+    const messageReceivedAt = Date.now()
+    this.lastEventAt = messageReceivedAt
     incMetric('telegram_live_events')
 
     const message = event.message
@@ -1976,6 +1986,9 @@ export class UserListener {
       chatIdVariants.some(v => this.monitoredChannels.has(v)) ||
       (!!chatUsername && this.monitoredChannels.has(chatUsername))
     if (!isMonitored) return
+
+    // Only monitored chats pause catch-up — unrelated chats must not extend the deaf window.
+    this.lastLiveMessageAt = messageReceivedAt
 
     console.log(
       `[userListener] message candidate user=${this.userId} chatId=${chatId} variants=${chatIdVariants.join(',')} username=${chatUsername || '-'} msgId=${String(message.id)}`,
@@ -2021,7 +2034,7 @@ export class UserListener {
         replyTo: message.replyTo,
         date: (message as MessageLike & { date?: number | Date | string }).date,
       },
-      { source: 'live' },
+      { source: 'live', receivedAt: messageReceivedAt },
     )
     void this.bumpLastLive(channelRow.id)
   }
@@ -2758,7 +2771,7 @@ export class UserListener {
   private async logSignal(
     channelRow: ChannelRow,
     message: MessageLike & { date?: number | Date | string },
-    opts?: { source?: 'live' | 'catchup' },
+    opts?: { source?: 'live' | 'catchup'; receivedAt?: number },
   ): Promise<boolean> {
     const isCatchUp = opts?.source === 'catchup'
     if (isCatchUp) {
@@ -2778,31 +2791,16 @@ export class UserListener {
   private async logSignalInner(
     channelRow: ChannelRow,
     message: MessageLike & { date?: number | Date | string },
-    opts?: { source?: 'live' | 'catchup' },
+    opts?: { source?: 'live' | 'catchup'; receivedAt?: number },
   ): Promise<boolean> {
     if (await this.skipMessageWhileCopierPaused(channelRow, String(message.id))) return false
-
-    const signalChannelId = await resolveSignalChannelIdForRow(this.supabase, channelRow)
-    if (signalChannelId) {
-      channelRow.signal_channel_id = signalChannelId
-      if (await shouldSkipPassiveChannelIngest(
-        this.supabase,
-        this.userId,
-        signalChannelId,
-        this.passiveSignalChannelIds,
-      )) {
-        incMetric('channel_passive_ingest_skipped')
-        return false
-      }
-    }
 
     const messageId = String(message.id)
     const rawMessage = telegramMessageText(message)
     const isReply = !!message.replyTo
     const messageEpochSec = this.messageEpochSec(message)
-    // Stamp listener arrival as early as possible so telegram_to_listener_ms
-    // reflects only Telegram delivery time (not our dedup/parent lookup DB calls).
-    const tListenerReceived = Date.now()
+    // Prefer the handleMessage stamp (before chat/channel awaits); fall back for catch-up.
+    const tListenerReceived = opts?.receivedAt ?? Date.now()
 
     if (opts?.source === 'catchup' && messageEpochSec > 0) {
       const ageMs = Date.now() - messageEpochSec * 1000
@@ -2816,12 +2814,38 @@ export class UserListener {
       }
     }
     const replyToMessageId = extractReplyToMsgId(message.replyTo)
-    let parentSignalId: string | null = null
-    if (replyToMessageId) {
-      parentSignalId = await this.resolveParentSignalIdForReply(channelRow.id, replyToMessageId)
+
+    // Parallelize the independent DB lookups that previously stacked ~0.6–0.9s
+    // between t_listener_received and message_normalized_at on live Adjust/Close.
+    // `parentSignalId` is `let` — provider-number linking may fill it after parse.
+    const [signalChannelId, resolvedParentSignalId, heuristicCtx, dupHead] = await Promise.all([
+      resolveSignalChannelIdForRow(this.supabase, channelRow),
+      replyToMessageId
+        ? this.resolveParentSignalIdForReply(channelRow.id, replyToMessageId)
+        : Promise.resolve(null as string | null),
+      getChannelParseContext(this.supabase, channelRow.id),
+      this.supabase
+        .from('signals')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', this.userId)
+        .eq('channel_id', channelRow.id)
+        .eq('telegram_message_id', messageId),
+    ])
+    let parentSignalId: string | null = resolvedParentSignalId
+
+    if (signalChannelId) {
+      channelRow.signal_channel_id = signalChannelId
+      if (await shouldSkipPassiveChannelIngest(
+        this.supabase,
+        this.userId,
+        signalChannelId,
+        this.passiveSignalChannelIds,
+      )) {
+        incMetric('channel_passive_ingest_skipped')
+        return false
+      }
     }
 
-    const heuristicCtx = await getChannelParseContext(this.supabase, channelRow.id)
     if (!looksLikeTradingSignal(rawMessage, isReply, heuristicCtx)) {
       console.log(
         `[userListener] skipped non-signal user=${this.userId} channelRow=${channelRow.id} messageId=${messageId}`,
@@ -2838,13 +2862,7 @@ export class UserListener {
     }
 
     const dedupKey = `${channelRow.id}:${messageId}`
-
-    const { count: dupCount } = await this.supabase
-      .from('signals')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', this.userId)
-      .eq('channel_id', channelRow.id)
-      .eq('telegram_message_id', messageId)
+    const dupCount = dupHead.count
     if ((dupCount ?? 0) > 0) {
       const revised = await this.tryApplyMessageRevision({
         channelRow,
@@ -2873,6 +2891,8 @@ export class UserListener {
 
     const signalId = randomUUID()
     const pipelineTs: PipelineTimestamps = {}
+    const ingestPath = opts?.source === 'catchup' ? 'catchup' : 'live'
+    pipelineTs.ingest_path = ingestPath
     if (messageEpochSec > 0) {
       setPipelineTimestamp(pipelineTs, 'telegram_source_message_at', messageEpochSec * 1000)
     }
@@ -2883,13 +2903,13 @@ export class UserListener {
       signalId,
       telegramMessageId: messageId,
       channelId: channelRow.id,
-      dispatchSource: opts?.source ?? 'live',
+      dispatchSource: ingestPath,
     })
     emitPipelineEvent({
       event: 'signal_received',
       correlation,
       timestamps: pipelineTs,
-      path: opts?.source ?? 'live',
+      path: ingestPath,
     })
 
     let parseResult: Awaited<ReturnType<typeof parseChannelMessageSync>>
@@ -3276,13 +3296,9 @@ export class UserListener {
         && (queueCfg.pushFallbackOnQueueFail || !queueResult || queueResult.skipped)
       let httpPushOk: boolean | null = null
       if (shouldHttpPush) {
-        const action = parsedAction(dispatchRow.parsed_data)
-        if (isManagementAction(action)) {
-          httpPushOk = await pushParsedSignalToTradeWorkerAccept(dispatchRow)
-        } else {
-          pushParsedSignalToTradeWorker(dispatchRow)
-          httpPushOk = true
-        }
+        // Await accept for entry AND management — fire-and-forget lied about success
+        // and left silent 401/wrong-shard failures to the multi-second DB sweep.
+        httpPushOk = await pushParsedSignalToTradeWorkerAccept(dispatchRow)
       }
       void writeExecutionLog(this.supabase, {
         user_id: this.userId,
@@ -3298,7 +3314,8 @@ export class UserListener {
           queue_error: queueResult?.error ?? null,
           http_push_fallback: shouldHttpPush,
           http_push_ok: httpPushOk,
-          mgmt_push_accept_only: isManagementAction(parsedAction(dispatchRow.parsed_data)),
+          mgmt_push_accept_only: false,
+          entry_push_await_accept: true,
           runs_trade: workerConfig.runsTrade,
           runs_listener: workerConfig.runsListener,
           persist_before_dispatch: opts?.persistBeforeDispatch === true,
@@ -3334,6 +3351,8 @@ export class UserListener {
         id: signalId,
         user_id: this.userId,
         channel_id: channelRow.id,
+        source_kind: 'telegram',
+        source_display_name: channelSourceDisplayName(channelRow),
         raw_message: rawMessage,
         raw_image_url: null,
         status: parseResult.status,
@@ -3385,6 +3404,8 @@ export class UserListener {
         id: signalId,
         user_id: this.userId,
         channel_id: channelRowId,
+        source_kind: 'telegram',
+        source_display_name: 'Telegram',
         raw_message: rawMessage,
         raw_image_url: null,
         status: 'pending',
@@ -3599,7 +3620,7 @@ export class UserListener {
           : this.fastPollRows.find(r => r.id === channelRowId)
             ?? (await this.supabase
               .from('telegram_channels')
-              .select('id, channel_id, channel_username, last_seen_message_id, last_seen_at, last_live_at')
+              .select('id, channel_id, channel_username, display_name, last_seen_message_id, last_seen_at, last_live_at')
               .eq('id', channelRowId)
               .maybeSingle()).data as ChannelRow | null
         if (!row) continue
@@ -3854,7 +3875,7 @@ export class UserListener {
   private async advanceAllChannelsLastSeenToLatest(): Promise<void> {
     const { data: rows } = await this.supabase
       .from('telegram_channels')
-      .select('id, channel_id, channel_username, last_seen_message_id')
+      .select('id, channel_id, channel_username, display_name, last_seen_message_id')
       .eq('user_id', this.userId)
       .eq('is_active', true)
       .eq('source_kind', 'telegram')
@@ -3893,7 +3914,7 @@ export class UserListener {
     if (Date.now() < this.pollBackoffUntil) return
     const { data: rows } = await this.supabase
       .from('telegram_channels')
-      .select('id, channel_id, channel_username')
+      .select('id, channel_id, channel_username, display_name')
       .eq('user_id', this.userId)
       .eq('is_active', true)
       .eq('source_kind', 'telegram')
@@ -3967,7 +3988,7 @@ export class UserListener {
     try {
       const { data: rows } = await this.supabase
         .from('telegram_channels')
-        .select('id, channel_id, channel_username, last_seen_message_id')
+        .select('id, channel_id, channel_username, display_name, last_seen_message_id')
         .eq('user_id', this.userId)
         .eq('is_active', true)
         .eq('source_kind', 'telegram')
@@ -3989,7 +4010,7 @@ export class UserListener {
     try {
       const { data: rows } = await this.supabase
         .from('telegram_channels')
-        .select('id, channel_id, channel_username, last_seen_message_id')
+        .select('id, channel_id, channel_username, display_name, last_seen_message_id')
         .eq('user_id', this.userId)
         .eq('is_active', true)
         .eq('source_kind', 'telegram')
@@ -4010,7 +4031,7 @@ export class UserListener {
     const floodAtCycleStart = this.floodErrorsThisCycle
     const { data: rows } = await this.supabase
       .from('telegram_channels')
-      .select('id, channel_id, channel_username, signal_channel_id, last_seen_message_id, last_seen_at, last_live_at')
+      .select('id, channel_id, channel_username, display_name, signal_channel_id, last_seen_message_id, last_seen_at, last_live_at')
       .eq('user_id', this.userId)
       .eq('is_active', true)
       .eq('source_kind', 'telegram')
@@ -5074,7 +5095,7 @@ export class UserListener {
       if (now - this.fastPollRowsAt > SAFETY_POLL_INTERVAL_MS) {
         const { data } = await this.supabase
           .from('telegram_channels')
-          .select('id, channel_id, channel_username, signal_channel_id, last_seen_message_id, last_seen_at, last_live_at')
+          .select('id, channel_id, channel_username, display_name, signal_channel_id, last_seen_message_id, last_seen_at, last_live_at')
           .eq('user_id', this.userId)
           .eq('is_active', true)
           .eq('source_kind', 'telegram')

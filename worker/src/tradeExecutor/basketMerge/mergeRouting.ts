@@ -182,12 +182,15 @@ export async function tryParameterFollowUpMergeModifyOnly(ctx: TradeExecutorCont
     commentPrefix: string
     sameSignalRefresh?: boolean
     liveMgmtFast?: boolean
+    /** Live entry: one-shot anchor lookup — do not burn 3s waiting for a teaser. */
+    liveEntryFast?: boolean
   }): Promise<MergeOutcome> {
     const {
       signal, parsed, broker, channelKeywords, baseLot, params, symbol, uuid,
       strictEntryPrefetch, commentPrefix,
     } = args
     const sameSignalRefresh = args.sameSignalRefresh === true
+    const liveEntryFast = args.liveEntryFast === true
     const manual = (broker.manual_settings ?? {}) as ManualSettings
     const revisionSafeSkip = (): MergeOutcome => revisionRefreshSafeSkipOutcome()
     if (parsedHasReEnterIntent(parsed)) return sameSignalRefresh ? revisionSafeSkip() : { handled: false }
@@ -242,6 +245,8 @@ export async function tryParameterFollowUpMergeModifyOnly(ctx: TradeExecutorCont
       }, {
         currentSignalId: signal.id,
         currentSignalCreatedAt: signal.created_at ?? null,
+        // Bare live-fast entries must not wait 3s for a teaser that is not coming.
+        retryMs: liveEntryFast ? 0 : undefined,
       })
     }
     if (!anchor) {
@@ -264,8 +269,10 @@ export async function tryParameterFollowUpMergeModifyOnly(ctx: TradeExecutorCont
       return revisionRefreshWithoutOpenBasketOutcome(sameSignalRefresh)
     }
 
-    const openLegDeadline = Date.now() + 3_000
-    while (Date.now() < openLegDeadline) {
+    // Live-fast: single open-leg probe. Queued path may briefly wait for the
+    // entry claim holder's trades row to land before modify-only refresh.
+    const openLegDeadline = Date.now() + (liveEntryFast ? 0 : 3_000)
+    while (Date.now() <= openLegDeadline) {
       const { count } = await ctx.supabase
         .from('trades')
         .select('id', { count: 'exact', head: true })
@@ -275,6 +282,7 @@ export async function tryParameterFollowUpMergeModifyOnly(ctx: TradeExecutorCont
         .eq('status', 'open')
         .eq('direction', direction)
       if ((count ?? 0) > 0) break
+      if (liveEntryFast || Date.now() >= openLegDeadline) break
       await new Promise(resolve => setTimeout(resolve, 150))
     }
 
@@ -373,7 +381,8 @@ export async function tryParameterFollowUpMergeModifyOnly(ctx: TradeExecutorCont
       `[tradeExecutor] merge_anchor_selected signal=${signal.id} broker=${broker.id}`
       + ` anchor=${anchor.anchorSignalId} symbol=${symbol} direction=${direction}`,
     )
-    await writeExecutionLog(ctx.supabase, {
+    // Fire-and-forget on the live edit path — awaiting this log added 50–150ms.
+    void writeExecutionLog(ctx.supabase, {
       user_id: signal.user_id,
       signal_id: signal.id,
       broker_account_id: broker.id,
@@ -387,18 +396,22 @@ export async function tryParameterFollowUpMergeModifyOnly(ctx: TradeExecutorCont
         newest_opened_at: anchor.newestOpenedAt,
       } as unknown as Record<string, unknown>,
     })
-    const ghostCheck = await reconcileGhostBasketLegs(ctx, {
-      signal,
-      broker,
-      uuid,
-      anchorSignalId: anchor.anchorSignalId,
-      symbol,
-      familyTrades: anchorFamily,
-    })
-    if (ghostCheck.isGhostBasket) {
-      return { handled: false }
+    // Live message-revision SL/TP refresh just opened these legs — skip a full
+    // OpenedOrders ghost sweep (often multi-second under MTAPI load).
+    const skipGhostReconcile = args.liveMgmtFast === true && sameSignalRefresh
+    if (!skipGhostReconcile) {
+      const ghostCheck = await reconcileGhostBasketLegs(ctx, {
+        signal,
+        broker,
+        uuid,
+        anchorSignalId: anchor.anchorSignalId,
+        symbol,
+        familyTrades: anchorFamily,
+      })
+      if (ghostCheck.isGhostBasket) {
+        return { handled: false }
+      }
     }
-
 
     const outcome = await applyBasketSlTpRefresh(ctx, {
       signal,
@@ -596,11 +609,14 @@ export async function tryTeaserCompletionMerge(ctx: TradeExecutorContext, args: 
     uuid: string
     strictEntryPrefetch: { bid: number; ask: number } | null
     commentPrefix: string
+    /** Live entry: one-shot anchor lookup — skip the 3s teaser wait. */
+    liveEntryFast?: boolean
   }): Promise<MergeOutcome> {
     const {
       signal, parsed, broker, channelKeywords, baseLot, params, symbol, uuid,
       strictEntryPrefetch, commentPrefix,
     } = args
+    const liveEntryFast = args.liveEntryFast === true
     const manual = (broker.manual_settings ?? {}) as ManualSettings
     if (!parsedSignalHasExplicitStops(parsed)) return { handled: false }
     if (!messageHasMarketNowIntent(String(parsed.raw_instruction ?? ''))) return { handled: false }
@@ -633,6 +649,7 @@ export async function tryTeaserCompletionMerge(ctx: TradeExecutorContext, args: 
       {
         currentSignalId: signal.id,
         currentSignalCreatedAt: signal.created_at ?? null,
+        retryMs: liveEntryFast ? 0 : undefined,
       },
     )
     if (!anchor) return { handled: false }

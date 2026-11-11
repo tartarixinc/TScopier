@@ -22,8 +22,6 @@ import { buildBasketRefreshComment } from './tradeComment'
 import { TRADE_CLOSE_REASON } from './tradeCloseReasons'
 import { applyCloseUpdate } from './tradeCloseUpdate'
 import { writeExecutionLog } from './observability/executionLog'
-import { restampBasketTargetsFromLegEntries } from './manualPlanning/manualStops'
-import type { ManualSettings } from './manualPlanning/types'
 export type BasketSymbolParams = {
   digits?: number
   point: number
@@ -143,7 +141,7 @@ export function roundBasketLot(volume: number, params: BasketSymbolParams | null
   return Math.max(min, +rounded.toFixed(2))
 }
 
-function ingestBrokerTickets(orders: unknown[]): Set<number> {
+export function ingestBrokerTickets(orders: unknown[]): Set<number> {
   const tickets = new Set<number>()
   for (const raw of orders ?? []) {
     if (!raw || typeof raw !== 'object') continue
@@ -345,17 +343,6 @@ export async function runBasketLegModifies(args: {
    * ladder level, so the leg lands on the level the customer chose.
    */
   singleTpTarget?: `tp${number}` | 'farthest' | null
-  /**
-   * When Override SL/TP pips are enabled, restamp shared absolute targets onto
-   * each leg's fill before OrderModify (stops fighting post-fill restamp).
-   */
-  manual?: Pick<
-    ManualSettings,
-    | 'use_predefined_sl_pips'
-    | 'predefined_sl_pips'
-    | 'use_predefined_tp_pips'
-    | 'predefined_tp_pips'
-  > | null
 }): Promise<RunBasketLegModifyResult> {
   const {
     supabase, api, uuid, symbol, direction, baseLot, params,
@@ -411,25 +398,6 @@ export async function runBasketLegModifies(args: {
     }) as PerLegStopTarget[]
   }
 
-  // Override pip mode: restamp shared plan prices onto each fill. Skip when this
-  // pass is an explicit channel/user Adjust (absolute prices must win).
-  if (
-    !explicitChannelTargets
-    && args.manual
-    && (args.manual.use_predefined_sl_pips === true || args.manual.use_predefined_tp_pips === true)
-  ) {
-    perLegTargets = restampBasketTargetsFromLegEntries({
-      manual: args.manual,
-      familyTrades,
-      targets: perLegTargets,
-      direction,
-      symbol,
-      point: params?.point,
-      digits: params?.digits,
-      contractSize: params?.contractSize ?? null,
-    })
-  }
-
   const summary: BasketLegModifySummary = {
     openLegs: familyTrades.length,
     attempted: 0,
@@ -456,6 +424,16 @@ export async function runBasketLegModifies(args: {
     ...legArgs,
     internalRebalance: internalRebalance === true,
   })
+
+  // One shared quote for the whole basket — never N× GetQuote when legs run in parallel.
+  let sharedQuotePrefetch = strictEntryPrefetch
+  if (!sharedQuotePrefetch) {
+    try {
+      sharedQuotePrefetch = await api.quote(uuid, symbol)
+    } catch {
+      /* legs fall back to entry price */
+    }
+  }
 
   type LegOutcome = {
     modifiedId?: string
@@ -531,7 +509,7 @@ export async function runBasketLegModifies(args: {
     let ref = Number(tr.entry_price) || 0
     let marketRef = 0
     try {
-      const q = strictEntryPrefetch ?? await api.quote(uuid, symbol)
+      const q = sharedQuotePrefetch ?? await api.quote(uuid, symbol)
       const quote = direction === 'buy' ? q.bid : q.ask
       if (Number.isFinite(quote) && quote > 0) {
         marketRef = quote
@@ -542,7 +520,7 @@ export async function runBasketLegModifies(args: {
     }
     if (ref <= 0) {
       try {
-        const q = strictEntryPrefetch ?? await api.quote(uuid, symbol)
+        const q = sharedQuotePrefetch ?? await api.quote(uuid, symbol)
         const quote = direction === 'buy' ? q.bid : q.ask
         if (Number.isFinite(quote) && quote > 0) marketRef = quote
         ref = direction === 'buy' ? q.ask : q.bid
@@ -1005,13 +983,6 @@ export async function applyBasketLegSync(args: {
   singleTpTarget?: `tp${number}` | 'farthest' | null
   /** Default true. When false, caller owns reconcile-job lifecycle. */
   enqueueReconcileOnFailure?: boolean
-  manual?: Pick<
-    ManualSettings,
-    | 'use_predefined_sl_pips'
-    | 'predefined_sl_pips'
-    | 'use_predefined_tp_pips'
-    | 'predefined_tp_pips'
-  > | null
 }): Promise<ApplyBasketLegSyncResult> {
   const {
     supabase, api, uuid, symbol, direction, baseLot, params,
@@ -1087,7 +1058,6 @@ export async function applyBasketLegSync(args: {
       orderCommentsEnabled,
       explicitChannelTargets,
       singleTpTarget,
-      manual: args.manual,
     })
 
     for (const id of pass.modifiedTradeIds) modifiedTradeIds.add(id)

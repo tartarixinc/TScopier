@@ -18,6 +18,7 @@ import { TscopierLogo } from '../ui/TscopierLogo'
 import { DirectionalIcon } from '../ui/DirectionalIcon'
 import { useLocale, useT } from '../../context/LocaleContext'
 import { getAppRouteIcon } from '../../lib/appNavIcons'
+import { APP_CARD } from '../../lib/appSurface'
 import { interpolate } from '../../i18n/interpolate'
 import { formatHeroLiveMoney, useLiveMoneyTicker } from './useLiveMoneyTicker'
 import type {
@@ -37,11 +38,10 @@ const COPIER_LOG_GRID_LTR =
 const COPIER_LOG_GRID_RTL =
   'grid grid-cols-[6.5rem_minmax(0,1fr)_minmax(3.5rem,0.85fr)_minmax(4.25rem,auto)_minmax(6rem,auto)] gap-x-2 items-center'
 
-const DASHBOARD_CARD =
-  'rounded-2xl border border-neutral-200/65 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-neutral-800/55 dark:bg-neutral-950 dark:shadow-none'
+const DASHBOARD_CARD = APP_CARD
 
 const SECTION_LINK =
-  'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-neutral-900 dark:text-neutral-50'
+  'inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-neutral-600 dark:text-neutral-300'
 
 function valueToneClass(tone: LandingBacktestPipsTone): string {
   if (tone === 'good') return 'text-green-500 dark:text-green-400'
@@ -220,19 +220,20 @@ export function HeroDashboardPreview() {
       items: [
         { to: '/dashboard', label: t.nav.items.dashboard, active: true },
         { to: '/brokers', label: t.nav.items.brokers, active: false },
-        { to: '/mirror-trading', label: t.nav.items.mirrorTrading, active: false },
-        { to: '/social-trading', label: t.nav.items.socialTrading, active: false },
         { to: '/account-trades', label: t.nav.items.trades, active: false, openTag: openTradeCount > 0 },
+        { to: '/manage-signals', label: t.nav.items.signalHistory, active: false },
+        { to: '/activities', label: t.nav.items.management, active: false },
+        { to: '/copier-logs', label: t.nav.items.copierLogs, active: false },
+        { to: '/reported-trades', label: t.nav.items.reportedTrades, active: false },
       ],
     },
     {
-      label: t.nav.sections.signals,
+      label: t.nav.sections.copy,
       items: [
+        { to: '/mirror-trading', label: t.nav.items.mirrorTrading, active: false },
+        { to: '/social-trading', label: t.nav.items.socialTrading, active: false },
         { to: '/channels', label: t.nav.items.channels, active: false },
         { to: '/backtest', label: t.nav.items.backtest, active: false },
-        { to: '/activities', label: t.nav.items.management, active: false },
-        { to: '/copier-logs', label: t.nav.items.copierLogs, active: false },
-        { to: '/manage-signals', label: t.nav.items.signalHistory, active: false },
         { to: '/performance', label: t.nav.items.performance, active: false },
       ],
     },
@@ -248,7 +249,6 @@ export function HeroDashboardPreview() {
       items: [
         { to: '/billing', label: t.nav.userMenu.subscriptionBilling, active: false },
         { to: '/affiliate-program', label: t.nav.userMenu.affiliateProgram, active: false },
-        { to: '/wallet', label: t.nav.userMenu.wallet, active: false },
       ],
     },
   ]

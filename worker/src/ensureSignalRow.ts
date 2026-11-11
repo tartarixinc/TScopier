@@ -13,6 +13,8 @@ export type EnsureSignalRowArgs = {
   id: string
   user_id: string
   channel_id?: string | null
+  source_kind?: 'telegram' | 'tradingview' | 'discord' | 'whatsapp' | null
+  source_display_name?: string | null
   raw_message?: string | null
   status?: string
   parsed_data?: Record<string, unknown> | null
@@ -39,6 +41,18 @@ export type EnsureSignalRowResult = {
   existingSignalId?: string
 }
 
+function resolveSourceKind(args: EnsureSignalRowArgs): string | null {
+  if (args.source_kind) return args.source_kind
+  const fromParsed = args.parsed_data?.signal_source
+  if (typeof fromParsed === 'string') {
+    const kind = fromParsed.trim().toLowerCase()
+    if (kind === 'telegram' || kind === 'tradingview' || kind === 'discord' || kind === 'whatsapp') {
+      return kind
+    }
+  }
+  return args.channel_id ? 'telegram' : null
+}
+
 function buildSignalRowPatch(args: EnsureSignalRowArgs): Record<string, unknown> {
   const patch: Record<string, unknown> = {
     id: args.id,
@@ -63,6 +77,10 @@ function buildSignalRowPatch(args: EnsureSignalRowArgs): Record<string, unknown>
   if (args.pipeline_ts) {
     patch.pipeline_ts = args.pipeline_ts
   }
+  const sourceKind = resolveSourceKind(args)
+  if (sourceKind) patch.source_kind = sourceKind
+  const displayName = args.source_display_name?.trim()
+  if (displayName) patch.source_display_name = displayName
   return patch
 }
 

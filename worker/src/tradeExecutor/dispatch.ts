@@ -142,6 +142,12 @@ export function shouldUseMgmtFastPath(row: SignalRow, source?: string): boolean 
   }
   const action = parsedAction(parsed)
   if (isManagementAction(action)) return true
+  // Telegram edits keep action=buy/sell; any edit carrying SL/TP must refresh the
+  // open basket on the mgmt fast path (even when market-now wording would make
+  // shouldRouteAsBasketParameterRefresh false for a brand-new entry).
+  if (source === MESSAGE_REVISION_DISPATCH_SOURCE && parsedHasSlOrTp(parsed as ParsedSignal)) {
+    return true
+  }
   if (
     source === MESSAGE_REVISION_DISPATCH_SOURCE
     && shouldRouteAsBasketParameterRefresh(parsed)
@@ -170,6 +176,14 @@ export function isLiveMgmtFast(
   }
   const action = parsedAction(parsed)
   if (isManagementAction(action)) return true
+  // Message revisions with stops always run parallel OrderModify (edit SL/TP).
+  if (
+    opts.dispatchSource === MESSAGE_REVISION_DISPATCH_SOURCE
+    && parsed
+    && parsedHasSlOrTp(parsed as ParsedSignal)
+  ) {
+    return true
+  }
   // Parameter-refresh entries (teaser completion: zone + market-now + SL/TP, and
   // SL/TP follow-ups) route to merge-modify, so run their leg modifies on the fast
   // (parallel) path regardless of dispatch source — not just message revisions.
@@ -213,8 +227,14 @@ export function isTradingViewSignalSource(...hints: Array<string | null | undefi
 export async function isTradingViewSourceChannel(
   supabase: TradeExecutorContext['supabase'],
   channelId: string | null,
+  sourceKindHint?: string | null,
 ): Promise<boolean> {
   if (!channelId) return false
+  if (sourceKindHint != null && String(sourceKindHint).trim() !== '') {
+    const value = isNonTelegramSignalSource(sourceKindHint)
+    tradingViewSourceCache.set(channelId.toLowerCase(), { at: Date.now(), value })
+    return value
+  }
   const key = channelId.toLowerCase()
   const hit = tradingViewSourceCache.get(key)
   if (hit && Date.now() - hit.at < 5 * 60_000) return hit.value
@@ -234,8 +254,12 @@ export async function isTradingViewSourceChannel(
 export async function isTradingViewChannelSource(
   supabase: TradeExecutorContext['supabase'],
   channelId: string | null,
+  sourceKindHint?: string | null,
 ): Promise<boolean> {
   if (!channelId) return false
+  if (sourceKindHint != null && String(sourceKindHint).trim() !== '') {
+    return isTradingViewSignalSource(sourceKindHint)
+  }
   const { data, error } = await supabase
     .from('telegram_channels')
     .select('source_kind')
@@ -548,34 +572,41 @@ export async function handleSignal(ctx: TradeExecutorContext,
       )
     }
     // Defense in depth: guarantee signals row exists before OrderSend / post-fill FKs.
-    // raw_message is preserved from any existing row (ensureSignalRow ignores empty
-    // values) so listener-persisted Telegram text survives dispatch upserts.
-    const ensured = await ensureSignalRow(ctx.supabase, {
-      id: row.id,
-      user_id: row.user_id,
-      channel_id: row.channel_id,
-      status: row.status || 'parsed',
-      parsed_data: (row.parsed_data ?? null) as Record<string, unknown> | null,
-      telegram_message_id: row.telegram_message_id ?? null,
-      reply_to_message_id: row.reply_to_message_id ?? null,
-      parent_signal_id: row.parent_signal_id,
-      is_modification: row.is_modification,
-      pipeline_ts: row.pipeline_ts as Record<string, unknown> | undefined,
-    })
-    if (ensured.duplicate && ensured.existingSignalId) {
-      // Another signal owns this telegram message — a duplicate dispatch that
-      // must not execute (double-executes management/entry actions). The owner
-      // signal is already being handled by the executor.
-      console.warn(
-        `[tradeExecutor] duplicate dispatch skipped signal=${row.id} existing=${ensured.existingSignalId}`
-        + ` user=${row.user_id} message=${row.telegram_message_id ?? 'n/a'}`,
-      )
-      return
-    }
-    if (!ensured.ok) {
-      console.error(
-        `[tradeExecutor] ensureSignalRow before handle failed signal=${row.id}: ${ensured.error ?? 'unknown'}`,
-      )
+    // Skip the second upsert when the listener already stamped persist-complete —
+    // that round trip was ~180ms of pure latency on the hot path.
+    const persistDoneAt = Number(
+      (row.pipeline_ts as { signal_persist_completed_at?: number } | undefined)
+        ?.signal_persist_completed_at,
+    )
+    const skipEnsure = Number.isFinite(persistDoneAt) && persistDoneAt > 0
+    if (!skipEnsure) {
+      const ensured = await ensureSignalRow(ctx.supabase, {
+        id: row.id,
+        user_id: row.user_id,
+        channel_id: row.channel_id,
+        status: row.status || 'parsed',
+        parsed_data: (row.parsed_data ?? null) as Record<string, unknown> | null,
+        telegram_message_id: row.telegram_message_id ?? null,
+        reply_to_message_id: row.reply_to_message_id ?? null,
+        parent_signal_id: row.parent_signal_id,
+        is_modification: row.is_modification,
+        pipeline_ts: row.pipeline_ts as Record<string, unknown> | undefined,
+      })
+      if (ensured.duplicate && ensured.existingSignalId) {
+        // Another signal owns this telegram message — a duplicate dispatch that
+        // must not execute (double-executes management/entry actions). The owner
+        // signal is already being handled by the executor.
+        console.warn(
+          `[tradeExecutor] duplicate dispatch skipped signal=${row.id} existing=${ensured.existingSignalId}`
+          + ` user=${row.user_id} message=${row.telegram_message_id ?? 'n/a'}`,
+        )
+        return
+      }
+      if (!ensured.ok) {
+        console.error(
+          `[tradeExecutor] ensureSignalRow before handle failed signal=${row.id}: ${ensured.error ?? 'unknown'}`,
+        )
+      }
     }
     if (!ctx.claimSignalExecution(row.id)) {
       emitPipelineEvent({
@@ -648,13 +679,18 @@ export async function handleSignal(ctx: TradeExecutorContext,
       let userSub: Awaited<ReturnType<typeof loadCachedUserSubscription>>
       let isAdmin: boolean
       let extensionEndMs: number | null = null
+      const channelMetaEarly = channelMetaPromise ? await channelMetaPromise : null
       const nonTelegramSource = isNonTelegramSignalSource(
         opts?.dispatchSource,
         row.dispatch_source,
         typeof (row.parsed_data as { signal_source?: unknown } | null)?.signal_source === 'string'
           ? String((row.parsed_data as { signal_source?: unknown }).signal_source)
           : null,
-      ) || await isTradingViewSourceChannel(ctx.supabase, row.channel_id)
+      ) || await isTradingViewSourceChannel(
+        ctx.supabase,
+        row.channel_id,
+        channelMetaEarly?.sourceKind,
+      )
       if (
         !nonTelegramSource
         && (liveFast || liveMgmtFast)
@@ -764,7 +800,11 @@ export async function handleSignal(ctx: TradeExecutorContext,
         typeof (parsed as { signal_source?: unknown }).signal_source === 'string'
           ? String((parsed as { signal_source?: unknown }).signal_source)
           : null,
-      ) || await isTradingViewChannelSource(ctx.supabase, row.channel_id)
+      ) || await isTradingViewChannelSource(
+        ctx.supabase,
+        row.channel_id,
+        channelMetaEarly?.sourceKind,
+      )
       if (tradingViewSource) {
         if ((action === 'buy' || action === 'sell') && !String(parsed.symbol ?? '').trim()) {
           await ctx.logDispatchSkipped(row, 'symbol_required')
@@ -1327,6 +1367,18 @@ export async function handleSignal(ctx: TradeExecutorContext,
         path: liveFast ? 'live_fast' : liveMgmtFast ? 'management_fast' : 'queued',
         extra: summaryExtra,
       })
+      // Durable SLO stamps — pipeline_summary logs are pruned; keep worker stamps on the row.
+      if (row.pipeline_ts && Object.keys(row.pipeline_ts).length > 0) {
+        void ctx.supabase
+          .from('signals')
+          .update({ pipeline_ts: row.pipeline_ts as Record<string, unknown> })
+          .eq('id', row.id)
+          .then(({ error }) => {
+            if (error) {
+              console.warn(`[tradeExecutor] pipeline_ts persist failed signal=${row.id}: ${error.message}`)
+            }
+          })
+      }
       ctx.inflight.delete(row.id)
       ctx.queuedIds.delete(row.id)
     }
@@ -1335,31 +1387,48 @@ export async function handleSignal(ctx: TradeExecutorContext,
 export async function getChannelMeta(ctx: TradeExecutorContext, channelId: string | null): Promise<{
     keywords: ChannelKeywords | null
     commentSlug: string | null
+    sourceKind: string | null
   }> {
-    if (!channelId) return { keywords: null, commentSlug: null }
+    if (!channelId) return { keywords: null, commentSlug: null, sourceKind: null }
     const cached = ctx.channelMetaCache.get(channelId)
     if (cached && Date.now() - cached.loadedAt < 5 * 60_000) {
-      return { keywords: cached.keywords, commentSlug: cached.commentSlug }
+      return {
+        keywords: cached.keywords,
+        commentSlug: cached.commentSlug,
+        sourceKind: cached.sourceKind,
+      }
     }
     try {
       const { data } = await ctx.supabase
         .from('telegram_channels')
-        .select('channel_keywords, display_name, channel_username')
+        .select('channel_keywords, display_name, channel_username, source_kind')
         .eq('id', channelId)
         .maybeSingle()
       const row = data as {
         channel_keywords?: ChannelKeywords | null
         display_name?: string | null
         channel_username?: string | null
+        source_kind?: string | null
       } | null
       const keywords = row?.channel_keywords ?? null
       const label = resolveChannelLabelForComment(row?.display_name, row?.channel_username)
       const commentSlug = label ? sanitizeChannelCommentSlug(label) : null
-      ctx.channelMetaCache.set(channelId, { keywords, commentSlug, loadedAt: Date.now() })
-      return { keywords, commentSlug }
+      const sourceKind = row?.source_kind ?? null
+      ctx.channelMetaCache.set(channelId, {
+        keywords,
+        commentSlug,
+        sourceKind,
+        loadedAt: Date.now(),
+      })
+      return { keywords, commentSlug, sourceKind }
     } catch {
-      ctx.channelMetaCache.set(channelId, { keywords: null, commentSlug: null, loadedAt: Date.now() })
-      return { keywords: null, commentSlug: null }
+      ctx.channelMetaCache.set(channelId, {
+        keywords: null,
+        commentSlug: null,
+        sourceKind: null,
+        loadedAt: Date.now(),
+      })
+      return { keywords: null, commentSlug: null, sourceKind: null }
     }
   }
 

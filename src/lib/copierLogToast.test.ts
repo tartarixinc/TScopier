@@ -9,6 +9,7 @@ import {
   copierLogToastFingerprint,
   copierLogToastFromSignal,
   mergeCopierLogToastSeen,
+  shouldAnnounceCopierLogToast,
   signalHistoryToastLabels,
 } from './copierLogToast'
 import type { BrokerAccount } from '../types/database'
@@ -96,6 +97,30 @@ test('mergeCopierLogToastSeen seeds fingerprints so identical status updates are
       skip_reason: null,
     }),
     false,
+  )
+})
+
+test('shouldAnnounceCopierLogToast: UPDATE of unknown id seeds without announcing', () => {
+  const seen = new Map<string, string>()
+  const signal = { id: 'old-1', status: 'executed', skip_reason: null }
+  assert.equal(shouldAnnounceCopierLogToast(seen, signal, 'UPDATE'), 'seed')
+  assert.equal(seen.get('old-1'), copierLogToastFingerprint(signal))
+  assert.equal(shouldAnnounceCopierLogToast(seen, signal, 'UPDATE'), 'skip')
+})
+
+test('shouldAnnounceCopierLogToast: INSERT announces; status change UPDATE announces', () => {
+  const seen = new Map<string, string>()
+  assert.equal(
+    shouldAnnounceCopierLogToast(seen, { id: 'sig-2', status: 'pending', skip_reason: null }, 'INSERT'),
+    'show',
+  )
+  assert.equal(
+    shouldAnnounceCopierLogToast(seen, { id: 'sig-2', status: 'executed', skip_reason: null }, 'UPDATE'),
+    'show',
+  )
+  assert.equal(
+    shouldAnnounceCopierLogToast(seen, { id: 'sig-2', status: 'executed', skip_reason: null }, 'UPDATE'),
+    'skip',
   )
 })
 

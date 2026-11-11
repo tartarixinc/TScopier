@@ -604,7 +604,9 @@ export class MtapiSessionManager {
       })
     }, provisionIntervalMs)
     this.provisionTimer.unref?.()
-    const intervalMs = resolveIntervalMs(process.env.MTAPI_SESSION_HEALTH_INTERVAL_MS, 240_000, 30_000)
+    // Default 60s (was 240s) so dead sessions are caught before the next signal,
+    // not minutes later on OrderSend reconnect.
+    const intervalMs = resolveIntervalMs(process.env.MTAPI_SESSION_HEALTH_INTERVAL_MS, 60_000, 30_000)
     this.timer = setInterval(() => {
       void this.sweep().catch(error => {
         console.warn('[mtapiSession] health sweep failed code=' + safeCode(error))

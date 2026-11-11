@@ -178,7 +178,13 @@ export class TradeExecutor {
   channelMetaCache = new Map<string, {
     keywords: ChannelKeywords | null
     commentSlug: string | null
+    sourceKind: string | null
     loadedAt: number
+  }>()
+  /** Short-TTL Quote / OpenedOrders from order-lane accept prewarm. */
+  entryBrokerReadCache = new Map<string, {
+    quote?: { bid: number; ask: number; at: number }
+    openedOrders?: { rows: unknown[]; at: number }
   }>()
   readonly lightConfigCache = new LightConfigCache()
   sessionPingAt = new Map<string, number>()
@@ -568,18 +574,25 @@ export class TradeExecutor {
       return
     }
     if (this.signalsChannel) return
+    const onSignalChange = (payload: { new?: Record<string, unknown> }) => {
+      const row = payload.new as SignalRow | undefined
+      if (!row) return
+      if (!userBelongsToShard(row.user_id)) return
+      if (!PARSED_STATUSES.has(row.status)) return
+      this.acceptDispatchSignal(row, { source: 'realtime', priority: 'high' })
+    }
+    // INSERT+UPDATE: listener often inserts rows already status=parsed; UPDATE-only missed them.
     this.signalsChannel = this.supabase
       .channel('trade_executor_signals')
       .on(
         'postgres_changes' as never,
+        { event: 'INSERT', schema: 'public', table: 'signals' } as never,
+        onSignalChange,
+      )
+      .on(
+        'postgres_changes' as never,
         { event: 'UPDATE', schema: 'public', table: 'signals' } as never,
-        (payload: { new?: Record<string, unknown> }) => {
-          const row = payload.new as SignalRow | undefined
-          if (!row) return
-          if (!userBelongsToShard(row.user_id)) return
-          if (!PARSED_STATUSES.has(row.status)) return
-          this.acceptDispatchSignal(row, { source: 'realtime', priority: 'high' })
-        },
+        onSignalChange,
       )
       .subscribe()
   }
@@ -718,10 +731,11 @@ export class TradeExecutor {
       this.supabase
         .from('signals')
         .select(
-          'id,user_id,channel_id,parsed_data,status,parent_signal_id,is_modification,created_at,telegram_message_id,reply_to_message_id,raw_message',
+          'id,user_id,channel_id,parsed_data,status,parent_signal_id,is_modification,created_at,telegram_message_id,reply_to_message_id,raw_message,pipeline_ts',
         )
         .eq('status', 'parsed')
         .gte('created_at', since)
+        .order('created_at', { ascending: true })
         .limit(50),
     )
     if (!signalsQ) return
@@ -736,6 +750,25 @@ export class TradeExecutor {
       if ((this.deferredClaimRetryAfter.get(row.id) ?? 0) > now) continue
       const action = parsedAction(row.parsed_data)
       if (isManagementAction(action) && !this.mgmtSweepAllowed(row.id)) continue
+      const createdAtMs = row.created_at ? new Date(row.created_at).getTime() : NaN
+      const ageMs = Number.isFinite(createdAtMs) ? now - createdAtMs : NaN
+      if (Number.isFinite(ageMs) && ageMs >= 0 && ageMs < 2_000) {
+        console.warn(
+          `[tradeExecutor] sweep picking fresh signal=${row.id} age_ms=${Math.round(ageMs)}`
+          + ' — live handoff missed (push/queue); investigate TRADE_WORKER_URL / token',
+        )
+        void writeExecutionLog(this.supabase, {
+          user_id: row.user_id,
+          signal_id: row.id,
+          action: 'dispatch_sweep_fresh_alert',
+          status: 'warning',
+          request_payload: {
+            age_ms: Math.round(ageMs),
+            // dispatch_source is in-memory / push-only — not a signals column.
+            prior_dispatch_source: row.dispatch_source ?? 'unknown',
+          },
+        })
+      }
       this.acceptDispatchSignal(row, {
         source: 'sweep',
         priority: dispatchPriorityForAction(action),
@@ -815,10 +848,41 @@ export class TradeExecutor {
    * HTTP push from listener (split deploy) or in-process callback after parse.
    */
   private deferClaimRetry(signalId: string): void {
-    this.deferredClaimRetryAfter.set(
-      signalId,
-      Date.now() + SIGNAL_DISPATCH_CLAIM_LEASE_MS + 5_000,
+    // Re-check in a few seconds — waiting a full lease (125s) left stuck signals
+    // invisible to the live path after a transient claim race.
+    const retryMs = Math.max(
+      2_000,
+      Math.min(30_000, Number(process.env.SIGNAL_DISPATCH_CLAIM_RETRY_MS ?? 5_000)),
     )
+    this.deferredClaimRetryAfter.set(signalId, Date.now() + retryMs)
+  }
+
+  /** Short-lived mgmt dedupe so dual push/wake/sweep cannot double-close. */
+  private recentMgmtAccept = new Map<string, number>()
+
+  private mgmtAcceptDedupeKey(row: SignalRow): string {
+    const edit = (row as { telegram_edit_date?: string | number | null }).telegram_edit_date
+    return `${row.id}:${edit ?? row.created_at ?? ''}`
+  }
+
+  private shouldSkipDuplicateMgmtAccept(row: SignalRow, source: string): boolean {
+    const action = parsedAction(row.parsed_data)
+    if (!isManagementAction(action)) return false
+    const key = this.mgmtAcceptDedupeKey(row)
+    const prev = this.recentMgmtAccept.get(key)
+    const now = Date.now()
+    if (prev != null && now - prev < 15_000) {
+      if (source === 'sweep' || source === 'realtime') return true
+      // Same-process duplicate from dual transport — treat as already accepted.
+      return true
+    }
+    this.recentMgmtAccept.set(key, now)
+    if (this.recentMgmtAccept.size > 2_000) {
+      for (const [k, at] of this.recentMgmtAccept) {
+        if (now - at > 60_000) this.recentMgmtAccept.delete(k)
+      }
+    }
+    return false
   }
 
   acceptDispatchSignal(
@@ -831,12 +895,15 @@ export class TradeExecutor {
     }
     const source = opts?.source ?? row.dispatch_source ?? 'dispatch'
     if (this.isDuplicateRevisionDispatch(row, source)) return true
+    if (this.shouldSkipDuplicateMgmtAccept(row, source)) return true
     const receivedAt = Date.now()
     const pipeline_ts = setPipelineTimestamp(
       parsePipelineTimestamps(row.pipeline_ts) ?? {},
       'queue_consumed_at',
       receivedAt,
     )
+    // Alias for consumers that still read t_dispatch_received.
+    setPipelineTimestamp(pipeline_ts, 't_dispatch_received', receivedAt)
     const rowWithTs: SignalRow = {
       ...row,
       pipeline_ts,
@@ -880,6 +947,26 @@ export class TradeExecutor {
     }
 
     if (useFastPath) {
+      // Message edits must not be dropped while the first entry is still in flight —
+      // wait, then refresh SL/TP. Other live-fast sources stay one-shot.
+      if (source === MESSAGE_REVISION_DISPATCH_SOURCE) {
+        void (async () => {
+          if (this.inflight.has(row.id)) {
+            await dispatch.waitForSignalInflightClear(
+              this,
+              row.id,
+              dispatch.revisionInflightWaitMs(rowWithTs, source),
+            )
+          }
+          await this.handleSignal(rowWithTs, {
+            liveDispatch: true,
+            dispatchSource: source,
+            dispatchReceivedAt: receivedAt,
+            lightIdempotency: true,
+          })
+        })()
+        return true
+      }
       if (this.inflight.has(row.id) || this.queuedIds.has(row.id)) return true
       void this.handleSignal(rowWithTs, {
         liveDispatch: true,
@@ -913,6 +1000,7 @@ export class TradeExecutor {
     }
     const source = opts?.source ?? row.dispatch_source ?? 'queue'
     if (this.isDuplicateRevisionDispatch(row, source)) return true
+    if (this.shouldSkipDuplicateMgmtAccept(row, source)) return true
     const isRangeWake = source === SIGNAL_RANGE_WAKE_DISPATCH_SOURCE
     const receivedAt = Date.now()
     const pipeline_ts = setPipelineTimestamp(
@@ -920,6 +1008,7 @@ export class TradeExecutor {
       'queue_consumed_at',
       receivedAt,
     )
+    setPipelineTimestamp(pipeline_ts, 't_dispatch_received', receivedAt)
     const rowWithTs: SignalRow = {
       ...row,
       pipeline_ts,
@@ -1092,6 +1181,7 @@ export class TradeExecutor {
   async getChannelMeta(channelId: string | null): Promise<{
     keywords: ChannelKeywords | null
     commentSlug: string | null
+    sourceKind: string | null
   }> {
     return await dispatch.getChannelMeta(this, channelId)
   }
@@ -1209,6 +1299,7 @@ export class TradeExecutor {
     commentPrefix: string
     sameSignalRefresh?: boolean
     liveMgmtFast?: boolean
+    liveEntryFast?: boolean
   }): Promise<MergeOutcome> {
     return await basketMerge.tryParameterFollowUpMergeModifyOnly(this, args)
   }
@@ -1224,6 +1315,7 @@ export class TradeExecutor {
     uuid: string
     strictEntryPrefetch: { bid: number; ask: number } | null
     commentPrefix: string
+    liveEntryFast?: boolean
   }): Promise<MergeOutcome> {
     return await basketMerge.tryTeaserCompletionMerge(this, args)
   }
@@ -1549,32 +1641,21 @@ export class TradeExecutor {
       return { openedOrMerged: false, finalizeSkipReason: configReady.reason }
     }
 
-    let executionBroker = broker
-    if (signal.channel_id) {
-      // Production safety boundary: this light cache may wrap only the stable
-      // broker_channel_trading_configs refresh. Claims, idempotency,
-      // broker readiness, prices, order state, and kill switches stay live
-      // below this point and must not be added to the cache.
-      const fresh = await fetchBrokerForChannelWithLightConfigCache(
-        this.lightConfigCache,
-        this.supabase,
-        broker,
-        signal.channel_id,
-      )
-      if (fresh.channel_trading_configs !== broker.channel_trading_configs) {
-        this.applyBrokerCacheRow(fresh)
-        executionBroker = this.brokersById.get(broker.id) ?? fresh
-      }
-    }
-
-    const effectiveBroker = withChannelTradingConfig(executionBroker, signal.channel_id) as BrokerRow
-    const resolved = resolveChannelTradingConfig(executionBroker, signal.channel_id)
-    const entryKey = `${signal.id}:${effectiveBroker.id}`
     const liveFast = sendOpts?.liveEntryFast === true
-
     const isRevisionRefresh = sendOpts?.sameSignalRefresh === true
-
     const isRangeWake = signal.dispatch_source === SIGNAL_RANGE_WAKE_DISPATCH_SOURCE
+    // Start light config refresh immediately; overlap with claim once we know we will enter.
+    const configRefreshPromise = signal.channel_id
+      ? fetchBrokerForChannelWithLightConfigCache(
+          this.lightConfigCache,
+          this.supabase,
+          broker,
+          signal.channel_id,
+        )
+      : Promise.resolve(broker)
+
+    // broker.id is stable across channel config overlay — safe for inflight key.
+    const entryKey = `${signal.id}:${broker.id}`
 
     // Message revisions must wait for an in-flight first entry, then never open a
     // second market/pending basket (live-fast previously skipped this probe).
@@ -1585,9 +1666,9 @@ export class TradeExecutor {
           await new Promise(resolve => setTimeout(resolve, 100))
         }
       } else {
-        const materialized = await manualDispatchAlreadyMaterialized(this, signal.id, effectiveBroker.id)
+        const materialized = await manualDispatchAlreadyMaterialized(this, signal.id, broker.id)
         console.warn(
-          `[tradeExecutor] skip duplicate in-flight sendOrder signal=${signal.id} broker=${effectiveBroker.id}`
+          `[tradeExecutor] skip duplicate in-flight sendOrder signal=${signal.id} broker=${broker.id}`
           + ` materialized=${materialized}`,
         )
         emitPipelineEvent({
@@ -1597,7 +1678,7 @@ export class TradeExecutor {
             signalId: signal.id,
             channelId: signal.channel_id,
             telegramMessageId: signal.telegram_message_id,
-            brokerAccountId: effectiveBroker.id,
+            brokerAccountId: broker.id,
             dispatchSource: signal.dispatch_source,
           }),
           timestamps: signal.pipeline_ts,
@@ -1612,10 +1693,10 @@ export class TradeExecutor {
 
     let alreadyMaterialized = false
     if (!liveFast || isRevisionRefresh) {
-      alreadyMaterialized = await manualDispatchAlreadyMaterialized(this, signal.id, effectiveBroker.id)
+      alreadyMaterialized = await manualDispatchAlreadyMaterialized(this, signal.id, broker.id)
       if (alreadyMaterialized && !isRevisionRefresh) {
         console.warn(
-          `[tradeExecutor] skip already materialized signal=${signal.id} broker=${effectiveBroker.id}`,
+          `[tradeExecutor] skip already materialized signal=${signal.id} broker=${broker.id}`,
         )
         return { openedOrMerged: true }
       }
@@ -1630,63 +1711,84 @@ export class TradeExecutor {
     this.entryBrokerInflight.add(entryKey)
     try {
       // SL/TP-only revision path must not take/require the entry claim.
+      let claimed = true
+      let refreshedBroker = broker
       if (!blockNewEntry) {
         if (isRangeWake) {
-          await releaseSignalBrokerDispatchClaim(this.supabase, signal.id, effectiveBroker.id)
+          await releaseSignalBrokerDispatchClaim(this.supabase, signal.id, broker.id)
         }
         setPipelineTimestamp(signal.pipeline_ts ?? (signal.pipeline_ts = {}), 'execution_claim_started_at', Date.now())
-        let claimed = await claimSignalBrokerDispatch(
+        // Live-fast: claim insert overlaps light config refresh.
+        const claimPromise = claimSignalBrokerDispatch(
           this.supabase,
           signal.id,
-          effectiveBroker.id,
+          broker.id,
           signal.user_id,
         )
+        const [fresh, claimOk] = await Promise.all([configRefreshPromise, claimPromise])
+        refreshedBroker = fresh
+        claimed = claimOk
+      } else {
+        refreshedBroker = await configRefreshPromise
+      }
+
+      let executionBroker = broker
+      if (signal.channel_id && refreshedBroker.channel_trading_configs !== broker.channel_trading_configs) {
+        this.applyBrokerCacheRow(refreshedBroker)
+        executionBroker = this.brokersById.get(broker.id) ?? refreshedBroker
+      } else if (signal.channel_id) {
+        executionBroker = refreshedBroker
+      }
+      const effectiveBroker = withChannelTradingConfig(executionBroker, signal.channel_id) as BrokerRow
+      const resolved = resolveChannelTradingConfig(executionBroker, signal.channel_id)
+
+      if (!blockNewEntry) {
         if (!claimed) {
           // Another worker won entry. Revisions may still refresh SL/TP once materialized.
           if (isRevisionRefresh) {
             const pollDeadline = Date.now() + 5_000
+            let revisionMaterialized = false
             while (Date.now() < pollDeadline) {
               if (await manualDispatchAlreadyMaterialized(this, signal.id, effectiveBroker.id)) {
-                console.warn(
-                  `[tradeExecutor] message revision claim lost — SL/TP only signal=${signal.id} broker=${effectiveBroker.id}`,
-                )
-                const revisionOnlyOpts = { ...sendOpts, sameSignalRefresh: true, blockNewEntry: true }
-                const isManual = (effectiveBroker.copier_mode ?? 'ai') === 'manual'
-                const manual = (effectiveBroker.manual_settings ?? {}) as ManualSettings
-                if (isManual && manual.trade_style === 'multi') {
-                  return await this.executeAndRecord(
-                    () => runRangeEntry(this, {
-                      signal, parsed, op, broker: effectiveBroker, channelKeywords, pipelineT0,
-                      sendOpts: revisionOnlyOpts,
-                    }),
-                    effectiveBroker.id,
-                  )
-                }
-                return await this.executeAndRecord(
-                  () => runSingleEntry(this, {
-                    signal, parsed, op, broker: effectiveBroker, channelKeywords, pipelineT0,
-                    sendOpts: revisionOnlyOpts,
-                  }),
-                  effectiveBroker.id,
-                )
+                revisionMaterialized = true
+                break
               }
               await new Promise(resolve => setTimeout(resolve, 100))
             }
-            // Nothing materialized: the original claim holder skipped without
-            // opening (or crashed mid-dispatch). The edited signal must still be
-            // able to execute — release the stale claim and take it over, unless
-            // this worker still has the first entry running.
+            // Prefer SL/TP refresh while the original claim is held (teaser completion
+            // merges leave a claim without trades/order_send on this signal).
+            console.warn(
+              `[tradeExecutor] message revision claim lost — SL/TP only signal=${signal.id}`
+              + ` broker=${effectiveBroker.id} materialized=${revisionMaterialized}`,
+            )
+            const revisionOnlyOpts = { ...sendOpts, sameSignalRefresh: true, blockNewEntry: true }
+            const isManual = (effectiveBroker.copier_mode ?? 'ai') === 'manual'
+            const manual = (effectiveBroker.manual_settings ?? {}) as ManualSettings
+            const revisionOnlyOutcome = isManual && manual.trade_style === 'multi'
+              ? await this.executeAndRecord(
+                () => runRangeEntry(this, {
+                  signal, parsed, op, broker: effectiveBroker, channelKeywords, pipelineT0,
+                  sendOpts: revisionOnlyOpts,
+                }),
+                effectiveBroker.id,
+              )
+              : await this.executeAndRecord(
+                () => runSingleEntry(this, {
+                  signal, parsed, op, broker: effectiveBroker, channelKeywords, pipelineT0,
+                  sendOpts: revisionOnlyOpts,
+                }),
+                effectiveBroker.id,
+              )
+            if (revisionOnlyOutcome.openedOrMerged === true || revisionMaterialized) {
+              return revisionOnlyOutcome
+            }
+            // Nothing to refresh and first entry never landed — take over a stale
+            // claim so the edit can still open (entry-price-added revisions).
             if (shouldTakeOverStaleClaim({
               isRevisionRefresh: true,
               materialized: false,
-              // This process added entryKey just above, so checking the map here
-              // would always be true and make the takeover unreachable. The
-              // top-of-function wait already covers a local in-flight entry;
-              // the stale-only release protects a remote one.
               entryInFlight: false,
             })) {
-              // Never delete a fresh claim: the original sender may still be
-              // running in another process. Only an expired lease is takeable.
               const released = await releaseSignalBrokerDispatchClaimIfStale(
                 this.supabase,
                 signal.id,
@@ -1707,7 +1809,7 @@ export class TradeExecutor {
               } else {
                 console.warn(
                   `[tradeExecutor] message revision claim is still fresh signal=${signal.id}`
-                  + ` broker=${effectiveBroker.id}; deferring`,
+                  + ` broker=${effectiveBroker.id}; deferring after empty SL/TP refresh`,
                 )
               }
             }
@@ -1734,7 +1836,7 @@ export class TradeExecutor {
               extra: { materialized },
             })
             if (!materialized) this.deferClaimRetry(signal.id)
-        return { openedOrMerged: materialized, deferredToOtherDispatcher: !materialized }
+            return { openedOrMerged: materialized, deferredToOtherDispatcher: !materialized }
           }
         }
         setPipelineTimestamp(signal.pipeline_ts, 'execution_claim_acquired_at', Date.now())
@@ -1937,6 +2039,10 @@ export class TradeExecutor {
 
   async getSymbolParams(uuid: string, symbol: string): Promise<SymbolCacheEntry | null> {
     return await brokerSymbolCache.getSymbolParams(this, uuid, symbol)
+  }
+
+  peekCachedSymbolParams(uuid: string, symbol: string): SymbolCacheEntry | null {
+    return brokerSymbolCache.peekCachedSymbolParams(this, uuid, symbol)
   }
 
   /**

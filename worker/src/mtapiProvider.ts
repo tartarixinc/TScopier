@@ -114,13 +114,83 @@ function isSessionGone(error: unknown): boolean {
 
 const tradeOpGate = createConcurrencyGate()
 /**
- * MTAPI rejects a burst of OrderSend/Modify/Close on one session ("too many
- * requests"). The terminal also runs trade ops one at a time, so the default
- * is a single in-flight trade call per session. Raise MT_TRADE_OP_CONCURRENCY
- * only if a broker is known to accept overlap.
+ * Legacy OrderModify concurrency. Prefer MT_MODIFY_OP_CONCURRENCY; this remains
+ * as a fallback when the modify-specific env is unset.
  */
 function perAccountTradeConcurrency(): number {
   return Math.max(1, Number(process.env.MT_TRADE_OP_CONCURRENCY ?? 1) || 1)
+}
+
+/**
+ * Multi-leg range entries fan out with Promise.allSettled; without send overlap
+ * 34 legs take ~12s at ~350ms RTT. Cap at 6. On throttle we step this session
+ * down to 1 for SEND_THROTTLE_STEPDOWN_MS.
+ */
+function perAccountSendConcurrency(sessionId: string): number {
+  const stepDownUntil = sendThrottleStepDownUntil.get(sessionId) ?? 0
+  if (stepDownUntil > Date.now()) return 1
+  const raw = Number(process.env.MT_SEND_OP_CONCURRENCY ?? 3)
+  return Math.max(1, Math.min(6, Number.isFinite(raw) ? raw : 3))
+}
+
+/**
+ * Multi-leg SL/TP / basket modify. Cap at 6. Shares tradeOpGate with send/close
+ * so a Close-all during post-entry TP sync still interleaves safely. Throttle
+ * step-down mirrors OrderSend.
+ */
+function perAccountModifyConcurrency(sessionId: string): number {
+  const stepDownUntil = modifyThrottleStepDownUntil.get(sessionId) ?? 0
+  if (stepDownUntil > Date.now()) return 1
+  const raw = Number(
+    process.env.MT_MODIFY_OP_CONCURRENCY
+    ?? process.env.MT_TRADE_OP_CONCURRENCY
+    ?? 3,
+  )
+  return Math.max(1, Math.min(6, Number.isFinite(raw) ? raw : 3))
+}
+
+const SEND_THROTTLE_STEPDOWN_MS = Math.max(
+  5_000,
+  Math.min(120_000, Number(process.env.MT_SEND_THROTTLE_STEPDOWN_MS ?? 45_000)),
+)
+const sendThrottleStepDownUntil = new Map<string, number>()
+const modifyThrottleStepDownUntil = new Map<string, number>()
+
+function noteOpThrottle(
+  sessionId: string,
+  error: unknown,
+  kind: 'send' | 'modify',
+): void {
+  const text = (
+    (error instanceof MtapiApiError ? `${error.code ?? ''} ${error.message}` : String(error))
+  ).toLowerCase()
+  const throttled = text.includes('too many')
+    || text.includes('rate_limited')
+    || text.includes('rate limit')
+    || text.includes('throttle')
+    || (error instanceof MtapiApiError && error.status === 429)
+  if (!throttled) return
+  const until = Date.now() + SEND_THROTTLE_STEPDOWN_MS
+  if (kind === 'send') sendThrottleStepDownUntil.set(sessionId, until)
+  else modifyThrottleStepDownUntil.set(sessionId, until)
+  console.warn(
+    `[mtapi] Order${kind === 'send' ? 'Send' : 'Modify'} throttle step-down session=${sessionId.slice(0, 8)}…`
+    + ` concurrency=1 for ${SEND_THROTTLE_STEPDOWN_MS}ms`,
+  )
+}
+
+function noteSendThrottle(sessionId: string, error: unknown): void {
+  noteOpThrottle(sessionId, error, 'send')
+}
+
+/**
+ * Full closes are idempotent via OrderCloseSafe, so modest overlap is safe for
+ * multi-leg Close-all. Cap at 8. Partial closes still share this gate but stay
+ * rare relative to basket closes.
+ */
+function perAccountCloseConcurrency(): number {
+  const raw = Number(process.env.MT_CLOSE_OP_CONCURRENCY ?? 6)
+  return Math.max(1, Math.min(8, Number.isFinite(raw) ? raw : 6))
 }
 
 function throttleRetryDelayMs(error: unknown): number {
@@ -452,7 +522,7 @@ export class MtapiProvider implements BrokerProvider {
   }
 
   async orderSend(id: string, args: OrderSendArgs): Promise<OrderResult> {
-    const release = await tradeOpGate.acquire(id, perAccountTradeConcurrency())
+    const release = await tradeOpGate.acquire(id, perAccountSendConcurrency(id))
     try {
       const params: Record<string, string | number> = {
         symbol: args.symbol,
@@ -469,19 +539,24 @@ export class MtapiProvider implements BrokerProvider {
       // accepted it, and MT5 OrderSendSafe idempotency is not proven. Throttle
       // retry is opt-in (`MTAPI_ORDER_THROTTLE_RETRY=true`) until it is.
       const orderThrottleRetry = env('MTAPI_ORDER_THROTTLE_RETRY') === 'true' ? 'pre_accept' : 'off'
-      const raw = await this.requestWithRetry('OrderSendSafe', params, id, false, orderThrottleRetry)
-      const result = normalizeOrderResponse(raw, { platform: this.platform(id), operation: args.operation })
-      if (normalizeMtBrokerTicket(result.ticket) == null) {
-        throw new MtapiApiError('OrderSendSafe returned no valid broker ticket', 502, 'INVALID_TICKET')
+      try {
+        const raw = await this.requestWithRetry('OrderSendSafe', params, id, false, orderThrottleRetry)
+        const result = normalizeOrderResponse(raw, { platform: this.platform(id), operation: args.operation })
+        if (normalizeMtBrokerTicket(result.ticket) == null) {
+          throw new MtapiApiError('OrderSendSafe returned no valid broker ticket', 502, 'INVALID_TICKET')
+        }
+        return result
+      } catch (err) {
+        noteSendThrottle(id, err)
+        throw err
       }
-      return result
     } finally {
       release()
     }
   }
 
   async orderModify(id: string, args: OrderModifyArgs): Promise<OrderResult> {
-    const release = await tradeOpGate.acquire(id, perAccountTradeConcurrency())
+    const release = await tradeOpGate.acquire(id, perAccountModifyConcurrency(id))
     try {
       const params: Record<string, string | number> = {
         ticket: args.ticket,
@@ -490,15 +565,20 @@ export class MtapiProvider implements BrokerProvider {
       if (args.takeprofit != null) params.takeprofit = args.takeprofit
       if (args.price != null) params.price = args.price
 
-      const raw = await this.requestWithRetry('OrderModifySafe', params, id)
-      return normalizeOrderResponse(raw, { platform: this.platform(id) })
+      try {
+        const raw = await this.requestWithRetry('OrderModifySafe', params, id)
+        return normalizeOrderResponse(raw, { platform: this.platform(id) })
+      } catch (err) {
+        noteOpThrottle(id, err, 'modify')
+        throw err
+      }
     } finally {
       release()
     }
   }
 
   async orderClose(id: string, args: OrderCloseArgs): Promise<OrderResult> {
-    const release = await tradeOpGate.acquire(id, perAccountTradeConcurrency())
+    const release = await tradeOpGate.acquire(id, perAccountCloseConcurrency())
     try {
       const params: Record<string, string | number> = {
         ticket: args.ticket,
@@ -557,7 +637,7 @@ export class MtapiProvider implements BrokerProvider {
     if (this.cancelEndpointMissingHosts.has(host)) {
       return this.orderClose(id, { ticket: args.ticket })
     }
-    const release = await tradeOpGate.acquire(id, perAccountTradeConcurrency())
+    const release = await tradeOpGate.acquire(id, perAccountCloseConcurrency())
     try {
       const raw = await this.requestWithRetry('OrderCancelTask', { ticket: args.ticket }, id)
       const result = normalizeOrderResponse(raw, { platform: this.platform(id) })

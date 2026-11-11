@@ -58,7 +58,7 @@ function makeSupabase(
   }
 }
 
-test('applyPostFillFollowUp: multi override SL 80 restamps from fill and leaves TP', async () => {
+test('applyPostFillFollowUp: multi override SL leaves planned stops frozen', async () => {
   const modifies: Array<{ ticket: number; stoploss?: number | null; takeprofit?: number | null }> = []
   const tradeUpdates: Record<string, unknown>[] = []
   const manual: ManualSettings = {
@@ -106,17 +106,8 @@ test('applyPostFillFollowUp: multi override SL 80 restamps from fill and leaves 
     hooks,
   })
 
-  assert.equal(modifies.length, 1)
-  assert.equal(modifies[0]?.ticket, 42)
-  assert.equal(modifies[0]?.stoploss, 1992)
-  assert.equal(
-    modifies[0]?.takeprofit,
-    2010,
-    'existing TP rides along — MTAPI clears an omitted takeProfit',
-  )
-  assert.equal(tradeUpdates.length, 1)
-  assert.equal(tradeUpdates[0]?.sl, 1992)
-  assert.equal('tp' in (tradeUpdates[0] ?? {}), false)
+  assert.equal(modifies.length, 0)
+  assert.equal(tradeUpdates.length, 0)
 })
 
 test('applyPostFillFollowUp: multi without override SL does not flatten TPs or modify', async () => {
@@ -167,7 +158,7 @@ test('applyPostFillFollowUp: multi without override SL does not flatten TPs or m
   assert.equal(modifies.length, 0)
 })
 
-test('applyPostFillFollowUp: multi override TP 30 restamps from fill and keeps bucket', async () => {
+test('applyPostFillFollowUp: multi override TP leaves planned stops frozen', async () => {
   const modifies: Array<{ ticket: number; stoploss?: number | null; takeprofit?: number | null }> = []
   const tradeUpdates: Record<string, unknown>[] = []
   const manual: ManualSettings = {
@@ -215,20 +206,11 @@ test('applyPostFillFollowUp: multi override TP 30 restamps from fill and keeps b
     hooks,
   })
 
-  assert.equal(modifies.length, 1)
-  assert.equal(modifies[0]?.ticket, 42)
-  assert.equal(modifies[0]?.takeprofit, 1993)
-  assert.equal(
-    modifies[0]?.stoploss,
-    1982,
-    'existing SL rides along — MTAPI clears an omitted stopLoss',
-  )
-  assert.equal(tradeUpdates.length, 1)
-  assert.equal(tradeUpdates[0]?.tp, 1993)
-  assert.equal('sl' in (tradeUpdates[0] ?? {}), false)
+  assert.equal(modifies.length, 0)
+  assert.equal(tradeUpdates.length, 0)
 })
 
-test('applyPostFillFollowUp: multi override TPs keep TP1 vs TP2 buckets', async () => {
+test('applyPostFillFollowUp: multi override TPs leave planned ladder frozen', async () => {
   const modifies: Array<{ ticket: number; stoploss?: number | null; takeprofit?: number | null }> = []
   const manual: ManualSettings = {
     trade_style: 'multi',
@@ -285,9 +267,7 @@ test('applyPostFillFollowUp: multi override TPs keep TP1 vs TP2 buckets', async 
     hooks,
   })
 
-  assert.equal(modifies.length, 2)
-  assert.equal(modifies[0]?.takeprofit, 2003.2)
-  assert.equal(modifies[1]?.takeprofit, 2005.2)
+  assert.equal(modifies.length, 0)
 })
 
 test('applyPostFillFollowUp: reverse fill uses ticket side not parsed buy for predefined stops', async () => {

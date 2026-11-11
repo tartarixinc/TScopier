@@ -16,7 +16,6 @@ import { resolveEffectiveBasketStops } from './basketEffectiveStops'
 import { resolveChannelTradingConfig } from './channelTradingConfig'
 import { markRangeLegFired } from './rangePendingLadderSync'
 import { normalizeManualSettingsForExecution } from './manualPlanning/normalizeManualSettings'
-import { resolvePredefinedSlForEntry, resolvePredefinedTpForEntry } from './manualPlanning/manualStops'
 import { resolveFiringLegStops, resolvePerLegBreakevenSlForNewFill, syncRangeBasketTakeProfits, toRangeBasketParsedSlice } from './rangeBasketTpSync'
 import {
   hasWorkOnShard,
@@ -1142,18 +1141,8 @@ export class VirtualPendingMonitor {
     const manual = normalizeManualSettingsForExecution(
       await this.loadManualSettingsForLeg(leg.broker_account_id, channelIdForTrade),
     )
-    const predefinedSlFromFire = resolvePredefinedSlForEntry({
-      manual,
-      entry: refPrice,
-      isBuy: leg.is_buy,
-      symbol: leg.symbol,
-      point: params?.point,
-      digits: params?.digits,
-      contractSize: params?.contractSize,
-    })
-    if (predefinedSlFromFire != null) {
-      args.stoploss = predefinedSlFromFire
-    }
+    // Keep planned absolute SL/TP from the first-entry freeze. Do not restamp
+    // Override pips from the fire quote — that moved stops on every layer.
     if (openNewFillAtOwnBreakeven) {
       const ownBe = breakevenStopLossForSymbol({
         isBuy: leg.is_buy,
@@ -1163,22 +1152,6 @@ export class VirtualPendingMonitor {
         digits: params?.digits,
       })
       if (Number.isFinite(ownBe) && ownBe > 0) args.stoploss = ownBe
-    }
-    const predefinedTpFromFire = leg.cwe_close_price != null
-      ? null
-      : resolvePredefinedTpForEntry({
-        manual,
-        entry: refPrice,
-        isBuy: leg.is_buy,
-        symbol: leg.symbol,
-        point: params?.point,
-        digits: params?.digits,
-        contractSize: params?.contractSize,
-        existingTp: leg.takeprofit,
-        matchEntry: Number(leg.trigger_price) > 0 ? Number(leg.trigger_price) : null,
-      })
-    if (predefinedTpFromFire != null) {
-      args.takeprofit = predefinedTpFromFire
     }
     if (params) {
       const clamped = this.clampOrderStops(args, refPrice, params)
@@ -1202,14 +1175,6 @@ export class VirtualPendingMonitor {
         )
       }
       Object.assign(args, cleanup.args)
-      // Shared basket SL/TP is often on the wrong side of a deeper range fill and
-      // gets dropped. Restore Override signal SL/TP from this fire price.
-      if (predefinedSlFromFire != null && !(Number(args.stoploss) > 0)) {
-        args.stoploss = predefinedSlFromFire
-      }
-      if (predefinedTpFromFire != null && !(Number(args.takeprofit) > 0) && leg.cwe_close_price == null) {
-        args.takeprofit = predefinedTpFromFire
-      }
     }
 
     const t0 = Date.now()
@@ -1230,30 +1195,6 @@ export class VirtualPendingMonitor {
         + (result.openedNaked ? ' naked=1' : ''),
       )
       const entryPx = result.openPrice ?? refPrice ?? null
-      const predefinedSlFromFill = entryPx != null
-        ? resolvePredefinedSlForEntry({
-            manual,
-            entry: entryPx,
-            isBuy: leg.is_buy,
-            symbol: leg.symbol,
-            point: params?.point,
-            digits: params?.digits,
-            contractSize: params?.contractSize,
-          })
-        : null
-      const predefinedTpFromFill = entryPx != null && leg.cwe_close_price == null
-        ? resolvePredefinedTpForEntry({
-            manual,
-            entry: entryPx,
-            isBuy: leg.is_buy,
-            symbol: leg.symbol,
-            point: params?.point,
-            digits: params?.digits,
-            contractSize: params?.contractSize,
-            existingTp: leg.takeprofit,
-            matchEntry: Number(leg.trigger_price) > 0 ? Number(leg.trigger_price) : null,
-          })
-        : null
       const desiredSl = (() => {
         if (openNewFillAtOwnBreakeven && entryPx != null) {
           const ownBe = breakevenStopLossForSymbol({
@@ -1265,11 +1206,9 @@ export class VirtualPendingMonitor {
           })
           if (Number.isFinite(ownBe) && ownBe > 0) return ownBe
         }
-        return predefinedSlFromFill
-          ?? (Number(args.stoploss) > 0 ? Number(args.stoploss) : null)
+        return Number(args.stoploss) > 0 ? Number(args.stoploss) : null
       })()
-      const desiredTp = predefinedTpFromFill
-        ?? (Number(args.takeprofit) > 0 ? Number(args.takeprofit) : null)
+      const desiredTp = Number(args.takeprofit) > 0 ? Number(args.takeprofit) : null
       const brokerSl = Number(result.stopLoss) > 0 ? Number(result.stopLoss) : null
       const brokerTp = Number(result.takeProfit) > 0 ? Number(result.takeProfit) : null
       // Persist only what the broker actually has. A planned stop the broker

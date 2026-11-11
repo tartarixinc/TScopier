@@ -763,6 +763,13 @@ export interface Signal {
   channel_id: string | null
   /** Optional link to canonical channel_signals row. */
   channel_signal_id?: string | null
+  /**
+   * Platform that produced the signal. Survives channel delete so Copier Logs
+   * can keep showing the source logo after telegram_channels is removed.
+   */
+  source_kind?: 'telegram' | 'tradingview' | 'discord' | 'whatsapp' | null
+  /** Channel/webhook name at ingest. Survives channel delete for Copier Logs. */
+  source_display_name?: string | null
   raw_message: string
   raw_image_url: string | null
   parsed_data: Json | null

@@ -188,7 +188,7 @@ async function copyGroupMessage(
 ): Promise<void> {
   const { data, error } = await supabase
     .from('whatsapp_groups')
-    .select('channel_id, is_active, telegram_channels!inner(is_active, source_kind)')
+    .select('channel_id, is_active, telegram_channels!inner(is_active, source_kind, display_name, channel_username)')
     .eq('user_id', userId)
     .eq('group_jid', groupJid)
     .maybeSingle()
@@ -196,10 +196,23 @@ async function copyGroupMessage(
   const row = data as {
     channel_id: string
     is_active: boolean
-    telegram_channels: { is_active?: boolean; source_kind?: string } | { is_active?: boolean; source_kind?: string }[]
+    telegram_channels: {
+      is_active?: boolean
+      source_kind?: string
+      display_name?: string | null
+      channel_username?: string | null
+    } | Array<{
+      is_active?: boolean
+      source_kind?: string
+      display_name?: string | null
+      channel_username?: string | null
+    }>
   }
   const shadow = Array.isArray(row.telegram_channels) ? row.telegram_channels[0] : row.telegram_channels
   if (!row.is_active || !shadow?.is_active || shadow.source_kind !== 'whatsapp') return
+  const sourceDisplayName = shadow.display_name?.trim()
+    || (shadow.channel_username?.trim() ? `@${shadow.channel_username.trim().replace(/^@/, '')}` : '')
+    || 'WhatsApp'
 
   const parsed = await parseRawChannelMessage(supabase, row.channel_id, text)
   if (parsed.status !== 'parsed' || parsed.parsed.action === 'ignore') return
@@ -209,6 +222,8 @@ async function copyGroupMessage(
     id: signalId,
     user_id: userId,
     channel_id: row.channel_id,
+    source_kind: 'whatsapp',
+    source_display_name: sourceDisplayName,
     raw_message: text,
     parsed_data: parsed.parsed,
     status: 'parsed',

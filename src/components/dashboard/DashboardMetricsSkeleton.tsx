@@ -1,7 +1,7 @@
 import clsx from 'clsx'
+import { APP_CARD } from '../../lib/appSurface'
 
-const CARD =
-  'rounded-2xl border border-neutral-200/65 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-neutral-800/55 dark:bg-neutral-950 dark:shadow-none'
+const CARD = APP_CARD
 
 const COPIER_LOG_GRID =
   'grid grid-cols-[5.75rem_minmax(0,1fr)_minmax(4rem,0.85fr)_minmax(4.75rem,auto)_minmax(6.75rem,auto)] gap-x-3 items-center'
@@ -23,7 +23,7 @@ export function DashboardMetricsSkeleton({ message }: { message?: string }) {
         {Array.from({ length: 4 }, (_, i) => (
           <div
             key={i}
-            className="rounded-2xl bg-[#F7F8FA] px-4 py-4 sm:px-5 dark:bg-white/3 dark:ring-1 dark:ring-inset dark:ring-white/6"
+            className={clsx(APP_CARD, 'px-4 py-4 sm:px-5')}
           >
             <SkeletonBar className="h-3 w-24" />
             <SkeletonBar className="mt-3 h-7 w-28" />

@@ -221,6 +221,7 @@ export async function manualDispatchAlreadyMaterialized(ctx: TradeExecutorContex
       { count: sc, error: se },
       { count: tc, error: te },
       { count: lc, error: le },
+      { count: mc, error: me },
       { count: wc, error: we },
     ] = await Promise.all([
       ctx.supabase
@@ -246,6 +247,16 @@ export async function manualDispatchAlreadyMaterialized(ctx: TradeExecutorContex
         .eq('broker_account_id', brokerAccountId)
         .eq('status', 'success')
         .eq('action', 'order_send'),
+      // Teaser completion / parameter refresh merges SL·TP onto a parent basket
+      // without writing trades or order_send on THIS signal. Count those so a
+      // later Telegram edit takes modify-only instead of fighting the entry claim.
+      ctx.supabase
+        .from('trade_execution_logs')
+        .select('id', { count: 'exact', head: true })
+        .eq('signal_id', signalId)
+        .eq('broker_account_id', brokerAccountId)
+        .eq('status', 'success')
+        .eq('action', 'merge_modify_summary'),
       ctx.supabase
         .from('signal_range_entry_waits')
         .select('id', { count: 'exact', head: true })
@@ -272,6 +283,11 @@ export async function manualDispatchAlreadyMaterialized(ctx: TradeExecutorContex
         `[tradeExecutor] order_send log idempotency count failed signal=${signalId} broker=${brokerAccountId}: ${le.message}`,
       )
     }
+    if (me) {
+      console.warn(
+        `[tradeExecutor] merge_modify log idempotency count failed signal=${signalId} broker=${brokerAccountId}: ${me.message}`,
+      )
+    }
     if (we) {
       console.warn(
         `[tradeExecutor] range wait idempotency count failed signal=${signalId} broker=${brokerAccountId}: ${we.message}`,
@@ -279,12 +295,13 @@ export async function manualDispatchAlreadyMaterialized(ctx: TradeExecutorContex
     }
     // A revision must not create a second entry when materialization state is
     // unavailable. Fail closed and let a later retry re-check durable state.
-    if (re || se || te || le || we) return true
+    if (re || se || te || le || me || we) return true
     return (
       (rc ?? 0) > 0
       || (sc ?? 0) > 0
       || (tc ?? 0) > 0
       || (lc ?? 0) > 0
+      || (mc ?? 0) > 0
       || (wc ?? 0) > 0
     )
   }

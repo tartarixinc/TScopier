@@ -26,6 +26,7 @@ export const en: Translations = {
   nav: {
     sections: {
       general: 'GENERAL',
+      copy: 'COPY',
       signals: 'SIGNALS',
       discover: 'DISCOVER',
       tradingTools: 'TRADING TOOLS',
@@ -37,16 +38,16 @@ export const en: Translations = {
     items: {
       dashboard: 'Dashboard',
       configuration: 'Configurations',
-      brokers: 'Trading Account',
-      mirrorTrading: 'Mirror Account',
+      brokers: 'Account Configuration',
+      mirrorTrading: 'Mirror Accounts',
       socialTrading: 'Social Trading',
-      trades: 'Trades',
+      trades: 'Account Trades',
       management: 'Copier Process',
-      channels: 'Signal Source',
+      channels: 'Signals',
       popularChannels: 'Popular Channels',
       backtest: 'Backtest',
       copierLogs: 'Copier Logs',
-      signalHistory: 'Manage Signals',
+      signalHistory: 'Manage Trades',
       reportedTrades: 'Reported Trades',
       updates: 'Updates',
       marketNews: 'Market News',
@@ -152,9 +153,9 @@ export const en: Translations = {
       cancel: 'Cancel',
       welcomeTitle: 'I can help you set up and run UniCopier.',
       suggestions: [
-        'Is my Telegram linked?',
-        'Connect my MT5 account',
-        'Configure broker 928883 with lot 0.02',
+        'Are my Signals connected?',
+        'Add an account in Account Configuration',
+        'Show my Account Trades',
         'Pause the copier',
       ],
       emptyReply: 'How else can I help?',
@@ -441,7 +442,7 @@ broker: {
   },
   copyRisk: copyRiskEn,
   mirrorTradingPage: {
-    title: 'Mirror Account',
+    title: 'Mirror Accounts',
     subtitle: 'Copy trades from a master account to slave accounts.',
     searchDescription: 'Copy trades from a master account to slave accounts.',
     masters: 'Master accounts',
@@ -1612,7 +1613,7 @@ broker: {
     updatesReceivedThisMonth: 'This month',
   },
   trades: {
-    title: 'Trades',
+    title: 'Account Trades',
     subtitle: 'Live positions and recent closes from your linked broker accounts',
     filterOpen: 'Open',
     filterClosed: 'Closed',
@@ -1692,7 +1693,7 @@ broker: {
     reportError: 'Could not submit the report. Please try again.',
     reportsTitle: 'Reported trades',
     reportsSubtitle: 'Status of the trades you reported. Our support team reviews each report.',
-    reportsEmpty: 'No reported trades yet. You can report a trade from the Trades page or ask the assistant.',
+    reportsEmpty: 'No reported trades yet. You can report a trade from the Account Trades page or ask the assistant.',
     reportsStatusOpen: 'Open',
     reportsStatusResolved: 'Resolved',
     brokerErrorTitle: 'Broker error',
@@ -1717,7 +1718,7 @@ broker: {
     reasonMirrorCopyClosed: 'This copied trade was closed before close reasons were recorded.',
   },
   channelsPage: {
-    title: 'Signal Source',
+    title: 'Signals',
     subtitle: 'Manage which Telegram channels you\'re monitoring',
     addChannel: 'Add channel',
     addFormTitle: 'Add channel manually',
@@ -1748,11 +1749,11 @@ broker: {
     tradingViewUrl: 'Webhook URL',
     tradingViewTemplate: 'Alert message',
     tradingViewTemplateStrategy: 'For Strategies only',
-    tradingViewTemplateIndicators: 'Indicators',
-    tradingViewTemplateBuy: 'For Buy Signals',
-    tradingViewTemplateSell: 'For Sell Signals',
+    tradingViewTemplateIndicators: 'For Indicators',
+    tradingViewTemplateBuy: 'Buy Signals',
+    tradingViewTemplateSell: 'Sell Signals',
     tradingViewTemplateSymbolHint: 'For other symbols, change the "XAUUSD" in "symbol" in TradingView.',
-    tradingViewTemplateHelp: 'Use For Strategies when the alert comes from a strategy (action fills with buy or sell). Use For Buy Signals or For Sell Signals for indicator alerts with a fixed side — edit the symbol in the JSON to match your chart. Set action to close to close copied trades for that symbol.',
+    tradingViewTemplateHelp: 'Use For Strategies when the alert comes from a strategy (action fills with buy or sell). Use Buy Signals or Sell Signals for indicator alerts with a fixed side — edit the symbol in the JSON to match your chart. Set action to close to close copied trades for that symbol.',
     tradingViewHowToTitle: 'How to Add to TradingView',
     tradingViewHowTo1: 'In TradingView, open Alerts and create a new alert from the chart (use a chart condition — not “Any alert() function call only”).',
     tradingViewHowTo2: 'Turn on Webhook URL and paste the current Webhook URL from this modal (copy it again after Rotate URL or recreating the webhook).',
@@ -2455,7 +2456,7 @@ broker: {
   },
   pages: {
     accountConfiguration: {
-      title: 'Trading Account',
+      title: 'Account Configuration',
       description: 'Connect MetaTrader accounts and tune how each one copies signals.',
     },
     brokers: {
@@ -2527,11 +2528,11 @@ broker: {
       description: 'Advanced charting and AI-powered analysis tools for your trading signals.',
     },
     signalHistory: {
-      title: 'Manage Signals',
+      title: 'Manage Trades',
       description: 'Trade signals from your connected Telegram channels — entries, closes, and SL/TP updates only.',
     },
     copierEngine: {
-      title: 'Signal Source',
+      title: 'Signals',
       description: 'Manage Telegram signal channels and copier settings.',
     },
     settings: {

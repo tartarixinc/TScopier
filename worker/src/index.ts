@@ -51,7 +51,13 @@ import { getFxsocketStreamManager } from './fxsocketStreamManager'
 import { CopyLimitMonitor } from './copyLimitMonitor'
 import { parseEnvBool, isKnownRole, KNOWN_ROLES, workerConfig, WORKER_BUILD_TAG } from './workerConfig'
 import type { DiscordListenerHandle } from './discordListener'
-import { validateListenerTradeShardConfig, validateListenerMgmtShardConfig, validateListenerQueueConfig } from './tradeSignalPush'
+import {
+  validateListenerTradeShardConfig,
+  validateListenerMgmtShardConfig,
+  validateListenerQueueConfig,
+  startTradePushProbeLoop,
+} from './tradeSignalPush'
+import { internalTokenFingerprint } from './internalToken'
 import { SignalQueueConsumerManager } from './queue/signalQueueConsumer'
 import { deployedTradeShardCount, signalQueueConfig, redisQueueConfigured } from './queue/signalQueueConfig'
 import { setQueueMetricsProvider } from './queue/queueHealth'
@@ -288,7 +294,8 @@ async function main() {
 
   console.log(
     `[worker] starting role=${workerConfig.role} shard=${workerConfig.shardId}/${workerConfig.shardCount}`
-    + ` instance=${workerConfig.instanceId} build=${WORKER_BUILD_TAG}`,
+    + ` instance=${workerConfig.instanceId} build=${WORKER_BUILD_TAG}`
+    + ` internal_token=${internalTokenFingerprint() ?? 'missing'}`,
   )
 
   if (!workerConfig.runsDiscordListener) {
@@ -398,7 +405,12 @@ async function main() {
     console.log(`[worker] discord listener started guilds=${discordListener.client.guilds.cache.size}`)
   }
 
+  let stopTradePushProbe: (() => void) | null = null
   if (workerConfig.runsListener) {
+    // Authenticated probe of TRADE_*_WORKER_URL targets — opens a breaker on 401/404
+    // so Close-all does not wait on the idle DB sweep after a token mismatch.
+    stopTradePushProbe = startTradePushProbeLoop()
+
     // Register periodic lease renewal + session sync BEFORE (and independent of)
     // loadAll. Previously loadAll was awaited first, so a single hung listener
     // connect during startup (e.g. a wedged Telegram warm-up) blocked loadAll
@@ -457,6 +469,7 @@ async function main() {
     stopWorkerHeartbeatCheckIns()
     await authService?.shutdown()
     stopWorkWake?.()
+    stopTradePushProbe?.()
     stopTradeLivenessTick?.()
     stopLogRetention?.()
     setQueueMetricsProvider(null)

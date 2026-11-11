@@ -48,7 +48,9 @@ export function loadSignalQueueConfig(): SignalQueueConfig {
   const redisRestToken = String(process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.REDIS_REST_TOKEN ?? '').trim()
   const redisConfigured = Boolean(redisRestUrl && redisRestToken)
   return {
-    enabled: parseEnvBool(process.env.TRADE_SIGNAL_QUEUE_ENABLED, redisConfigured),
+    // Default OFF until queue consumer/idempotency fixes land — Redis present must not
+    // auto-enable a path nobody consumes (signals then wait on HTTP or sweep).
+    enabled: parseEnvBool(process.env.TRADE_SIGNAL_QUEUE_ENABLED, false),
     canaryShardIds: parseCanaryShards(process.env.TRADE_SIGNAL_QUEUE_CANARY_SHARDS),
     entryStreamBase: String(process.env.TRADE_SIGNAL_QUEUE_ENTRY_STREAM ?? 'signals:entry').trim(),
     mgmtStreamBase: String(process.env.TRADE_SIGNAL_QUEUE_MGMT_STREAM ?? 'signals:mgmt').trim(),
@@ -149,7 +151,10 @@ export function buildIdempotencyKey(parts: {
   userId: string
   actionClass: string
   brokerAccountId?: string | null
+  /** Message revision / edit stamp — without this, edited re-dispatches collide. */
+  revision?: string | number | null
 }): string {
   const broker = parts.brokerAccountId?.trim() || '_'
-  return `${parts.signalId}:${parts.userId}:${broker}:${parts.actionClass}`
+  const rev = parts.revision == null || parts.revision === '' ? '_' : String(parts.revision)
+  return `${parts.signalId}:${parts.userId}:${broker}:${parts.actionClass}:${rev}`
 }
