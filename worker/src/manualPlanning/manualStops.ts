@@ -156,6 +156,69 @@ export function resolvePredefinedSlForEntry(args: {
 }
 
 /**
+ * When Override SL/TP pips are on, rewrite shared absolute basket targets onto
+ * each leg's own fill. Basket reconcile otherwise snaps every leg to the plan
+ * anchor prices, fights post-fill restamping, and can clear TPs via SL-only
+ * OrderModify retries (Demo 81765183 / signal 85e73f2b).
+ */
+export function restampBasketTargetsFromLegEntries(args: {
+  manual: Pick<
+    ManualSettings,
+    'use_predefined_sl_pips' | 'predefined_sl_pips' | 'use_predefined_tp_pips' | 'predefined_tp_pips'
+  >
+  familyTrades: Array<{ entry_price?: number | null; tp?: number | null }>
+  targets: Array<{ stoploss: number; takeprofit: number }>
+  direction: 'buy' | 'sell'
+  symbol: string
+  point?: number
+  digits?: number
+  contractSize?: number | null
+}): Array<{ stoploss: number; takeprofit: number }> {
+  const useSl = resolvePredefinedSlPips(args.manual) != null
+  const useTp = resolvePredefinedTpPips(args.manual) != null
+  if (!useSl && !useTp) return args.targets
+  if (!args.familyTrades.length || !args.targets.length) return args.targets
+
+  const isBuy = args.direction === 'buy'
+  return args.familyTrades.map((tr, i) => {
+    const base = args.targets[i] ?? args.targets[args.targets.length - 1]!
+    const entry = Number(tr.entry_price)
+    if (!Number.isFinite(entry) || entry <= 0) return { ...base }
+
+    let stoploss = base.stoploss
+    let takeprofit = base.takeprofit
+    if (useSl) {
+      const sl = resolvePredefinedSlForEntry({
+        manual: args.manual,
+        entry,
+        isBuy,
+        symbol: args.symbol,
+        point: args.point,
+        digits: args.digits,
+        contractSize: args.contractSize,
+      })
+      if (sl != null) stoploss = sl
+    }
+    if (useTp) {
+      const existingTp = base.takeprofit > 0 ? base.takeprofit : Number(tr.tp)
+      const tp = resolvePredefinedTpForEntry({
+        manual: args.manual,
+        entry,
+        isBuy,
+        symbol: args.symbol,
+        point: args.point,
+        digits: args.digits,
+        contractSize: args.contractSize,
+        existingTp: Number.isFinite(existingTp) && existingTp > 0 ? existingTp : null,
+        matchEntry: entry,
+      })
+      if (tp != null) takeprofit = tp
+    }
+    return { stoploss, takeprofit }
+  })
+}
+
+/**
  * Override signal TP from this fill/trigger. `matchEntry` + `existingTp` pick the
  * Targets % bucket (TP1/TP2/…) from the planned ladder, then restamp that same
  * pip distance onto `entry` so range/multi legs are N pips from *that* fill.

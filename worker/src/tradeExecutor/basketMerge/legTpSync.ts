@@ -143,6 +143,7 @@ export async function syncMultiBasketLegTakeProfits(ctx: TradeExecutorContext, a
         skipAlreadySynced: true,
         orderCommentsEnabled: manual.order_comments_enabled !== false,
         bundleIdentity: true,
+        manual,
       })
     } catch (err) {
       console.warn(
