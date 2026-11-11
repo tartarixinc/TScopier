@@ -1,4 +1,4 @@
-/** Short-lived flag cookie so marketing (tscopier.ai) can detect login from app (app.tscopier.ai). */
+/** Short-lived flag cookie so marketing can detect login from the app host. */
 const AUTH_PRESENCE_COOKIE = 'tsc_auth'
 const AUTH_PRESENCE_MAX_AGE_SEC = 60 * 60 * 24 * 30
 
@@ -6,6 +6,7 @@ export function getSharedAuthCookieDomain(): string | undefined {
   if (typeof window === 'undefined') return undefined
   const host = window.location.hostname
   if (host === 'tscopier.ai' || host.endsWith('.tscopier.ai')) return '.tscopier.ai'
+  if (host === 'unicopier.com' || host.endsWith('.unicopier.com')) return '.unicopier.com'
   return undefined
 }
 

@@ -55,7 +55,7 @@ test('entry strategy ids are stable within a bucket, short, and carry the signal
   assert.notEqual(id, entryStrategyId({ ...base, qty: 0.2 }))
   assert.ok(id.length <= STRATEGY_MAX, id)
   assert.match(id, /^TSC\.3fa85f645717\./)
-  assert.equal(commentFromStrategyId(id), 'TScopier:3fa85f645717')
+  assert.equal(commentFromStrategyId(id), 'UniCopier:3fa85f645717')
   assert.equal(commentFromStrategyId('manual'), '')
   assert.ok(entryStrategyId({ ...base, comment: undefined }).length <= STRATEGY_MAX)
   assert.equal(commentFromStrategyId(entryStrategyId({ ...base, comment: undefined })), '')

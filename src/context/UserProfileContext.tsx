@@ -256,3 +256,8 @@ export function useUserProfile(): UserProfileContextValue {
   }
   return ctx
 }
+
+/** Safe outside UserProfileProvider (e.g. marketing host + support widget). */
+export function useOptionalUserProfile(): UserProfileContextValue | null {
+  return useContext(UserProfileContext)
+}

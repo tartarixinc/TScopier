@@ -30,6 +30,7 @@ import {
   pipelineSummaryPayload,
   setPipelineTimestamp,
 } from '../pipelineTimestamps'
+import { takeEntryBrokerTimings } from '../brokerEntryContext'
 import { signalExecutionProven } from '../signalExecutionProven'
 import { resolveChannelLabelForComment, sanitizeChannelCommentSlug } from '../tradeComment'
 import { ensureSignalRow } from '../ensureSignalRow'
@@ -60,7 +61,11 @@ import {
   subscriptionBlocksSignalExecution,
   isSubscriptionActive,
 } from '../subscriptionAccess'
-import { evaluateParsedSignalExecutionEligibility } from '../signalExecutionEligibility'
+import {
+  evaluateParsedSignalExecutionEligibility,
+  TRADINGVIEW_MISSING_SL_TP_REASON,
+  tradingViewEntryStopsSatisfied,
+} from '../signalExecutionEligibility'
 import { evaluateChannelCopyLimitPauseForBroker } from '../copyLimitDispatch'
 import { isV2 } from '../engine/executionMode'
 import { upsertBasketSlTpTarget } from '../basketTargetStore'
@@ -191,11 +196,17 @@ export function revisionInflightWaitMs(row: SignalRow, dispatchSource?: string):
 
 const tradingViewSourceCache = new Map<string, { at: number; value: boolean }>()
 
-const NON_TELEGRAM_SIGNAL_SOURCES = new Set(['tradingview', 'discord', 'whatsapp'])
+const NON_TELEGRAM_SIGNAL_SOURCES = new Set(['tradingview', 'tradingview_webhook', 'discord', 'whatsapp'])
+const TRADINGVIEW_SIGNAL_SOURCES = new Set(['tradingview', 'tradingview_webhook'])
 
 /** Dispatch hints and channel rows that are not a Telegram chat. */
 export function isNonTelegramSignalSource(...hints: Array<string | null | undefined>): boolean {
   return hints.some(hint => NON_TELEGRAM_SIGNAL_SOURCES.has(String(hint ?? '').trim().toLowerCase()))
+}
+
+/** Structured TradingView webhook alerts (JSON buy/sell) — not free-text Telegram copy. */
+export function isTradingViewSignalSource(...hints: Array<string | null | undefined>): boolean {
+  return hints.some(hint => TRADINGVIEW_SIGNAL_SOURCES.has(String(hint ?? '').trim().toLowerCase()))
 }
 
 /** TradingView, Discord, and WhatsApp rows are not Telegram chats, so the listener-live gate does not apply. */
@@ -217,6 +228,21 @@ export async function isTradingViewSourceChannel(
   const value = isNonTelegramSignalSource(kind)
   tradingViewSourceCache.set(key, { at: Date.now(), value })
   return value
+}
+
+/** Channel is specifically a TradingView webhook source (not Discord/WhatsApp). */
+export async function isTradingViewChannelSource(
+  supabase: TradeExecutorContext['supabase'],
+  channelId: string | null,
+): Promise<boolean> {
+  if (!channelId) return false
+  const { data, error } = await supabase
+    .from('telegram_channels')
+    .select('source_kind')
+    .eq('id', channelId)
+    .maybeSingle()
+  if (error || !data) return false
+  return isTradingViewSignalSource((data as { source_kind?: string | null }).source_kind)
 }
 
 export function enqueueSignal(ctx: TradeExecutorContext, 
@@ -418,6 +444,7 @@ export function logPipelineSummaryBackground(ctx: TradeExecutorContext,
         )
       }
     }
+    const brokerCallTimings = takeEntryBrokerTimings(signal.id)
     void ctx.supabase
       .from('trade_execution_logs')
       .insert({
@@ -427,6 +454,7 @@ export function logPipelineSummaryBackground(ctx: TradeExecutorContext,
         status: 'success',
         request_payload: pipelineSummaryPayload(ts, {
           ...extra,
+          ...(brokerCallTimings ?? {}),
           listener_to_dispatch_ms: listenerToDispatchMs,
         }) as unknown as Record<string, unknown>,
       })
@@ -620,8 +648,13 @@ export async function handleSignal(ctx: TradeExecutorContext,
       let userSub: Awaited<ReturnType<typeof loadCachedUserSubscription>>
       let isAdmin: boolean
       let extensionEndMs: number | null = null
-      const nonTelegramSource = isNonTelegramSignalSource(opts?.dispatchSource, row.dispatch_source)
-        || await isTradingViewSourceChannel(ctx.supabase, row.channel_id)
+      const nonTelegramSource = isNonTelegramSignalSource(
+        opts?.dispatchSource,
+        row.dispatch_source,
+        typeof (row.parsed_data as { signal_source?: unknown } | null)?.signal_source === 'string'
+          ? String((row.parsed_data as { signal_source?: unknown }).signal_source)
+          : null,
+      ) || await isTradingViewSourceChannel(ctx.supabase, row.channel_id)
       if (
         !nonTelegramSource
         && (liveFast || liveMgmtFast)
@@ -723,13 +756,47 @@ export async function handleSignal(ctx: TradeExecutorContext,
       if (!parsed || !parsed.action) return
       const action = String(parsed.action).toLowerCase()
       if (action === 'ignore') return
-      const executionEligibility = evaluateParsedSignalExecutionEligibility(
-        parsed,
-        String((row as { raw_message?: string | null }).raw_message ?? parsed.raw_instruction ?? ''),
-      )
-      if (!executionEligibility.eligible) {
-        await ctx.logDispatchSkipped(row, executionEligibility.skipReason ?? 'entry_not_execution_eligible')
-        return
+      // TradingView JSON alerts are structured orders — do not require Telegram free-text
+      // cues like "buy now". SL/TP must still come from the alert or config overrides.
+      const tradingViewSource = isTradingViewSignalSource(
+        opts?.dispatchSource,
+        row.dispatch_source,
+        typeof (parsed as { signal_source?: unknown }).signal_source === 'string'
+          ? String((parsed as { signal_source?: unknown }).signal_source)
+          : null,
+      ) || await isTradingViewChannelSource(ctx.supabase, row.channel_id)
+      if (tradingViewSource) {
+        if ((action === 'buy' || action === 'sell') && !String(parsed.symbol ?? '').trim()) {
+          await ctx.logDispatchSkipped(row, 'symbol_required')
+          return
+        }
+      } else {
+        let rawForEligibility = String(
+          (row as { raw_message?: string | null }).raw_message
+            ?? parsed.raw_instruction
+            ?? '',
+        ).trim()
+        // Sweep historically omitted raw_message; hydrate from DB so TV cues survive.
+        if (!rawForEligibility && row.id) {
+          const { data: rawRow } = await ctx.supabase
+            .from('signals')
+            .select('raw_message')
+            .eq('id', row.id)
+            .maybeSingle()
+          const fromDb = String((rawRow as { raw_message?: string | null } | null)?.raw_message ?? '').trim()
+          if (fromDb) {
+            rawForEligibility = fromDb
+            ;(row as { raw_message?: string | null }).raw_message = fromDb
+          }
+        }
+        const executionEligibility = evaluateParsedSignalExecutionEligibility(
+          parsed,
+          rawForEligibility,
+        )
+        if (!executionEligibility.eligible) {
+          await ctx.logDispatchSkipped(row, executionEligibility.skipReason ?? 'entry_not_execution_eligible')
+          return
+        }
       }
 
       const rawMatchingBrokers = (ctx.brokersByUser.get(row.user_id) ?? []).filter(b =>
@@ -752,6 +819,17 @@ export async function handleSignal(ctx: TradeExecutorContext,
       const wakeBrokerId = opts?.wakeBrokerAccountId ?? row.wake_broker_account_id
       if (isRangeWake && wakeBrokerId) {
         brokers = brokers.filter(b => b.id === wakeBrokerId)
+      }
+      if (
+        tradingViewSource
+        && (action === 'buy' || action === 'sell')
+        && !tradingViewEntryStopsSatisfied(
+          parsed,
+          brokers.map(b => resolveChannelTradingConfig(b, row.channel_id).manual_settings),
+        )
+      ) {
+        await ctx.logDispatchSkipped(row, TRADINGVIEW_MISSING_SL_TP_REASON)
+        return
       }
       const signalSymbolForWarm = parsed.symbol?.trim() ?? ''
       if (liveFast && signalSymbolForWarm && brokers.length > 0) {

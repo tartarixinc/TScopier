@@ -13,7 +13,10 @@ import {
   copierLogSourceLabel,
   copierLogToastFingerprint,
   copierLogToastFromSignal,
+  mergeCopierLogToastSeen,
+  readCopierLogToastSeen,
   signalHistoryToastLabels,
+  writeCopierLogToastSeen,
   type CopierLogToast,
 } from '../../lib/copierLogToast'
 import { whenRealtimeReady } from '../../lib/whenRealtimeReady'
@@ -27,6 +30,7 @@ type ChannelRow = {
 
 const TOAST_MS = 6_000
 const MAX_TOASTS = 4
+const SEEN_HYDRATE_LIMIT = 100
 
 const STATUS_ACCENT: Record<string, string> = {
   executed: 'bg-green-400',
@@ -78,7 +82,7 @@ export function CopierLogToasts({ userId }: { userId: string | undefined }) {
 
   useEffect(() => {
     if (!userId) return
-    seen.current.clear()
+    seen.current = readCopierLogToastSeen(userId)
     channelsRef.current = new Map()
     setToasts([])
     let cancelled = false
@@ -101,6 +105,7 @@ export function CopierLogToasts({ userId }: { userId: string | undefined }) {
       const fingerprint = copierLogToastFingerprint(signal)
       if (seen.current.get(signal.id) === fingerprint) return
       seen.current.set(signal.id, fingerprint)
+      writeCopierLogToastSeen(userId, seen.current)
       const channels = await ensureChannels()
       if (cancelled) return
       if (signal.channel_id && !channels.has(signal.channel_id)) {
@@ -130,22 +135,40 @@ export function CopierLogToasts({ userId }: { userId: string | undefined }) {
       }, TOAST_MS))
     }
 
-    void whenRealtimeReady(userId).then(() => {
+    const start = async () => {
+      // Mark existing signal statuses as already shown before listening, so
+      // refresh + reconcile UPDATEs (same status) do not resurrect old toasts.
+      const { data } = await supabase
+        .from('signals')
+        .select('id,status,skip_reason')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(SEEN_HYDRATE_LIMIT)
+      if (cancelled) return
+      mergeCopierLogToastSeen(
+        seen.current,
+        (data ?? []) as Array<Pick<Signal, 'id' | 'status' | 'skip_reason'>>,
+      )
+      writeCopierLogToastSeen(userId, seen.current)
+
+      await whenRealtimeReady(userId)
       if (cancelled) return
       channel = supabase
         .channel(`copier_log_toasts:${userId}`)
         .on(
           'postgres_changes',
           { event: 'INSERT', schema: 'public', table: 'signals', filter: `user_id=eq.${userId}` },
-          payload => show(payload.new as Signal),
+          payload => void show(payload.new as Signal),
         )
         .on(
           'postgres_changes',
           { event: 'UPDATE', schema: 'public', table: 'signals', filter: `user_id=eq.${userId}` },
-          payload => show(payload.new as Signal),
+          payload => void show(payload.new as Signal),
         )
         .subscribe()
-    })
+    }
+
+    void start()
 
     return () => {
       cancelled = true

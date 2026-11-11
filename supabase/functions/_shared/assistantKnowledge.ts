@@ -11,7 +11,7 @@ Key areas:
 - **Backtest** (/backtest): replay a Telegram channel's signals against historical market data (via linked FxSocket MT5).
 - **Billing** (/billing): plan and invoices.
 - **Trades** (/account-trades): live open/closed broker positions (tickets, PnL). **Copier Logs** (/copier-logs) + **Activities** (/activities) show what happened to signals (parsed → dispatched → executed/skipped/failed).
-- **Contact support** (/contact-support): human help; use open_live_chat when the user wants a person.
+- **Contact support** (/contact-support): human help via the in-app support widget; use open_live_chat when the user wants a person.
 
 ## Core concepts
 - **Pause / resume copier**: **set_copier_paused** pauses/resumes the ENTIRE copier (all brokers). For a single account (e.g. “stop Exness Demo” or “resume Exness Demo”), use **set_broker_active** with is_active=false/true — never set_copier_paused for one broker. Never auto-pause another broker to free a slot; if Basic’s 1-active-broker limit blocks resume, explain they must pause the other account themselves or upgrade.

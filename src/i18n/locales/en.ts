@@ -2,6 +2,7 @@ import { authEn } from '../auth/en'
 import { channelWorkerEn } from '../channelWorker/en'
 import { tradeNotificationsEn } from '../tradeNotifications/en'
 import { contactSupportEn } from '../contactSupport/en'
+import { supportWidgetEn } from '../supportWidget/en'
 import { riskDisclaimerEn } from '../riskDisclaimer/en'
 import { termsOfServiceEn } from '../legal/termsEn'
 import { privacyPolicyEn } from '../legal/privacyEn'
@@ -17,6 +18,7 @@ export const en: Translations = {
   channelWorker: channelWorkerEn,
   tradeNotifications: tradeNotificationsEn,
   contactSupportPage: contactSupportEn,
+  supportWidget: supportWidgetEn,
   riskDisclaimerPage: riskDisclaimerEn,
   termsOfServicePage: termsOfServiceEn,
   privacyPolicyPage: privacyPolicyEn,
@@ -694,7 +696,9 @@ broker: {
     avgProfit: 'Avg. profit',
     avgHoldingTime: 'Avg. holding time',
     profitFactor: 'Profit factor',
-    pnlCalendar: 'PnL calendar Sep 2026',
+    pnlCalendar: 'PnL calendar',
+    previousMonth: 'Previous month',
+    nextMonth: 'Next month',
     noTrades: 'No trades',
     tradeCount: '{count} trades',
     holdingDays: '{count} days',
@@ -1646,6 +1650,7 @@ broker: {
     execNotePartialCloseTooSmall:
       'A requested partial close could not be executed — this position was too small to split (the requested part would fall below the broker minimum lot), so that instruction closed nothing and the trade was left at its full size.',
     execNoteStaleEntry: 'The signal entry was {entry} but the trade opened at {fill} — price had already moved when the order was sent.',
+    execNoteTpStripped: 'Take-profits {levels} were stripped — the trade opened at {fill}, past the take-profit price, so applying them would have closed the trade immediately.',
     imageSignal: '(image signal)',
     loadingSignal: 'Loading signal…',
     loadSignalError: 'Could not load signal details.',
@@ -1742,7 +1747,19 @@ broker: {
     tradingViewName: 'Name',
     tradingViewUrl: 'Webhook URL',
     tradingViewTemplate: 'Alert message',
-    tradingViewTemplateHelp: 'Paste this JSON into the TradingView alert message. Strategy alerts fill action with buy or sell. Set action to close to close the copied trades for that symbol.',
+    tradingViewTemplateStrategy: 'For Strategies only',
+    tradingViewTemplateIndicators: 'Indicators',
+    tradingViewTemplateBuy: 'For Buy Signals',
+    tradingViewTemplateSell: 'For Sell Signals',
+    tradingViewTemplateSymbolHint: 'For other symbols, change the "XAUUSD" in "symbol" in TradingView.',
+    tradingViewTemplateHelp: 'Use For Strategies when the alert comes from a strategy (action fills with buy or sell). Use For Buy Signals or For Sell Signals for indicator alerts with a fixed side — edit the symbol in the JSON to match your chart. Set action to close to close copied trades for that symbol.',
+    tradingViewHowToTitle: 'How to Add to TradingView',
+    tradingViewHowTo1: 'In TradingView, open Alerts and create a new alert from the chart (use a chart condition — not “Any alert() function call only”).',
+    tradingViewHowTo2: 'Turn on Webhook URL and paste the current Webhook URL from this modal (copy it again after Rotate URL or recreating the webhook).',
+    tradingViewHowTo3: 'Paste the matching Alert message template into the Message field. For Buy/Sell, edit the symbol (e.g. XAUUSD) to match your chart — do not leave {{ticker}} in the message.',
+    tradingViewHowTo4: 'Save the alert. Recent alerts here must show Accepted with a real symbol. TradingView “Webhook successfully delivered” only means HTTP 200 — if Recent alerts shows Skipped (unresolved symbol), no trade was created.',
+    tradingViewSkipUnresolvedSymbol: 'Symbol placeholders were not expanded — edit the Message to a real symbol (e.g. XAUUSD) and recreate the alert',
+    tradingViewSkipUnresolvedAction: 'Action placeholder was not expanded — use the Buy/Sell template or a strategy alert with a chart condition',
     tradingViewCopy: 'Copy',
     tradingViewCopied: 'Copied',
     tradingViewRotate: 'Rotate URL',

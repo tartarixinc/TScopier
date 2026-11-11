@@ -4,6 +4,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { stripInvalidStopsForSide } from './channelActiveTradeParams'
+import { modifyLegSlTpWithFallback } from './orderModifySafe'
 import { channelMatchesBrokerSignal } from './brokerChannelFilter'
 import {
   clampBasketOrderStops,
@@ -352,19 +353,56 @@ export async function applySignalOverride(
 
       try {
         const modifyArgs: { ticket: number; stoploss?: number; takeprofit?: number } = { ticket }
-        if (targetSlForLeg != null && targetSlForLeg > 0) modifyArgs.stoploss = targetSlForLeg
-        if (targetTp != null && targetTp > 0) modifyArgs.takeprofit = targetTp
+        const wantsSl = targetSlForLeg != null && targetSlForLeg > 0
+        const wantsTp = targetTp != null && targetTp > 0
+        // MTAPI clears an omitted side to 0 — carry the current value of the
+        // side this override is not changing.
+        if (targetSlForLeg != null && targetSlForLeg > 0) {
+          modifyArgs.stoploss = targetSlForLeg
+        } else if (wantsTp) {
+          const curSl = Number(tr.sl)
+          if (Number.isFinite(curSl) && curSl > 0) modifyArgs.stoploss = curSl
+        }
+        if (targetTp != null && targetTp > 0) {
+          modifyArgs.takeprofit = targetTp
+        } else if (wantsSl) {
+          const curTp = Number(tr.tp)
+          if (Number.isFinite(curTp) && curTp > 0) modifyArgs.takeprofit = curTp
+        }
         if (modifyArgs.stoploss == null && modifyArgs.takeprofit == null) {
           skipped++
           continue
         }
 
-        await client!.orderModify(uuid, modifyArgs)
+        // SL-first with split fallback: a stale carried counterpart (tr.sl /
+        // tr.tp) must not block the side this override actually changes, and
+        // a successful combined modify keeps both sides.
+        const safe = await modifyLegSlTpWithFallback(
+          client!,
+          uuid,
+          ticket,
+          modifyArgs.stoploss ?? 0,
+          modifyArgs.takeprofit ?? 0,
+        )
+        if (safe.benign) {
+          skipped++
+          continue
+        }
+        if (!safe.ok) {
+          throw new Error(safe.error ?? 'OrderModify failed')
+        }
         const dbPatch: { sl?: number | null; tp?: number | null } = {}
-        if (targetSlForLeg != null) dbPatch.sl = targetSlForLeg
-        if (targetTp != null) dbPatch.tp = targetTp
+        if (targetSlForLeg != null && safe.slApplied) dbPatch.sl = targetSlForLeg
+        if (targetTp != null && safe.tpApplied) dbPatch.tp = targetTp
         if (Object.keys(dbPatch).length > 0) {
           await supabase.from('trades').update(dbPatch).eq('id', tr.id)
+        }
+        // A requested TP the split could not land must not count as applied:
+        // the SL-only step cleared the broker TP, so this leg has to reach the
+        // catch below (failed + reconcile queue) instead of the success log.
+        // The applied SL is already patched above.
+        if ((modifyArgs.takeprofit ?? 0) > 0 && !safe.tpApplied) {
+          throw new Error(safe.error ?? 'take profit not applied')
         }
         try {
           await writeExecutionLog(supabase, {

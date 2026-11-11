@@ -52,6 +52,29 @@ where action = 'pipeline_summary'
 group by 1
 order by 1 desc;
 
+-- send_plan_ms + gateway/http attribution (entry-critical read lane fix)
+-- After deploy, quote_gateway_wait_ms / opened_orders_gateway_wait_ms should drop;
+-- target: warm live-fast p50 send_plan_ms < 1000 and pct total_ms >= 13000 falling.
+select
+  count(*) as samples,
+  round(100.0 * count(*) filter (where (request_payload->>'total_ms')::int >= 13000) / nullif(count(*), 0), 1) as pct_ge_13s,
+  percentile_cont(0.5) within group (order by (request_payload->>'total_ms')::int) as p50_total_ms,
+  percentile_cont(0.9) within group (order by (request_payload->>'total_ms')::int) as p90_total_ms,
+  percentile_cont(0.5) within group (order by (request_payload->>'send_plan_ms')::int) as p50_send_plan_ms,
+  percentile_cont(0.9) within group (order by (request_payload->>'send_plan_ms')::int) as p90_send_plan_ms,
+  percentile_cont(0.5) within group (order by (request_payload->>'broker_send_ms')::int) as p50_broker_send_ms,
+  round(avg((request_payload->>'quote_gateway_wait_ms')::int)) as avg_quote_gateway_wait_ms,
+  round(avg((request_payload->>'quote_http_ms')::int)) as avg_quote_http_ms,
+  round(avg((request_payload->>'opened_orders_gateway_wait_ms')::int)) as avg_opened_orders_gateway_wait_ms,
+  round(avg((request_payload->>'opened_orders_http_ms')::int)) as avg_opened_orders_http_ms,
+  round(avg((request_payload->>'telegram_to_listener_ms')::int)) as avg_tg_to_listener_ms
+from trade_execution_logs
+where action = 'pipeline_summary'
+  and created_at > now() - interval '24 hours'
+  and (request_payload->>'total_ms') ~ '^\d+$'
+  and coalesce(request_payload->>'live_fast', 'false') = 'true'
+  and coalesce(request_payload->>'mgmt_fast_path', 'false') = 'false';
+
 -- dispatch_source breakdown (listener_push vs sweep vs queue)
 select
   date_trunc('hour', created_at) as hour,

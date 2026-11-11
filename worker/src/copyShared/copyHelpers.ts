@@ -8,6 +8,7 @@
  */
 import type { BrokerSymbolParams } from '../brokerProvider'
 import { brokerSessionId, missingProviderIdColumn } from '../mtApiByAccount'
+import { dedupeOpenedMarketPositions } from '../livePositionIdentity'
 import { resolveMtLots } from '../mtTradeFields'
 import {
   isLikelyMarketPositionRow,
@@ -64,6 +65,39 @@ export function normalizeSourcePosition(raw: unknown): NormalizedSourcePosition 
     stopLoss: readBrokerOrderStopLoss(row),
     takeProfit: readBrokerOrderTakeProfit(row),
   }
+}
+
+/**
+ * Market positions from an OpenedOrders snapshot, deduped so order/position
+ * twin rows for one fill only produce one copy open.
+ */
+export function normalizeSourcePositions(openedOrders: unknown[]): NormalizedSourcePosition[] {
+  const fromDedupe: NormalizedSourcePosition[] = []
+  for (const position of dedupeOpenedMarketPositions(openedOrders)) {
+    const side = position.isBuy === true ? 'buy' : position.isBuy === false ? 'sell' : null
+    const volume = position.lots ?? resolveMtLots(position.row, 'trades')
+    if (!side || !(volume > 0) || !position.symbol) continue
+    fromDedupe.push({
+      ticket: String(position.canonicalTicket),
+      symbol: position.symbol,
+      side,
+      volume,
+      stopLoss: readBrokerOrderStopLoss(position.row),
+      takeProfit: readBrokerOrderTakeProfit(position.row),
+    })
+  }
+  if (fromDedupe.length > 0) return fromDedupe
+  // Fallback when live-position parsing rejects the bridge shape but the
+  // legacy normalizer still accepts the row.
+  const seen = new Set<string>()
+  const legacy: NormalizedSourcePosition[] = []
+  for (const raw of openedOrders) {
+    const position = normalizeSourcePosition(raw)
+    if (!position || seen.has(position.ticket)) continue
+    seen.add(position.ticket)
+    legacy.push(position)
+  }
+  return legacy
 }
 
 /**

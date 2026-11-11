@@ -92,7 +92,7 @@ function fnv(text: string): number {
   return hash
 }
 
-/** Signal id head of a copier comment (`TScopier:slug:<signal id>:...`), alphanumerics only. */
+/** Signal id head of a copier comment (`UniCopier:slug:<signal id>:...`), alphanumerics only. */
 export function commentTail(comment: string | undefined): string {
   const parts = String(comment ?? '').split(':').map(part => part.trim()).filter(Boolean)
   const idIndex = parts.findIndex((part, index) => index > 0 && /^[a-f0-9]{8}/i.test(part))
@@ -126,14 +126,14 @@ export function isCopierStrategyId(value: unknown): boolean {
   return /^TSC\./.test(String(value ?? ''))
 }
 
-/** Readable `TScopier:<tail>` comment from an entry tag (empty when the signal tail is missing). */
+/** Readable `UniCopier:<tail>` comment from an entry tag (empty when the signal tail is missing). */
 export function commentFromStrategyId(value: unknown): string {
   const text = String(value ?? '')
   if (!isCopierStrategyId(text)) return ''
   const parts = text.split('.')
   // TSC.<tail>.<fingerprint>.<bucket> has four parts; without a tail there are three.
   if (parts.length < 4) return ''
-  return `TScopier:${parts[1]}`
+  return `UniCopier:${parts[1]}`
 }
 
 /** Ticket numbers are the broker's numeric ids. Anything else hashes onto a positive 32-bit int. */

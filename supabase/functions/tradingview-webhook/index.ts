@@ -264,6 +264,17 @@ async function recordDelivery(
   return "inserted"
 }
 
+function scheduleBackgroundTask(promise: Promise<unknown>): void {
+  const runtime = (globalThis as typeof globalThis & {
+    EdgeRuntime?: { waitUntil(task: Promise<unknown>): void }
+  }).EdgeRuntime
+  if (runtime?.waitUntil) {
+    runtime.waitUntil(promise)
+    return
+  }
+  void promise
+}
+
 async function pushSignal(
   webhook: WebhookRow,
   signal: {
@@ -272,6 +283,7 @@ async function pushSignal(
     status: string
     telegram_message_id: string
     created_at: string
+    raw_message: string
   },
 ): Promise<void> {
   const token = (Deno.env.get("WORKER_INTERNAL_TOKEN") ?? "").trim()
@@ -281,48 +293,50 @@ async function pushSignal(
     console.warn(`[tradingview-webhook] trade worker not configured user=${webhook.user_id}`)
     return
   }
-  const res = await fetch(`${baseUrl}/internal/dispatch-signal`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-internal-token": token,
-    },
-    body: JSON.stringify({
-      signal: {
-        id: signal.id,
-        user_id: webhook.user_id,
-        channel_id: webhook.channel_id,
-        parsed_data: signal.parsed_data,
-        status: signal.status,
-        parent_signal_id: null,
-        is_modification: false,
-        telegram_message_id: signal.telegram_message_id,
-        reply_to_message_id: null,
-        created_at: signal.created_at,
-        dispatch_source: "tradingview_webhook",
+  try {
+    const res = await fetch(`${baseUrl}/internal/dispatch-signal`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-internal-token": token,
       },
-      priority: action === "close" ? "high" : "normal",
-      source: "tradingview_webhook",
-      await: false,
-    }),
-  })
-  if (!res.ok) {
-    console.warn(`[tradingview-webhook] dispatch failed status=${res.status} user=${webhook.user_id}`)
+      body: JSON.stringify({
+        signal: {
+          id: signal.id,
+          user_id: webhook.user_id,
+          channel_id: webhook.channel_id,
+          parsed_data: signal.parsed_data,
+          status: signal.status,
+          parent_signal_id: null,
+          is_modification: false,
+          telegram_message_id: signal.telegram_message_id,
+          reply_to_message_id: null,
+          created_at: signal.created_at,
+          raw_message: signal.raw_message,
+          dispatch_source: "tradingview_webhook",
+        },
+        priority: action === "close" ? "high" : "normal",
+        source: "tradingview_webhook",
+        await: false,
+      }),
+    })
+    if (!res.ok) {
+      console.warn(`[tradingview-webhook] dispatch failed status=${res.status} user=${webhook.user_id}`)
+    }
+  } catch (err) {
+    console.warn(
+      `[tradingview-webhook] dispatch error user=${webhook.user_id}: ${err instanceof Error ? err.message : String(err)}`,
+    )
   }
 }
 
-async function handleIngest(supabase: SupabaseClient, req: Request, token: string): Promise<Response> {
-  if (!ipAllowed(req)) return json(403, { ok: false, status: "error" })
-
-  const tokenHash = await sha256Hex(token)
-  const { data } = await supabase
-    .from("tradingview_webhooks")
-    .select("id, user_id, channel_id, name, is_active")
-    .eq("token_hash", tokenHash)
-    .maybeSingle()
-  const webhook = (data ?? null) as WebhookRow | null
-  if (!webhook) return json(404, { ok: false })
-
+async function persistAcceptedAlert(
+  supabase: SupabaseClient,
+  webhook: WebhookRow,
+  raw: string,
+  parsed: Extract<ReturnType<typeof parseTradingViewAlert>, { ok: true }>,
+  idempotencyKey: string,
+): Promise<void> {
   const since = new Date(Date.now() - 60_000).toISOString()
   const { count } = await supabase
     .from("tradingview_webhook_deliveries")
@@ -330,20 +344,9 @@ async function handleIngest(supabase: SupabaseClient, req: Request, token: strin
     .eq("webhook_id", webhook.id)
     .gte("created_at", since)
   if ((count ?? 0) >= RATE_LIMIT_PER_MINUTE) {
-    return json(429, { ok: false, status: "error" })
+    console.warn(`[tradingview-webhook] rate limited webhook=${webhook.id}`)
+    return
   }
-
-  const raw = await req.text()
-  const bodyHash = await sha256Hex(raw)
-  if (!webhook.is_active) {
-    await recordDelivery(supabase, webhook, "skipped", `inactive:${bodyHash}`, "inactive", null)
-    return json(200, { ok: false, status: "skipped" })
-  }
-
-  const parsed = parseTradingViewAlert(raw)
-  const idempotencyKey = parsed.ok && parsed.alert.idempotencyId
-    ? parsed.alert.idempotencyId
-    : bodyHash
 
   const { data: existing } = await supabase
     .from("tradingview_webhook_deliveries")
@@ -351,21 +354,32 @@ async function handleIngest(supabase: SupabaseClient, req: Request, token: strin
     .eq("webhook_id", webhook.id)
     .eq("idempotency_key", idempotencyKey)
     .maybeSingle()
-  if (existing) return json(200, { ok: true, status: "duplicate" })
-
-  if (!parsed.ok) {
-    await recordDelivery(supabase, webhook, parsed.reason === "unknown_action" ? "skipped" : "error", idempotencyKey, parsed.reason, null)
-    return json(200, { ok: false, status: parsed.reason === "unknown_action" ? "skipped" : "error" })
-  }
+  if (existing) return
 
   const createdAt = new Date().toISOString()
   const signalId = crypto.randomUUID()
+  // Compatibility for trade workers that still apply Telegram "buy/sell now"
+  // eligibility to TV JSON: prepend an imperative cue. Newer workers ignore this
+  // for source_kind=tradingview and use alert/config SL+TP instead.
+  const alert = parsed.alert
+  const imperativeCue = (alert.action === "buy" || alert.action === "sell")
+    ? `${alert.symbol} ${alert.action.toUpperCase()} NOW`
+    : ""
+  const rawMessage = (imperativeCue ? `${imperativeCue}\n${raw}` : raw).slice(0, 8_000)
+  // Trade-worker sweep often loads signals without raw_message and with
+  // dispatch_source=sweep (not tradingview_webhook). Put the cue on
+  // parsed_data.raw_instruction so eligibility still passes on that path.
+  const parsedData = {
+    ...parsed.alert.parsed,
+    ...(imperativeCue ? { raw_instruction: imperativeCue } : {}),
+    signal_source: "tradingview",
+  }
   const { error: signalErr } = await supabase.from("signals").insert({
     id: signalId,
     user_id: webhook.user_id,
     channel_id: webhook.channel_id,
-    raw_message: raw.slice(0, 8_000),
-    parsed_data: parsed.alert.parsed,
+    raw_message: rawMessage,
+    parsed_data: parsedData,
     status: "parsed",
     skip_reason: null,
     telegram_message_id: idempotencyKey,
@@ -373,22 +387,83 @@ async function handleIngest(supabase: SupabaseClient, req: Request, token: strin
     created_at: createdAt,
   })
   if (signalErr) {
-    if (signalErr.code === "23505") return json(200, { ok: true, status: "duplicate" })
+    if (signalErr.code === "23505") return
     console.warn(`[tradingview-webhook] signal insert failed webhook=${webhook.id}: ${signalErr.message}`)
     await recordDelivery(supabase, webhook, "error", idempotencyKey, "signal_insert_failed", null)
-    return json(200, { ok: false, status: "error" })
+    return
   }
 
   const recorded = await recordDelivery(supabase, webhook, "accepted", idempotencyKey, null, signalId)
-  if (recorded === "duplicate") return json(200, { ok: true, status: "duplicate" })
+  if (recorded === "duplicate") return
 
   await pushSignal(webhook, {
     id: signalId,
-    parsed_data: parsed.alert.parsed,
+    parsed_data: parsedData,
     status: "parsed",
     telegram_message_id: idempotencyKey,
     created_at: createdAt,
+    raw_message: rawMessage,
   })
+}
+
+/**
+ * Full ingest after TradingView has already been ACKed. Keep this off the
+ * request path — TV aborts around ~3s and cold starts + DB lookup alone can
+ * exceed that even when the trade still executes in the background.
+ */
+async function processIngest(token: string, raw: string): Promise<void> {
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  )
+  const [tokenHash, bodyHash] = await Promise.all([sha256Hex(token), sha256Hex(raw)])
+  const { data } = await supabase
+    .from("tradingview_webhooks")
+    .select("id, user_id, channel_id, name, is_active")
+    .eq("token_hash", tokenHash)
+    .maybeSingle()
+  const webhook = (data ?? null) as WebhookRow | null
+  if (!webhook) {
+    console.warn(`[tradingview-webhook] unknown token hash=${tokenHash.slice(0, 12)}`)
+    return
+  }
+
+  if (!webhook.is_active) {
+    await recordDelivery(supabase, webhook, "skipped", `inactive:${bodyHash}`, "inactive", null)
+    return
+  }
+
+  const parsed = parseTradingViewAlert(raw)
+  // Prefer an expanded alert id. Otherwise mint a unique key so identical static
+  // bodies (common when TradingView does not expand placeholders) still create
+  // a delivery row — and an accepted signal — on every fire.
+  const idempotencyKey = parsed.ok && parsed.alert.idempotencyId
+    ? parsed.alert.idempotencyId
+    : `${bodyHash}:${crypto.randomUUID()}`
+
+  if (!parsed.ok) {
+    const skipStatus = parsed.reason === "unknown_action"
+      || parsed.reason.startsWith("unresolved_")
+      ? "skipped"
+      : "error"
+    console.warn(
+      `[tradingview-webhook] parse failed webhook=${webhook.id} reason=${parsed.reason} body=${JSON.stringify(raw.slice(0, 240))}`,
+    )
+    await recordDelivery(supabase, webhook, skipStatus, idempotencyKey, parsed.reason, null)
+    return
+  }
+
+  await persistAcceptedAlert(supabase, webhook, raw, parsed, idempotencyKey)
+}
+
+async function handleIngest(req: Request, token: string): Promise<Response> {
+  if (!ipAllowed(req)) return json(403, { ok: false, status: "error" })
+
+  // Read body, ACK immediately, then persist/dispatch in the background.
+  // TradingView's webhook timeout is ~3s; looking up the webhook + cold start
+  // often exceeds that even when the trade still runs successfully.
+  const raw = await req.text()
+  scheduleBackgroundTask(processIngest(token, raw))
   return json(200, { ok: true, status: "accepted" })
 }
 
@@ -396,11 +471,12 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders })
   if (req.method !== "POST") return json(405, { error: "method_not_allowed" })
 
+  const token = pathToken(req)
+  if (token) return handleIngest(req, token)
+
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   )
-  const token = pathToken(req)
-  if (token) return handleIngest(supabase, req, token)
   return handleManage(supabase, req)
 })

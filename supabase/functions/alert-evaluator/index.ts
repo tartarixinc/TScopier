@@ -40,11 +40,15 @@
  *   dead_letters_high      { max_open: number }
  *   telegram_gap           { max_not_listening: number }     // paying subscribers only (active/trialing)
  *   openai_credits_exhausted { grace_seconds: number }
+ *   openai_key_invalid      { grace_seconds: number }
  *
- * OpenAI credits are the one external dependency this evaluator probes
+ * OpenAI health is the one external dependency this evaluator probes
  * itself: every run makes a one-token request and writes the outcome to
- * system_probe_state target 'openai_api'. That row also powers the admin
- * Systems Health page, so the screen and the email always agree.
+ * system_probe_state target 'openai_api'. Two rules read that row —
+ * credits (billing codes) and key invalid (auth codes / missing key) —
+ * because a revoked key must page without claiming credits ran out. That
+ * row also powers the admin Systems Health page, so the screen and the
+ * email always agree.
  *
  * Principles: never treat unknown as healthy (a stale probe row fires), never
  * invent an outage from an unreadable table (skip and log instead), and keep
@@ -54,6 +58,7 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { isReconcileDriftRow, reconnectRequiredUserIds, persistenceStep } from "../_shared/alertEvalRules.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -92,6 +97,7 @@ const NEXT_ACTION: Record<string, string> = {
   dead_letters_high: "Open the dead-letter view and replay or discard the parked messages.",
   telegram_gap: "Linked accounts without a listener are not being copied — check worker leases on the Systems Health page.",
   openai_credits_exhausted: "Add OpenAI credits now (Billing → Add credits). Until then AI parsing is refused and only the regex parser runs, so complex signals may be missed.",
+  openai_key_invalid: "The OpenAI API key is invalid or was revoked — create a new key in the OpenAI dashboard and update OPENAI_API_KEY in Supabase edge secrets (and Railway for the worker). Until then AI parsing falls back to the regex parser and complex signals are skipped.",
 };
 
 const EMAIL_BATCH_LIMIT = 25;
@@ -114,6 +120,10 @@ interface RuleRow {
   threshold: Record<string, unknown>;
   window_minutes: number;
   cooldown_seconds: number;
+  /** Persistence state: when the condition first held continuously (ISO), null = not armed. */
+  cond_true_since?: string | null;
+  /** Persistence state: when the condition first cleared while an event was open (ISO). */
+  cond_false_since?: string | null;
 }
 
 interface EventRow {
@@ -214,11 +224,15 @@ async function recordOpenAiProbe(
   latencyMs: number | null,
   detail: string,
 ): Promise<void> {
+  // OpenAI 401 messages echo the presented key ("Incorrect API key
+  // provided: sk-…"). Redact at this single choke point so the key never
+  // reaches the probe row, probe events, the health page or the alert email.
+  const redacted = detail.replace(/sk-[A-Za-z0-9_-]{8,}/g, (m) => m.slice(0, 7) + "…");
   const { error } = await sb.rpc("record_probe_result", {
     p_target: "openai_api",
     p_state: state,
     p_latency_ms: latencyMs,
-    p_detail: detail.slice(0, 300),
+    p_detail: redacted.slice(0, 300),
   });
   if (error) console.warn(`[alert-evaluator] openai probe write failed err=${error.message}`);
 }
@@ -490,14 +504,20 @@ async function evalQueueStuck(sb: any, rule: RuleRow, nowMs: number): Promise<Ev
 /**
  * Failed executions.
  *
- * Three noise corrections, all learned from the 2026-10-23 incident review:
+ * Four noise corrections, all learned from the 2026-10-23 incident review and
+ * the 2026-11-02 alert audit:
  *
  *  1. `order_close_audit` rows are the audit trail of broker close *attempts*
  *     (the stuck-pending retry loop wrote one every few minutes — 215 in 24h).
  *     They describe an attempt, not an execution outcome, so they never count.
- *  2. Distinct failing signals, not raw rows: one chronic failure retried every
+ *  2. Reconciliation/drift rows (`isReconcileDriftRow`) are the management
+ *     layer reporting broker-vs-desired state, retried every cycle by design.
+ *     2026-10-27: 194 of 278 failed rows were this class and one signal wrote
+ *     86 rows in 3h — they tripped the storm cap while distinct signals stayed
+ *     under the limit. Real entry failures (rejected orders) still count.
+ *  3. Distinct failing signals, not raw rows: one chronic failure retried every
  *     cycle must not look like twenty different failing executions.
- *  3. A raw-row storm still fires on its own at 3x `max_failed`, so a
+ *  4. A raw-row storm still fires on its own at 3x `max_failed`, so a
  *     systematic single-account failure (one broker down, every execution for
  *     it retrying) cannot hide under the distinct count.
  */
@@ -519,22 +539,25 @@ async function evalExecutionsFailing(sb: any, rule: RuleRow, nowMs: number): Pro
   const since = new Date(nowMs - rule.window_minutes * 60_000).toISOString();
   const { data, error } = await sb
     .from("trade_execution_logs")
-    .select("signal_id")
+    .select("signal_id, error_message")
     .eq("status", "failed")
     .neq("action", "order_close_audit")
     .gte("created_at", since)
     .limit(EXECUTIONS_FAILING_MAX_ROWS);
   if (error) return { kind: "skip", reason: "trade_execution_logs unreadable" };
-  const rows = (data ?? []) as Array<{ signal_id?: string | null }>;
+  const allRows = (data ?? []) as Array<{ signal_id?: string | null; error_message?: string | null }>;
+  const rows = allRows.filter(r => !isReconcileDriftRow(r.error_message));
+  const reconcileExcluded = allRows.length - rows.length;
   const distinct = countDistinctFailingSignals(rows);
   const rowsFailed = rows.length;
   const fired = distinct > maxFailed || rowsFailed > stormCap;
+  const excludedNote = reconcileExcluded > 0 ? `; ${reconcileExcluded} reconcile rows excluded` : "";
   return {
     kind: "ok",
     fired,
     value: fired ? Math.max(distinct, rowsFailed) : distinct,
     message: `${distinct} distinct signal(s) with failed executions in ${rule.window_minutes}m`
-      + ` (${rowsFailed} failure rows; limits ${maxFailed} signals / ${stormCap} rows)`,
+      + ` (${rowsFailed} failure rows; limits ${maxFailed} signals / ${stormCap} rows${excludedNote})`,
   };
 }
 
@@ -622,9 +645,10 @@ async function evalTelegramGap(sb: any, rule: RuleRow, nowMs: number): Promise<E
 
   const healthRes = await sb
     .from("copier_listener_health")
-    .select("user_id, listener_status, mtproto_connected, updated_at, last_successful_probe_at, freshness_threshold_ms");
+    .select("user_id, listener_status, mtproto_connected, telegram_account_status, updated_at, last_successful_probe_at, freshness_threshold_ms");
   const healthLive = new Set<string>();
   let healthReporting = 0;
+  let excludedReconnect = 0;
   if (!healthRes.error) {
     for (const h of healthRes.data ?? []) {
       const thresholdMs = Math.max(1_000, Math.min(10 * 60_000, num(h.freshness_threshold_ms, 90_000)));
@@ -635,6 +659,27 @@ async function evalTelegramGap(sb: any, rule: RuleRow, nowMs: number): Promise<E
         healthLive.add(h.user_id);
       }
     }
+    // Revoked/invalidated sessions are user-action problems (the owner must
+    // re-link; the product UI shows "Reconnect required"). Excluded from the
+    // gap so a permanent pair cannot sit exactly at the threshold and turn
+    // every one-minute blip elsewhere into a page (2026-11-02 audit). When the
+    // health table is unreadable nothing is excluded — over-counting is the
+    // safe direction.
+    const revoked = reconnectRequiredUserIds((healthRes.data ?? []) as Array<{ user_id: string; telegram_account_status?: string | null }>);
+    for (const userId of [...linked]) {
+      if (revoked.has(userId)) {
+        linked.delete(userId);
+        excludedReconnect += 1;
+      }
+    }
+    if (linked.size === 0 && excludedReconnect > 0) {
+      return {
+        kind: "ok",
+        fired: false,
+        value: 0,
+        message: `all ${excludedReconnect} in-scope session(s) are reconnect-required`,
+      };
+    }
   }
   const useHealth = !healthRes.error && healthReporting > 0;
   // Both listening signals unreadable: unknown, never a page.
@@ -644,10 +689,11 @@ async function evalTelegramGap(sb: any, rule: RuleRow, nowMs: number): Promise<E
     if (useHealth ? healthLive.has(userId) : leaseListening.has(userId)) listening.add(userId);
   }
   const gap = linked.size - listening.size;
-  const message = payingTotal != null
+  const excludedNote = excludedReconnect > 0 ? `; ${excludedReconnect} reconnect-required excluded` : "";
+  const message = (payingTotal != null
     ? `${gap} of ${linked.size} paying-subscriber session(s) not listening`
       + ` (${payingTotal} paying subscribers total; max ${maxGap})`
-    : `${gap} of ${linked.size} linked session(s) not listening (max ${maxGap})`;
+    : `${gap} of ${linked.size} linked session(s) not listening (max ${maxGap})`) + excludedNote;
   return {
     kind: "ok",
     fired: gap > maxGap,
@@ -689,6 +735,48 @@ async function evalOpenAiCredits(sb: any, rule: RuleRow, nowMs: number): Promise
   return { kind: "ok", fired: false, value: 0, message: "" };
 }
 
+/**
+ * OpenAI key health — auth failures (401/403 invalid_api_key) and a missing
+ * OPENAI_API_KEY, read from the same probe row as evalOpenAiCredits. Kept
+ * separate so a revoked key pages as "key rejected" instead of staying silent
+ * behind the billing-only rule (2026-10-24: the key was revoked and no email
+ * went out for three days). Billing codes belong to openai_credits_exhausted;
+ * rate limits and probe errors stay unalerted here on purpose.
+ */
+async function evalOpenAiKeyInvalid(sb: any, rule: RuleRow, nowMs: number): Promise<EvalOutcome> {
+  const graceMs = num(rule.threshold.grace_seconds, 60) * 1000;
+  const { data, error } = await sb
+    .from("system_probe_state")
+    .select("state, down_since, detail, updated_at")
+    .eq("target", "openai_api")
+    .maybeSingle();
+  if (error) return { kind: "skip", reason: error.message };
+  if (!data) return { kind: "skip", reason: "openai_api probe has not reported yet" };
+
+  const detail = String(data.detail ?? "");
+  const keyRejected = data.state === "down" && detail.startsWith("auth:");
+  const keyMissing = detail.startsWith("probe_error:OPENAI_API_KEY");
+  if (!keyRejected && !keyMissing) {
+    return { kind: "ok", fired: false, value: null, message: "" };
+  }
+
+  // auth: rows carry down_since (grace absorbs a one-off blip). A missing key
+  // is a configuration fact, not an outage that started — page immediately.
+  const since = data.down_since ? Date.parse(data.down_since) : NaN;
+  const ageMs = Number.isFinite(since) ? nowMs - since : graceMs;
+  if (ageMs >= graceMs) {
+    return keyMissing
+      ? { kind: "ok", fired: true, value: 0, message: `OPENAI_API_KEY is not configured (${detail})` }
+      : {
+          kind: "ok",
+          fired: true,
+          value: Math.round(ageMs / 1000),
+          message: `OpenAI is refusing the API key: ${detail}`,
+        };
+  }
+  return { kind: "ok", fired: false, value: 0, message: "" };
+}
+
 async function evaluate(sb: any, rule: RuleRow, nowMs: number): Promise<EvalOutcome> {
   switch (rule.code) {
     case "bridge_down": return evalBridgeDown(sb, rule, nowMs);
@@ -703,6 +791,7 @@ async function evaluate(sb: any, rule: RuleRow, nowMs: number): Promise<EvalOutc
     case "dead_letters_high": return evalDeadLettersHigh(sb, rule);
     case "telegram_gap": return evalTelegramGap(sb, rule, nowMs);
     case "openai_credits_exhausted": return evalOpenAiCredits(sb, rule, nowMs);
+    case "openai_key_invalid": return evalOpenAiKeyInvalid(sb, rule, nowMs);
     default:
       return { kind: "skip", reason: `no evaluator for rule ${rule.code}` };
   }
@@ -857,6 +946,8 @@ Deno.serve(async (req) => {
     fired: [] as string[],
     resolved: [] as string[],
     cooldown_suppressed: [] as string[],
+    /** Rules waiting out their threshold.persistence_minutes hold (fire/resolve). */
+    persistence_pending: [] as string[],
     emails_attempted: 0,
     emails_sent: 0,
     email_errors: [] as string[],
@@ -865,16 +956,30 @@ Deno.serve(async (req) => {
   };
 
   try {
-    const rulesRes = await sb
+    // Deploy-order safety: if migration 20261102160000 has not been applied
+    // yet, the select below fails and — without this fallback — every cron
+    // tick would 500, i.e. total alert blackout (the evaluator is the only
+    // thing that can turn a broken system into an email). Run the legacy
+    // column set instead and say so in the run summary.
+    let rulesRes = await sb
       .from("alert_rules")
-      .select("code, name, description, severity, enabled, threshold, window_minutes, cooldown_seconds");
+      .select("code, name, description, severity, enabled, threshold, window_minutes, cooldown_seconds, cond_true_since, cond_false_since");
+    let persistenceColumnsAvailable = true;
+    if (rulesRes.error && /cond_true_since|cond_false_since/.test(rulesRes.error.message)) {
+      persistenceColumnsAvailable = false;
+      rulesRes = await sb
+        .from("alert_rules")
+        .select("code, name, description, severity, enabled, threshold, window_minutes, cooldown_seconds");
+      summary.warnings.push("alert_rules persistence columns missing — apply migration 20261102160000 (persistence + firing_email_sent_at inactive this run)");
+    }
     if (rulesRes.error) throw new Error(`alert_rules: ${rulesRes.error.message}`);
     const rules = (rulesRes.data ?? []) as RuleRow[];
     summary.rules = rules.length;
     const codes = rules.map(r => r.code);
 
-    // Probe before evaluating so the openai_credits_exhausted rule always sees
-    // this run's fresh result. Failures are recorded as unknown, never thrown.
+    // Probe before evaluating so the openai_credits_exhausted and
+    // openai_key_invalid rules always see this run's fresh result. Failures
+    // are recorded as unknown, never thrown.
     const openaiProbe = await probeOpenAiCredits(sb);
     if (openaiProbe.ran && openaiProbe.state !== "up") {
       summary.warnings.push(`openai probe: ${openaiProbe.state} — ${openaiProbe.detail ?? ""}`);
@@ -921,6 +1026,13 @@ Deno.serve(async (req) => {
           if (error) console.warn(`[alert-evaluator] disable-resolve failed rule=${rule.code} err=${error.message}`);
           else summary.resolved.push(rule.code);
         }
+        // Drop any persistence timers so a re-enabled rule starts fresh.
+        if (rule.cond_true_since != null || rule.cond_false_since != null) {
+          const { error } = await sb.from("alert_rules")
+            .update({ cond_true_since: null, cond_false_since: null })
+            .eq("code", rule.code);
+          if (error) console.warn(`[alert-evaluator] disable persistence-clear failed rule=${rule.code} err=${error.message}`);
+        }
         continue;
       }
 
@@ -932,12 +1044,46 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      if (outcome.fired) {
-        if (open) continue; // already firing/acknowledged — dedupe by open row
+      // Persistence (threshold.persistence_minutes > 0): hold the condition
+      // for N minutes before opening an event, and N minutes before closing
+      // one — one-tick blips never reach the inbox (2026-11-02 audit). When
+      // the persistence columns are unavailable (migration not applied), run
+      // fully legacy-immediate instead of arming writes that would fail.
+      const persistMs = persistenceColumnsAvailable
+        ? Math.max(0, num(rule.threshold.persistence_minutes, 0)) * 60_000
+        : 0;
+      const step = persistenceStep({
+        persistMs,
+        fired: outcome.fired,
+        hasOpen: open != null,
+        trueSince: rule.cond_true_since ? Date.parse(rule.cond_true_since) : null,
+        falseSince: rule.cond_false_since ? Date.parse(rule.cond_false_since) : null,
+        nowMs: startedAt,
+      });
+
+      // Writes persistence state back to alert_rules. Only ever receives a
+      // non-empty patch: rules without timers produce `patch: {}`, while a
+      // rule whose persistence was just switched off may send a clear-only
+      // patch (stale-timer cleanup) — that write must go through even though
+      // persistMs is now 0.
+      const writePersistenceState = async (patch: { cond_true_since?: number | null; cond_false_since?: number | null }) => {
+        const body: Record<string, unknown> = {};
+        if ("cond_true_since" in patch) {
+          body.cond_true_since = patch.cond_true_since == null ? null : new Date(patch.cond_true_since).toISOString();
+        }
+        if ("cond_false_since" in patch) {
+          body.cond_false_since = patch.cond_false_since == null ? null : new Date(patch.cond_false_since).toISOString();
+        }
+        if (Object.keys(body).length === 0) return;
+        const { error } = await sb.from("alert_rules").update(body).eq("code", rule.code);
+        if (error) console.warn(`[alert-evaluator] persistence state write failed rule=${rule.code} err=${error.message}`);
+      };
+
+      if (step.action === "insert") {
         const resolvedAt = lastResolvedAt.get(rule.code);
         if (resolvedAt != null && startedAt - resolvedAt < rule.cooldown_seconds * 1000) {
           summary.cooldown_suppressed.push(rule.code);
-          continue;
+          continue; // keep the armed timestamp: re-check next tick, insert after cooldown
         }
         const { data, error } = await sb
           .from("alert_events")
@@ -957,12 +1103,13 @@ Deno.serve(async (req) => {
           continue;
         }
         if (data) summary.fired.push(rule.code);
+        await writePersistenceState(step.patch);
         continue;
       }
 
-      // Condition cleared: transition the open row to resolved and reset
-      // delivery so the recovery email goes through the normal retry pass.
-      if (open) {
+      if (step.action === "resolve" && open) {
+        // Transition the open row to resolved and reset delivery so the
+        // recovery email goes through the normal retry pass.
         const { data, error } = await sb
           .from("alert_events")
           .update({
@@ -977,8 +1124,26 @@ Deno.serve(async (req) => {
           .eq("state", open.state)
           .select("id")
           .maybeSingle();
-        if (!error && data) summary.resolved.push(rule.code);
+        if (!error && data) {
+          summary.resolved.push(rule.code);
+          await writePersistenceState(step.patch);
+        }
         if (error) console.warn(`[alert-evaluator] resolve failed rule=${rule.code} err=${error.message}`);
+        continue;
+      }
+
+      // Holding: arming the fire timer, holding the resolve timer, or clearing
+      // stale timers. Record the wait every tick (not only the arming tick) so
+      // the run summary explains why nothing fired/resolved this tick.
+      if (Object.keys(step.patch).length > 0) {
+        await writePersistenceState(step.patch);
+      }
+      if (persistMs > 0) {
+        if (outcome.fired && !open && (step.patch.cond_true_since != null || rule.cond_true_since != null)) {
+          summary.persistence_pending.push(`${rule.code}:fire`);
+        } else if (!outcome.fired && open && (step.patch.cond_false_since != null || rule.cond_false_since != null)) {
+          summary.persistence_pending.push(`${rule.code}:resolve`);
+        }
       }
     }
 
@@ -1046,16 +1211,22 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const result = await sendAlertEmail(
-        rule,
-        ev,
-        recipients,
-        ev.state === "resolved" ? "resolved" : "firing",
-      );
+      const kind: "firing" | "resolved" = ev.state === "resolved" ? "resolved" : "firing";
+      const result = await sendAlertEmail(rule, ev, recipients, kind);
       if (result.ok) {
+        const sentAt = new Date(Date.now()).toISOString();
         const { error } = await sb.from("alert_events")
           .update({
-            email_sent_at: new Date(Date.now()).toISOString(),
+            email_sent_at: sentAt,
+            // Firing pages keep their own timestamp forever: resolve resets
+            // email_sent_at (so the recovery email can reuse the retry pass),
+            // which previously destroyed all evidence a page was sent
+            // (2026-11-02 audit). Only stamped when a recipient actually got
+            // the mail (sent > 0) and the column exists (same migration as
+            // the persistence columns — see the rules-select fallback).
+            ...(kind === "firing" && result.sent > 0 && persistenceColumnsAvailable
+              ? { firing_email_sent_at: sentAt }
+              : {}),
             email_last_error: null,
             email_next_attempt_at: nowIso,
           })

@@ -2,6 +2,7 @@ import { authFr } from '../auth/fr'
 import { channelWorkerFr } from '../channelWorker/fr'
 import { tradeNotificationsFr } from '../tradeNotifications/fr'
 import { contactSupportFr } from '../contactSupport/fr'
+import { supportWidgetFr } from '../supportWidget/fr'
 import { riskDisclaimerFr } from '../riskDisclaimer/fr'
 import { termsOfServiceFr } from '../legal/termsFr'
 import { privacyPolicyFr } from '../legal/privacyFr'
@@ -17,6 +18,7 @@ export const fr: Translations = {
   channelWorker: channelWorkerFr,
   tradeNotifications: tradeNotificationsFr,
   contactSupportPage: contactSupportFr,
+  supportWidget: supportWidgetFr,
   riskDisclaimerPage: riskDisclaimerFr,
   termsOfServicePage: termsOfServiceFr,
   privacyPolicyPage: privacyPolicyFr,
@@ -677,7 +679,9 @@ export const fr: Translations = {
     avgProfit: 'Profit moyen',
     avgHoldingTime: 'Duree moyenne',
     profitFactor: 'Facteur de profit',
-    pnlCalendar: 'Calendrier PnL sep 2026',
+    pnlCalendar: 'Calendrier PnL',
+    previousMonth: 'Mois précédent',
+    nextMonth: 'Mois suivant',
     noTrades: 'Aucun trade',
     tradeCount: '{count} trades',
     holdingDays: '{count} jours',
@@ -1543,6 +1547,7 @@ export const fr: Translations = {
     execNotePartialCloseTooSmall:
       'Une clôture partielle demandée n’a pas pu être exécutée — cette position était trop petite pour être fractionnée (la partie demandée serait passée sous le lot minimum du broker) ; cette instruction n’a rien fermé et le trade est resté à sa taille complète.',
     execNoteStaleEntry: 'L’entrée du signal était {entry} mais le trade s’est ouvert à {fill} — le prix avait déjà bougé quand l’ordre a été envoyé.',
+    execNoteTpStripped: 'Les take-profits {levels} ont été retirés — le trade s’est ouvert à {fill}, au-delà du prix de take-profit, car les appliquer aurait clôturé le trade immédiatement.',
     imageSignal: '(signal image)',
     loadingSignal: 'Chargement du signal…',
     loadSignalError: 'Impossible de charger les détails du signal.',
@@ -1639,7 +1644,17 @@ export const fr: Translations = {
     tradingViewName: 'Nom',
     tradingViewUrl: 'URL du webhook',
     tradingViewTemplate: 'Message d’alerte',
-    tradingViewTemplateHelp: 'Collez ce JSON dans le message d’alerte TradingView. Les alertes de stratégie remplissent action avec buy ou sell. Mettez action à close pour fermer les trades copiés de ce symbole.',
+    tradingViewTemplateStrategy: 'Pour les stratégies uniquement',
+    tradingViewTemplateIndicators: 'Indicateurs',
+    tradingViewTemplateBuy: 'Pour les signaux d’achat',
+    tradingViewTemplateSell: 'Pour les signaux de vente',
+    tradingViewTemplateSymbolHint: 'Pour d’autres symboles, remplacez le "XAUUSD" dans "symbol" dans TradingView.',
+    tradingViewTemplateHelp: 'Utilisez Pour les stratégies quand l’alerte vient d’une stratégie (action est rempli avec buy ou sell). Utilisez Pour les signaux d’achat ou Pour les signaux de vente pour les alertes d’indicateur avec un sens fixe. Mettez action à close pour fermer les trades copiés de ce symbole.',
+    tradingViewHowToTitle: 'Comment ajouter dans TradingView',
+    tradingViewHowTo1: 'Dans TradingView, ouvrez Alertes et créez une nouvelle alerte (ou modifiez une existante).',
+    tradingViewHowTo2: 'Activez Webhook URL et collez l’URL du webhook de ce modal.',
+    tradingViewHowTo3: 'Collez le modèle de Message d’alerte correspondant dans le champ Message (stratégies, achat ou vente).',
+    tradingViewHowTo4: 'Enregistrez l’alerte. Quand elle se déclenche, les trades sont copiés vers les comptes broker liés à cette source.',
     tradingViewCopy: 'Copier',
     tradingViewCopied: 'Copié',
     tradingViewRotate: 'Renouveler l’URL',
@@ -1661,6 +1676,8 @@ export const fr: Translations = {
     tradingViewNoDeliveries: 'Aucune alerte pour le moment.',
     tradingViewAccepted: 'Acceptée',
     tradingViewSkipped: 'Ignorée',
+    tradingViewSkipUnresolvedSymbol: 'Les variables du symbole n’ont pas été développées — mettez un symbole réel dans Message (ex. XAUUSD) et recréez l’alerte',
+    tradingViewSkipUnresolvedAction: 'La variable action n’a pas été développée — utilisez le modèle Buy/Sell ou une alerte stratégie avec condition de graphique',
     tradingViewError: 'Erreur',
     tradingViewDuplicate: 'Doublon',
     tradingViewCopyTo: 'Copier vers',

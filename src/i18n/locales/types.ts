@@ -1,6 +1,7 @@
 import type { AuthTranslations } from '../auth/types'
 import type { ChannelWorkerTranslations } from '../channelWorker/types'
 import type { ContactSupportPageTranslations } from '../contactSupport/types'
+import type { SupportWidgetTranslations } from '../supportWidget/types'
 import type { RiskDisclaimerPageTranslations } from '../riskDisclaimer/types'
 import type { LegalDocumentPageTranslations } from '../legal/types'
 import type { TradeNotificationsTranslations } from '../tradeNotifications/types'
@@ -1264,6 +1265,8 @@ export interface SocialTradingPageTranslations {
   avgHoldingTime: string
   profitFactor: string
   pnlCalendar: string
+  previousMonth: string
+  nextMonth: string
   noTrades: string
   tradeCount: string
   holdingDays: string
@@ -1451,6 +1454,7 @@ export interface TradesTranslations {
   execNoteTpSplit?: string
   execNotePartialCloseTooSmall?: string
   execNoteStaleEntry?: string
+  execNoteTpStripped?: string
   loadingSignal: string
   loadSignalError: string
   viewDetails: string
@@ -1951,7 +1955,17 @@ export interface ChannelsPageTranslations {
   tradingViewName: string
   tradingViewUrl: string
   tradingViewTemplate: string
+  tradingViewTemplateStrategy: string
+  tradingViewTemplateIndicators: string
+  tradingViewTemplateBuy: string
+  tradingViewTemplateSell: string
+  tradingViewTemplateSymbolHint: string
   tradingViewTemplateHelp: string
+  tradingViewHowToTitle: string
+  tradingViewHowTo1: string
+  tradingViewHowTo2: string
+  tradingViewHowTo3: string
+  tradingViewHowTo4: string
   tradingViewCopy: string
   tradingViewCopied: string
   tradingViewRotate: string
@@ -1975,6 +1989,8 @@ export interface ChannelsPageTranslations {
   tradingViewNoDeliveries: string
   tradingViewAccepted: string
   tradingViewSkipped: string
+  tradingViewSkipUnresolvedSymbol: string
+  tradingViewSkipUnresolvedAction: string
   tradingViewError: string
   tradingViewDuplicate: string
   tradingViewCopyTo: string
@@ -2403,6 +2419,7 @@ export interface Translations {
   brokersPage: BrokersPageTranslations
   economicCalendar: EconomicCalendarTranslations
   contactSupportPage: ContactSupportPageTranslations
+  supportWidget: SupportWidgetTranslations
   riskDisclaimerPage: RiskDisclaimerPageTranslations
   termsOfServicePage: LegalDocumentPageTranslations
   privacyPolicyPage: LegalDocumentPageTranslations

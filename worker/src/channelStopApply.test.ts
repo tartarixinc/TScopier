@@ -402,6 +402,62 @@ describe('channelStopApply', () => {
     assert.equal(openedOrdersCalls, 1, 'single OpenedOrders snapshot (no duplicate fetch)')
   })
 
+  it('SL-only instruction keeps the existing TP on the modify (MTAPI clears an omitted side)', async () => {
+    const prevKey = process.env.FXSOCKET_API_KEY
+    process.env.FXSOCKET_API_KEY = 'test-key'
+    const legs: ChannelStopLeg[] = [{
+      id: 't0',
+      signal_id: 'sig-a',
+      broker_account_id: 'b1',
+      metaapi_order_id: '1000',
+      symbol: 'XAUUSD',
+      direction: 'sell',
+      sl: 4200,
+      tp: 4100,
+      opened_at: '2026-11-09T10:00:00Z',
+      entry_price: 4150,
+      telegram_channel_id: 'ch-1',
+    }]
+    const broker: ChannelStopBroker = { id: 'b1', platform: 'mt5', fxsocket_account_id: FX_UUID, manual_settings: { tp_lots: null } }
+    const modifyCalls: Array<{ ticket: number; stoploss?: number; takeprofit?: number }> = []
+    const api = {
+      seedPlatformCache: () => {},
+      quote: async () => ({ bid: 4150, ask: 4150.2 }),
+      openedOrders: async () => legs.map(l => ({ ticket: Number(l.metaapi_order_id) })),
+      orderModify: async (_uuid: string, a: { ticket: number; stoploss?: number; takeprofit?: number }) => {
+        modifyCalls.push(a)
+        return { stopLoss: a.stoploss, takeProfit: a.takeprofit }
+      },
+    }
+
+    const result = await applyChannelStopsToBaskets({
+      supabase: chainableSupabase() as never,
+      apiFor: () => api as never,
+      userId: 'user-1',
+      channelId: 'ch-1',
+      signalId: 'sig-mod',
+      brokersById: new Map([['b1', broker]]),
+      rowsByBrokerSignal: new Map([['b1|sig-a', legs]]),
+      hasNewSl: true,
+      hasNewTp: false,
+      parsedSl: 4180,
+      parsedTpLevels: [],
+      verifyOnBroker: false,
+    })
+
+    if (prevKey == null) delete process.env.FXSOCKET_API_KEY
+    else process.env.FXSOCKET_API_KEY = prevKey
+
+    assert.equal(result.totalModified, 1, 'SL-only instruction modifies the leg')
+    assert.equal(modifyCalls.length, 1)
+    assert.equal(modifyCalls[0]!.stoploss, 4180, 'new SL applied')
+    assert.equal(
+      modifyCalls[0]!.takeprofit,
+      4100,
+      'existing TP rides along — MTAPI clears an omitted takeProfit',
+    )
+  })
+
   it('does NOT repaint TP after a TP hit (freeze keeps existing leg TP)', async () => {
     const prevKey = process.env.FXSOCKET_API_KEY
     process.env.FXSOCKET_API_KEY = 'test-key'

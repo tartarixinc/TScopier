@@ -55,6 +55,72 @@ export interface SocialCalendarDay {
   trades: number
 }
 
+/** UTC calendar month (`month` is 0–11). */
+export interface SocialCalendarMonth {
+  year: number
+  month: number
+}
+
+type ClosedAtProfit = { closedAt: string; profit: number }
+
+/**
+ * Every UTC month from the first closed trade through the latest (inclusive),
+ * oldest → newest. Empty months in between are kept so the calendar can show
+ * the full account history span.
+ */
+export function socialClosedTradeMonths(trades: Array<{ closedAt: string }>): SocialCalendarMonth[] {
+  let first: SocialCalendarMonth | null = null
+  let last: SocialCalendarMonth | null = null
+  for (const trade of trades) {
+    const date = new Date(trade.closedAt)
+    if (Number.isNaN(date.getTime())) continue
+    const year = date.getUTCFullYear()
+    const month = date.getUTCMonth()
+    if (!first || year < first.year || (year === first.year && month < first.month)) {
+      first = { year, month }
+    }
+    if (!last || year > last.year || (year === last.year && month > last.month)) {
+      last = { year, month }
+    }
+  }
+  if (!first || !last) return []
+  const months: SocialCalendarMonth[] = []
+  let year = first.year
+  let month = first.month
+  while (year < last.year || (year === last.year && month <= last.month)) {
+    months.push({ year, month })
+    month += 1
+    if (month > 11) {
+      month = 0
+      year += 1
+    }
+  }
+  return months
+}
+
+/** Daily realized P/L grid for one UTC month (every day of the month, quiet days as null). */
+export function socialCalendarDaysForMonth(trades: ClosedAtProfit[], year: number, month: number): SocialCalendarDay[] {
+  const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
+  const daily = new Map<number, { profit: number; trades: number }>()
+  for (const trade of trades) {
+    const date = new Date(trade.closedAt)
+    if (Number.isNaN(date.getTime())) continue
+    if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month) continue
+    const value = daily.get(date.getUTCDate()) ?? { profit: 0, trades: 0 }
+    value.profit += trade.profit
+    value.trades += 1
+    daily.set(date.getUTCDate(), value)
+  }
+  return Array.from({ length: daysInMonth }, (_, index) => {
+    const value = daily.get(index + 1)
+    return {
+      day: index + 1,
+      profit: value ? Math.round(value.profit * 100) / 100 : null,
+      trades: value?.trades ?? 0,
+    }
+  })
+}
+
 export type SocialMonthlyPerformanceState = 'verified' | 'no_activity' | 'incomplete' | 'unavailable'
 
 export interface SocialMonthlyPerformance {
@@ -398,22 +464,7 @@ export function socialTraderStats(trader: SocialTrader): SocialTraderStats {
       ? { label, profit: 0, state: 'no_activity' }
       : { label, profit: null, state: 'unavailable' }
   })
-  const calendarYear = anchor.getUTCFullYear()
-  const calendarMonth = anchor.getUTCMonth()
-  const daysInMonth = new Date(Date.UTC(calendarYear, calendarMonth + 1, 0)).getUTCDate()
-  const daily = new Map<number, { profit: number; trades: number }>()
-  for (const trade of closed) {
-    const date = new Date(trade.closedAt)
-    if (date.getUTCFullYear() !== calendarYear || date.getUTCMonth() !== calendarMonth) continue
-    const value = daily.get(date.getUTCDate()) ?? { profit: 0, trades: 0 }
-    value.profit += trade.profit
-    value.trades += 1
-    daily.set(date.getUTCDate(), value)
-  }
-  const calendar = Array.from({ length: daysInMonth }, (_, index) => {
-    const value = daily.get(index + 1)
-    return { day: index + 1, profit: value ? Math.round(value.profit * 100) / 100 : null, trades: value?.trades ?? 0 }
-  })
+  const calendar = socialCalendarDaysForMonth(closed, anchor.getUTCFullYear(), anchor.getUTCMonth())
   const best = closed
     .filter(trade => trade.profit > 0)
     .reduce<typeof closed[number] | null>((pick, trade) => !pick || trade.profit > pick.profit ? trade : pick, null)

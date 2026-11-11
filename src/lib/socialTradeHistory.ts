@@ -204,8 +204,14 @@ export async function fetchSocialProviderPerformance(client: SupabaseClient, tra
   }))
 }
 
+/** Max rows accepted by get_social_source_trade_history (PnL calendar needs the full span). */
+export const SOCIAL_SOURCE_TRADE_HISTORY_LIMIT = 5000
+
 export async function fetchSocialTradeHistory(client: SupabaseClient, sourceId: string): Promise<SocialTradeHistoryItem[]> {
-  const { data, error } = await client.rpc('get_social_source_trade_history', { p_source_id: sourceId, p_limit: 100 })
+  const { data, error } = await client.rpc('get_social_source_trade_history', {
+    p_source_id: sourceId,
+    p_limit: SOCIAL_SOURCE_TRADE_HISTORY_LIMIT,
+  })
   if (error) throw failure(error)
   return ((data ?? []) as TradeRow[]).map(row => ({
     tradeId: row.trade_id,

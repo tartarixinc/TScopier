@@ -202,9 +202,11 @@ export function useLiveOwnOpenPnl(accountId: string, openCount: number, enabled:
           fromPositions,
           openCount: Math.max(summaryOpen, openCount),
         })
+        // Keep the previous mark on a failed/partial MTAPI poll — wiping it makes
+        // the Social profile flash dashes even though we already have a value.
         commit({
           accountId: brokerId,
-          openPnl: openPnl ?? null,
+          ...(openPnl != null ? { openPnl } : {}),
           openTrades: Math.max(summaryOpen, openCount),
           error: openPnl == null ? describeLiveFetchError(serverError) : null,
         })

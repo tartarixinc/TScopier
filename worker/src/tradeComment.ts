@@ -1,8 +1,10 @@
 /**
- * MT order comment helpers. All copier trades use a `TScopier:` prefix so open-
+ * MT order comment helpers. All copier trades use a `UniCopier:` prefix so open-
  * order reconciliation can find our legs; when a signal has a channel we embed
  * a short channel slug before the signal id.
  */
+
+import { TSCOPIER_COMMENT_PREFIX } from './tscopierComment'
 
 /** Max length of the channel slug segment (broker-safe alphanumeric). */
 export const CHANNEL_COMMENT_SLUG_MAX = 12
@@ -31,14 +33,14 @@ export function sanitizeChannelCommentSlug(raw: string): string {
 
 /**
  * Prefix for planner / OrderSend comments.
- * With channel: `TScopier:ChannelSlug:abc12345`
- * Without: `TScopier:abc12345`
+ * With channel: `UniCopier:ChannelSlug:abc12345`
+ * Without: `UniCopier:abc12345`
  */
 export function buildTscopierCommentPrefix(signalId: string, channelSlug?: string | null): string {
   const id8 = signalId.slice(0, 8)
   const slug = channelSlug?.trim()
-  if (slug) return `TScopier:${slug}:${id8}`
-  return `TScopier:${id8}`
+  if (slug) return `${TSCOPIER_COMMENT_PREFIX}${slug}:${id8}`
+  return `${TSCOPIER_COMMENT_PREFIX}${id8}`
 }
 
 export type OrderCommentsManual = { order_comments_enabled?: boolean } | null | undefined
@@ -72,5 +74,5 @@ export function appendOrderCommentSuffix(prefix: string, suffix: string): string
 /** Comment for basket refresh OrderSend when a leg must be re-opened. */
 export function buildBasketRefreshComment(signalId: string, manual?: OrderCommentsManual): string {
   if (!areOrderCommentsEnabled(manual)) return ''
-  return `TScopier:${signalId.slice(0, 8)}:refresh`
+  return `${TSCOPIER_COMMENT_PREFIX}${signalId.slice(0, 8)}:refresh`
 }

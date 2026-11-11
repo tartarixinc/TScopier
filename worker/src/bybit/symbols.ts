@@ -166,11 +166,11 @@ export function sizeBybitPosition(args: {
 
 // ── Order link ids ─────────────────────────────────────────────────────────
 // Bybit allows 36 characters of letters, digits, `-` and `_`, unique per order.
-// Entry ids look like `TScopier_<signal tail>_<ticket in base 36>` with `:` stored as `_`
+// Entry ids look like `UniCopier_<signal tail>_<ticket in base 36>` with `:` stored as `_`
 // and `.` as `-`. Stop and close ids look like `TSL_<ticket>_<nonce>` (decimal ticket).
 // The base-36 ticket keeps the entry id short so the signal tail (`rg5.tp1`) survives.
 
-export const LINK_PREFIX = 'TScopier'
+export const LINK_PREFIX = 'UniCopier'
 export const SL_PREFIX = 'TSL'
 export const TP_PREFIX = 'TST'
 export const CLOSE_PREFIX = 'TSX'
@@ -200,7 +200,7 @@ export function copierOrderLinkId(comment: string | undefined, ticket: number): 
   return `${LINK_PREFIX}_${encoded.slice(0, room)}${suffix}`
 }
 
-/** Readable `TScopier:<tail>` comment recovered from an entry order link id. */
+/** Readable `UniCopier:<tail>` comment recovered from an entry order link id. */
 export function commentFromOrderLinkId(linkId: unknown): string {
   const text = String(linkId ?? '')
   if (!isCopierLinkId(text)) return text
@@ -209,10 +209,10 @@ export function commentFromOrderLinkId(linkId: unknown): string {
 }
 
 export function isCopierLinkId(value: unknown): boolean {
-  return /^TS[Cc]opier/.test(String(value ?? ''))
+  return /^(?:UniCopier|TS[Cc]opier)/.test(String(value ?? ''))
 }
 
-/** Ticket from an entry link id (`TScopier_..._<ticket in base 36>`). */
+/** Ticket from an entry link id (`UniCopier_..._<ticket in base 36>`). */
 export function ticketFromEntryLinkId(value: unknown): number | null {
   const text = String(value ?? '')
   if (!isCopierLinkId(text)) return null

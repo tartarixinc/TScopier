@@ -274,11 +274,15 @@ type ProviderTradeRow = {
   closed_at: string | null
   metaapi_order_id: string | null
   broker_position_ticket: string | null
+  /** Set when the fill came from a channel signal (Telegram/TV/Discord/WhatsApp). */
+  signal_id?: string | null
 }
 
 /**
  * Trades on the user's published social source MT accounts (manual broker opens).
  * Shown as Manual Execution — never as Social trading (that label is follower-only).
+ * Signal-linked fills (TradingView, Telegram, etc.) are excluded — those stay
+ * under their channel source in Copier Logs.
  */
 export function normalizeSocialProviderSourceTrades(
   trades: ProviderTradeRow[],
@@ -286,6 +290,7 @@ export function normalizeSocialProviderSourceTrades(
 ): SocialCopyLogRow[] {
   const rows: SocialCopyLogRow[] = []
   for (const trade of trades) {
+    if (trade.signal_id) continue
     const side = normalizeSide(trade.direction)
     const ticket = textOrNull(trade.metaapi_order_id ?? trade.broker_position_ticket)
     const symbol = String(trade.symbol ?? '').trim() || '—'
@@ -350,9 +355,11 @@ export async function fetchSocialProviderSourceTradeLogs(
   const [tradesRes, brokersRes] = await Promise.all([
     supabase
       .from('trades')
-      .select('id,broker_account_id,symbol,direction,lot_size,status,opened_at,closed_at,metaapi_order_id,broker_position_ticket')
+      .select('id,broker_account_id,symbol,direction,lot_size,status,opened_at,closed_at,metaapi_order_id,broker_position_ticket,signal_id')
       .eq('user_id', userId)
       .in('broker_account_id', accountIds)
+      // Channel-copied fills (TV/Telegram/…) carry signal_id — not Manual Execution.
+      .is('signal_id', null)
       .order('opened_at', { ascending: false })
       .limit(limit),
     supabase

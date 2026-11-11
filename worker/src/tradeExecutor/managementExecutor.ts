@@ -48,11 +48,13 @@ import {
   type ChannelStopApplyResult,
 } from '../channelStopApply'
 import type { MgmtExecOptions, MgmtExecResult } from '../mgmtExecOptions'
+import { runWithPriorityBrokerReads, stashEntryBrokerTimings } from '../brokerEntryContext'
 import { loadExactProviderCloseArtifacts, loadRangePendingLegsInMgmtScope, pendingLegsToCancelScopes, updateRangePendingLegsForManagement } from '../managementPendingLegs'
 import {
   explicitMgmtSymbol,
   expandMgmtRowsToFullBaskets,
   isReplyScopedManagement,
+  loadNearDuplicateOrphanTradesForClose,
   loadOpenTradesForChannelWideCwe,
   loadOpenTradesForManagement,
   loadOpenTradesForSignalAcrossBrokers,
@@ -93,6 +95,19 @@ import {
 } from '../managementBreakevenDiagnostics'
 import { authorityFromBrokerRow, withBrokerWriteAuthority } from '../brokerWriteAuthority'
 import { writeExecutionLog } from '../observability/executionLog'
+import { isLivePositionAbsentReason } from '../failureClassification'
+
+/**
+ * Thrown when identity resolution shows the row's own position is not in the
+ * live OpenedOrders snapshot (stored ticket matched nothing; identical
+ * siblings are why attribute matching refuses). There is nothing to modify —
+ * defer to reconciliation, which confirms closure with two snapshots +
+ * closed-history proof. Never recorded as a failed modification (2026-11-03,
+ * Luis: channel-breakeven wrote customer-facing failures for legs whose
+ * positions had already exited).
+ */
+class PositionAbsentFromLiveError extends Error {}
+
 function mgmtCloseOpts(liveMgmtFast: boolean) {
   return { maxAttempts: 2, slippageEscalation: 50, liveFast: liveMgmtFast }
 }
@@ -765,6 +780,17 @@ export async function applyManagement(
       })
       basketAnchorId = rows[0]?.signal_id ?? basketAnchorId
     }
+    if (action === 'close' && rows.length > 0) {
+      const orphans = await loadNearDuplicateOrphanTradesForClose(ctx.supabase, {
+        userId: signal.user_id,
+        channelTrades: rows,
+      })
+      if (orphans.length) {
+        const byId = new Map(rows.map(row => [row.id, row]))
+        for (const orphan of orphans) byId.set(orphan.id, orphan)
+        rows = [...byId.values()]
+      }
+    }
 
     if (
       action === 'close_worse_entries'
@@ -1156,6 +1182,8 @@ export async function applyManagement(
     const breakevenOrdersByUuid = new Map<string, unknown[]>()
     const breakevenAssignedTicket = new Map<string, number>()
     const breakevenExcludeByTradeId = new Map<string, Set<number>>()
+    /** Shared OpenedOrders snapshot for close/partial live-fast legs (one read per session). */
+    const mgmtLiveOrdersByUuid = new Map<string, unknown[]>()
     const prepareBreakevenTickets = async (): Promise<void> => {
       const byUuid = new Map<string, MgmtTradeRow[]>()
       for (const trade of eligibleTrades) {
@@ -1172,6 +1200,7 @@ export async function applyManagement(
         if (!api) return
         const raw = (await api.openedOrders(u).catch(() => [])) ?? []
         breakevenOrdersByUuid.set(u, raw)
+        mgmtLiveOrdersByUuid.set(u, raw)
         const used = new Set<number>()
         for (const leg of legs) {
           const reconciled = resolveReconciledTicketForTrade(leg, raw, used)
@@ -1189,6 +1218,27 @@ export async function applyManagement(
           for (const t of used) if (t !== mine) excl.add(t)
           breakevenExcludeByTradeId.set(leg.id, excl)
         }
+      }))
+    }
+    const prepareMgmtLiveOrderSnapshots = async (): Promise<void> => {
+      if (!liveMgmtFast) return
+      if (action !== 'close' && action !== 'partial_profit') return
+      const byUuid = new Map<string, MgmtTradeRow[]>()
+      for (const trade of eligibleTrades) {
+        const broker = byBroker.get(trade.broker_account_id)
+        const u = broker ? brokerSessionUuid(broker) : null
+        if (!u) continue
+        const list = byUuid.get(u) ?? []
+        list.push(trade)
+        byUuid.set(u, list)
+      }
+      await Promise.all([...byUuid.entries()].map(async ([u, legs]) => {
+        if (mgmtLiveOrdersByUuid.has(u)) return
+        const broker = byBroker.get(legs[0]!.broker_account_id)
+        const api = broker ? ctx.apiFor(broker) : null
+        if (!api) return
+        const raw = (await api.openedOrders(u).catch(() => [])) ?? []
+        mgmtLiveOrdersByUuid.set(u, raw)
       }))
     }
 
@@ -1234,8 +1284,12 @@ export async function applyManagement(
             api,
             sessionId: uuid,
             trade,
+            openedOrders: mgmtLiveOrdersByUuid.get(uuid) ?? breakevenOrdersByUuid.get(uuid),
           })
           if (resolution.status !== 'resolved') {
+            if (isLivePositionAbsentReason(resolution.reason)) {
+              throw new PositionAbsentFromLiveError(resolution.reason)
+            }
             throw new Error(`live position reconciliation required: ${resolution.reason}`)
           }
           livePositionRow = resolution.row
@@ -1678,6 +1732,43 @@ export async function applyManagement(
         })
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
+        if (err instanceof PositionAbsentFromLiveError) {
+          // Nothing to modify: the row's position is absent from the live
+          // snapshot. Record a skip (not a failure — the Copier Engine shows
+          // failed entries to the customer) and let reconciliation confirm
+          // closure via broker history, as it already does for every other
+          // absent row.
+          console.warn(
+            `[tradeExecutor] mgmt ${action} deferred trade=${trade.id} ticket=${effectiveTicket}:`
+            + ` position not in live snapshot (${msg}); awaiting reconciliation closure`,
+          )
+          if (action === 'breakeven' || action === 'partial_breakeven') {
+            // Keep the channel-breakeven memory gate byte-for-byte: a deferred
+            // leg never verified at breakeven, so its symbol must not persist
+            // "at breakeven" to channel memory (symbolBreakevenOk invariant).
+            // This is exactly what the old failed path did via the catch below.
+            breakevenFailedSymbolKeys.add(normBasketSymbolKey(trade.symbol))
+          }
+          await writeExecutionLog(ctx.supabase, {
+            user_id: signal.user_id,
+            signal_id: signal.id,
+            broker_account_id: broker.id,
+            action: `mgmt_${action}`,
+            status: 'skipped',
+            request_payload: {
+              ticket: effectiveTicket,
+              action,
+              basket_anchor_signal_id: trade.signal_id,
+              mgmt_scope: mgmtScopeLabel,
+              mgmt_parent_signal_id: signal.parent_signal_id,
+              deferred_to_reconciliation: true,
+            },
+            error_message:
+              `position not in live snapshot (${msg})`
+              + ' — nothing to modify; awaiting reconciliation closure',
+          })
+          return
+        }
         if (action === 'partial_profit') partialProfitFailures.push(msg)
         let breakevenFailureDiagnostic: ManagementBreakevenFailureDiagnostic | null = null
         // Broker confirmed the referenced position is gone (TP/SL hit, closed or
@@ -1837,27 +1928,43 @@ export async function applyManagement(
       )
     }
 
-    if (action === 'breakeven' || action === 'partial_breakeven') {
-      // Pre-reconcile each leg to a distinct ticket from a single OpenedOrders
-      // snapshot per broker, so legs can run in parallel without racing on a
-      // shared ticket-exclusion map (the old serial-per-session bottleneck).
-      await prepareBreakevenTickets()
-      if (eligibleTrades.length > 1) {
+    const runMgmtLegs = async (): Promise<void> => {
+      if (action === 'breakeven' || action === 'partial_breakeven') {
+        // Pre-reconcile each leg to a distinct ticket from a single OpenedOrders
+        // snapshot per broker, so legs can run in parallel without racing on a
+        // shared ticket-exclusion map (the old serial-per-session bottleneck).
+        await prepareBreakevenTickets()
+        if (eligibleTrades.length > 1) {
+          await Promise.allSettled(
+            await parallelMap(eligibleTrades, legConcurrency, trade => processTrade(trade)),
+          )
+        } else {
+          for (const trade of eligibleTrades) {
+            await processTrade(trade)
+          }
+        }
+        await enqueueBreakevenReconcileFallback()
+        return
+      }
+      await prepareMgmtLiveOrderSnapshots()
+      if (liveMgmtFast && eligibleTrades.length > 1) {
         await Promise.allSettled(
           await parallelMap(eligibleTrades, legConcurrency, trade => processTrade(trade)),
         )
       } else {
-        for (const trade of eligibleTrades) {
-          await processTrade(trade)
-        }
+        await Promise.allSettled(eligibleTrades.map(trade => processTrade(trade)))
       }
-      await enqueueBreakevenReconcileFallback()
-    } else if (liveMgmtFast && eligibleTrades.length > 1) {
-      await Promise.allSettled(
-        await parallelMap(eligibleTrades, legConcurrency, trade => processTrade(trade)),
-      )
+    }
+    if (liveMgmtFast) {
+      await runWithPriorityBrokerReads('order', async () => {
+        try {
+          await runMgmtLegs()
+        } finally {
+          stashEntryBrokerTimings(signal.id)
+        }
+      })
     } else {
-      await Promise.allSettled(eligibleTrades.map(trade => processTrade(trade)))
+      await runMgmtLegs()
     }
 
     if (action === 'close' && liveMgmtFast && signal.channel_id && !hasExplicitMgmtParent) {

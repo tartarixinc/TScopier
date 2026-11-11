@@ -53,4 +53,13 @@ describe('isAppHost', () => {
     expect(isAppHost('tscopier.ai')).toBe(false)
     expect(isAppHost('www.tscopier.ai')).toBe(false)
   })
+
+  it('treats the unicopier app host as the product app', () => {
+    expect(isAppHost('app.unicopier.com')).toBe(true)
+  })
+
+  it('treats the unicopier marketing apex as the marketing site', () => {
+    expect(isAppHost('unicopier.com')).toBe(false)
+    expect(isAppHost('www.unicopier.com')).toBe(false)
+  })
 })

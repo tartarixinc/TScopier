@@ -221,7 +221,7 @@ test('a market buy sets margin type and leverage, sizes from margin x leverage, 
   // 100 USDT x 10 / 65000 = 0.01538 -> 0.015. The signal volume of 5 is ignored.
   assert.equal(order.params.quantity, '0.015')
   assert.equal(order.params.positionSide, undefined)
-  assert.ok(order.params.newClientOrderId!.startsWith('TScopier'))
+  assert.ok(order.params.newClientOrderId!.startsWith('UniCopier'))
   assert.ok(order.params.newClientOrderId!.length <= 36)
 
   const stops = fake.find('POST', '/fapi/v1/algoOrder')

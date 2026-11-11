@@ -13,6 +13,7 @@
  * "absent".
  */
 import type { FxsocketBrokerClient } from '../fxsocketClient'
+import { dedupeOpenedMarketPositions } from '../livePositionIdentity'
 import { parseTscopierComment } from '../tscopierComment'
 
 export type UnknownSendIntent = {
@@ -88,9 +89,10 @@ export function resolveUnknownSendFromOrders(
   const parsed = parseTscopierComment(intent.comment)
   const id8 = parsed?.signalIdPrefix ?? null
 
-  const candidates = openedOrders
-    .map(raw => (raw && typeof raw === 'object' ? raw as Record<string, unknown> : null))
-    .filter((row): row is Record<string, unknown> => row != null)
+  // Collapse order/position twin rows first so one fill is not "multiple matches"
+  // (which blocks adopt and can trigger a duplicate market resend).
+  const candidates = dedupeOpenedMarketPositions(openedOrders)
+    .map(position => position.row)
     .filter(row => normSymbol(row.symbol ?? row.Symbol) === symbol)
     .filter(row => (wantDir == null ? true : directionOf(row) === wantDir))
     .filter(row => {

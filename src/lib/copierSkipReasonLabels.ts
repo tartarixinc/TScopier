@@ -17,6 +17,7 @@ export const COPIER_SKIP_REASON_LABELS: Record<string, string> = {
   ai_classified_as_non_entry: 'AI found no entry instruction in this message',
   modification_no_open_trade: 'No open trade to modify',
   entry_price_moved_adverse: 'Price moved past the entry before the order was placed',
+  entry_tps_beyond_market: 'All take-profits were already past the market price — trade skipped',
   ai_classified_as_uncertain_human_review_required: 'AI was uncertain — review before trading',
   ai_review_expired: 'Review window expired',
   ai_review_price_passed: 'Price moved outside the review entry range',

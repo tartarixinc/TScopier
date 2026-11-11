@@ -2,6 +2,7 @@ import { authEs } from '../auth/es'
 import { channelWorkerEs } from '../channelWorker/es'
 import { tradeNotificationsEs } from '../tradeNotifications/es'
 import { contactSupportEs } from '../contactSupport/es'
+import { supportWidgetEs } from '../supportWidget/es'
 import { riskDisclaimerEs } from '../riskDisclaimer/es'
 import { termsOfServiceEs } from '../legal/termsEs'
 import { privacyPolicyEs } from '../legal/privacyEs'
@@ -17,6 +18,7 @@ export const es: Translations = {
   channelWorker: channelWorkerEs,
   tradeNotifications: tradeNotificationsEs,
   contactSupportPage: contactSupportEs,
+  supportWidget: supportWidgetEs,
   riskDisclaimerPage: riskDisclaimerEs,
   termsOfServicePage: termsOfServiceEs,
   privacyPolicyPage: privacyPolicyEs,
@@ -677,7 +679,9 @@ export const es: Translations = {
     avgProfit: 'Beneficio medio',
     avgHoldingTime: 'Duración media',
     profitFactor: 'Factor de beneficio',
-    pnlCalendar: 'Calendario de PyG sep 2026',
+    pnlCalendar: 'Calendario de PyG',
+    previousMonth: 'Mes anterior',
+    nextMonth: 'Mes siguiente',
     noTrades: 'Sin operaciones',
     tradeCount: '{count} operaciones',
     holdingDays: '{count} días',
@@ -1543,6 +1547,7 @@ export const es: Translations = {
     execNotePartialCloseTooSmall:
       'No se pudo ejecutar un cierre parcial solicitado — esta posición era demasiado pequeña para dividirla (la parte solicitada habría quedado por debajo del lote mínimo del broker); esa instrucción no cerró nada y la operación quedó con su tamaño completo.',
     execNoteStaleEntry: 'La entrada de la señal era {entry} pero la operación se abrió en {fill} — el precio ya se había movido cuando se envió la orden.',
+    execNoteTpStripped: 'Los take-profits {levels} fueron eliminados — la operación se abrió en {fill}, más allá del precio de take-profit, porque aplicarlos habría cerrado la operación de inmediato.',
     imageSignal: '(señal con imagen)',
     loadingSignal: 'Cargando señal…',
     loadSignalError: 'No se pudieron cargar los detalles de la señal.',
@@ -1639,7 +1644,17 @@ export const es: Translations = {
     tradingViewName: 'Nombre',
     tradingViewUrl: 'URL del webhook',
     tradingViewTemplate: 'Mensaje de la alerta',
-    tradingViewTemplateHelp: 'Pega este JSON en el mensaje de la alerta de TradingView. Las alertas de estrategia rellenan action con buy o sell. Pon action en close para cerrar las operaciones copiadas de ese símbolo.',
+    tradingViewTemplateStrategy: 'Solo para estrategias',
+    tradingViewTemplateIndicators: 'Indicadores',
+    tradingViewTemplateBuy: 'Para señales de compra',
+    tradingViewTemplateSell: 'Para señales de venta',
+    tradingViewTemplateSymbolHint: 'Para otros símbolos, cambia el "XAUUSD" en "symbol" en TradingView.',
+    tradingViewTemplateHelp: 'Usa Para estrategias cuando la alerta viene de una estrategia (action se rellena con buy o sell). Usa Para señales de compra o Para señales de venta para alertas de indicador con el lado fijo. Pon action en close para cerrar las operaciones copiadas de ese símbolo.',
+    tradingViewHowToTitle: 'Cómo añadir en TradingView',
+    tradingViewHowTo1: 'En TradingView, abre Alertas y crea una alerta nueva (o edita una existente).',
+    tradingViewHowTo2: 'Activa Webhook URL y pega la URL del webhook de este modal.',
+    tradingViewHowTo3: 'Pega la plantilla de Mensaje de la alerta correspondiente en el campo Message (estrategias, compra o venta).',
+    tradingViewHowTo4: 'Guarda la alerta. Cuando se dispare, las operaciones se copian a las cuentas de bróker vinculadas a esta fuente.',
     tradingViewCopy: 'Copiar',
     tradingViewCopied: 'Copiado',
     tradingViewRotate: 'Rotar URL',
@@ -1661,6 +1676,8 @@ export const es: Translations = {
     tradingViewNoDeliveries: 'Aún no hay alertas.',
     tradingViewAccepted: 'Aceptada',
     tradingViewSkipped: 'Omitida',
+    tradingViewSkipUnresolvedSymbol: 'Los marcadores del símbolo no se expandieron — edita el Message con un símbolo real (p. ej. XAUUSD) y recrea la alerta',
+    tradingViewSkipUnresolvedAction: 'El marcador de action no se expandió — usa la plantilla Buy/Sell o una alerta de estrategia con condición de gráfico',
     tradingViewError: 'Error',
     tradingViewDuplicate: 'Duplicada',
     tradingViewCopyTo: 'Copiar a',

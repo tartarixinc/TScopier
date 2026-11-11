@@ -8,8 +8,13 @@ import { ingestMtHistoryRows, type MtHistoryProfile } from './mtTradeFields'
 import { auditOrderClose } from './orderCloseAudit'
 import { createConcurrencyGate } from './perAccountConcurrency'
 import { createBrokerGateway, type BrokerGateway, type BrokerPriority } from './brokerGateway'
+import {
+  currentEntryReadPriority,
+  recordBrokerCallTiming,
+} from './brokerEntryContext'
 import { redactBridgeSecrets } from './mtapiRedaction'
 import { normalizeMtBrokerTicket } from './brokerTradeTicket'
+import { observeMetric } from './workerMetrics'
 
 type FetchLike = typeof fetch
 type RecoveryHandler = (sessionId: string) => Promise<string | null>
@@ -231,9 +236,13 @@ export class MtapiProvider implements BrokerProvider {
 
     // Pace BEFORE arming the request timeout: queue wait must not consume the
     // operation's time budget, or a busy gateway could itself abort an order.
-    await this.gateway.acquire(sessionId || 'global', options.priority ?? 'background')
+    const priority = options.priority
+      ?? currentEntryReadPriority()
+      ?? 'background'
+    const gatewayWaitMs = await this.gateway.acquire(sessionId || 'global', priority)
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? this.timeoutMs)
+    const httpStartedAt = Date.now()
     try {
       const headers: Record<string, string> = { accept: 'application/json, text/plain' }
       const proxyKey = env('MTAPI_PROXY_KEY') || env('MTAPI_API_KEY')
@@ -275,6 +284,17 @@ export class MtapiProvider implements BrokerProvider {
       throw new MtapiApiError(message, 503, 'TRANSPORT_ERROR')
     } finally {
       clearTimeout(timer)
+      const httpMs = Date.now() - httpStartedAt
+      recordBrokerCallTiming({ endpoint, gatewayWaitMs, httpMs })
+      observeMetric(`mtapi_gateway_wait_ms_${endpoint.toLowerCase()}`, gatewayWaitMs)
+      observeMetric(`mtapi_http_ms_${endpoint.toLowerCase()}`, httpMs)
+      if (gatewayWaitMs >= 250 || httpMs >= 1_000) {
+        console.warn(
+          `[mtapiProvider] ${endpoint} priority=${priority}`
+          + ` gateway_wait_ms=${Math.round(gatewayWaitMs)} http_ms=${httpMs}`
+          + ` id=${sessionId || 'global'}`,
+        )
+      }
     }
   }
 
@@ -283,14 +303,22 @@ export class MtapiProvider implements BrokerProvider {
     endpoint: string,
     params: Record<string, string | number | boolean | null | undefined>,
     sessionId: string,
-    options: { timeoutMs?: number } = {},
+    options: { timeoutMs?: number; priority?: BrokerPriority } = {},
   ): Promise<unknown> {
     try {
-      return await this.request(endpoint, params, { sessionId, timeoutMs: options.timeoutMs })
+      return await this.request(endpoint, params, {
+        sessionId,
+        timeoutMs: options.timeoutMs,
+        priority: options.priority,
+      })
     } catch (error) {
       if (!isSessionGone(error)) throw error
       await this.ensureConnected(sessionId)
-      return this.request(endpoint, params, { sessionId, timeoutMs: options.timeoutMs })
+      return this.request(endpoint, params, {
+        sessionId,
+        timeoutMs: options.timeoutMs,
+        priority: options.priority,
+      })
     }
   }
 

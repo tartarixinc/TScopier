@@ -393,7 +393,7 @@ test('a market buy sets leverage, sizes from margin x leverage, then places redu
   assert.equal(entry.body.qty, '0.015')
   assert.equal(entry.body.positionIdx, 0)
   const linkId = String(entry.body.orderLinkId)
-  assert.ok(linkId.startsWith('TScopier'))
+  assert.ok(linkId.startsWith('UniCopier'))
   assert.ok(linkId.length <= 36)
   assert.match(linkId, /^[A-Za-z0-9_-]+$/)
 
@@ -418,7 +418,7 @@ test('a market buy sets leverage, sizes from margin x leverage, then places redu
 
   assert.ok(Number.isSafeInteger(result.ticket) && result.ticket! > 1e10)
   assert.ok(linkId.endsWith(`_${ticketToken(result.ticket!)}`))
-  assert.equal(result.comment, 'TScopier:abcdef12')
+  assert.equal(result.comment, 'UniCopier:abcdef12')
   assert.equal(result.openPrice, 65_000)
   assert.equal(result.stopLoss, 64_000)
   assert.equal(result.takeProfit, 67_000)
@@ -629,7 +629,7 @@ test('legs and stops are rebuilt from Bybit after a worker restart', async () =>
   assert.equal(opened[0]!.lots, 0.015)
   assert.equal(opened[0]!.stopLoss, 64_000)
   assert.equal(opened[0]!.takeProfit, 67_000)
-  assert.equal(opened[0]!.comment, 'TScopier:abcdef12')
+  assert.equal(opened[0]!.comment, 'UniCopier:abcdef12')
 
   // The rebuilt leg can be closed, which also cancels both stops.
   await restarted.orderClose('acct-1', { ticket: placed.ticket! } as never)
@@ -648,7 +648,7 @@ test('history rows come from closed-pnl and keep the leg ticket of a copier clos
   assert.equal(rows[0]!.ticket, placed.ticket)
   assert.equal(rows[0]!.operation, 'Buy')
   assert.equal(rows[0]!.profit, 12.5)
-  assert.equal(rows[0]!.comment, 'TScopier:abcdef12')
+  assert.equal(rows[0]!.comment, 'UniCopier:abcdef12')
   assert.ok(fake.calls.some(c => c.path === '/v5/position/closed-pnl'))
 })
 

@@ -17,6 +17,8 @@ interface ThemeContextValue {
   setTheme: (theme: Theme) => void
   toggleTheme: () => void
   isDark: boolean
+  /** When true, theme cannot be changed (e.g. marketing always light). */
+  forced: boolean
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null)
@@ -37,35 +39,51 @@ export function applyThemeToDocument(theme: Theme) {
   root.style.colorScheme = theme
 }
 
-export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(() => readStoredTheme())
+export function ThemeProvider({
+  children,
+  forcedTheme,
+}: {
+  children: ReactNode
+  /** Pin the document to this theme and ignore storage / toggles. */
+  forcedTheme?: Theme
+}) {
+  const [theme, setThemeState] = useState<Theme>(() => forcedTheme ?? readStoredTheme())
 
   useLayoutEffect(() => {
-    applyThemeToDocument(theme)
-    localStorage.setItem(STORAGE_KEY, theme)
-  }, [theme])
+    const next = forcedTheme ?? theme
+    applyThemeToDocument(next)
+    if (!forcedTheme) localStorage.setItem(STORAGE_KEY, next)
+  }, [theme, forcedTheme])
 
-  const setTheme = useCallback((next: Theme) => {
-    setThemeState(next)
-  }, [])
+  const setTheme = useCallback(
+    (next: Theme) => {
+      if (forcedTheme) return
+      setThemeState(next)
+    },
+    [forcedTheme],
+  )
 
   const toggleTheme = useCallback(() => {
+    if (forcedTheme) return
     setThemeState(prev => {
       const next = prev === 'dark' ? 'light' : 'dark'
       applyThemeToDocument(next)
       localStorage.setItem(STORAGE_KEY, next)
       return next
     })
-  }, [])
+  }, [forcedTheme])
+
+  const resolved = forcedTheme ?? theme
 
   const value = useMemo(
     () => ({
-      theme,
+      theme: resolved,
       setTheme,
       toggleTheme,
-      isDark: theme === 'dark',
+      isDark: resolved === 'dark',
+      forced: Boolean(forcedTheme),
     }),
-    [theme, setTheme, toggleTheme],
+    [resolved, setTheme, toggleTheme, forcedTheme],
   )
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>

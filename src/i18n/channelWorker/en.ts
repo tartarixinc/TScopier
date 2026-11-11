@@ -189,6 +189,8 @@ export const channelWorkerEn: ChannelWorkerTranslations = {
       'broker bridge unavailable — enable Algo Trading on MT5 and confirm Trade EA ready in Account Configuration',
     entry_requires_imperative_or_labeled_stops:
       'message did not include an entry order phrase (e.g. buy now, gold sell now) or labeled SL/TP',
+    tradingview_missing_sl_tp:
+      'TradingView alert had no SL and TP prices — add them to the alert message, or enable Override SL and Override TP in configuration',
     entry_tp_without_sl: 'SL not given — set predefined SL pips in broker configuration',
     signal_missing_required_sl: 'SL not given — set predefined SL pips in broker configuration',
     delete_pendings_no_parent:
