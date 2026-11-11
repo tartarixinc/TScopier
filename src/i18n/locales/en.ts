@@ -153,9 +153,9 @@ export const en: Translations = {
       cancel: 'Cancel',
       welcomeTitle: 'I can help you set up and run UniCopier.',
       suggestions: [
-        'Is my Telegram linked?',
-        'Connect my MT5 account',
-        'Configure broker 928883 with lot 0.02',
+        'Are my Signals connected?',
+        'Add an account in Account Configuration',
+        'Show my Account Trades',
         'Pause the copier',
       ],
       emptyReply: 'How else can I help?',

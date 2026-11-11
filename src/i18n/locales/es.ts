@@ -154,10 +154,10 @@ export const es: Translations = {
       cancel: 'Cancelar',
       welcomeTitle: 'Puedo ayudarte a configurar y usar UniCopier.',
       suggestions: [
-        '¿Está vinculado mi Telegram?',
+        '¿Están conectadas mis Señales?',
+        'Añadir una cuenta en Configuración de cuenta',
+        'Mostrar mis Operaciones de cuenta',
         'Pausar el copier',
-        'Conectar una cuenta MT5',
-        '¿Qué son los presets?',
       ],
       emptyReply: '¿En qué más puedo ayudarte?',
       actionDone: 'Listo.',
