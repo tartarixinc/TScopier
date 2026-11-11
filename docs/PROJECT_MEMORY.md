@@ -2,6 +2,24 @@
 
 ## Changelog
 
+### 2026-11-11 — Social Trading / provider page i18n for all locales
+
+- **Context:** Social Trading (directory + provider profile) only had full `socialTradingPage` copy in en/es/fr; pl/ru/sv/nl/ja/ar fell back to English via shallow merge.
+- **Plain English:** The Social Trading and provider screens now show localized UI in every supported language.
+- **Fix (files):** New bundle [`src/i18n/locales/socialTrading/`](src/i18n/locales/socialTrading/) (`pl`/`ru`/`sv`/`nl`/`ja`/`ar` + types), wired into each locale root. Fixed Spanish mojibake/accents in `copySetup` and social error strings.
+- **Tests/verification:** Key parity 174 top-level + 59 `copySetup`; `tsc --noEmit` clean.
+- **Deploy state:** Frontend only (Netlify).
+- **Follow-ups:** None.
+
+### 2026-11-11 — Mirror Trading empty state redesign
+
+- **Context:** Mirror Accounts empty view was a plain card with one line of instructional text and a lot of unused space.
+- **Plain English:** The empty page now shows a master→slave illustration, a clear title and explanation, an Add master account button, and three short setup steps — translated in all app locales.
+- **Fix (files):** [`MirrorTradingPage.tsx`](src/pages/dashboard/MirrorTradingPage.tsx) — `MirrorEmptyArt` + `MirrorEmptyState`. i18n `emptyTitle` / `emptyBody` / `emptyStep1–3` (+ title/CTA) in en/es/fr and pl/ru/sv/nl/ja/ar + types.
+- **Tests/verification:** Visual check on Mirror Accounts with no masters; `tsc` if needed.
+- **Deploy state:** Frontend only (Netlify).
+- **Follow-ups:** None.
+
 ### 2026-11-11 — Mirror Accounts delete appeared to work then slave returned on refresh
 
 - **Context:** Deleting a slave on Mirror Accounts cleared the table, but refresh brought Fusion Markets slave back.

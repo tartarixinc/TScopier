@@ -1014,6 +1014,11 @@ export interface MirrorTradingPageTranslations {
   addMaster: string
   addSlave: string
   mastersEmpty: string
+  emptyTitle: string
+  emptyBody: string
+  emptyStep1: string
+  emptyStep2: string
+  emptyStep3: string
   slavesEmpty: string
   connectNew: string
   noAccounts: string
