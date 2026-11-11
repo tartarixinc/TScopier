@@ -553,7 +553,9 @@ export async function routeSignalParse(args: {
 
   const fastPathOk = deterministicQualifiesForFastPath(det, args.rawMessage, args.keywords)
 
-  if (mode === 'fastpath' && fastPathOk) {
+  // Management phrases (Close all / BE / modify SL·TP) skip stage-2/3 even in
+  // primary mode — AI adds ~2s and does not improve these deterministic commands.
+  if (fastPathOk && (mode === 'fastpath' || mode === 'primary')) {
     return {
       parseResult: det,
       aiMeta: { intent: String(det.parsed.action), source: 'deterministic' },

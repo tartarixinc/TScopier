@@ -49,6 +49,7 @@ import {
 } from '../channelStopApply'
 import type { MgmtExecOptions, MgmtExecResult } from '../mgmtExecOptions'
 import { runWithPriorityBrokerReads, stashEntryBrokerTimings } from '../brokerEntryContext'
+import { setPipelineTimestamp } from '../pipelineTimestamps'
 import { loadExactProviderCloseArtifacts, loadRangePendingLegsInMgmtScope, pendingLegsToCancelScopes, updateRangePendingLegsForManagement } from '../managementPendingLegs'
 import {
   explicitMgmtSymbol,
@@ -792,59 +793,85 @@ export async function applyManagement(
     const mgmtLiveOrdersByUuid = new Map<string, unknown[]>()
     const action = String(parsed.action).toLowerCase()
 
-    if (action === 'modify' && rows.length > 0) {
-      rows = await expandMgmtRowsToFullBaskets(ctx.supabase, {
-        userId: signal.user_id,
-        rows,
-      })
-      basketAnchorId = rows[0]?.signal_id ?? basketAnchorId
-    }
-    const scopeLoadMs = Date.now() - scopeLoadStart
+    const needsBasketExpand =
+      action === 'modify'
+      || action === 'close'
+      || action === 'breakeven'
+      || action === 'partial_profit'
+      || action === 'partial_breakeven'
 
-    if (
-      (action === 'close' || action === 'breakeven' || action === 'partial_profit' || action === 'partial_breakeven')
-      && rows.length > 0
-    ) {
-      rows = await expandMgmtRowsToFullBaskets(ctx.supabase, {
-        userId: signal.user_id,
-        rows,
-      })
-      basketAnchorId = rows[0]?.signal_id ?? basketAnchorId
-    }
-    if (action === 'close' && rows.length > 0) {
-      // Overlap orphan DB load with the first OpenedOrders snapshot warm for sessions
-      // that already appear in scope — first close no longer waits on serial DB→broker.
+    // Expand baskets ∥ orphan DB ∥ OpenedOrders warm so first OrderClose/Modify
+    // is not blocked on serial scope prep (~1s measured on Migration close-all).
+    if (needsBasketExpand && rows.length > 0) {
+      const seedRows = rows
       const earlySnapshotUuids = new Set<string>()
-      for (const trade of rows) {
+      for (const trade of seedRows) {
         const broker = byBroker.get(trade.broker_account_id)
         const u = broker ? brokerSessionUuid(broker) : null
         if (u) earlySnapshotUuids.add(u)
       }
-      const [orphans] = await Promise.all([
-        loadNearDuplicateOrphanTradesForClose(ctx.supabase, {
-          userId: signal.user_id,
-          channelTrades: rows,
-        }),
-        Promise.all([...earlySnapshotUuids].map(async u => {
-          if (mgmtLiveOrdersByUuid.has(u)) return
-          const trade = rows.find(r => {
-            const b = byBroker.get(r.broker_account_id)
-            return b ? brokerSessionUuid(b) === u : false
+      const expandPromise = expandMgmtRowsToFullBaskets(ctx.supabase, {
+        userId: signal.user_id,
+        rows: seedRows,
+      })
+      const orphanPromise = action === 'close'
+        ? loadNearDuplicateOrphanTradesForClose(ctx.supabase, {
+            userId: signal.user_id,
+            channelTrades: seedRows,
           })
-          if (!trade) return
-          const broker = byBroker.get(trade.broker_account_id)
-          const api = broker ? ctx.apiFor(broker) : null
-          if (!api) return
-          const raw = (await api.openedOrders(u).catch(() => [])) ?? []
-          mgmtLiveOrdersByUuid.set(u, raw)
-        })),
-      ])
+        : Promise.resolve([] as typeof seedRows)
+      const snapshotPromise = (action === 'close' || action === 'partial_profit')
+        ? Promise.all([...earlySnapshotUuids].map(async u => {
+            if (mgmtLiveOrdersByUuid.has(u)) return
+            const trade = seedRows.find(r => {
+              const b = byBroker.get(r.broker_account_id)
+              return b ? brokerSessionUuid(b) === u : false
+            })
+            if (!trade) return
+            const broker = byBroker.get(trade.broker_account_id)
+            const api = broker ? ctx.apiFor(broker) : null
+            if (!api) return
+            const raw = (await api.openedOrders(u).catch(() => [])) ?? []
+            mgmtLiveOrdersByUuid.set(u, raw)
+          }))
+        : Promise.resolve()
+
+      const [expanded, orphans] = await Promise.all([
+        expandPromise,
+        orphanPromise,
+        snapshotPromise,
+      ]).then(([exp, orph]) => [exp, orph] as const)
+
+      rows = expanded
+      basketAnchorId = rows[0]?.signal_id ?? basketAnchorId
       if (orphans.length) {
         const byId = new Map(rows.map(row => [row.id, row]))
         for (const orphan of orphans) byId.set(orphan.id, orphan)
         rows = [...byId.values()]
+        // Orphans may introduce new sessions — warm those after merge.
+        const extraUuids = new Set<string>()
+        for (const trade of orphans) {
+          const broker = byBroker.get(trade.broker_account_id)
+          const u = broker ? brokerSessionUuid(broker) : null
+          if (u && !mgmtLiveOrdersByUuid.has(u)) extraUuids.add(u)
+        }
+        if (extraUuids.size) {
+          await Promise.all([...extraUuids].map(async u => {
+            const trade = orphans.find(r => {
+              const b = byBroker.get(r.broker_account_id)
+              return b ? brokerSessionUuid(b) === u : false
+            })
+            if (!trade) return
+            const broker = byBroker.get(trade.broker_account_id)
+            const api = broker ? ctx.apiFor(broker) : null
+            if (!api) return
+            const raw = (await api.openedOrders(u).catch(() => [])) ?? []
+            mgmtLiveOrdersByUuid.set(u, raw)
+          }))
+        }
       }
     }
+    const scopeLoadMs = Date.now() - scopeLoadStart
 
     if (
       action === 'close_worse_entries'
@@ -1390,9 +1417,15 @@ export async function applyManagement(
           } else if (liveMgmtFast) {
             // Ticket already resolved from the shared pre-close OpenedOrders
             // snapshot — fire OrderCloseSafe and trust the ack (no per-leg readback).
+            if (signal.pipeline_ts) {
+              setPipelineTimestamp(signal.pipeline_ts, 'broker_request_started_at', Date.now())
+            }
             const closeResult = await closeMarketPositionFast(api, uuid, effectiveTicket)
             closeConfirmed = closeResult.confirmed
             lastCloseReason = closeResult.reason
+            if (signal.pipeline_ts) {
+              setPipelineTimestamp(signal.pipeline_ts, 'broker_response_received_at', Date.now())
+            }
           } else {
             const maxAttempts = 3
             for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -1508,15 +1541,15 @@ export async function applyManagement(
           }
 
 
+          if (liveMgmtFast && signal.pipeline_ts) {
+            setPipelineTimestamp(signal.pipeline_ts, 'broker_request_started_at', Date.now())
+          }
           await api.orderClose(uuid, { ticket: effectiveTicket, lots: plan.closeVolume })
-          const postOrders = await api.openedOrders(uuid)
-          // The in-memory row can carry a stale captured ticket (the pre-read
-          // may have reconciled `effectiveTicket` without rewriting `trade`).
-          // Key the verification read on the ticket we just acted on, and keep
-          // the captured column present when it was present before: a
-          // captured-only row diverges (`broker_position_ticket` = position,
-          // `metaapi_order_id` = order ticket), so the persist must CAS on the
-          // column that actually holds `effectiveTicket`.
+          if (liveMgmtFast && signal.pipeline_ts) {
+            setPipelineTimestamp(signal.pipeline_ts, 'broker_response_received_at', Date.now())
+          }
+          // Live-fast: trust OrderCloseSafe ack + planned remaining volume.
+          // A mandatory post OpenedOrders read doubles per-leg RTT on large baskets.
           const postCloseTrade: LiveTradeIdentity = {
             ...trade,
             broker_position_ticket: trade.broker_position_ticket == null
@@ -1525,40 +1558,42 @@ export async function applyManagement(
             metaapi_order_id: String(effectiveTicket),
             lot_size: plan.expectedRemainingVolume,
           }
-          const postResolution = resolveCanonicalOpenPosition({
-            trade: postCloseTrade,
-            openedOrders: postOrders,
-          })
-          if (postResolution.status !== 'resolved') {
-            throw new Error(
-              `partial close reconciliation required: ${postResolution.status} (${postResolution.reason})`,
-            )
-
-          }
-          const observedRemaining = livePositionVolume(postResolution.row)
-          const verified = verifyPartialCloseReduction({
-            originalVolume,
-            requestedCloseVolume: plan.closeVolume,
-            observedRemainingVolume: observedRemaining ?? Number.NaN,
-            volumeStep: symbolParams.lotStep,
-          })
-          if (!verified.ok) throw new Error(verified.reason)
-
-          if (postResolution.replacement) {
-            const persisted = await persistCanonicalPositionTicket(
-              ctx.supabase,
-              postCloseTrade,
-              postResolution,
-              // The partial close was just verified against a fresh broker read
-              // and the volume reduction, so the remaining position is provably
-              // this trade's — an attribute match here is not a blind guess.
-              { allowAttributeMatch: true },
-            )
-            if (!persisted) {
-              throw new Error('partial close replacement ticket persistence failed')
+          let observedRemaining = plan.expectedRemainingVolume
+          if (!liveMgmtFast) {
+            const postOrders = await api.openedOrders(uuid)
+            const postResolution = resolveCanonicalOpenPosition({
+              trade: postCloseTrade,
+              openedOrders: postOrders,
+            })
+            if (postResolution.status !== 'resolved') {
+              throw new Error(
+                `partial close reconciliation required: ${postResolution.status} (${postResolution.reason})`,
+              )
             }
-            ticketReconciledFrom = ticketReconciledFrom ?? effectiveTicket
-            effectiveTicket = postResolution.ticket
+            observedRemaining = livePositionVolume(postResolution.row) ?? plan.expectedRemainingVolume
+            const verified = verifyPartialCloseReduction({
+              originalVolume,
+              requestedCloseVolume: plan.closeVolume,
+              observedRemainingVolume: observedRemaining ?? Number.NaN,
+              volumeStep: symbolParams.lotStep,
+            })
+            if (!verified.ok) throw new Error(verified.reason)
+            if (postResolution.replacement) {
+              const persisted = await persistCanonicalPositionTicket(
+                ctx.supabase,
+                postCloseTrade,
+                postResolution,
+                // The partial close was just verified against a fresh broker read
+                // and the volume reduction, so the remaining position is provably
+                // this trade's — an attribute match here is not a blind guess.
+                { allowAttributeMatch: true },
+              )
+              if (!persisted) {
+                throw new Error('partial close replacement ticket persistence failed')
+              }
+              ticketReconciledFrom = ticketReconciledFrom ?? effectiveTicket
+              effectiveTicket = postResolution.ticket
+            }
           }
           const { data: partialUpdated, error: partialUpdateError } = await ctx.supabase
             .from('trades')

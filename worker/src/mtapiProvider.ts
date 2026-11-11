@@ -114,9 +114,8 @@ function isSessionGone(error: unknown): boolean {
 
 const tradeOpGate = createConcurrencyGate()
 /**
- * MTAPI rejects a burst of OrderSend/Modify on one session ("too many
- * requests"). Modify stays serial by default. OrderSend can overlap modestly
- * for multi-leg range entries via MT_SEND_OP_CONCURRENCY.
+ * Legacy OrderModify concurrency. Prefer MT_MODIFY_OP_CONCURRENCY; this remains
+ * as a fallback when the modify-specific env is unset.
  */
 function perAccountTradeConcurrency(): number {
   return Math.max(1, Number(process.env.MT_TRADE_OP_CONCURRENCY ?? 1) || 1)
@@ -134,13 +133,34 @@ function perAccountSendConcurrency(sessionId: string): number {
   return Math.max(1, Math.min(6, Number.isFinite(raw) ? raw : 3))
 }
 
+/**
+ * Multi-leg SL/TP / basket modify. Cap at 6. Shares tradeOpGate with send/close
+ * so a Close-all during post-entry TP sync still interleaves safely. Throttle
+ * step-down mirrors OrderSend.
+ */
+function perAccountModifyConcurrency(sessionId: string): number {
+  const stepDownUntil = modifyThrottleStepDownUntil.get(sessionId) ?? 0
+  if (stepDownUntil > Date.now()) return 1
+  const raw = Number(
+    process.env.MT_MODIFY_OP_CONCURRENCY
+    ?? process.env.MT_TRADE_OP_CONCURRENCY
+    ?? 3,
+  )
+  return Math.max(1, Math.min(6, Number.isFinite(raw) ? raw : 3))
+}
+
 const SEND_THROTTLE_STEPDOWN_MS = Math.max(
   5_000,
   Math.min(120_000, Number(process.env.MT_SEND_THROTTLE_STEPDOWN_MS ?? 45_000)),
 )
 const sendThrottleStepDownUntil = new Map<string, number>()
+const modifyThrottleStepDownUntil = new Map<string, number>()
 
-function noteSendThrottle(sessionId: string, error: unknown): void {
+function noteOpThrottle(
+  sessionId: string,
+  error: unknown,
+  kind: 'send' | 'modify',
+): void {
   const text = (
     (error instanceof MtapiApiError ? `${error.code ?? ''} ${error.message}` : String(error))
   ).toLowerCase()
@@ -150,11 +170,17 @@ function noteSendThrottle(sessionId: string, error: unknown): void {
     || text.includes('throttle')
     || (error instanceof MtapiApiError && error.status === 429)
   if (!throttled) return
-  sendThrottleStepDownUntil.set(sessionId, Date.now() + SEND_THROTTLE_STEPDOWN_MS)
+  const until = Date.now() + SEND_THROTTLE_STEPDOWN_MS
+  if (kind === 'send') sendThrottleStepDownUntil.set(sessionId, until)
+  else modifyThrottleStepDownUntil.set(sessionId, until)
   console.warn(
-    `[mtapi] OrderSend throttle step-down session=${sessionId.slice(0, 8)}…`
+    `[mtapi] Order${kind === 'send' ? 'Send' : 'Modify'} throttle step-down session=${sessionId.slice(0, 8)}…`
     + ` concurrency=1 for ${SEND_THROTTLE_STEPDOWN_MS}ms`,
   )
+}
+
+function noteSendThrottle(sessionId: string, error: unknown): void {
+  noteOpThrottle(sessionId, error, 'send')
 }
 
 /**
@@ -163,8 +189,8 @@ function noteSendThrottle(sessionId: string, error: unknown): void {
  * rare relative to basket closes.
  */
 function perAccountCloseConcurrency(): number {
-  const raw = Number(process.env.MT_CLOSE_OP_CONCURRENCY ?? 4)
-  return Math.max(1, Math.min(8, Number.isFinite(raw) ? raw : 4))
+  const raw = Number(process.env.MT_CLOSE_OP_CONCURRENCY ?? 6)
+  return Math.max(1, Math.min(8, Number.isFinite(raw) ? raw : 6))
 }
 
 function throttleRetryDelayMs(error: unknown): number {
@@ -530,7 +556,7 @@ export class MtapiProvider implements BrokerProvider {
   }
 
   async orderModify(id: string, args: OrderModifyArgs): Promise<OrderResult> {
-    const release = await tradeOpGate.acquire(id, perAccountTradeConcurrency())
+    const release = await tradeOpGate.acquire(id, perAccountModifyConcurrency(id))
     try {
       const params: Record<string, string | number> = {
         ticket: args.ticket,
@@ -539,8 +565,13 @@ export class MtapiProvider implements BrokerProvider {
       if (args.takeprofit != null) params.takeprofit = args.takeprofit
       if (args.price != null) params.price = args.price
 
-      const raw = await this.requestWithRetry('OrderModifySafe', params, id)
-      return normalizeOrderResponse(raw, { platform: this.platform(id) })
+      try {
+        const raw = await this.requestWithRetry('OrderModifySafe', params, id)
+        return normalizeOrderResponse(raw, { platform: this.platform(id) })
+      } catch (err) {
+        noteOpThrottle(id, err, 'modify')
+        throw err
+      }
     } finally {
       release()
     }

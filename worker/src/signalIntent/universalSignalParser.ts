@@ -634,11 +634,15 @@ export function deterministicQualifiesForFastPath(
   keywords: ChannelKeywords,
 ): boolean {
   if (det.status !== 'parsed' || det.parsed.action === 'ignore') return false
-  const conf = typeof det.parsed.confidence === 'number' ? det.parsed.confidence : 0
-  if (conf < universalParseFastPathConfidence()) return false
 
   const action = parsedAction(det.parsed)
+  // Close / BE / partial / modify are phrase-driven. Default mgmt confidence is
+  // 0.92 but FASTPATH_CONFIDENCE is 0.99 — that alone was sending "Close all
+  // trades now" through ~2s stage-2 AI. Trust deterministic management always.
   if (isManagementAction(action)) return true
+
+  const conf = typeof det.parsed.confidence === 'number' ? det.parsed.confidence : 0
+  if (conf < universalParseFastPathConfidence()) return false
 
   if (action === 'buy' || action === 'sell') {
     if (!evaluateParsedSignalExecutionEligibility(det.parsed, rawMessage, keywords).eligible) return false
