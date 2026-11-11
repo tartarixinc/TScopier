@@ -2795,20 +2795,6 @@ export class UserListener {
   ): Promise<boolean> {
     if (await this.skipMessageWhileCopierPaused(channelRow, String(message.id))) return false
 
-    const signalChannelId = await resolveSignalChannelIdForRow(this.supabase, channelRow)
-    if (signalChannelId) {
-      channelRow.signal_channel_id = signalChannelId
-      if (await shouldSkipPassiveChannelIngest(
-        this.supabase,
-        this.userId,
-        signalChannelId,
-        this.passiveSignalChannelIds,
-      )) {
-        incMetric('channel_passive_ingest_skipped')
-        return false
-      }
-    }
-
     const messageId = String(message.id)
     const rawMessage = telegramMessageText(message)
     const isReply = !!message.replyTo
@@ -2828,12 +2814,36 @@ export class UserListener {
       }
     }
     const replyToMessageId = extractReplyToMsgId(message.replyTo)
-    let parentSignalId: string | null = null
-    if (replyToMessageId) {
-      parentSignalId = await this.resolveParentSignalIdForReply(channelRow.id, replyToMessageId)
+
+    // Parallelize the independent DB lookups that previously stacked ~0.6–0.9s
+    // between t_listener_received and message_normalized_at on live Adjust/Close.
+    const [signalChannelId, parentSignalId, heuristicCtx, dupHead] = await Promise.all([
+      resolveSignalChannelIdForRow(this.supabase, channelRow),
+      replyToMessageId
+        ? this.resolveParentSignalIdForReply(channelRow.id, replyToMessageId)
+        : Promise.resolve(null as string | null),
+      getChannelParseContext(this.supabase, channelRow.id),
+      this.supabase
+        .from('signals')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', this.userId)
+        .eq('channel_id', channelRow.id)
+        .eq('telegram_message_id', messageId),
+    ])
+
+    if (signalChannelId) {
+      channelRow.signal_channel_id = signalChannelId
+      if (await shouldSkipPassiveChannelIngest(
+        this.supabase,
+        this.userId,
+        signalChannelId,
+        this.passiveSignalChannelIds,
+      )) {
+        incMetric('channel_passive_ingest_skipped')
+        return false
+      }
     }
 
-    const heuristicCtx = await getChannelParseContext(this.supabase, channelRow.id)
     if (!looksLikeTradingSignal(rawMessage, isReply, heuristicCtx)) {
       console.log(
         `[userListener] skipped non-signal user=${this.userId} channelRow=${channelRow.id} messageId=${messageId}`,
@@ -2850,13 +2860,7 @@ export class UserListener {
     }
 
     const dedupKey = `${channelRow.id}:${messageId}`
-
-    const { count: dupCount } = await this.supabase
-      .from('signals')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', this.userId)
-      .eq('channel_id', channelRow.id)
-      .eq('telegram_message_id', messageId)
+    const dupCount = dupHead.count
     if ((dupCount ?? 0) > 0) {
       const revised = await this.tryApplyMessageRevision({
         channelRow,
