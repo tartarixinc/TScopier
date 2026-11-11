@@ -4,6 +4,7 @@ export const chromeRu: AppChromeTranslations = {
   nav: {
     sections: {
       general: 'ОБЩЕЕ',
+      copy: 'КОПИРОВАНИЕ',
       signals: 'СИГНАЛЫ',
       discover: 'ОТКРЫТЬ',
       tradingTools: 'ТОРГОВЫЕ ИНСТРУМЕНТЫ',

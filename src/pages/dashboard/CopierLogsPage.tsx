@@ -59,11 +59,6 @@ function buildChannelDisplayNames(channels: ChannelNameRow[]): Record<string, st
   return out
 }
 
-function channelLabel(channelId: string | null | undefined, names: Record<string, string>): string {
-  if (!channelId) return '—'
-  return names[channelId] ?? 'Unknown channel'
-}
-
 /** One rendered log line, whatever produced it (a signal, mirror, social, or manual trade). */
 type CopierLogView = {
   symbol: string

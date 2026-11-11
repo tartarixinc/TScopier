@@ -4,6 +4,7 @@ export const chromePl: AppChromeTranslations = {
   nav: {
     sections: {
       general: 'OGÓLNE',
+      copy: 'KOPIOWANIE',
       signals: 'SYGNAŁY',
       discover: 'ODKRYJ',
       tradingTools: 'NARZĘDZIA TRADINGOWE',

@@ -205,11 +205,6 @@ type AiExpertLogRow = TradeActivityLogRow
 
 type ChannelNameRow = { id: string; display_name: string; channel_username?: string | null; source_kind?: string | null }
 
-function channelLabel(channelId: string | null | undefined, names: Record<string, string>): string {
-  if (!channelId) return '—'
-  return names[channelId] ?? 'Unknown channel'
-}
-
 function mtTradesToStatsByAccount(trades: MtTrade[]): Record<string, TradeStatsRow[]> {
   const out: Record<string, TradeStatsRow[]> = {}
   for (const t of trades) {

@@ -4,6 +4,7 @@ export const chromeJa: AppChromeTranslations = {
   nav: {
     sections: {
       general: '全般',
+      copy: 'コピー',
       signals: 'シグナル',
       discover: '発見',
       tradingTools: '取引ツール',
