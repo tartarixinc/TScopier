@@ -70,6 +70,7 @@ export async function setBrokerCopySource(
       .delete()
       .eq('user_id', userId)
       .eq('destination_broker_account_id', brokerId)
+      .select('id')
     if (dropDestinations) return { broker: null, error: dropDestinations.message }
   } else {
     const { error: dropSources } = await supabase
@@ -77,7 +78,21 @@ export async function setBrokerCopySource(
       .delete()
       .eq('user_id', userId)
       .eq('source_broker_account_id', brokerId)
+      .select('id')
     if (dropSources) return { broker: null, error: dropSources.message }
+    // A BEFORE DELETE trigger can cancel the delete with 0 rows and no PostgREST error.
+    const leftover = await supabase
+      .from('broker_copy_links')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('source_broker_account_id', brokerId)
+      .limit(1)
+    if ((leftover.data?.length ?? 0) > 0) {
+      return {
+        broker: null,
+        error: 'Could not remove mirror links from this master. Stop copying on slaves first, then try again.',
+      }
+    }
   }
 
   const { data, error } = await selectBrokerAccountColumns(columns =>
@@ -134,13 +149,29 @@ export async function disconnectBrokerCopyLink(
   sourceId: string,
   destinationId: string,
 ): Promise<{ error: string | null }> {
-  const { error } = await supabase
+  // Prefer returning the deleted row so a BEFORE DELETE trigger that silently
+  // cancels the delete (affects 0 rows, no PostgREST error) cannot look like success.
+  const { data, error } = await supabase
     .from('broker_copy_links')
     .delete()
     .eq('user_id', userId)
     .eq('source_broker_account_id', sourceId)
     .eq('destination_broker_account_id', destinationId)
-  return { error: error?.message ?? null }
+    .select('id')
+  if (error) return { error: error.message }
+  if (!data || data.length === 0) {
+    const stillThere = await supabase
+      .from('broker_copy_links')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('source_broker_account_id', sourceId)
+      .eq('destination_broker_account_id', destinationId)
+      .maybeSingle()
+    if (stillThere.data) {
+      return { error: 'Could not remove the mirror link. Try stopping copying first, then delete again.' }
+    }
+  }
+  return { error: null }
 }
 
 export async function updateBrokerCopyLinkSettings(

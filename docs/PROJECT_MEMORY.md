@@ -2,6 +2,16 @@
 
 ## Changelog
 
+### 2026-11-11 — Mirror Accounts delete appeared to work then slave returned on refresh
+
+- **Context:** Deleting a slave on Mirror Accounts cleared the table, but refresh brought Fusion Markets slave back.
+- **Plain English:** The delete looked successful in the app, but the database never actually removed the mirror link, so the slave came back.
+- **Root cause (technical):** `mirror_copy_block_delete_with_open_copies` BEFORE DELETE trigger used `NEW.id` / `RETURN NEW`. On DELETE, `NEW` is null, so returning null cancels the row delete with no client error. UI still cleared `links` + localStorage slave ids; refresh rebuilt slaves from surviving `broker_copy_links` destinations.
+- **Fix (files):** Migration [`20261111223000_fix_mirror_delete_trigger_old_row.sql`](supabase/migrations/20261111223000_fix_mirror_delete_trigger_old_row.sql) uses `OLD.id` / `RETURN OLD`. Applied to Migration + production. [`brokerCopyLink.ts`](src/lib/brokerCopyLink.ts) `.delete().select('id')` + leftover check so silent cancel cannot look like success.
+- **Tests/verification:** Trigger replaced on `sxkpcovbyaficvtkpsdo` and `supmsgcubipmmowrzoub`. Delete the slave again — it should stay gone after refresh.
+- **Deploy state:** DB fix live on production; client verify needs Netlify/frontend deploy (optional hardening).
+- **Follow-ups:** None required for the stuck row once user deletes again after trigger fix.
+
 ### 2026-11-11 — Account Trades / Performance / Own provider profile under 2s
 
 - **Context:** After Dashboard, Account Trades, Performance, and Social “Your provider profile” still held skeletons on heavy live history.
