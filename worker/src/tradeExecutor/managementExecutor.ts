@@ -33,7 +33,7 @@ import {
   type LiveTradeIdentity,
 } from '../livePositionIdentity'
 import { planPartialClose, verifyPartialCloseReduction } from '../partialClosePolicy'
-import { closeWithVerification } from '../managementClose'
+import { closeMarketPositionFast, closeWithVerification } from '../managementClose'
 import { findOpenedRowByTicket, readBrokerOrderStopLoss } from '../signalEntryPendingHelpers'
 import { cancelSignalRangeEntryWaitsForSignal } from '../signalRangeEntryHelpers'
 import { applyMgmtModifyToBasketGroups } from '../managementModifyBaskets'
@@ -110,6 +110,22 @@ class PositionAbsentFromLiveError extends Error {}
 
 function mgmtCloseOpts(liveMgmtFast: boolean) {
   return { maxAttempts: 2, slippageEscalation: 50, liveFast: liveMgmtFast }
+}
+
+/** Live-fast closes trust OrderCloseSafe ack; verified path keeps OpenedOrders readback. */
+function mgmtCloseFn(liveMgmtFast: boolean) {
+  if (liveMgmtFast) {
+    return (
+      api: Parameters<typeof closeMarketPositionFast>[0],
+      uuid: string,
+      ticket: number,
+    ) => closeMarketPositionFast(api, uuid, ticket)
+  }
+  return (
+    api: Parameters<typeof closeWithVerification>[0],
+    uuid: string,
+    ticket: number,
+  ) => closeWithVerification(api, uuid, ticket, mgmtCloseOpts(false))
 }
 
 function normBasketSymbolKey(sym: string): string {
@@ -274,8 +290,7 @@ function deferMgmtCloseCleanup(args: {
           channelDisplayName: channelMeta.commentSlug,
           channelUsername: null,
           preCloseTicketsBySession,
-          closeWithVerification: (a, u, ticket) =>
-            closeWithVerification(a, u, ticket, mgmtCloseOpts(liveMgmtFast)),
+          closeWithVerification: mgmtCloseFn(liveMgmtFast),
         })
         brokerClosed += one.closed
       }))
@@ -1020,8 +1035,7 @@ export async function applyManagement(
             brokers: [broker],
             channelDisplayName: channelMeta.commentSlug,
             channelUsername: null,
-            closeWithVerification: (a, u, ticket) =>
-              closeWithVerification(a, u, ticket, mgmtCloseOpts(liveMgmtFast)),
+            closeWithVerification: mgmtCloseFn(liveMgmtFast),
           })
           brokerClosed += one.closed
         }))
@@ -1350,14 +1364,20 @@ export async function applyManagement(
                 }
               }
             }
+          } else if (liveMgmtFast) {
+            // Ticket already resolved from the shared pre-close OpenedOrders
+            // snapshot — fire OrderCloseSafe and trust the ack (no per-leg readback).
+            const closeResult = await closeMarketPositionFast(api, uuid, effectiveTicket)
+            closeConfirmed = closeResult.confirmed
+            lastCloseReason = closeResult.reason
           } else {
-            const maxAttempts = liveMgmtFast ? 1 : 3
+            const maxAttempts = 3
             for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
               const closeResult = await closeWithVerification(
                 api,
                 uuid,
                 effectiveTicket,
-                mgmtCloseOpts(liveMgmtFast),
+                mgmtCloseOpts(false),
               )
               if (closeResult.ticket && closeResult.ticket !== effectiveTicket) {
                 ticketReconciledFrom = ticketReconciledFrom ?? effectiveTicket
@@ -2341,8 +2361,7 @@ export async function applyManagement(
           channelDisplayName: channelMeta.commentSlug,
           channelUsername: null,
           preCloseTicketsBySession: preCloseTicketsBySession(),
-          closeWithVerification: (a, u, ticket) =>
-            closeWithVerification(a, u, ticket, mgmtCloseOpts(liveMgmtFast)),
+          closeWithVerification: mgmtCloseFn(liveMgmtFast),
         })
         brokerClosed += one.closed
       }))
@@ -2617,7 +2636,7 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
         const ticket = Number(trade.broker_position_ticket ?? trade.metaapi_order_id)
         if (!Number.isFinite(ticket) || ticket <= 0) return 0
         try {
-          const closeResult = await closeWithVerification(api, uuid, ticket, mgmtCloseOpts(liveMgmtFast))
+          const closeResult = await mgmtCloseFn(liveMgmtFast)(api, uuid, ticket)
           if (!closeResult.confirmed) {
             throw new Error(closeResult.reason ?? 'cwe orderClose: ticket still open')
           }

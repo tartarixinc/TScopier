@@ -114,13 +114,23 @@ function isSessionGone(error: unknown): boolean {
 
 const tradeOpGate = createConcurrencyGate()
 /**
- * MTAPI rejects a burst of OrderSend/Modify/Close on one session ("too many
- * requests"). The terminal also runs trade ops one at a time, so the default
- * is a single in-flight trade call per session. Raise MT_TRADE_OP_CONCURRENCY
+ * MTAPI rejects a burst of OrderSend/Modify on one session ("too many
+ * requests"). The terminal also runs those ops one at a time, so the default
+ * is a single in-flight send/modify per session. Raise MT_TRADE_OP_CONCURRENCY
  * only if a broker is known to accept overlap.
  */
 function perAccountTradeConcurrency(): number {
   return Math.max(1, Number(process.env.MT_TRADE_OP_CONCURRENCY ?? 1) || 1)
+}
+
+/**
+ * Full closes are idempotent via OrderCloseSafe, so modest overlap is safe for
+ * multi-leg Close-all. Cap at 8. Partial closes still share this gate but stay
+ * rare relative to basket closes.
+ */
+function perAccountCloseConcurrency(): number {
+  const raw = Number(process.env.MT_CLOSE_OP_CONCURRENCY ?? 4)
+  return Math.max(1, Math.min(8, Number.isFinite(raw) ? raw : 4))
 }
 
 function throttleRetryDelayMs(error: unknown): number {
@@ -498,7 +508,7 @@ export class MtapiProvider implements BrokerProvider {
   }
 
   async orderClose(id: string, args: OrderCloseArgs): Promise<OrderResult> {
-    const release = await tradeOpGate.acquire(id, perAccountTradeConcurrency())
+    const release = await tradeOpGate.acquire(id, perAccountCloseConcurrency())
     try {
       const params: Record<string, string | number> = {
         ticket: args.ticket,
@@ -557,7 +567,7 @@ export class MtapiProvider implements BrokerProvider {
     if (this.cancelEndpointMissingHosts.has(host)) {
       return this.orderClose(id, { ticket: args.ticket })
     }
-    const release = await tradeOpGate.acquire(id, perAccountTradeConcurrency())
+    const release = await tradeOpGate.acquire(id, perAccountCloseConcurrency())
     try {
       const raw = await this.requestWithRetry('OrderCancelTask', { ticket: args.ticket }, id)
       const result = normalizeOrderResponse(raw, { platform: this.platform(id) })
