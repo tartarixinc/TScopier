@@ -9,7 +9,7 @@ import { clearChannelActiveTradeParamsWhenFlat } from './channelActiveTradeParam
 import { normalizeSignalChannelIds } from './brokerChannelFilter'
 import { apiForBrokerAccount } from './providerResolver'
 import { authorityFromBrokerRow } from './brokerWriteAuthority'
-import { closeWithVerification } from './managementClose'
+import { closeMarketPositionFast } from './managementClose'
 import { cancelPendingOrderAtBroker } from './pendingOrderCancel'
 import { resolveCanonicalOpenPosition } from './livePositionIdentity'
 import { isMarketClosedMessage } from './brokerTradeError'
@@ -340,7 +340,7 @@ async function forceCloseChannelOnBroker(
         }
       }
       if (!failure) {
-        const closeResult = await closeWithVerification(api, uuid, ticket, { liveFast: true })
+        const closeResult = await closeMarketPositionFast(api, uuid, ticket)
         if (closeResult.confirmed) {
           await settle()
           result.closed += 1
@@ -430,7 +430,7 @@ async function forceCloseChannelOnBroker(
       brokers: [broker as unknown as ExecutorBrokerRow],
       channelDisplayName: commentSlug,
       channelUsername: null,
-      closeWithVerification: (a, u, ticket) => closeWithVerification(a, u, ticket, { liveFast: true }),
+      closeWithVerification: (a, u, ticket) => closeMarketPositionFast(a, u, ticket),
     })
     result.closed += fallback.closed
     result.failed += fallback.failed
@@ -779,7 +779,7 @@ export async function forceCloseSignalById(
           }
         }
         if (!failure) {
-          const closeResult = await closeWithVerification(api, uuid, ticket, { liveFast: true })
+          const closeResult = await closeMarketPositionFast(api, uuid, ticket)
           if (closeResult.confirmed) {
             brokerClosed += 1
             await markDone()

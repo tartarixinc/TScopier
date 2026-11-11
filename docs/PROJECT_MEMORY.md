@@ -2,6 +2,27 @@
 
 ## Changelog
 
+### 2026-11-11 — Instant management closes (OrderCloseSafe-first): drop per-leg OpenedOrders verify; modest MTAPI close concurrency
+
+- **Context:** Channel `Close all trades now` on SIGNALS TESTER / Demo `81765183` (Migration `supmsgcubipmmowrzoub`) closed 34 legs in ~20s (`mgmt_wall_ms≈20447`, `mgmt_fast_path: true`). Same session left a comment-less / naked broker orphan that the comment-only straggler sweep missed (`broker_fallback` closes = 0).
+- **Plain English:** Closing many legs was slow because every leg re-read the open-order book before and after the close, and MTAPI only allowed one trade call at a time on the account. We now close from one shared snapshot, trust `OrderCloseSafe`’s acknowledgement (or “already closed”), and allow a few closes in parallel. A second pass still catches leftover tickets that were open when Close-all started, including naked positions without our comment.
+- **Root cause (technical):**
+  - `closeWithVerification` (`worker/src/managementClose.ts`) always did pre + post `OpenedOrders` (up to 6 empty-book retries on multi-leg books) even when `liveFast: true`.
+  - `prepareMgmtLiveOrderSnapshots` already cached the book, but the verify helper ignored it.
+  - `MT_TRADE_OP_CONCURRENCY` default **1** serialized all `OrderCloseSafe` calls despite `MGMT_LEG_CONCURRENCY=8`.
+  - Straggler sweep (`filterTscopierOrdersForChannelClose`) required a Tscopier comment, so comment-less orphans survived.
+- **Fix (files):**
+  - `worker/src/managementClose.ts` — new `closeMarketPositionFast` (trusted ack; already-closed / unknown-ticket → confirmed; hard reject → not confirmed). `closeOrderFast` aliases it.
+  - `worker/src/tradeExecutor/managementExecutor.ts` — live-fast full close uses trusted-ack; `mgmtCloseFn` routes straggler/CWE/deferred cleanup the same way; non-fast path keeps `closeWithVerification`.
+  - `worker/src/forceCloseSignalTrades.ts` — UI/force close + broker fallback use `closeMarketPositionFast`.
+  - `worker/src/managementBrokerClose.ts` — `filterSnapshotStragglerOrdersForClose` + `preCloseTicketsBySession` so Close-all also closes pre-close tickets that are Tscopier-commented **or** naked (no SL/TP).
+  - `worker/src/mtapiProvider.ts` — `orderClose` / `orderCancel` use `MT_CLOSE_OP_CONCURRENCY` (default **4**, max 8); send/modify stay on `MT_TRADE_OP_CONCURRENCY` (default 1).
+  - `worker/.env.example` — documents `MT_CLOSE_OP_CONCURRENCY` / `MT_TRADE_OP_CONCURRENCY`.
+  - Tests: `managementClose.test.ts` (trusted-ack + no OpenedOrders); existing force-close / reply-scope suites green.
+- **Tests/verification:** `npm --prefix worker run build` **0**; `managementClose` **11/11**; `forceCloseSignalTrades` **12/12**; `managementExecutor.replyScope` **24/24**.
+- **Deploy state:** **local / migration working tree only — not pushed.** Needs Railway worker rebuild on the Migration env after push to `migration`.
+- **Follow-ups:** (1) push + deploy Migration worker and re-time a ~30-leg Close-all; (2) watch MTAPI throttle under `MT_CLOSE_OP_CONCURRENCY=4` and lower if “too many requests” returns; (3) consider the same trusted-ack path for FxSocket if its close RTT dominates similarly.
+
 ### 2026-11-10 — Trades opened without a take-profit (Luis / Gold PRO Alerts): a stale channel ladder was stripped at send, and one-sided modifies could wipe the other stop on MTAPI (fixed in the working tree, NOT yet deployed; the customer-facing execution note shipped to production earlier on 2026-11-09)
 
 - **Context:** Luis reported "Trades without TP" on 2026-11-09 for channel "Gold Pro Alerts🏆" (prod `sxkpcovbyaficvtkpsdo`, channel `9932c132…`). Signal `2e2b1a1f…` (msg 448) read `BUY NOW XAUUSD Entry 4017 SL 4011 TP 4020/4024/4026`, but gold was trading at ~4116.7 — the whole ladder sat ~100 points behind the market. Live MTAPI reads proved the broker state: all 11 buy tickets (`2074139481`, `2074139508`…`2074139603`) open with `stopLoss: 4011` and **`takeProfit: 0`**; the earlier sell basket (`63e7ec73…`) still carried its TPs and closed by SL (`closeComment "[sl 4127.23]"`, `placedType "OnSL"`), so TP handling was not globally broken. Full evidence: `docs/scratchpad-trades-without-tp-2026-11-09.md`.

@@ -1,0 +1,32 @@
+---
+description: Document substantive changes in docs/PROJECT_MEMORY.md
+alwaysApply: true
+---
+
+# Project Memory
+
+After implementing a fix, feature, investigation, or deploy-related change, add a changelog entry to [`docs/PROJECT_MEMORY.md`](docs/PROJECT_MEMORY.md) in the same turn (do not wait to be asked).
+
+## When
+
+- Worker/trading behavior, schema/migrations, edge functions, auth, billing, or ops/deploy changes
+- Incident diagnoses and the fix that followed
+- Skip pure drive-by typos, formatting-only edits, and unanswered questions with no code change
+
+## Format
+
+Prepend under `## Changelog` (newest first). Prefer the house shape:
+
+```markdown
+### YYYY-MM-DD — Short title (who/where if relevant)
+
+- **Context:** …
+- **Plain English:** …
+- **Root cause (technical):** … (omit if N/A)
+- **Fix (files):** … key paths + what changed
+- **Tests/verification:** …
+- **Deploy state:** … (local only / Migration / staging / production)
+- **Follow-ups:** … (if any)
+```
+
+Use today's date from user/session context. Keep Plain English readable to a non-engineer; keep technical bullets concrete (files, signals, project refs).
