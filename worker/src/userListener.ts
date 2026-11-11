@@ -33,7 +33,6 @@ import type { SignalRow } from './tradeExecutor'
 import { enqueueParsedSignal } from './queue/signalQueuePublisher'
 import { signalQueueConfig } from './queue/signalQueueConfig'
 import {
-  pushParsedSignalToTradeWorker,
   pushParsedSignalToTradeWorkerAccept,
 } from './tradeSignalPush'
 import { persistListenerEvent } from './listenerEvents'
@@ -1970,8 +1969,11 @@ export class UserListener {
   // ── live message handling ─────────────────────────────────────────────
 
   private async handleMessage(event: NewMessageEvent) {
-    this.lastEventAt = Date.now()
-    this.lastLiveMessageAt = Date.now()
+    // Stamp before any awaited chat/channel lookup — otherwise telegram_receipt
+    // includes DB RTT and understates Telegram delivery / overstates listener work.
+    const messageReceivedAt = Date.now()
+    this.lastEventAt = messageReceivedAt
+    this.lastLiveMessageAt = messageReceivedAt
     incMetric('telegram_live_events')
 
     const message = event.message
@@ -2030,7 +2032,7 @@ export class UserListener {
         replyTo: message.replyTo,
         date: (message as MessageLike & { date?: number | Date | string }).date,
       },
-      { source: 'live' },
+      { source: 'live', receivedAt: messageReceivedAt },
     )
     void this.bumpLastLive(channelRow.id)
   }
@@ -2767,7 +2769,7 @@ export class UserListener {
   private async logSignal(
     channelRow: ChannelRow,
     message: MessageLike & { date?: number | Date | string },
-    opts?: { source?: 'live' | 'catchup' },
+    opts?: { source?: 'live' | 'catchup'; receivedAt?: number },
   ): Promise<boolean> {
     const isCatchUp = opts?.source === 'catchup'
     if (isCatchUp) {
@@ -2787,7 +2789,7 @@ export class UserListener {
   private async logSignalInner(
     channelRow: ChannelRow,
     message: MessageLike & { date?: number | Date | string },
-    opts?: { source?: 'live' | 'catchup' },
+    opts?: { source?: 'live' | 'catchup'; receivedAt?: number },
   ): Promise<boolean> {
     if (await this.skipMessageWhileCopierPaused(channelRow, String(message.id))) return false
 
@@ -2809,9 +2811,8 @@ export class UserListener {
     const rawMessage = telegramMessageText(message)
     const isReply = !!message.replyTo
     const messageEpochSec = this.messageEpochSec(message)
-    // Stamp listener arrival as early as possible so telegram_to_listener_ms
-    // reflects only Telegram delivery time (not our dedup/parent lookup DB calls).
-    const tListenerReceived = Date.now()
+    // Prefer the handleMessage stamp (before chat/channel awaits); fall back for catch-up.
+    const tListenerReceived = opts?.receivedAt ?? Date.now()
 
     if (opts?.source === 'catchup' && messageEpochSec > 0) {
       const ageMs = Date.now() - messageEpochSec * 1000
@@ -3285,13 +3286,9 @@ export class UserListener {
         && (queueCfg.pushFallbackOnQueueFail || !queueResult || queueResult.skipped)
       let httpPushOk: boolean | null = null
       if (shouldHttpPush) {
-        const action = parsedAction(dispatchRow.parsed_data)
-        if (isManagementAction(action)) {
-          httpPushOk = await pushParsedSignalToTradeWorkerAccept(dispatchRow)
-        } else {
-          pushParsedSignalToTradeWorker(dispatchRow)
-          httpPushOk = true
-        }
+        // Await accept for entry AND management — fire-and-forget lied about success
+        // and left silent 401/wrong-shard failures to the multi-second DB sweep.
+        httpPushOk = await pushParsedSignalToTradeWorkerAccept(dispatchRow)
       }
       void writeExecutionLog(this.supabase, {
         user_id: this.userId,
@@ -3307,7 +3304,8 @@ export class UserListener {
           queue_error: queueResult?.error ?? null,
           http_push_fallback: shouldHttpPush,
           http_push_ok: httpPushOk,
-          mgmt_push_accept_only: isManagementAction(parsedAction(dispatchRow.parsed_data)),
+          mgmt_push_accept_only: false,
+          entry_push_await_accept: true,
           runs_trade: workerConfig.runsTrade,
           runs_listener: workerConfig.runsListener,
           persist_before_dispatch: opts?.persistBeforeDispatch === true,

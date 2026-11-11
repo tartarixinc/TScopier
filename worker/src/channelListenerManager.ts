@@ -41,9 +41,11 @@ export class ChannelListenerManager {
     if (!this.shouldRun()) return
     if (this.syncTimer) return
 
+    // Hot-channel sync every 15s by default (was 30s) so newly enrolled readers
+    // pick up lease/work faster; still capped to avoid Telegram flood waits.
     const intervalMs = Math.max(
-      15_000,
-      Math.min(120_000, Number(process.env.CHANNEL_LISTENER_SYNC_MS ?? 30_000)),
+      10_000,
+      Math.min(120_000, Number(process.env.CHANNEL_LISTENER_SYNC_MS ?? 15_000)),
     )
 
     this.syncTimer = setInterval(() => {

@@ -548,34 +548,41 @@ export async function handleSignal(ctx: TradeExecutorContext,
       )
     }
     // Defense in depth: guarantee signals row exists before OrderSend / post-fill FKs.
-    // raw_message is preserved from any existing row (ensureSignalRow ignores empty
-    // values) so listener-persisted Telegram text survives dispatch upserts.
-    const ensured = await ensureSignalRow(ctx.supabase, {
-      id: row.id,
-      user_id: row.user_id,
-      channel_id: row.channel_id,
-      status: row.status || 'parsed',
-      parsed_data: (row.parsed_data ?? null) as Record<string, unknown> | null,
-      telegram_message_id: row.telegram_message_id ?? null,
-      reply_to_message_id: row.reply_to_message_id ?? null,
-      parent_signal_id: row.parent_signal_id,
-      is_modification: row.is_modification,
-      pipeline_ts: row.pipeline_ts as Record<string, unknown> | undefined,
-    })
-    if (ensured.duplicate && ensured.existingSignalId) {
-      // Another signal owns this telegram message — a duplicate dispatch that
-      // must not execute (double-executes management/entry actions). The owner
-      // signal is already being handled by the executor.
-      console.warn(
-        `[tradeExecutor] duplicate dispatch skipped signal=${row.id} existing=${ensured.existingSignalId}`
-        + ` user=${row.user_id} message=${row.telegram_message_id ?? 'n/a'}`,
-      )
-      return
-    }
-    if (!ensured.ok) {
-      console.error(
-        `[tradeExecutor] ensureSignalRow before handle failed signal=${row.id}: ${ensured.error ?? 'unknown'}`,
-      )
+    // Skip the second upsert when the listener already stamped persist-complete —
+    // that round trip was ~180ms of pure latency on the hot path.
+    const persistDoneAt = Number(
+      (row.pipeline_ts as { signal_persist_completed_at?: number } | undefined)
+        ?.signal_persist_completed_at,
+    )
+    const skipEnsure = Number.isFinite(persistDoneAt) && persistDoneAt > 0
+    if (!skipEnsure) {
+      const ensured = await ensureSignalRow(ctx.supabase, {
+        id: row.id,
+        user_id: row.user_id,
+        channel_id: row.channel_id,
+        status: row.status || 'parsed',
+        parsed_data: (row.parsed_data ?? null) as Record<string, unknown> | null,
+        telegram_message_id: row.telegram_message_id ?? null,
+        reply_to_message_id: row.reply_to_message_id ?? null,
+        parent_signal_id: row.parent_signal_id,
+        is_modification: row.is_modification,
+        pipeline_ts: row.pipeline_ts as Record<string, unknown> | undefined,
+      })
+      if (ensured.duplicate && ensured.existingSignalId) {
+        // Another signal owns this telegram message — a duplicate dispatch that
+        // must not execute (double-executes management/entry actions). The owner
+        // signal is already being handled by the executor.
+        console.warn(
+          `[tradeExecutor] duplicate dispatch skipped signal=${row.id} existing=${ensured.existingSignalId}`
+          + ` user=${row.user_id} message=${row.telegram_message_id ?? 'n/a'}`,
+        )
+        return
+      }
+      if (!ensured.ok) {
+        console.error(
+          `[tradeExecutor] ensureSignalRow before handle failed signal=${row.id}: ${ensured.error ?? 'unknown'}`,
+        )
+      }
     }
     if (!ctx.claimSignalExecution(row.id)) {
       emitPipelineEvent({
@@ -1327,6 +1334,18 @@ export async function handleSignal(ctx: TradeExecutorContext,
         path: liveFast ? 'live_fast' : liveMgmtFast ? 'management_fast' : 'queued',
         extra: summaryExtra,
       })
+      // Durable SLO stamps — pipeline_summary logs are pruned; keep worker stamps on the row.
+      if (row.pipeline_ts && Object.keys(row.pipeline_ts).length > 0) {
+        void ctx.supabase
+          .from('signals')
+          .update({ pipeline_ts: row.pipeline_ts as Record<string, unknown> })
+          .eq('id', row.id)
+          .then(({ error }) => {
+            if (error) {
+              console.warn(`[tradeExecutor] pipeline_ts persist failed signal=${row.id}: ${error.message}`)
+            }
+          })
+      }
       ctx.inflight.delete(row.id)
       ctx.queuedIds.delete(row.id)
     }

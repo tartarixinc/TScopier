@@ -2,6 +2,37 @@
 
 ## Changelog
 
+### 2026-11-11 — Sub-3s latency master plan implementation (Phase 0–3 code)
+
+- **Context:** Close-all felt slow to *start* because live handoff failed (401 → 15s idle sweep). Goal: Telegram → first broker op p95 &lt; 3s.
+- **Plain English:** We stopped treating a failed hand-off as “success”, made the backup scan much faster, and cut waiting in the close/send path so the system can react in under three seconds once Railway tokens/URLs match.
+- **Root cause (technical):** Push treated any HTTP 200 as OK (including `accepted:false`); entry push hard-coded success; 401 was non-retryable with no breaker; idle sweep default 15s; queue auto-enabled when Redis env present; serial DB/broker waits before first close.
+- **Fix (files):**
+  - [`worker/src/internalToken.ts`](worker/src/internalToken.ts) — trim token both sides; fingerprint logs.
+  - [`worker/src/httpServer.ts`](worker/src/httpServer.ts) — trimmed auth; `/internal/dispatch-ping`.
+  - [`worker/src/tradeSignalPush.ts`](worker/src/tradeSignalPush.ts) — require `accepted:true`; 1s timeout / 2 attempts; probe loop + breaker on 401/403/404.
+  - [`worker/src/userListener.ts`](worker/src/userListener.ts) — await accept for entry+mgmt; stamp `receivedAt` at handleMessage start.
+  - [`worker/src/index.ts`](worker/src/index.ts) — start push probe on listener boot.
+  - Sweep idle default **5s**; queue default **off**; Realtime INSERT+UPDATE; wake resubscribe; sweep preserves `pipeline_ts` + fresh-sweep alert.
+  - Mgmt accept dedupe; shorter claim retry; skip redundant `ensureSignalRow`; persist `pipeline_ts` after handle; parallel orphan+OpenedOrders warm; per-account order pacing; session health 60s; channel listener sync 15s; queue idempotency revision + release on retry.
+  - Diagnostics: [`scripts/diagnostics/pipeline_latency.sql`](scripts/diagnostics/pipeline_latency.sql) SLO gate section.
+- **Tests/verification:** `npm --prefix worker run build` clean; targeted node:test **30/30** (push accept/breaker, queue config, gateway, publisher).
+- **Deploy state:** **code in working tree** — Railway must set identical `WORKER_INTERNAL_TOKEN` on listener+trade, `EXECUTOR_SWEEP_IDLE_MS=5000`, `TRADE_SIGNAL_QUEUE_ENABLED=false`, push timeouts, and trade-only `TRADE_*_WORKER_URL` before Migration retest can prove p95 &lt; 3s.
+- **Follow-ups:** (1) sync Railway env + redeploy Migration; (2) re-run Close-all + buy and confirm `http_push_ok=true` / `dispatch_source≠sweep`; (3) run SLO SQL; (4) promote only after p95 gate passes.
+
+### 2026-11-11 — Close-all “~6s before closing starts”: listener→trade push 401, then idle DB sweep
+
+- **Context:** After the OrderCloseSafe / close-concurrency speedup, Migration retest `Close all trades now` (signal `90de4b11…`, msg 646, 2026-11-11 10:16:59Z) still felt slow to *start*. User guessed the trade endpoint was not receiving the instruction on time.
+- **Plain English:** The close message was parsed fine, but the live hand-off from the listener to the trade worker was rejected as unauthorized. With the Redis queue also off for that user, the trade worker only found the close on its slower backup scan — so closing sat idle for about twelve seconds before the first ticket closed. Once it did start, the faster close path ran (34 legs).
+- **Root cause (technical):**
+  - `dispatch_route_decision`: `queue_enabled=false`, `queue_skipped_reason=queue_not_enabled_for_user`, `http_push_fallback=true`, `http_push_ok=false`, `mgmt_push_accept_only=true`.
+  - `dispatch_push_attempt` → `https://tscopier-staging.up.railway.app` `/internal/dispatch-signal` returned **401 Unauthorized** in 102ms (`retryable=false`) — `WORKER_INTERNAL_TOKEN` mismatch (or missing) between listener and that Railway service.
+  - Fallback `dispatch_source=sweep`: `queue_consumed_at` 10:17:11.543Z (**+12.5s** after `signals.created_at`); first `mgmt_close` 10:17:15.816Z; `pipeline_summary` `mgmt_wall_ms=10208`, `mgmt_scope_load_ms=890`, `other_gateway_wait_ms=4571`, `mgmt_fast_path=true`. Idle sweep default `EXECUTOR_SWEEP_IDLE_MS=15000` explains the multi-second pickup gap.
+- **Fix (files):** Ops — align `WORKER_INTERNAL_TOKEN` on the Migration/staging **listener** and the service behind `TRADE_MGMT_WORKER_URL` / `TRADE_WORKER_URL` (`tscopier-staging.up.railway.app`); confirm push URL points at a `trade_mgmt` (or `all`) role. Optional: enable Redis queue for this user / fleet so a failed HTTP push is not the only live path. No worker code change in this diagnosis pass.
+- **Tests/verification:** Migration SQL on `trade_execution_logs` for `90de4b11…` (push 401 + route decision + sweep summary). Timing: created→consumed ≈12.5s; consumed→first close ≈4.3s.
+- **Deploy state:** Diagnosis only (Migration DB). Token/URL fix is Railway env, not yet applied from this session.
+- **Follow-ups:** (1) sync internal token + re-run Close-all and confirm `http_push_ok=true` / `dispatch_source` ≠ `sweep`; (2) if gateway wait (~4.5s) still dominates after push is fixed, inspect MTAPI session acquire under close burst; (3) consider shorter mgmt idle sweep or push-failure alert when 401 is non-retryable.
+
 ### 2026-11-11 — Instant management closes (OrderCloseSafe-first): drop per-leg OpenedOrders verify; modest MTAPI close concurrency
 
 - **Context:** Channel `Close all trades now` on SIGNALS TESTER / Demo `81765183` (Migration `supmsgcubipmmowrzoub`) closed 34 legs in ~20s (`mgmt_wall_ms≈20447`, `mgmt_fast_path: true`). Same session left a comment-less / naked broker orphan that the comment-only straggler sweep missed (`broker_fallback` closes = 0).

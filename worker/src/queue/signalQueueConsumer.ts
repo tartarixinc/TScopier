@@ -29,7 +29,7 @@ import {
   streamKeyForLane,
   type SignalQueueLane,
 } from './signalQueueConfig'
-import { claimQueueIdempotency } from './signalQueueIdempotency'
+import { claimQueueIdempotency, releaseQueueIdempotency } from './signalQueueIdempotency'
 import { parseQueueJobFields } from './signalQueuePublisher'
 import {
   logQueueExecution,
@@ -422,6 +422,10 @@ export class SignalQueueConsumer {
           reclaimed: opts?.reclaimed === true,
         },
       })
+
+      // Release idempotency so reclaim can actually re-execute (previously reclaim
+      // always hit "duplicate" and acked without running).
+      await releaseQueueIdempotency(this.supabase, job.idempotency_key)
 
       // Leave unacked — XAUTOCLAIM will retry after claim idle timeout.
     }

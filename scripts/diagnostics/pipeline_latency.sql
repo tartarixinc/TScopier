@@ -117,3 +117,62 @@ where tel.action in ('pipeline_summary', 'handle_end')
   and s.parsed_data->>'action' in ('close_worse_entries', 'modify', 'close', 'breakeven')
 group by 1, 2
 order by 1 desc, 2;
+
+-- =============================================================================
+-- Sub-3s SLO gate (Migration / staging) — run after Phase 0–2 deploy
+-- Target: telegram_receipt_to_broker_request_ms p95 < 3000; dispatch_source != sweep
+-- =============================================================================
+
+-- Dispatch source mix (fresh signals must not be sweep/realtime)
+select
+  request_payload->>'dispatch_source' as source,
+  count(*) as n
+from trade_execution_logs
+where action = 'pipeline_summary'
+  and created_at > now() - interval '24 hours'
+group by 1
+order by 2 desc;
+
+-- Fresh sweep alerts (live handoff missed)
+select count(*) as fresh_sweep_alerts
+from trade_execution_logs
+where action = 'dispatch_sweep_fresh_alert'
+  and created_at > now() - interval '24 hours';
+
+-- Push 401/403/404 in last 24h (must be zero)
+select
+  count(*) filter (where (request_payload->>'status_code') in ('401','403','404')) as auth_route_fails,
+  count(*) filter (where request_payload->>'ok' = 'true') as push_ok,
+  count(*) as push_attempts
+from trade_execution_logs
+where action = 'dispatch_push_attempt'
+  and request_payload->>'phase' = 'attempt'
+  and created_at > now() - interval '24 hours';
+
+-- End-to-end from durable pipeline_ts on signals (after worker stamp persist)
+select
+  parsed_data->>'action' as action,
+  count(*) as n,
+  percentile_cont(0.5) within group (
+    order by (
+      coalesce((pipeline_ts->>'broker_request_started_at')::bigint, (pipeline_ts->>'t_first_broker_send')::bigint)
+      - coalesce((pipeline_ts->>'telegram_message_received_at')::bigint, (pipeline_ts->>'t_listener_received')::bigint)
+    )
+  ) as p50_receipt_to_broker_ms,
+  percentile_cont(0.95) within group (
+    order by (
+      coalesce((pipeline_ts->>'broker_request_started_at')::bigint, (pipeline_ts->>'t_first_broker_send')::bigint)
+      - coalesce((pipeline_ts->>'telegram_message_received_at')::bigint, (pipeline_ts->>'t_listener_received')::bigint)
+    )
+  ) as p95_receipt_to_broker_ms
+from signals
+where created_at > now() - interval '24 hours'
+  and status in ('executed', 'skipped')
+  and pipeline_ts ? 't_listener_received'
+  and (
+    pipeline_ts ? 'broker_request_started_at'
+    or pipeline_ts ? 't_first_broker_send'
+    or pipeline_ts ? 't_order_send_start'
+  )
+group by 1
+order by 2 desc;
