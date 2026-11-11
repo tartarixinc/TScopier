@@ -11,14 +11,15 @@ import {
   copierLogDestinationLabel,
   copierLogSourceIcon,
   copierLogSourceLabel,
-  copierLogToastFingerprint,
   copierLogToastFromSignal,
   mergeCopierLogToastSeen,
   readCopierLogToastSeen,
+  shouldAnnounceCopierLogToast,
   signalHistoryToastLabels,
   writeCopierLogToastSeen,
   type CopierLogToast,
 } from '../../lib/copierLogToast'
+import { resolveSignalSourceKind, SIGNAL_SOURCE_MARKS } from '../../lib/signalSourceMark'
 import { whenRealtimeReady } from '../../lib/whenRealtimeReady'
 
 type ChannelRow = {
@@ -101,11 +102,11 @@ export function CopierLogToasts({ userId }: { userId: string | undefined }) {
       return next
     }
 
-    const show = async (signal: Signal) => {
-      const fingerprint = copierLogToastFingerprint(signal)
-      if (seen.current.get(signal.id) === fingerprint) return
-      seen.current.set(signal.id, fingerprint)
+    const show = async (signal: Signal, event: 'INSERT' | 'UPDATE') => {
+      if (cancelled) return
+      const decision = shouldAnnounceCopierLogToast(seen.current, signal, event)
       writeCopierLogToastSeen(userId, seen.current)
+      if (decision !== 'show') return
       const channels = await ensureChannels()
       if (cancelled) return
       if (signal.channel_id && !channels.has(signal.channel_id)) {
@@ -114,13 +115,16 @@ export function CopierLogToasts({ userId }: { userId: string | undefined }) {
       }
       if (cancelled) return
       const channel = signal.channel_id ? channelsRef.current.get(signal.channel_id) : null
+      const sourceKind = resolveSignalSourceKind(signal)
       const toast = copierLogToastFromSignal(
         signal,
         labelsRef.current.copierLogs,
         signalHistoryToastLabels(labelsRef.current.history),
         {
-          source: copierLogSourceLabel(channel, labelsRef.current.unknownChannel),
-          sourceIcon: copierLogSourceIcon(channel),
+          source: channel
+            ? copierLogSourceLabel(channel, labelsRef.current.unknownChannel)
+            : `${SIGNAL_SOURCE_MARKS[sourceKind].label} · ${labelsRef.current.unknownChannel}`,
+          sourceIcon: copierLogSourceIcon(channel, sourceKind),
           destination: copierLogDestinationLabel(brokersRef.current, signal.channel_id),
           destinationIcons: copierLogDestinationIcons(brokersRef.current, signal.channel_id),
         },
@@ -158,12 +162,12 @@ export function CopierLogToasts({ userId }: { userId: string | undefined }) {
         .on(
           'postgres_changes',
           { event: 'INSERT', schema: 'public', table: 'signals', filter: `user_id=eq.${userId}` },
-          payload => void show(payload.new as Signal),
+          payload => void show(payload.new as Signal, 'INSERT'),
         )
         .on(
           'postgres_changes',
           { event: 'UPDATE', schema: 'public', table: 'signals', filter: `user_id=eq.${userId}` },
-          payload => void show(payload.new as Signal),
+          payload => void show(payload.new as Signal, 'UPDATE'),
         )
         .subscribe()
     }

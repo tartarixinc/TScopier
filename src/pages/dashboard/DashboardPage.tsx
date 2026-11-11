@@ -69,7 +69,7 @@ import {
   fetchSocialCopyLogs,
   type SocialCopyLogRow,
 } from '../../lib/socialCopyLogs'
-import { buildChannelSourceKinds, SIGNAL_SOURCE_MARKS, type SignalSourceKind } from '../../lib/signalSourceMark'
+import { buildChannelSourceKinds, resolveSignalSourceKind, SIGNAL_SOURCE_MARKS, type SignalSourceKind } from '../../lib/signalSourceMark'
 import { SignalSourceLogo } from '../../components/dashboard/SignalSourceLogo'
 import { TradeActivityCard } from '../../components/dashboard/TradeActivityCard'
 import {
@@ -1346,16 +1346,14 @@ export function DashboardPage() {
     const signalRows: DashboardCopierLogRow[] = copierLogs.map(signal => {
       const parsed = signal.parsed_data as Record<string, unknown> | null
       const action = typeof parsed?.action === 'string' ? parsed.action : null
-      const sourceKind = signal.channel_id
-        ? (channelSourceKinds[signal.channel_id] ?? 'telegram')
-        : null
+      const sourceKind = resolveSignalSourceKind(signal, channelSourceKinds)
       const channelName = channelLabel(signal.channel_id, channelDisplayNames)
       return {
         key: signal.id,
         at: signal.created_at,
         status: signal.status,
         channelName,
-        channelTitle: sourceKind ? `${SIGNAL_SOURCE_MARKS[sourceKind].label} · ${channelName}` : channelName,
+        channelTitle: `${SIGNAL_SOURCE_MARKS[sourceKind].label} · ${channelName}`,
         symbol: copierLogSymbols[signal.id] ?? '—',
         action,
         sourceKind,

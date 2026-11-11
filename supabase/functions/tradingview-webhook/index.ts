@@ -378,6 +378,7 @@ async function persistAcceptedAlert(
     id: signalId,
     user_id: webhook.user_id,
     channel_id: webhook.channel_id,
+    source_kind: "tradingview",
     raw_message: rawMessage,
     parsed_data: parsedData,
     status: "parsed",
