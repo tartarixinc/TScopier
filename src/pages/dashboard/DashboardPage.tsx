@@ -20,7 +20,7 @@ import {
 import { DashboardMetricsSkeleton } from '../../components/dashboard/DashboardMetricsSkeleton'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { PageShell } from '../../components/layout/PageShell'
-import { APP_CARD, APP_ROW_HOVER, APP_SECTION_LABEL, APP_WORKSPACE } from '../../lib/appSurface'
+import { APP_CARD, APP_ROW_HOVER, APP_SECTION_LABEL } from '../../lib/appSurface'
 import { useAddTradingAccount } from '../../context/AddTradingAccountContext'
 import { Toggle } from '../../components/ui/Toggle'
 import { Button } from '../../components/ui/Button'
@@ -987,7 +987,7 @@ export function DashboardPage() {
   const dashboardGreeting = greetingParts ? (
     <>
       {greetingParts[0]}
-      <span className="text-green-500 dark:text-green-400">{greetingName}</span>
+      <span className="text-neutral-900 dark:text-neutral-50">{greetingName}</span>
       {greetingParts[1] ?? ''}
     </>
   ) : (
@@ -2944,7 +2944,7 @@ function StatBlock({ label, labelHint, value, sub, subColor, valueColor = 'text-
   valueColor?: string
 }) {
   return (
-    <div className={clsx(APP_CARD, APP_WORKSPACE, 'px-4 py-4 sm:px-5')}>
+    <div className={clsx(APP_CARD, 'px-4 py-4 sm:px-5')}>
       <p className={clsx('inline-flex items-center gap-1', APP_SECTION_LABEL)}>
         {label}
         {labelHint ? <InfoTooltip text={labelHint} /> : null}
@@ -3031,7 +3031,7 @@ function LogRow({ row }: { row: DashboardCopierLogRow }) {
 
   return (
     <div className={clsx(DASHBOARD_COPIER_LOG_GRID, 'px-5 py-3 transition-colors', APP_ROW_HOVER)}>
-      <span className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-sm font-regular ring-1 ring-black/5 dark:ring-white/10 ${s.color}`}>
+      <span className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-sm font-regular ${s.color}`}>
         {s.label}
       </span>
       <span className="flex min-w-0 items-center gap-2 text-sm font-regular text-neutral-900 dark:text-neutral-50" title={row.channelTitle}>

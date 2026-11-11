@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { APP_CARD, APP_WORKSPACE } from '../../lib/appSurface'
+import { APP_CARD } from '../../lib/appSurface'
 
 const CARD = APP_CARD
 
@@ -23,7 +23,7 @@ export function DashboardMetricsSkeleton({ message }: { message?: string }) {
         {Array.from({ length: 4 }, (_, i) => (
           <div
             key={i}
-            className={clsx(APP_CARD, APP_WORKSPACE, 'px-4 py-4 sm:px-5')}
+            className={clsx(APP_CARD, 'px-4 py-4 sm:px-5')}
           >
             <SkeletonBar className="h-3 w-24" />
             <SkeletonBar className="mt-3 h-7 w-28" />
