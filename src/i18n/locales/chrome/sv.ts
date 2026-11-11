@@ -4,6 +4,7 @@ export const chromeSv: AppChromeTranslations = {
   nav: {
     sections: {
       general: 'ALLMÄNT',
+      copy: 'KOPIERING',
       signals: 'SIGNALER',
       discover: 'UPPTÄCK',
       tradingTools: 'HANDELSVERKTYG',

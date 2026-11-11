@@ -4,6 +4,7 @@ export const chromeNl: AppChromeTranslations = {
   nav: {
     sections: {
       general: 'ALGEMEEN',
+      copy: 'KOPIËREN',
       signals: 'SIGNALEN',
       discover: 'ONTDEK',
       tradingTools: 'HANDELSTOOLS',
