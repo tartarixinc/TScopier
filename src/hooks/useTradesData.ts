@@ -30,8 +30,16 @@ import {
 
 const AUTO_REFRESH_MS = 15_000
 const VISIBILITY_STALE_MS = 30_000
+/** Cap live MT history on first enrichment so cold load cannot wait on unbounded OrderHistory. */
+const TRADES_LIVE_FETCH_LIMIT = 5000
 
-async function fetchTradesFromMt(userId: string): Promise<MtTrade[]> {
+type LiveTradesFetch = {
+  trades: MtTrade[]
+  accounts: BrokerAccount[]
+  needsTimeHydration: boolean
+}
+
+async function fetchTradesFromMt(userId: string): Promise<LiveTradesFetch> {
   const { tomorrowStart: historyTo } = getLocalCalendarDayBounds()
   const brokerRes = await selectBrokerAccountColumns(columns =>
     supabase
@@ -48,27 +56,26 @@ async function fetchTradesFromMt(userId: string): Promise<MtTrade[]> {
     historyFrom: BROKER_FULL_HISTORY_FROM,
     historyTo: formatBrokerHistoryDate(historyTo),
     accounts,
+    limit: TRADES_LIVE_FETCH_LIMIT,
   })
 
-  let normalized = enrichMtTradesTimestamps(tradesRes.trades ?? [])
-  if (normalized.some(mtTradeMissingDisplayTime)) {
-    const { trades: hydrated, stats } = await hydrateMtTradesTimesFromBrokers(normalized, accounts)
-    normalized = hydrated
-    if (import.meta.env.DEV && (stats.missingBefore > 0 || stats.historyErrors.length > 0)) {
-      console.debug('[trades] time hydration fallback', stats)
-    }
-  }
+  const normalized = enrichMtTradesTimestamps(tradesRes.trades ?? [])
+  const needsTimeHydration = normalized.some(mtTradeMissingDisplayTime)
   if (import.meta.env.DEV) {
     const missingFromEdge = normalized.filter(mtTradeMissingDisplayTime).length
     if (missingFromEdge > 0) {
-      console.debug('[trades] missing times after fetch', {
+      console.debug('[trades] missing times after fetch (hydrate in background)', {
         missing: missingFromEdge,
         total: normalized.length,
         sample: normalized.find(mtTradeMissingDisplayTime),
       })
     }
   }
-  return filterMtTradesSinceConnect(normalized, accounts)
+  return {
+    trades: filterMtTradesSinceConnect(normalized, accounts),
+    accounts,
+    needsTimeHydration,
+  }
 }
 
 export function useTradesData(userId: string | undefined) {
@@ -140,15 +147,48 @@ export function useTradesData(userId: string | undefined) {
       // completion for a previous user must not touch state or the cache.
       const startedForUser = userId
       try {
-        const list = await fetchTradesFromMt(userId)
+        // Critical path: paint from DB so the skeleton is not tied to live MT history.
+        if (!opts?.background && !cached) {
+          try {
+            const dbList = await fetchTradesFromDatabase(supabase, userId)
+            if (hydratedUserRef.current === startedForUser && dbList.length > 0) {
+              setTrades(dbList)
+              setError(null)
+              setLoading(false)
+            }
+          } catch {
+            // Continue to live feed; failure recovery still handles empty screens.
+          }
+        }
+
+        const live = await fetchTradesFromMt(userId)
         if (hydratedUserRef.current !== startedForUser) return
-        const fingerprint = tradesListFingerprint(list)
+        const fingerprint = tradesListFingerprint(live.trades)
         const fetchedAt = Date.now()
 
-        const payload: TradesCachePayload = { trades: list, fingerprint }
+        const payload: TradesCachePayload = { trades: live.trades, fingerprint }
         writeSessionCache(key, payload)
         applyPayload(payload, fetchedAt)
         reportLiveFeedSuccess(feedGeneration)
+
+        // Time hydration can re-hit full OrderHistory — never block first paint on it.
+        if (live.needsTimeHydration) {
+          void hydrateMtTradesTimesFromBrokers(live.trades, live.accounts).then(({ trades: hydrated, stats }) => {
+            if (hydratedUserRef.current !== startedForUser) return
+            if (import.meta.env.DEV && (stats.missingBefore > 0 || stats.historyErrors.length > 0)) {
+              console.debug('[trades] time hydration fallback', stats)
+            }
+            const next = filterMtTradesSinceConnect(hydrated, live.accounts)
+            const nextPayload: TradesCachePayload = {
+              trades: next,
+              fingerprint: tradesListFingerprint(next),
+            }
+            writeSessionCache(key, nextPayload)
+            applyPayload(nextPayload, Date.now())
+          }).catch(err => {
+            console.warn('[trades] background time hydration failed', err)
+          })
+        }
       } catch (e) {
         if (hydratedUserRef.current !== startedForUser) return
         // Note: a failing broker_accounts read lands here too and would be

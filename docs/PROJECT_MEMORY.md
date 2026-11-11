@@ -2,6 +2,31 @@
 
 ## Changelog
 
+### 2026-11-11 — Account Trades / Performance / Own provider profile under 2s
+
+- **Context:** After Dashboard, Account Trades, Performance, and Social “Your provider profile” still held skeletons on heavy live history.
+- **Plain English:** Those pages now show saved/recent data first, then fill in full broker history in the background instead of waiting on it.
+- **Root cause (technical):** Trades tied skeleton to unbounded MT history + blocking time hydration. Performance awaited 400d MT + serial `refreshSummary` with 800ms sleeps + unbounded map queries. Own provider profile waited on directory-wide `performanceLoading` and up to 20k paginated own trades.
+- **Fix (files):**
+  - [`useTradesData.ts`](src/hooks/useTradesData.ts) — DB critical paint; live fetch `limit` 5000; time hydration background-only.
+  - [`usePerformanceData.ts`](src/hooks/usePerformanceData.ts) — critical 30d/3k MT + cached equity + bounded maps; enrich full history + concurrent summaries (no 800ms sleep).
+  - [`useOwnSocialAccountView.ts`](src/hooks/useOwnSocialAccountView.ts) — single `limit` 800 trades query.
+  - [`SocialTradingPage.tsx`](src/pages/dashboard/SocialTradingPage.tsx) — own profile skeleton only while directory missing.
+  - [`useSocialTradingPreview.ts`](src/hooks/useSocialTradingPreview.ts) — hydrate own first; skip heavy history RPC for `isYou`.
+- **Tests/verification:** `tsc --noEmit` clean.
+- **Deploy state:** Frontend only (Netlify).
+- **Follow-ups:** Discover still hydrates other traders’ history for trade tables.
+
+### 2026-11-11 — Dashboard cold load skeleton under 2s (cut 5s hold + critical path)
+
+- **Context:** Dashboard metrics skeleton stayed up ~6s on mount/refresh; target under 2s.
+- **Plain English:** The loading screen was kept on for five extra seconds after data was ready, and the first paint also waited on heavy broker history and log queries.
+- **Root cause (technical):** `DASHBOARD_METRICS_LOADER_DISMISS_MS = 5000` after `loadDashboard`. Critical `Promise.all` included MT history (5000), unbounded `signals(id,channel_id)`, unbounded attributions, execution logs, and social/manual helpers.
+- **Fix (files):** [`DashboardPage.tsx`](src/pages/dashboard/DashboardPage.tsx) — dismiss via double-rAF + 150ms cap; critical path only channels/counts/strip/trades≤800 + bounded signal ids for those trades; `enrichDashboardAfterCritical` loads MT history, attributions≤2000, execution logs, social/manual, symbol lookup and patches state without holding the skeleton.
+- **Tests/verification:** `tsc --noEmit` clean. Cold refresh should dismiss skeleton shortly after brokers+critical Supabase settle; charts/copier activity may fill a beat later.
+- **Deploy state:** Frontend only (Netlify redeploy).
+- **Follow-ups:** If still >2s, profile Auth→Profile→Brokers gate next.
+
 ### 2026-11-11 — WhatsApp signals showed Telegram logo in Copier Logs
 
 - **Context:** After WhatsApp ingest worked, Copier Process/Logs showed the Telegram paper-plane for “Signal test” WhatsApp rows.

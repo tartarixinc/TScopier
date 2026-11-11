@@ -188,7 +188,8 @@ export function useSocialTradingPreview() {
     let active = true
     if (!bases.length) return () => { active = false }
     void Promise.resolve().then(() => { if (active) setPerformanceLoading(true) })
-    void Promise.all(social.profiles.map(async (profile, index) => {
+
+    const hydrateOne = async (profile: (typeof social.profiles)[number], index: number) => {
       const base = bases[index]
       const [accessResult, sourcesResult, liveCopiersResult] = await Promise.allSettled([
         fetchSocialTradeHistoryAccess(supabase, profile.profileUserId),
@@ -210,24 +211,49 @@ export function useSocialTradingPreview() {
           : eligibilityDiagnosticForReason('source_not_published').explanation
         return hydrateTrader(base, null, null, null, detail, sources, liveCopiers)
       }
+      // Own provider profile first paint: performance RPC only — skip heavy history.
+      // Discover / other profiles still need history for trade tables.
+      const wantHistory = !base.isYou
       const [performanceResult, historyResult] = await Promise.allSettled([
         fetchSocialProviderPerformance(supabase, profile.profileUserId),
-        fetchSocialTradeHistory(supabase, source.sourceId),
+        wantHistory
+          ? fetchSocialTradeHistory(supabase, source.sourceId)
+          : Promise.resolve(null),
       ])
       const performanceRows = performanceResult.status === 'fulfilled' ? performanceResult.value : []
       const performance = performanceRows.find(row => row.sourceId === source.sourceId) ?? null
       const history = historyResult.status === 'fulfilled' ? historyResult.value : null
       const diagnostics = [
         performanceResult.status === 'rejected' ? `Performance request failed: ${errorMessage(performanceResult.reason)}` : null,
-        historyResult.status === 'rejected' ? `Trade-history request failed: ${errorMessage(historyResult.reason)}` : null,
+        wantHistory && historyResult.status === 'rejected' ? `Trade-history request failed: ${errorMessage(historyResult.reason)}` : null,
         performanceResult.status === 'fulfilled' && !performance ? 'The selected source was missing from the performance response.' : null,
       ].filter((message): message is string => Boolean(message))
       return hydrateTrader(base, history, performance, source, diagnostics.join(' ') || null, sources, liveCopiers)
-    })).then(next => {
-      if (active) setHydratedTraders(next)
-    }).finally(() => {
-      if (active) setPerformanceLoading(false)
-    })
+    }
+
+    void (async () => {
+      const ownIndex = social.profiles.findIndex((_, i) => bases[i]?.isYou)
+      const order = ownIndex >= 0
+        ? [ownIndex, ...social.profiles.map((_, i) => i).filter(i => i !== ownIndex)]
+        : social.profiles.map((_, i) => i)
+
+      const next = bases.slice() as SocialTrader[]
+      // Hydrate own provider first so Your provider profile can enrich quickly.
+      for (const index of order) {
+        if (!active) return
+        const profile = social.profiles[index]
+        if (!profile) continue
+        next[index] = await hydrateOne(profile, index)
+        if (active && bases[index]?.isYou) {
+          setHydratedTraders(next.slice())
+        }
+      }
+      if (active) {
+        setHydratedTraders(next.slice())
+        setPerformanceLoading(false)
+      }
+    })()
+
     return () => { active = false }
   }, [bases, social.profiles])
 
