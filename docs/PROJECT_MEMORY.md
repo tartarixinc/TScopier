@@ -2,6 +2,16 @@
 
 ## Changelog
 
+### 2026-11-11 — WhatsApp signals not reaching UniCopier (missing signals.source_kind)
+
+- **Context:** WhatsApp session connected and “Signal test” group linked/active on production, but posts never appeared as signals.
+- **Plain English:** The WhatsApp listener was receiving messages, but saving each signal into the database failed because two new columns were only on the Migration DB, not production.
+- **Root cause (technical):** Listener inserts `signals.source_kind` / `source_display_name` (migrations `20261111081000`, `20261111091500`). Production `sxkpcovbyaficvtkpsdo` lacked both columns → PostgREST insert error → silent drop after warn log. Session `a23f24d9-…` connected; group `120363431517126646@g.us` → channel `6b52a137-…`.
+- **Fix (files):** Applied `signals_source_kind` + `signals_source_display_name` to production. [`whatsappListener.ts`](worker/src/whatsappListener.ts) logs unlinked/inactive/parse drops and retries insert without source columns if schema still lags.
+- **Tests/verification:** Production columns now `has_source_kind=true`, `has_source_display_name=true`. Resend a parsable signal in “Signal test”.
+- **Deploy state:** Production schema fixed (hotfix). Listener logging/retry is local — redeploy WhatsApp Railway service for better drop visibility; ingest should already work with existing listener once schema is live.
+- **Follow-ups:** Confirm Railway WhatsApp has `TRADE_WORKER_URL` + `WORKER_INTERNAL_TOKEN` so parsed rows also execute; ensure `SUPABASE_URL` is production (not Migration) for this service.
+
 ### 2026-11-11 — WhatsApp listener “not running” on production (PORT + URL scheme)
 
 - **Context:** Railway WhatsApp service showed `[whatsapp] listener listening on 8091`, but production UI showed “The WhatsApp listener is not running.”
