@@ -19,7 +19,7 @@ import {
   writeCopierLogToastSeen,
   type CopierLogToast,
 } from '../../lib/copierLogToast'
-import { resolveSignalSourceKind, SIGNAL_SOURCE_MARKS } from '../../lib/signalSourceMark'
+import { resolveSignalSourceKind, resolveSignalSourceName, SIGNAL_SOURCE_MARKS } from '../../lib/signalSourceMark'
 import { whenRealtimeReady } from '../../lib/whenRealtimeReady'
 
 type ChannelRow = {
@@ -116,6 +116,7 @@ export function CopierLogToasts({ userId }: { userId: string | undefined }) {
       if (cancelled) return
       const channel = signal.channel_id ? channelsRef.current.get(signal.channel_id) : null
       const sourceKind = resolveSignalSourceKind(signal)
+      const sourceName = resolveSignalSourceName(signal)
       const toast = copierLogToastFromSignal(
         signal,
         labelsRef.current.copierLogs,
@@ -123,7 +124,7 @@ export function CopierLogToasts({ userId }: { userId: string | undefined }) {
         {
           source: channel
             ? copierLogSourceLabel(channel, labelsRef.current.unknownChannel)
-            : `${SIGNAL_SOURCE_MARKS[sourceKind].label} · ${labelsRef.current.unknownChannel}`,
+            : `${SIGNAL_SOURCE_MARKS[sourceKind].label} · ${sourceName}`,
           sourceIcon: copierLogSourceIcon(channel, sourceKind),
           destination: copierLogDestinationLabel(brokersRef.current, signal.channel_id),
           destinationIcons: copierLogDestinationIcons(brokersRef.current, signal.channel_id),

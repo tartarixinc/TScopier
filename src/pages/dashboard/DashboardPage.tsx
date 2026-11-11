@@ -69,7 +69,7 @@ import {
   fetchSocialCopyLogs,
   type SocialCopyLogRow,
 } from '../../lib/socialCopyLogs'
-import { buildChannelSourceKinds, resolveSignalSourceKind, SIGNAL_SOURCE_MARKS, type SignalSourceKind } from '../../lib/signalSourceMark'
+import { buildChannelSourceKinds, resolveSignalSourceKind, resolveSignalSourceName, SIGNAL_SOURCE_MARKS, type SignalSourceKind } from '../../lib/signalSourceMark'
 import { SignalSourceLogo } from '../../components/dashboard/SignalSourceLogo'
 import { TradeActivityCard } from '../../components/dashboard/TradeActivityCard'
 import {
@@ -1347,7 +1347,7 @@ export function DashboardPage() {
       const parsed = signal.parsed_data as Record<string, unknown> | null
       const action = typeof parsed?.action === 'string' ? parsed.action : null
       const sourceKind = resolveSignalSourceKind(signal, channelSourceKinds)
-      const channelName = channelLabel(signal.channel_id, channelDisplayNames)
+      const channelName = resolveSignalSourceName(signal, channelDisplayNames, channelSourceKinds)
       return {
         key: signal.id,
         at: signal.created_at,

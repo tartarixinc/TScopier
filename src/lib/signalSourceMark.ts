@@ -50,3 +50,27 @@ export function resolveSignalSourceKind(
   if (fromParsed) return fromParsed
   return 'telegram'
 }
+
+/**
+ * Resolve the human source name for a Copier log signal.
+ * Prefer live channel map, then denormalized `source_display_name`, then the
+ * platform label — never a bare dash after the source is deleted.
+ */
+export function resolveSignalSourceName(
+  signal: {
+    channel_id?: string | null
+    source_kind?: string | null
+    source_display_name?: string | null
+    parsed_data?: unknown
+  },
+  channelDisplayNames: Record<string, string> = {},
+  channelSourceKinds: Record<string, SignalSourceKind> = {},
+): string {
+  if (signal.channel_id) {
+    const live = channelDisplayNames[signal.channel_id]?.trim()
+    if (live) return live
+  }
+  const stored = signal.source_display_name?.trim()
+  if (stored) return stored
+  return SIGNAL_SOURCE_MARKS[resolveSignalSourceKind(signal, channelSourceKinds)].label
+}

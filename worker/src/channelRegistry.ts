@@ -168,6 +168,7 @@ export async function inheritChannelHistory(
         user_id: userId,
         channel_id: subscriptionId,
         source_kind: 'telegram',
+        source_display_name: 'Telegram',
         channel_signal_id: r.id,
         raw_message: r.raw_message,
         parsed_data: r.parsed_data,

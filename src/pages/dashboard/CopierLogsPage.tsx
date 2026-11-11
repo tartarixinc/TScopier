@@ -28,7 +28,7 @@ import { fetchManualSourceTradeLogs, fetchSocialCopyLogs, type SocialCopyLogRow 
 import { CopierLogDetailModal } from '../../components/dashboard/CopierLogDetailModal'
 import { MirrorLogDetailModal } from '../../components/dashboard/MirrorLogDetailModal'
 import { SignalSourceLogo } from '../../components/dashboard/SignalSourceLogo'
-import { buildChannelSourceKinds, resolveSignalSourceKind, SIGNAL_SOURCE_MARKS, type SignalSourceKind } from '../../lib/signalSourceMark'
+import { buildChannelSourceKinds, resolveSignalSourceKind, resolveSignalSourceName, SIGNAL_SOURCE_MARKS, type SignalSourceKind } from '../../lib/signalSourceMark'
 
 const DEFAULT_DETAIL_MODAL = en.copierLogs.detailModal!
 
@@ -127,7 +127,7 @@ function buildSignalLogView(
   const action = parsed?.action as string | undefined
   const symbol = symbolForCopierLog(signal, symbolContext, batchSignals)
   const status = statusConfig[signal.status] ?? { variant: 'neutral' as const, label: signal.status }
-  const channelName = channelLabel(signal.channel_id, channelDisplayNames)
+  const channelName = resolveSignalSourceName(signal, channelDisplayNames, channelSourceKinds)
   const sourceKind = resolveSignalSourceKind(signal, channelSourceKinds)
   const channelTitle = `${SIGNAL_SOURCE_MARKS[sourceKind].label} · ${channelName}`
   const reason = formatCopierSkipReasonShort(signal.skip_reason, copierLogs)
@@ -762,7 +762,7 @@ export function CopierLogsPage() {
     const status = statusConfig[detailSignal.status] ?? { variant: 'neutral' as const, label: detailSignal.status }
     return {
       signal: detailSignal,
-      channelName: channelLabel(detailSignal.channel_id, channelDisplayNames),
+      channelName: resolveSignalSourceName(detailSignal, channelDisplayNames, channelSourceKinds),
       sourceKind: resolveSignalSourceKind(detailSignal, channelSourceKinds),
       symbol: symbolForCopierLog(detailSignal, symbolContext, signals),
       status,
