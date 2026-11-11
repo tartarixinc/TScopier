@@ -4,6 +4,7 @@ export const chromeAr: AppChromeTranslations = {
   nav: {
     sections: {
       general: 'عام',
+      copy: 'نسخ',
       signals: 'الإشارات',
       discover: 'اكتشف',
       tradingTools: 'أدوات التداول',
