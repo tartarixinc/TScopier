@@ -14,6 +14,7 @@ export type EnsureSignalRowArgs = {
   user_id: string
   channel_id?: string | null
   source_kind?: 'telegram' | 'tradingview' | 'discord' | 'whatsapp' | null
+  source_display_name?: string | null
   raw_message?: string | null
   status?: string
   parsed_data?: Record<string, unknown> | null
@@ -78,6 +79,8 @@ function buildSignalRowPatch(args: EnsureSignalRowArgs): Record<string, unknown>
   }
   const sourceKind = resolveSourceKind(args)
   if (sourceKind) patch.source_kind = sourceKind
+  const displayName = args.source_display_name?.trim()
+  if (displayName) patch.source_display_name = displayName
   return patch
 }
 

@@ -401,10 +401,19 @@ interface ChannelRow {
   id: string
   channel_id: string
   channel_username: string
+  display_name?: string | null
   signal_channel_id?: string | null
   last_seen_message_id: number | string | null
   last_seen_at?: string | null
   last_live_at?: string | null
+}
+
+function channelSourceDisplayName(row: ChannelRow): string {
+  const name = row.display_name?.trim()
+  if (name) return name
+  const username = row.channel_username?.trim().replace(/^@/, '')
+  if (username) return `@${username}`
+  return 'Telegram'
 }
 
 type Handler = (event: NewMessageEvent) => void
@@ -1340,7 +1349,7 @@ export class UserListener {
     }
     const { data: rows } = await this.supabase
       .from('telegram_channels')
-      .select('id, channel_id, channel_username, signal_channel_id, last_seen_message_id, last_seen_at, last_live_at')
+      .select('id, channel_id, channel_username, display_name, signal_channel_id, last_seen_message_id, last_seen_at, last_live_at')
       .eq('user_id', this.userId)
       .eq('is_active', true)
       .eq('source_kind', 'telegram')
@@ -1492,7 +1501,7 @@ export class UserListener {
   private async loadChannels(): Promise<Set<string>> {
     const { data } = await this.supabase
       .from('telegram_channels')
-      .select('id, channel_id, channel_username')
+      .select('id, channel_id, channel_username, display_name')
       .eq('user_id', this.userId)
       .eq('is_active', true)
       .eq('source_kind', 'telegram')
@@ -1517,7 +1526,7 @@ export class UserListener {
   ): Promise<ChannelRow | null> {
     const { data: rows, error } = await this.supabase
       .from('telegram_channels')
-      .select('id, channel_id, channel_username, last_seen_message_id')
+      .select('id, channel_id, channel_username, display_name, last_seen_message_id')
       .eq('user_id', this.userId)
       .eq('is_active', true)
       .eq('source_kind', 'telegram')
@@ -1684,7 +1693,7 @@ export class UserListener {
     const lookbackDays = Math.max(1, Math.min(90, Number(days || 30)))
     const { data: row, error } = await this.supabase
       .from('telegram_channels')
-      .select('id, channel_id, channel_username, last_seen_message_id')
+      .select('id, channel_id, channel_username, display_name, last_seen_message_id')
       .eq('user_id', this.userId)
       .eq('id', channelRowId)
       .eq('is_active', true)
@@ -1714,7 +1723,7 @@ export class UserListener {
 
     const { data: row, error } = await this.supabase
       .from('telegram_channels')
-      .select('id, channel_id, channel_username, last_seen_message_id')
+      .select('id, channel_id, channel_username, display_name, last_seen_message_id')
       .eq('user_id', this.userId)
       .eq('id', channelRowId)
       .eq('is_active', true)
@@ -1769,7 +1778,7 @@ export class UserListener {
 
     const { data: row, error } = await this.supabase
       .from('telegram_channels')
-      .select('id, channel_id, channel_username, last_seen_message_id')
+      .select('id, channel_id, channel_username, display_name, last_seen_message_id')
       .eq('user_id', this.userId)
       .eq('id', channelRowId)
       .eq('is_active', true)
@@ -3335,6 +3344,7 @@ export class UserListener {
         user_id: this.userId,
         channel_id: channelRow.id,
         source_kind: 'telegram',
+        source_display_name: channelSourceDisplayName(channelRow),
         raw_message: rawMessage,
         raw_image_url: null,
         status: parseResult.status,
@@ -3387,6 +3397,7 @@ export class UserListener {
         user_id: this.userId,
         channel_id: channelRowId,
         source_kind: 'telegram',
+        source_display_name: 'Telegram',
         raw_message: rawMessage,
         raw_image_url: null,
         status: 'pending',
@@ -3601,7 +3612,7 @@ export class UserListener {
           : this.fastPollRows.find(r => r.id === channelRowId)
             ?? (await this.supabase
               .from('telegram_channels')
-              .select('id, channel_id, channel_username, last_seen_message_id, last_seen_at, last_live_at')
+              .select('id, channel_id, channel_username, display_name, last_seen_message_id, last_seen_at, last_live_at')
               .eq('id', channelRowId)
               .maybeSingle()).data as ChannelRow | null
         if (!row) continue
@@ -3856,7 +3867,7 @@ export class UserListener {
   private async advanceAllChannelsLastSeenToLatest(): Promise<void> {
     const { data: rows } = await this.supabase
       .from('telegram_channels')
-      .select('id, channel_id, channel_username, last_seen_message_id')
+      .select('id, channel_id, channel_username, display_name, last_seen_message_id')
       .eq('user_id', this.userId)
       .eq('is_active', true)
       .eq('source_kind', 'telegram')
@@ -3895,7 +3906,7 @@ export class UserListener {
     if (Date.now() < this.pollBackoffUntil) return
     const { data: rows } = await this.supabase
       .from('telegram_channels')
-      .select('id, channel_id, channel_username')
+      .select('id, channel_id, channel_username, display_name')
       .eq('user_id', this.userId)
       .eq('is_active', true)
       .eq('source_kind', 'telegram')
@@ -3969,7 +3980,7 @@ export class UserListener {
     try {
       const { data: rows } = await this.supabase
         .from('telegram_channels')
-        .select('id, channel_id, channel_username, last_seen_message_id')
+        .select('id, channel_id, channel_username, display_name, last_seen_message_id')
         .eq('user_id', this.userId)
         .eq('is_active', true)
         .eq('source_kind', 'telegram')
@@ -3991,7 +4002,7 @@ export class UserListener {
     try {
       const { data: rows } = await this.supabase
         .from('telegram_channels')
-        .select('id, channel_id, channel_username, last_seen_message_id')
+        .select('id, channel_id, channel_username, display_name, last_seen_message_id')
         .eq('user_id', this.userId)
         .eq('is_active', true)
         .eq('source_kind', 'telegram')
@@ -4012,7 +4023,7 @@ export class UserListener {
     const floodAtCycleStart = this.floodErrorsThisCycle
     const { data: rows } = await this.supabase
       .from('telegram_channels')
-      .select('id, channel_id, channel_username, signal_channel_id, last_seen_message_id, last_seen_at, last_live_at')
+      .select('id, channel_id, channel_username, display_name, signal_channel_id, last_seen_message_id, last_seen_at, last_live_at')
       .eq('user_id', this.userId)
       .eq('is_active', true)
       .eq('source_kind', 'telegram')
@@ -5076,7 +5087,7 @@ export class UserListener {
       if (now - this.fastPollRowsAt > SAFETY_POLL_INTERVAL_MS) {
         const { data } = await this.supabase
           .from('telegram_channels')
-          .select('id, channel_id, channel_username, signal_channel_id, last_seen_message_id, last_seen_at, last_live_at')
+          .select('id, channel_id, channel_username, display_name, signal_channel_id, last_seen_message_id, last_seen_at, last_live_at')
           .eq('user_id', this.userId)
           .eq('is_active', true)
           .eq('source_kind', 'telegram')

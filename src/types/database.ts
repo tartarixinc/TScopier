@@ -768,6 +768,8 @@ export interface Signal {
    * can keep showing the source logo after telegram_channels is removed.
    */
   source_kind?: 'telegram' | 'tradingview' | 'discord' | 'whatsapp' | null
+  /** Channel/webhook name at ingest. Survives channel delete for Copier Logs. */
+  source_display_name?: string | null
   raw_message: string
   raw_image_url: string | null
   parsed_data: Json | null
