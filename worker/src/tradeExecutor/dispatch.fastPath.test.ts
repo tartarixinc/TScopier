@@ -92,3 +92,29 @@ test('isLiveMgmtFast: listener_push teaser completion (param refresh) uses fast 
     true,
   )
 })
+
+test('shouldUseMgmtFastPath + isLiveMgmtFast: message_revision buy+SL/TP uses mgmt fast path', () => {
+  // Edits keep action=buy and often say "buy now" — still must refresh legs fast.
+  const edited: SignalRow = {
+    ...mgmtSignal,
+    id: 'sig-edit',
+    parsed_data: {
+      ...baseParsed,
+      action: 'buy',
+      symbol: 'XAUUSD',
+      sl: 4028,
+      tp: [4042, 4045, 4049],
+      raw_instruction: 'Gold buy now\nSL: 4028\nTP: 4042 4045 4049',
+    },
+    revision_prior_action: 'buy',
+  }
+  assert.equal(shouldUseMgmtFastPath(edited, 'message_revision'), true)
+  assert.equal(
+    isLiveMgmtFast(
+      { liveDispatch: true, lightIdempotency: true, dispatchSource: 'message_revision' },
+      edited.parsed_data,
+      edited,
+    ),
+    true,
+  )
+})

@@ -6,12 +6,17 @@ function context(counts: Record<string, number>, errorTable?: string) {
   return {
     supabase: {
       from(table: string) {
+        let action: string | null = null
         const query = {
           select() { return query },
-          eq() { return query },
+          eq(col: string, val: unknown) {
+            if (col === 'action') action = String(val)
+            return query
+          },
           then(resolve: (value: unknown) => unknown) {
+            const key = action ? `${table}:${action}` : table
             return Promise.resolve({
-              count: counts[table] ?? 0,
+              count: counts[key] ?? counts[table] ?? 0,
               error: table === errorTable ? { message: 'lookup unavailable' } : null,
             }).then(resolve)
           },
@@ -26,6 +31,15 @@ describe('manual revision materialization authority', () => {
   it('treats a durable signal range wait as materialized', async () => {
     const materialized = await manualDispatchAlreadyMaterialized(
       context({ signal_range_entry_waits: 1 }) as never,
+      'signal-1',
+      'broker-1',
+    )
+    assert.equal(materialized, true)
+  })
+
+  it('treats successful teaser/merge modify summary as materialized', async () => {
+    const materialized = await manualDispatchAlreadyMaterialized(
+      context({ 'trade_execution_logs:merge_modify_summary': 1 }) as never,
       'signal-1',
       'broker-1',
     )

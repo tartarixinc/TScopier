@@ -142,6 +142,12 @@ export function shouldUseMgmtFastPath(row: SignalRow, source?: string): boolean 
   }
   const action = parsedAction(parsed)
   if (isManagementAction(action)) return true
+  // Telegram edits keep action=buy/sell; any edit carrying SL/TP must refresh the
+  // open basket on the mgmt fast path (even when market-now wording would make
+  // shouldRouteAsBasketParameterRefresh false for a brand-new entry).
+  if (source === MESSAGE_REVISION_DISPATCH_SOURCE && parsedHasSlOrTp(parsed as ParsedSignal)) {
+    return true
+  }
   if (
     source === MESSAGE_REVISION_DISPATCH_SOURCE
     && shouldRouteAsBasketParameterRefresh(parsed)
@@ -170,6 +176,14 @@ export function isLiveMgmtFast(
   }
   const action = parsedAction(parsed)
   if (isManagementAction(action)) return true
+  // Message revisions with stops always run parallel OrderModify (edit SL/TP).
+  if (
+    opts.dispatchSource === MESSAGE_REVISION_DISPATCH_SOURCE
+    && parsed
+    && parsedHasSlOrTp(parsed as ParsedSignal)
+  ) {
+    return true
+  }
   // Parameter-refresh entries (teaser completion: zone + market-now + SL/TP, and
   // SL/TP follow-ups) route to merge-modify, so run their leg modifies on the fast
   // (parallel) path regardless of dispatch source — not just message revisions.

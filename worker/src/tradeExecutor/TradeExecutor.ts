@@ -947,6 +947,26 @@ export class TradeExecutor {
     }
 
     if (useFastPath) {
+      // Message edits must not be dropped while the first entry is still in flight —
+      // wait, then refresh SL/TP. Other live-fast sources stay one-shot.
+      if (source === MESSAGE_REVISION_DISPATCH_SOURCE) {
+        void (async () => {
+          if (this.inflight.has(row.id)) {
+            await dispatch.waitForSignalInflightClear(
+              this,
+              row.id,
+              dispatch.revisionInflightWaitMs(rowWithTs, source),
+            )
+          }
+          await this.handleSignal(rowWithTs, {
+            liveDispatch: true,
+            dispatchSource: source,
+            dispatchReceivedAt: receivedAt,
+            lightIdempotency: true,
+          })
+        })()
+        return true
+      }
       if (this.inflight.has(row.id) || this.queuedIds.has(row.id)) return true
       void this.handleSignal(rowWithTs, {
         liveDispatch: true,
@@ -1727,48 +1747,48 @@ export class TradeExecutor {
           // Another worker won entry. Revisions may still refresh SL/TP once materialized.
           if (isRevisionRefresh) {
             const pollDeadline = Date.now() + 5_000
+            let revisionMaterialized = false
             while (Date.now() < pollDeadline) {
               if (await manualDispatchAlreadyMaterialized(this, signal.id, effectiveBroker.id)) {
-                console.warn(
-                  `[tradeExecutor] message revision claim lost — SL/TP only signal=${signal.id} broker=${effectiveBroker.id}`,
-                )
-                const revisionOnlyOpts = { ...sendOpts, sameSignalRefresh: true, blockNewEntry: true }
-                const isManual = (effectiveBroker.copier_mode ?? 'ai') === 'manual'
-                const manual = (effectiveBroker.manual_settings ?? {}) as ManualSettings
-                if (isManual && manual.trade_style === 'multi') {
-                  return await this.executeAndRecord(
-                    () => runRangeEntry(this, {
-                      signal, parsed, op, broker: effectiveBroker, channelKeywords, pipelineT0,
-                      sendOpts: revisionOnlyOpts,
-                    }),
-                    effectiveBroker.id,
-                  )
-                }
-                return await this.executeAndRecord(
-                  () => runSingleEntry(this, {
-                    signal, parsed, op, broker: effectiveBroker, channelKeywords, pipelineT0,
-                    sendOpts: revisionOnlyOpts,
-                  }),
-                  effectiveBroker.id,
-                )
+                revisionMaterialized = true
+                break
               }
               await new Promise(resolve => setTimeout(resolve, 100))
             }
-            // Nothing materialized: the original claim holder skipped without
-            // opening (or crashed mid-dispatch). The edited signal must still be
-            // able to execute — release the stale claim and take it over, unless
-            // this worker still has the first entry running.
+            // Prefer SL/TP refresh while the original claim is held (teaser completion
+            // merges leave a claim without trades/order_send on this signal).
+            console.warn(
+              `[tradeExecutor] message revision claim lost — SL/TP only signal=${signal.id}`
+              + ` broker=${effectiveBroker.id} materialized=${revisionMaterialized}`,
+            )
+            const revisionOnlyOpts = { ...sendOpts, sameSignalRefresh: true, blockNewEntry: true }
+            const isManual = (effectiveBroker.copier_mode ?? 'ai') === 'manual'
+            const manual = (effectiveBroker.manual_settings ?? {}) as ManualSettings
+            const revisionOnlyOutcome = isManual && manual.trade_style === 'multi'
+              ? await this.executeAndRecord(
+                () => runRangeEntry(this, {
+                  signal, parsed, op, broker: effectiveBroker, channelKeywords, pipelineT0,
+                  sendOpts: revisionOnlyOpts,
+                }),
+                effectiveBroker.id,
+              )
+              : await this.executeAndRecord(
+                () => runSingleEntry(this, {
+                  signal, parsed, op, broker: effectiveBroker, channelKeywords, pipelineT0,
+                  sendOpts: revisionOnlyOpts,
+                }),
+                effectiveBroker.id,
+              )
+            if (revisionOnlyOutcome.openedOrMerged === true || revisionMaterialized) {
+              return revisionOnlyOutcome
+            }
+            // Nothing to refresh and first entry never landed — take over a stale
+            // claim so the edit can still open (entry-price-added revisions).
             if (shouldTakeOverStaleClaim({
               isRevisionRefresh: true,
               materialized: false,
-              // This process added entryKey just above, so checking the map here
-              // would always be true and make the takeover unreachable. The
-              // top-of-function wait already covers a local in-flight entry;
-              // the stale-only release protects a remote one.
               entryInFlight: false,
             })) {
-              // Never delete a fresh claim: the original sender may still be
-              // running in another process. Only an expired lease is takeable.
               const released = await releaseSignalBrokerDispatchClaimIfStale(
                 this.supabase,
                 signal.id,
@@ -1789,7 +1809,7 @@ export class TradeExecutor {
               } else {
                 console.warn(
                   `[tradeExecutor] message revision claim is still fresh signal=${signal.id}`
-                  + ` broker=${effectiveBroker.id}; deferring`,
+                  + ` broker=${effectiveBroker.id}; deferring after empty SL/TP refresh`,
                 )
               }
             }
@@ -1816,7 +1836,7 @@ export class TradeExecutor {
               extra: { materialized },
             })
             if (!materialized) this.deferClaimRetry(signal.id)
-        return { openedOrMerged: materialized, deferredToOtherDispatcher: !materialized }
+            return { openedOrMerged: materialized, deferredToOtherDispatcher: !materialized }
           }
         }
         setPipelineTimestamp(signal.pipeline_ts, 'execution_claim_acquired_at', Date.now())
