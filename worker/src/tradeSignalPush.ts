@@ -8,6 +8,7 @@ import type { PipelineTimestamps } from './pipelineTimestamps'
 import { deployedTradeShardCount, redisQueueConfigured, signalQueueConfig } from './queue/signalQueueConfig'
 import { shardForUserId } from './workerConfig'
 import { captureBusinessIssue } from './observability/businessEvents'
+import { configuredInternalToken, internalTokenFingerprint } from './internalToken'
 
 export type TradeSignalPushPayload = {
   id: string
@@ -25,10 +26,37 @@ export type TradeSignalPushPayload = {
   revision_prior_action?: string | null
 }
 
-const PUSH_MAX_ATTEMPTS = Math.max(1, Math.min(5, Number(process.env.TRADE_SIGNAL_PUSH_MAX_ATTEMPTS ?? 3)))
-const PUSH_RETRY_BASE_MS = Math.max(25, Math.min(500, Number(process.env.TRADE_SIGNAL_PUSH_RETRY_BASE_MS ?? 75)))
+const PUSH_MAX_ATTEMPTS = Math.max(1, Math.min(5, Number(process.env.TRADE_SIGNAL_PUSH_MAX_ATTEMPTS ?? 2)))
+const PUSH_RETRY_BASE_MS = Math.max(25, Math.min(500, Number(process.env.TRADE_SIGNAL_PUSH_RETRY_BASE_MS ?? 50)))
+const PUSH_PROBE_INTERVAL_MS = Math.max(
+  10_000,
+  Math.min(300_000, Number(process.env.TRADE_SIGNAL_PUSH_PROBE_INTERVAL_MS ?? 30_000)),
+)
+const BREAKER_COOLDOWN_MS = Math.max(
+  5_000,
+  Math.min(300_000, Number(process.env.TRADE_SIGNAL_PUSH_BREAKER_COOLDOWN_MS ?? 30_000)),
+)
 const SUPABASE_URL = String(process.env.SUPABASE_URL ?? '').trim()
 const SUPABASE_SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY ?? '').trim()
+
+type PushAttemptResult = {
+  ok: boolean
+  status: number
+  retryable: boolean
+  detail: string
+  reason?: string | null
+  accepted?: boolean | null
+}
+
+type BreakerState = {
+  openUntil: number
+  lastStatus: number
+  lastDetail: string
+  alerted: boolean
+}
+
+const pushBreakers = new Map<string, BreakerState>()
+let pushProbeTimer: ReturnType<typeof setInterval> | null = null
 
 function tradePushEnabled(): boolean {
   const v = String(process.env.TRADE_SIGNAL_PUSH_ENABLED ?? 'true').toLowerCase()
@@ -36,7 +64,64 @@ function tradePushEnabled(): boolean {
 }
 
 function internalToken(): string {
-  return String(process.env.WORKER_INTERNAL_TOKEN ?? '').trim()
+  return configuredInternalToken()
+}
+
+function breakerOpen(baseUrl: string): BreakerState | null {
+  const state = pushBreakers.get(baseUrl)
+  if (!state) return null
+  if (Date.now() >= state.openUntil) {
+    pushBreakers.delete(baseUrl)
+    return null
+  }
+  return state
+}
+
+function openBreaker(baseUrl: string, status: number, detail: string): void {
+  const prev = pushBreakers.get(baseUrl)
+  const state: BreakerState = {
+    openUntil: Date.now() + BREAKER_COOLDOWN_MS,
+    lastStatus: status,
+    lastDetail: detail.slice(0, 200),
+    alerted: prev?.alerted === true,
+  }
+  pushBreakers.set(baseUrl, state)
+  if (!state.alerted) {
+    state.alerted = true
+    captureBusinessIssue({
+      category: 'queue',
+      event: 'trade_worker_push_breaker_open',
+      severity: 'error',
+      reasonCode: 'TRADE_WORKER_PUSH_AUTH_OR_ROUTE',
+      message: 'Listener→trade push circuit opened (auth/route failure); signals fall back until probe recovers',
+      userImpact: 'delayed',
+      fingerprint: ['trade_worker_push_breaker', baseUrl, String(status)],
+      context: {
+        operation: 'trade_worker_push_breaker',
+        extra: { base_url: baseUrl, status, detail: state.lastDetail },
+      },
+    })
+    console.error(
+      `[tradeSignalPush] breaker OPEN url=${baseUrl} status=${status} detail=${state.lastDetail}`,
+    )
+  }
+}
+
+function clearBreaker(baseUrl: string): void {
+  if (pushBreakers.delete(baseUrl)) {
+    console.log(`[tradeSignalPush] breaker CLOSED url=${baseUrl}`)
+  }
+}
+
+function configuredTradeWorkerBaseUrls(): string[] {
+  const urls = new Set<string>()
+  for (const u of parseTradeWorkerShardUrls(process.env.TRADE_WORKER_SHARD_URLS)) urls.add(u)
+  for (const u of parseTradeWorkerShardUrls(process.env.TRADE_MGMT_WORKER_SHARD_URLS)) urls.add(u)
+  const entry = String(process.env.TRADE_WORKER_URL ?? '').trim().replace(/\/$/, '')
+  const mgmt = String(process.env.TRADE_MGMT_WORKER_URL ?? '').trim().replace(/\/$/, '')
+  if (entry) urls.add(entry)
+  if (mgmt) urls.add(mgmt)
+  return [...urls]
 }
 
 export function parseTradeWorkerShardUrls(raw: string | undefined): string[] {
@@ -184,7 +269,7 @@ async function postDispatchSignal(
   timeoutMs: number,
   awaitExecution = false,
   source = 'listener_push',
-): Promise<{ ok: boolean; status: number; retryable: boolean; detail: string }> {
+): Promise<PushAttemptResult> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort('trade-push-timeout'), timeoutMs)
   try {
@@ -202,19 +287,52 @@ async function postDispatchSignal(
       }),
       signal: controller.signal,
     })
-    if (res.ok) {
-      return { ok: true, status: res.status, retryable: false, detail: '' }
-    }
     const text = await res.text().catch(() => '')
+    let body: { accepted?: unknown; reason?: unknown; error?: unknown } | null = null
+    if (text) {
+      try {
+        body = JSON.parse(text) as { accepted?: unknown; reason?: unknown; error?: unknown }
+      } catch {
+        body = null
+      }
+    }
+    if (!res.ok) {
+      return {
+        ok: false,
+        status: res.status,
+        retryable: isRetryablePushStatus(res.status),
+        detail: text.slice(0, 200),
+        reason: typeof body?.error === 'string' ? body.error : typeof body?.reason === 'string' ? body.reason : null,
+        accepted: false,
+      }
+    }
+    // HTTP 200 with accepted:false (wrong shard / wrong role) is NOT a successful handoff.
+    if (body?.accepted !== true) {
+      const reason = typeof body?.reason === 'string'
+        ? body.reason
+        : body == null
+          ? 'missing_accepted_field'
+          : 'accepted_false'
+      return {
+        ok: false,
+        status: res.status,
+        retryable: false,
+        detail: text.slice(0, 200) || reason,
+        reason,
+        accepted: false,
+      }
+    }
     return {
-      ok: false,
+      ok: true,
       status: res.status,
-      retryable: isRetryablePushStatus(res.status),
-      detail: text.slice(0, 200),
+      retryable: false,
+      detail: '',
+      reason: typeof body?.reason === 'string' ? body.reason : null,
+      accepted: true,
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    return { ok: false, status: 0, retryable: true, detail: msg }
+    return { ok: false, status: 0, retryable: true, detail: msg, accepted: false }
   } finally {
     clearTimeout(timer)
   }
@@ -244,11 +362,23 @@ async function pushParsedSignalToTradeWorkerInner(
     return false
   }
 
-  const isMgmt = isManagementAction(action ?? '')
-  const defaultTimeoutMs = isMgmt ? 5_000 : 4_000
+  const open = breakerOpen(baseUrl)
+  if (open) {
+    void logPushAttemptToDb(row, 'failed', {
+      run_id: 'latency-v4',
+      phase: 'breaker_short_circuit',
+      action,
+      ok: false,
+      status_code: open.lastStatus,
+      detail: open.lastDetail.slice(0, 120),
+      base_url: baseUrl,
+    })
+    return false
+  }
+
   const timeoutMs = Math.max(
     500,
-    Math.min(10_000, Number(process.env.TRADE_SIGNAL_PUSH_TIMEOUT_MS ?? defaultTimeoutMs)),
+    Math.min(10_000, Number(process.env.TRADE_SIGNAL_PUSH_TIMEOUT_MS ?? 1_000)),
   )
   const dispatchSource = opts?.source ?? row.dispatch_source ?? 'listener_push'
   const url = `${baseUrl}/internal/dispatch-signal`
@@ -271,7 +401,7 @@ async function pushParsedSignalToTradeWorkerInner(
   }
 
   void logPushAttemptToDb(row, 'success', {
-    run_id: 'latency-v3',
+    run_id: 'latency-v4',
     phase: 'start',
     action,
     base_url: baseUrl,
@@ -293,21 +423,33 @@ async function pushParsedSignalToTradeWorkerInner(
       dispatchSource,
     )
     void logPushAttemptToDb(row, result.ok ? 'success' : 'failed', {
-      run_id: 'latency-v3',
+      run_id: 'latency-v4',
       phase: 'attempt',
       action,
       attempt,
       ok: result.ok,
+      accepted: result.accepted ?? null,
+      reason: result.reason ?? null,
       status_code: result.status,
       retryable: result.retryable,
       elapsed_ms: Date.now() - attemptStartedAt,
       detail: result.detail.slice(0, 120),
     })
-    if (result.ok) return true
+    if (result.ok) {
+      clearBreaker(baseUrl)
+      return true
+    }
 
     const reason = result.status > 0
-      ? `status=${result.status} ${result.detail}`
+      ? `status=${result.status} ${result.reason ?? result.detail}`
       : result.detail
+
+    // Auth / missing route: open breaker; do not burn retries.
+    if (result.status === 401 || result.status === 403 || result.status === 404) {
+      openBreaker(baseUrl, result.status, reason)
+      logPushFailed(row, baseUrl, action, reason, attempt)
+      return false
+    }
 
     if (!result.retryable || attempt >= PUSH_MAX_ATTEMPTS) {
       logPushFailed(row, baseUrl, action, reason, attempt)
@@ -318,6 +460,74 @@ async function pushParsedSignalToTradeWorkerInner(
     await sleep(backoffMs)
   }
   return false
+}
+
+/** Probe every configured trade worker URL; used at listener boot and on an interval. */
+export async function probeTradeWorkerDispatchTargets(): Promise<{
+  ok: boolean
+  results: Array<{ baseUrl: string; ok: boolean; status: number; detail: string }>
+}> {
+  const token = internalToken()
+  const results: Array<{ baseUrl: string; ok: boolean; status: number; detail: string }> = []
+  if (!token || !tradePushEnabled()) {
+    return { ok: true, results }
+  }
+  const urls = configuredTradeWorkerBaseUrls()
+  for (const baseUrl of urls) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort('dispatch-ping-timeout'), 2_000)
+    try {
+      const res = await fetch(`${baseUrl}/internal/dispatch-ping`, {
+        method: 'GET',
+        headers: { 'x-internal-token': token },
+        signal: controller.signal,
+      })
+      const text = await res.text().catch(() => '')
+      if (res.ok) {
+        clearBreaker(baseUrl)
+        results.push({ baseUrl, ok: true, status: res.status, detail: text.slice(0, 120) })
+      } else {
+        if (res.status === 401 || res.status === 403 || res.status === 404) {
+          openBreaker(baseUrl, res.status, text.slice(0, 200))
+        }
+        results.push({ baseUrl, ok: false, status: res.status, detail: text.slice(0, 120) })
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      results.push({ baseUrl, ok: false, status: 0, detail: msg.slice(0, 120) })
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+  const ok = results.length === 0 || results.every(r => r.ok)
+  return { ok, results }
+}
+
+/** Start periodic push probes (listener process). Returns a stop function. */
+export function startTradePushProbeLoop(): () => void {
+  const fp = internalTokenFingerprint()
+  console.log(`[tradeSignalPush] internal token fingerprint=${fp ?? 'missing'}`)
+  void probeTradeWorkerDispatchTargets().then(r => {
+    for (const row of r.results) {
+      console.log(
+        `[tradeSignalPush] probe ${row.ok ? 'ok' : 'FAIL'} url=${row.baseUrl} status=${row.status} detail=${row.detail}`,
+      )
+    }
+  })
+  if (pushProbeTimer) clearInterval(pushProbeTimer)
+  pushProbeTimer = setInterval(() => {
+    void probeTradeWorkerDispatchTargets()
+  }, PUSH_PROBE_INTERVAL_MS)
+  pushProbeTimer.unref?.()
+  return () => {
+    if (pushProbeTimer) clearInterval(pushProbeTimer)
+    pushProbeTimer = null
+  }
+}
+
+/** Test helper — clear breakers between cases. */
+export function resetTradePushBreakersForTests(): void {
+  pushBreakers.clear()
 }
 
 /** Fire-and-forget push — listener must not block on trade completion. */

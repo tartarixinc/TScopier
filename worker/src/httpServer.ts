@@ -19,8 +19,10 @@ import { forceCloseSignalById, forceCloseSignalTrades } from './forceCloseSignal
 import { retryTradeActivity } from './retryActivity'
 import { retrySignal } from './retrySignal'
 import { getBrokerExecutionCapability } from './brokerExecutionMode'
+import { configuredInternalToken, internalTokenMatches } from './internalToken'
+import { workerConfig } from './workerConfig'
 
-const INTERNAL_TOKEN = process.env.WORKER_INTERNAL_TOKEN ?? ''
+const INTERNAL_TOKEN = configuredInternalToken()
 const PORT = parseInt(process.env.WORKER_PORT ?? '8080', 10)
 
 interface Body {
@@ -175,8 +177,7 @@ export function startHttpServer(
         return sendJson(res, 404, { error: 'Not found' })
       }
 
-      const token = req.headers['x-internal-token']
-      if (token !== INTERNAL_TOKEN) {
+      if (!internalTokenMatches(req.headers['x-internal-token'])) {
         return sendJson(res, 401, { error: 'Unauthorized' })
       }
 
@@ -492,8 +493,7 @@ export function startTradeHttpServer(
         if (!INTERNAL_TOKEN) {
           return sendJson(res, 503, { error: 'WORKER_INTERNAL_TOKEN not configured' })
         }
-        const token = req.headers['x-internal-token']
-        if (token !== INTERNAL_TOKEN) {
+        if (!internalTokenMatches(req.headers['x-internal-token'])) {
           return sendJson(res, 401, { error: 'Unauthorized' })
         }
         const body = (await readJson(req)) as {
@@ -528,8 +528,7 @@ export function startTradeHttpServer(
         if (!INTERNAL_TOKEN) {
           return sendJson(res, 503, { error: 'WORKER_INTERNAL_TOKEN not configured' })
         }
-        const token = req.headers['x-internal-token']
-        if (token !== INTERNAL_TOKEN) {
+        if (!internalTokenMatches(req.headers['x-internal-token'])) {
           return sendJson(res, 401, { error: 'Unauthorized' })
         }
         const body = (await readJson(req)) as {
@@ -581,12 +580,29 @@ export function startTradeHttpServer(
         }
       }
 
+      if (url === '/internal/dispatch-ping' && (req.method === 'GET' || req.method === 'POST')) {
+        if (!INTERNAL_TOKEN) {
+          return sendJson(res, 503, { error: 'WORKER_INTERNAL_TOKEN not configured' })
+        }
+        if (!internalTokenMatches(req.headers['x-internal-token'])) {
+          return sendJson(res, 401, { error: 'Unauthorized' })
+        }
+        return sendJson(res, 200, {
+          ok: true,
+          role: workerConfig.role,
+          trade_executor_mode: workerConfig.tradeExecutorMode,
+          shard_id: workerConfig.shardId,
+          shard_count: workerConfig.shardCount,
+          trade_executor: Boolean(tradeExecutor),
+          accepts_dispatch: Boolean(tradeExecutor),
+        })
+      }
+
       if (url === '/internal/dispatch-signal' && req.method === 'POST') {
         if (!INTERNAL_TOKEN) {
           return sendJson(res, 503, { error: 'WORKER_INTERNAL_TOKEN not configured' })
         }
-        const token = req.headers['x-internal-token']
-        if (token !== INTERNAL_TOKEN) {
+        if (!internalTokenMatches(req.headers['x-internal-token'])) {
           return sendJson(res, 401, { error: 'Unauthorized' })
         }
         if (!tradeExecutor) {
@@ -626,8 +642,7 @@ export function startTradeHttpServer(
         if (!INTERNAL_TOKEN) {
           return sendJson(res, 503, { error: 'WORKER_INTERNAL_TOKEN not configured' })
         }
-        const token = req.headers['x-internal-token']
-        if (token !== INTERNAL_TOKEN) {
+        if (!internalTokenMatches(req.headers['x-internal-token'])) {
           return sendJson(res, 401, { error: 'Unauthorized' })
         }
         if (!tradeExecutor) {
@@ -658,8 +673,7 @@ export function startTradeHttpServer(
         if (!INTERNAL_TOKEN) {
           return sendJson(res, 503, { error: 'WORKER_INTERNAL_TOKEN not configured' })
         }
-        const token = req.headers['x-internal-token']
-        if (token !== INTERNAL_TOKEN) {
+        if (!internalTokenMatches(req.headers['x-internal-token'])) {
           return sendJson(res, 401, { error: 'Unauthorized' })
         }
         if (!tradeExecutor) {
@@ -690,8 +704,7 @@ export function startTradeHttpServer(
         if (!INTERNAL_TOKEN) {
           return sendJson(res, 503, { error: 'WORKER_INTERNAL_TOKEN not configured' })
         }
-        const token = req.headers['x-internal-token']
-        if (token !== INTERNAL_TOKEN) {
+        if (!internalTokenMatches(req.headers['x-internal-token'])) {
           return sendJson(res, 401, { error: 'Unauthorized' })
         }
         if (!tradeExecutor) {
@@ -722,8 +735,7 @@ export function startTradeHttpServer(
         if (!INTERNAL_TOKEN) {
           return sendJson(res, 503, { error: 'WORKER_INTERNAL_TOKEN not configured' })
         }
-        const token = req.headers['x-internal-token']
-        if (token !== INTERNAL_TOKEN) {
+        if (!internalTokenMatches(req.headers['x-internal-token'])) {
           return sendJson(res, 401, { error: 'Unauthorized' })
         }
         if (!tradeExecutor) {

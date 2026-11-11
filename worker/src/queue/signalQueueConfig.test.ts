@@ -37,22 +37,29 @@ test('streamKeyForLane is shard-scoped', () => {
   assert.equal(consumerGroupForLane('mgmt', 1), 'mgmt-shard-1')
 })
 
-test('buildIdempotencyKey is deterministic', () => {
+test('buildIdempotencyKey is deterministic and includes revision', () => {
   const key = buildIdempotencyKey({
     signalId: 'sig-1',
     userId: 'user-1',
     actionClass: 'buy',
   })
-  assert.equal(key, 'sig-1:user-1:_:buy')
+  assert.equal(key, 'sig-1:user-1:_:buy:_')
+  const rev = buildIdempotencyKey({
+    signalId: 'sig-1',
+    userId: 'user-1',
+    actionClass: 'buy',
+    revision: 'edit-2',
+  })
+  assert.equal(rev, 'sig-1:user-1:_:buy:edit-2')
 })
 
-test('queue auto-enables when Redis credentials are present', () => {
+test('queue stays off when Redis is present until explicitly enabled', () => {
   restoreEnv()
   delete process.env.TRADE_SIGNAL_QUEUE_ENABLED
   process.env.UPSTASH_REDIS_REST_URL = 'https://example.upstash.io'
   process.env.UPSTASH_REDIS_REST_TOKEN = 'token'
   resetSignalQueueConfigCache()
-  assert.equal(signalQueueConfig().enabled, true)
+  assert.equal(signalQueueConfig().enabled, false)
 })
 
 test('queue disabled when explicitly set false even with Redis', () => {

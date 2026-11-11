@@ -568,18 +568,25 @@ export class TradeExecutor {
       return
     }
     if (this.signalsChannel) return
+    const onSignalChange = (payload: { new?: Record<string, unknown> }) => {
+      const row = payload.new as SignalRow | undefined
+      if (!row) return
+      if (!userBelongsToShard(row.user_id)) return
+      if (!PARSED_STATUSES.has(row.status)) return
+      this.acceptDispatchSignal(row, { source: 'realtime', priority: 'high' })
+    }
+    // INSERT+UPDATE: listener often inserts rows already status=parsed; UPDATE-only missed them.
     this.signalsChannel = this.supabase
       .channel('trade_executor_signals')
       .on(
         'postgres_changes' as never,
+        { event: 'INSERT', schema: 'public', table: 'signals' } as never,
+        onSignalChange,
+      )
+      .on(
+        'postgres_changes' as never,
         { event: 'UPDATE', schema: 'public', table: 'signals' } as never,
-        (payload: { new?: Record<string, unknown> }) => {
-          const row = payload.new as SignalRow | undefined
-          if (!row) return
-          if (!userBelongsToShard(row.user_id)) return
-          if (!PARSED_STATUSES.has(row.status)) return
-          this.acceptDispatchSignal(row, { source: 'realtime', priority: 'high' })
-        },
+        onSignalChange,
       )
       .subscribe()
   }
@@ -718,10 +725,11 @@ export class TradeExecutor {
       this.supabase
         .from('signals')
         .select(
-          'id,user_id,channel_id,parsed_data,status,parent_signal_id,is_modification,created_at,telegram_message_id,reply_to_message_id,raw_message',
+          'id,user_id,channel_id,parsed_data,status,parent_signal_id,is_modification,created_at,telegram_message_id,reply_to_message_id,raw_message,pipeline_ts,dispatch_source',
         )
         .eq('status', 'parsed')
         .gte('created_at', since)
+        .order('created_at', { ascending: true })
         .limit(50),
     )
     if (!signalsQ) return
@@ -736,6 +744,24 @@ export class TradeExecutor {
       if ((this.deferredClaimRetryAfter.get(row.id) ?? 0) > now) continue
       const action = parsedAction(row.parsed_data)
       if (isManagementAction(action) && !this.mgmtSweepAllowed(row.id)) continue
+      const createdAtMs = row.created_at ? new Date(row.created_at).getTime() : NaN
+      const ageMs = Number.isFinite(createdAtMs) ? now - createdAtMs : NaN
+      if (Number.isFinite(ageMs) && ageMs >= 0 && ageMs < 2_000) {
+        console.warn(
+          `[tradeExecutor] sweep picking fresh signal=${row.id} age_ms=${Math.round(ageMs)}`
+          + ' — live handoff missed (push/queue); investigate TRADE_WORKER_URL / token',
+        )
+        void writeExecutionLog(this.supabase, {
+          user_id: row.user_id,
+          signal_id: row.id,
+          action: 'dispatch_sweep_fresh_alert',
+          status: 'warning',
+          request_payload: {
+            age_ms: Math.round(ageMs),
+            prior_dispatch_source: row.dispatch_source ?? null,
+          },
+        })
+      }
       this.acceptDispatchSignal(row, {
         source: 'sweep',
         priority: dispatchPriorityForAction(action),
@@ -815,10 +841,41 @@ export class TradeExecutor {
    * HTTP push from listener (split deploy) or in-process callback after parse.
    */
   private deferClaimRetry(signalId: string): void {
-    this.deferredClaimRetryAfter.set(
-      signalId,
-      Date.now() + SIGNAL_DISPATCH_CLAIM_LEASE_MS + 5_000,
+    // Re-check in a few seconds — waiting a full lease (125s) left stuck signals
+    // invisible to the live path after a transient claim race.
+    const retryMs = Math.max(
+      2_000,
+      Math.min(30_000, Number(process.env.SIGNAL_DISPATCH_CLAIM_RETRY_MS ?? 5_000)),
     )
+    this.deferredClaimRetryAfter.set(signalId, Date.now() + retryMs)
+  }
+
+  /** Short-lived mgmt dedupe so dual push/wake/sweep cannot double-close. */
+  private recentMgmtAccept = new Map<string, number>()
+
+  private mgmtAcceptDedupeKey(row: SignalRow): string {
+    const edit = (row as { telegram_edit_date?: string | number | null }).telegram_edit_date
+    return `${row.id}:${edit ?? row.created_at ?? ''}`
+  }
+
+  private shouldSkipDuplicateMgmtAccept(row: SignalRow, source: string): boolean {
+    const action = parsedAction(row.parsed_data)
+    if (!isManagementAction(action)) return false
+    const key = this.mgmtAcceptDedupeKey(row)
+    const prev = this.recentMgmtAccept.get(key)
+    const now = Date.now()
+    if (prev != null && now - prev < 15_000) {
+      if (source === 'sweep' || source === 'realtime') return true
+      // Same-process duplicate from dual transport — treat as already accepted.
+      return true
+    }
+    this.recentMgmtAccept.set(key, now)
+    if (this.recentMgmtAccept.size > 2_000) {
+      for (const [k, at] of this.recentMgmtAccept) {
+        if (now - at > 60_000) this.recentMgmtAccept.delete(k)
+      }
+    }
+    return false
   }
 
   acceptDispatchSignal(
@@ -831,12 +888,15 @@ export class TradeExecutor {
     }
     const source = opts?.source ?? row.dispatch_source ?? 'dispatch'
     if (this.isDuplicateRevisionDispatch(row, source)) return true
+    if (this.shouldSkipDuplicateMgmtAccept(row, source)) return true
     const receivedAt = Date.now()
     const pipeline_ts = setPipelineTimestamp(
       parsePipelineTimestamps(row.pipeline_ts) ?? {},
       'queue_consumed_at',
       receivedAt,
     )
+    // Alias for consumers that still read t_dispatch_received.
+    setPipelineTimestamp(pipeline_ts, 't_dispatch_received', receivedAt)
     const rowWithTs: SignalRow = {
       ...row,
       pipeline_ts,
@@ -913,6 +973,7 @@ export class TradeExecutor {
     }
     const source = opts?.source ?? row.dispatch_source ?? 'queue'
     if (this.isDuplicateRevisionDispatch(row, source)) return true
+    if (this.shouldSkipDuplicateMgmtAccept(row, source)) return true
     const isRangeWake = source === SIGNAL_RANGE_WAKE_DISPATCH_SOURCE
     const receivedAt = Date.now()
     const pipeline_ts = setPipelineTimestamp(
@@ -920,6 +981,7 @@ export class TradeExecutor {
       'queue_consumed_at',
       receivedAt,
     )
+    setPipelineTimestamp(pipeline_ts, 't_dispatch_received', receivedAt)
     const rowWithTs: SignalRow = {
       ...row,
       pipeline_ts,

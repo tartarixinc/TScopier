@@ -59,3 +59,18 @@ export async function claimQueueIdempotency(
   markRecent(idempotencyKey)
   return true
 }
+
+/** Release a claim after a failed execution so reclaim can retry within seconds, not forever. */
+export async function releaseQueueIdempotency(
+  supabase: SupabaseClient,
+  idempotencyKey: string,
+): Promise<void> {
+  recentKeys.delete(idempotencyKey)
+  const { error } = await supabase
+    .from('signal_queue_idempotency')
+    .delete()
+    .eq('idempotency_key', idempotencyKey)
+  if (error) {
+    console.warn(`[signalQueue] idempotency release failed key=${idempotencyKey}: ${error.message}`)
+  }
+}

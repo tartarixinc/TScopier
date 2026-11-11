@@ -788,6 +788,8 @@ export async function applyManagement(
     let basketAnchorId: string | null = explicitBasketAnchorId ?? rows[0]?.signal_id ?? null
 
     const byBroker = new Map(brokers.map(b => [b.id, b]))
+    /** Shared OpenedOrders snapshot for close/partial live-fast legs (one read per session). */
+    const mgmtLiveOrdersByUuid = new Map<string, unknown[]>()
     const action = String(parsed.action).toLowerCase()
 
     if (action === 'modify' && rows.length > 0) {
@@ -810,10 +812,33 @@ export async function applyManagement(
       basketAnchorId = rows[0]?.signal_id ?? basketAnchorId
     }
     if (action === 'close' && rows.length > 0) {
-      const orphans = await loadNearDuplicateOrphanTradesForClose(ctx.supabase, {
-        userId: signal.user_id,
-        channelTrades: rows,
-      })
+      // Overlap orphan DB load with the first OpenedOrders snapshot warm for sessions
+      // that already appear in scope — first close no longer waits on serial DB→broker.
+      const earlySnapshotUuids = new Set<string>()
+      for (const trade of rows) {
+        const broker = byBroker.get(trade.broker_account_id)
+        const u = broker ? brokerSessionUuid(broker) : null
+        if (u) earlySnapshotUuids.add(u)
+      }
+      const [orphans] = await Promise.all([
+        loadNearDuplicateOrphanTradesForClose(ctx.supabase, {
+          userId: signal.user_id,
+          channelTrades: rows,
+        }),
+        Promise.all([...earlySnapshotUuids].map(async u => {
+          if (mgmtLiveOrdersByUuid.has(u)) return
+          const trade = rows.find(r => {
+            const b = byBroker.get(r.broker_account_id)
+            return b ? brokerSessionUuid(b) === u : false
+          })
+          if (!trade) return
+          const broker = byBroker.get(trade.broker_account_id)
+          const api = broker ? ctx.apiFor(broker) : null
+          if (!api) return
+          const raw = (await api.openedOrders(u).catch(() => [])) ?? []
+          mgmtLiveOrdersByUuid.set(u, raw)
+        })),
+      ])
       if (orphans.length) {
         const byId = new Map(rows.map(row => [row.id, row]))
         for (const orphan of orphans) byId.set(orphan.id, orphan)
@@ -1210,8 +1235,6 @@ export async function applyManagement(
     const breakevenOrdersByUuid = new Map<string, unknown[]>()
     const breakevenAssignedTicket = new Map<string, number>()
     const breakevenExcludeByTradeId = new Map<string, Set<number>>()
-    /** Shared OpenedOrders snapshot for close/partial live-fast legs (one read per session). */
-    const mgmtLiveOrdersByUuid = new Map<string, unknown[]>()
     const prepareBreakevenTickets = async (): Promise<void> => {
       const byUuid = new Map<string, MgmtTradeRow[]>()
       for (const trade of eligibleTrades) {

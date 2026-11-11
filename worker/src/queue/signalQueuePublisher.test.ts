@@ -18,7 +18,7 @@ test('parseQueueJobFields round-trips payload', () => {
     priority: 'high',
     shard_id: '2',
     lane: 'entry',
-    idempotency_key: 'sig-abc:user-xyz:_:buy',
+    idempotency_key: 'sig-abc:user-xyz:_:buy:_',
     attempts: '1',
     enqueued_at: String(Date.now()),
     pipeline_ts: JSON.stringify({ t_dispatch_sent: 100 }),

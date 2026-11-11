@@ -1,4 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
+import type { SupabaseClient, RealtimeChannel } from '@supabase/supabase-js'
 import type { MonitorLoopHandle } from './monitorIdleGate'
 
 const WATCH_TABLES = [
@@ -13,32 +13,82 @@ const WATCH_TABLES = [
 
 /**
  * Supabase Realtime wake: poke idle monitors when new work is inserted/updated.
- * Safety polling still runs on idle interval (Phase 3 hybrid).
+ * Resubscribes on channel errors so a silent subscribe failure cannot leave
+ * trade workers waiting on the idle sweep (5–15s) for live signals.
  */
 export function subscribeMonitorWorkWake(
   supabase: SupabaseClient,
   loops: MonitorLoopHandle[],
 ): () => void {
+  let stopped = false
+  let channel: RealtimeChannel | null = null
+  let resubscribeTimer: ReturnType<typeof setTimeout> | null = null
+  let consecutiveFailures = 0
+
   const pokeAll = () => {
     for (const loop of loops) loop.poke()
   }
 
-  const channel = supabase.channel(`monitor_work_wake:${process.pid}`)
-  for (const table of WATCH_TABLES) {
-    channel.on(
-      'postgres_changes',
-      { event: 'INSERT', schema: 'public', table },
-      pokeAll,
-    )
-    channel.on(
-      'postgres_changes',
-      { event: 'UPDATE', schema: 'public', table },
-      pokeAll,
-    )
+  const clearResubscribe = () => {
+    if (resubscribeTimer) {
+      clearTimeout(resubscribeTimer)
+      resubscribeTimer = null
+    }
   }
-  channel.subscribe()
+
+  const teardownChannel = () => {
+    if (channel) {
+      void supabase.removeChannel(channel)
+      channel = null
+    }
+  }
+
+  const attach = () => {
+    if (stopped) return
+    teardownChannel()
+    const next = supabase.channel(`monitor_work_wake:${process.pid}:${Date.now()}`)
+    for (const table of WATCH_TABLES) {
+      next.on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table },
+        pokeAll,
+      )
+      next.on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table },
+        pokeAll,
+      )
+    }
+    next.subscribe((status, err) => {
+      if (stopped) return
+      if (status === 'SUBSCRIBED') {
+        consecutiveFailures = 0
+        return
+      }
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        consecutiveFailures += 1
+        const delayMs = Math.min(30_000, 1_000 * 2 ** Math.min(consecutiveFailures, 4))
+        console.warn(
+          `[monitorWorkWake] realtime status=${status}`
+          + ` failures=${consecutiveFailures} retry_in_ms=${delayMs}`
+          + (err ? ` err=${err.message ?? String(err)}` : ''),
+        )
+        clearResubscribe()
+        resubscribeTimer = setTimeout(() => {
+          resubscribeTimer = null
+          attach()
+        }, delayMs)
+        resubscribeTimer.unref?.()
+      }
+    })
+    channel = next
+  }
+
+  attach()
 
   return () => {
-    void supabase.removeChannel(channel)
+    stopped = true
+    clearResubscribe()
+    teardownChannel()
   }
 }
