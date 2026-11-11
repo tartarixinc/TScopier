@@ -55,12 +55,17 @@ export function UpdatesPage() {
   return (
     <PageShell maxWidth="md">
       <PageHeader
-        title={t.nav.updatesPage.title}
+        title={
+          <span className="inline-flex items-center gap-2.5">
+            <Megaphone className="h-7 w-7 shrink-0 text-green-500 dark:text-green-400" aria-hidden />
+            {t.nav.updatesPage.title}
+          </span>
+        }
       />
 
       {PLATFORM_UPDATES.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-center">
-          <Megaphone className="h-10 w-10 text-neutral-900 dark:text-neutral-50" />
+          <Megaphone className="h-10 w-10 text-green-500 dark:text-green-400" />
           <p className="mt-3 text-sm text-neutral-900 dark:text-neutral-50">
             {t.nav.updatesPage.empty}
           </p>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { Sparkles, X } from 'lucide-react'
+import { Megaphone, X } from 'lucide-react'
 import { Button } from '../ui/Button'
 import {
   allPlatformUpdateIds,
@@ -137,7 +137,7 @@ export function UpdatesAnnouncementModal() {
 
         <div className="px-6 py-8 text-center">
           <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-teal-50 dark:bg-teal-950/40">
-            <Sparkles className="h-7 w-7 text-teal-600 dark:text-teal-400" />
+            <Megaphone className="h-7 w-7 text-teal-600 dark:text-teal-400" />
           </div>
 
           <h2

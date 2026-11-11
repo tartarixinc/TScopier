@@ -11,7 +11,6 @@ type HelpSidebarNavProps = {
   onNavigate?: () => void
 }
 
-const ReportedTradesIcon = APP_ROUTE_ICONS['/reported-trades']
 const UpdatesIcon = APP_ROUTE_ICONS['/updates']
 
 export function HelpSidebarNav({ collapsed, onNavigate }: HelpSidebarNavProps) {
@@ -22,8 +21,8 @@ export function HelpSidebarNav({ collapsed, onNavigate }: HelpSidebarNavProps) {
 
   const itemClass = (isActive = false) =>
     clsx(
-      'flex items-center rounded-full px-3 py-2.5 text-sm min-h-[44px] transition-[colors,gap] duration-300 ease-out',
-      collapsed ? 'justify-center gap-0' : 'gap-3',
+      'flex items-center rounded-full px-3 py-1.5 text-sm min-h-8 transition-[colors,gap] duration-300 ease-out',
+      collapsed ? 'justify-center gap-0' : 'gap-2.5',
       isActive
         ? clsx(APP_RAIL_ACTIVE, 'font-semibold')
         : clsx('font-medium text-neutral-600 dark:text-neutral-300', APP_RAIL_HOVER),
@@ -35,25 +34,25 @@ export function HelpSidebarNav({ collapsed, onNavigate }: HelpSidebarNavProps) {
   )
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       <p
         className={clsx(
           'overflow-hidden px-3 whitespace-nowrap transition-[opacity,max-height,margin] duration-300 ease-out',
           APP_SECTION_LABEL,
-          collapsed ? 'mb-0 max-h-0 opacity-0' : 'mb-1.5 max-h-6 opacity-100',
+          collapsed ? 'mb-0 max-h-0 opacity-0' : 'mb-1 max-h-5 opacity-100',
         )}
       >
         {t.nav.sections.help}
       </p>
 
-      <div className="space-y-0.5">
+      <div className="space-y-0">
         <NavLink
           to="/updates"
           title={t.nav.items.updates}
           onClick={onNavigate}
           className={({ isActive }) => itemClass(isActive)}
         >
-          <UpdatesIcon className="h-5 w-5 shrink-0" strokeWidth={1.75} aria-hidden />
+          <UpdatesIcon className="h-4 w-4 shrink-0" strokeWidth={1.75} aria-hidden />
           <span className={labelClass}>{t.nav.items.updates}</span>
         </NavLink>
 
@@ -63,18 +62,8 @@ export function HelpSidebarNav({ collapsed, onNavigate }: HelpSidebarNavProps) {
           onClick={onNavigate}
           className={({ isActive }) => itemClass(isActive)}
         >
-          <ContactSupportIcon className="h-5 w-5 shrink-0" strokeWidth={1.75} aria-hidden />
+          <ContactSupportIcon className="h-4 w-4 shrink-0" strokeWidth={1.75} aria-hidden />
           <span className={labelClass}>{hm.liveChat}</span>
-        </NavLink>
-
-        <NavLink
-          to="/reported-trades"
-          title={t.nav.items.reportedTrades}
-          onClick={onNavigate}
-          className={({ isActive }) => itemClass(isActive)}
-        >
-          <ReportedTradesIcon className="h-5 w-5 shrink-0" strokeWidth={1.75} aria-hidden />
-          <span className={labelClass}>{t.nav.items.reportedTrades}</span>
         </NavLink>
 
         <a
@@ -84,7 +73,7 @@ export function HelpSidebarNav({ collapsed, onNavigate }: HelpSidebarNavProps) {
           title={hm.documentation}
           className={clsx(itemClass(), !collapsed && 'lg:w-full')}
         >
-          <DocumentationIcon className="h-5 w-5 shrink-0" strokeWidth={1.75} aria-hidden />
+          <DocumentationIcon className="h-4 w-4 shrink-0" strokeWidth={1.75} aria-hidden />
           <span className={clsx(labelClass, !collapsed && 'min-w-0 flex-1')}>{hm.documentation}</span>
           <ExternalLink
             className={clsx(

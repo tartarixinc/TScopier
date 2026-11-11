@@ -24,8 +24,17 @@ import { interpolate } from '../../i18n/interpolate'
 import { useHasHighImpactNewsToday } from '../../hooks/useHasHighImpactNewsToday'
 import { useNeedsWelcome } from '../../hooks/useNeedsWelcome'
 import { CopierLogToasts } from '../dashboard/CopierLogToasts'
+import { SignalSourceLogo } from '../dashboard/SignalSourceLogo'
 import { consumePostAuthRedirect } from '../../lib/postAuthRedirect'
 import { buildFlags } from '../../lib/featureFlags'
+import type { SignalSourceKind } from '../../lib/signalSourceMark'
+
+const SIGNAL_SOURCE_NAV_KINDS: SignalSourceKind[] = [
+  'telegram',
+  'whatsapp',
+  'discord',
+  'tradingview',
+]
 import {
   APP_CANVAS,
   APP_MAIN_SHELL,
@@ -41,6 +50,7 @@ type NavItem = {
   label: string
   showOpenTradesIndicator?: boolean
   showHighImpactNewsIndicator?: boolean
+  showSignalSourceIcons?: boolean
 }
 
 type AppLayoutProps = {
@@ -126,21 +136,22 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
         items: [
           { to: '/dashboard', label: t.nav.items.dashboard },
           { to: '/brokers', label: t.nav.items.brokers },
-          { to: '/mirror-trading', label: t.nav.items.mirrorTrading },
-          ...(buildFlags.hideSocialTrading ? [] : [{ to: '/social-trading', label: t.nav.items.socialTrading }]),
           // Configurations menu hidden for now.
           // { to: '/configurations', label: t.nav.items.configuration },
           { to: '/account-trades', label: t.nav.items.trades, showOpenTradesIndicator: true },
+          { to: '/manage-signals', label: t.nav.items.signalHistory },
+          { to: '/activities', label: t.nav.items.management },
+          { to: '/copier-logs', label: t.nav.items.copierLogs },
+          { to: '/reported-trades', label: t.nav.items.reportedTrades },
         ],
       },
       {
-        label: t.nav.sections.signals,
+        label: t.nav.sections.copy,
         items: [
-          { to: '/channels', label: t.nav.items.channels },
+          { to: '/mirror-trading', label: t.nav.items.mirrorTrading },
+          ...(buildFlags.hideSocialTrading ? [] : [{ to: '/social-trading', label: t.nav.items.socialTrading }]),
+          { to: '/channels', label: t.nav.items.channels, showSignalSourceIcons: true },
           { to: '/backtest', label: t.nav.items.backtest },
-          { to: '/activities', label: t.nav.items.management },
-          { to: '/copier-logs', label: t.nav.items.copierLogs },
-          { to: '/manage-signals', label: t.nav.items.signalHistory },
           { to: '/performance', label: t.nav.items.performance },
         ],
       },
@@ -163,7 +174,6 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
         items: [
           { to: '/billing', label: t.nav.userMenu.subscriptionBilling },
           { to: '/affiliate-program', label: t.nav.userMenu.affiliateProgram },
-          { to: '/wallet', label: t.nav.userMenu.wallet },
         ],
       },
     ],
@@ -220,8 +230,8 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
   const navLinkClass = (isCollapsed: boolean, disabled = false) =>
     ({ isActive }: { isActive: boolean }) =>
       clsx(
-        'flex items-center rounded-full px-3 py-2.5 text-sm min-h-10 transition-[colors,gap,padding] duration-300 ease-out',
-        isCollapsed ? 'justify-center gap-0' : 'gap-3',
+        'flex items-center rounded-full px-3 py-1.5 text-sm min-h-8 transition-[colors,gap,padding] duration-300 ease-out',
+        isCollapsed ? 'justify-center gap-0' : 'gap-2.5',
         disabled
           ? clsx('cursor-pointer font-medium text-neutral-600 opacity-45 dark:text-neutral-400', APP_RAIL_HOVER)
           : isActive
@@ -243,12 +253,14 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
       isActive,
       showOpenTradesIndicator,
       showHighImpactNewsIndicator,
+      showSignalSourceIcons,
     }: {
       icon: LucideIcon
       label: string
       isActive: boolean
       showOpenTradesIndicator?: boolean
       showHighImpactNewsIndicator?: boolean
+      showSignalSourceIcons?: boolean
     },
   ) => {
     const showOpenIndicator = Boolean(showOpenTradesIndicator && openTradeCount > 0)
@@ -259,7 +271,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
         <span className="relative inline-flex shrink-0">
           <Icon
             className={clsx(
-              'h-5 w-5',
+              'h-4 w-4',
               isActive ? 'text-neutral-950' : '',
             )}
             strokeWidth={1.75}
@@ -277,6 +289,20 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
           ) : null}
         </span>
         <span className={navLabelClass(opts.collapsed)}>{label}</span>
+        {showSignalSourceIcons && !opts.collapsed ? (
+          <span className="inline-flex shrink-0 items-center" aria-hidden>
+            {SIGNAL_SOURCE_NAV_KINDS.map((kind, index) => (
+              <SignalSourceLogo
+                key={kind}
+                kind={kind}
+                className={clsx(
+                  'relative h-4 w-4 shrink-0 ring-1 ring-white dark:ring-neutral-950',
+                  index > 0 && '-ms-1.5',
+                )}
+              />
+            ))}
+          </span>
+        ) : null}
         <span
           className={clsx(
             'ms-auto inline-flex shrink-0 items-center overflow-hidden transition-[opacity,max-width,margin] duration-300 ease-out',
@@ -314,15 +340,22 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
         <div key={section.label}>
           <p
             className={clsx(
-              'mb-1.5 overflow-hidden px-3 whitespace-nowrap transition-[opacity,max-height,margin] duration-300 ease-out',
+              'mb-1 overflow-hidden px-3 whitespace-nowrap transition-[opacity,max-height,margin] duration-300 ease-out',
               APP_SECTION_LABEL,
-              opts.collapsed ? 'mb-0 max-h-0 opacity-0' : 'max-h-6 opacity-100',
+              opts.collapsed ? 'mb-0 max-h-0 opacity-0' : 'max-h-5 opacity-100',
             )}
           >
             {section.label}
           </p>
-          <div className="space-y-0.5">
-            {sectionItems.map(({ to, label, showOpenTradesIndicator, showHighImpactNewsIndicator, disabled }) => {
+          <div className="space-y-0">
+            {sectionItems.map(({
+              to,
+              label,
+              showOpenTradesIndicator,
+              showHighImpactNewsIndicator,
+              showSignalSourceIcons,
+              disabled,
+            }) => {
               const Icon = getAppRouteIcon(to)
               const ariaExtra = showOpenTradesIndicator && openTradeCount > 0
                 ? interpolate(t.nav.openTradesCount, { count: openTradeCount })
@@ -349,6 +382,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
                       isActive: false,
                       showOpenTradesIndicator,
                       showHighImpactNewsIndicator,
+                      showSignalSourceIcons,
                     })}
                   </button>
                 )
@@ -370,6 +404,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
                       isActive,
                       showOpenTradesIndicator,
                       showHighImpactNewsIndicator,
+                      showSignalSourceIcons,
                     })
                   )}
                 </NavLink>
@@ -585,7 +620,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
             </div>
           </div>
 
-          <nav className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-2.5 py-3">
+          <nav className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-2.5 py-2">
             {renderNav({
               collapsed: !sidebarExpanded,
               onNavigate: () => setMobileNavOpen(false),
