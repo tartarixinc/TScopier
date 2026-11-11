@@ -2817,7 +2817,8 @@ export class UserListener {
 
     // Parallelize the independent DB lookups that previously stacked ~0.6–0.9s
     // between t_listener_received and message_normalized_at on live Adjust/Close.
-    const [signalChannelId, parentSignalId, heuristicCtx, dupHead] = await Promise.all([
+    // `parentSignalId` is `let` — provider-number linking may fill it after parse.
+    const [signalChannelId, resolvedParentSignalId, heuristicCtx, dupHead] = await Promise.all([
       resolveSignalChannelIdForRow(this.supabase, channelRow),
       replyToMessageId
         ? this.resolveParentSignalIdForReply(channelRow.id, replyToMessageId)
@@ -2830,6 +2831,7 @@ export class UserListener {
         .eq('channel_id', channelRow.id)
         .eq('telegram_message_id', messageId),
     ])
+    let parentSignalId: string | null = resolvedParentSignalId
 
     if (signalChannelId) {
       channelRow.signal_channel_id = signalChannelId
