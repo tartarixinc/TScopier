@@ -2,6 +2,19 @@
 
 ## Changelog
 
+### 2026-11-11 — Edited signals refresh SL/TP (merge materialization + mgmt fast path)
+
+- **Context:** Migration signal `050b93ec` (live edit SL 4038→4028 after teaser completion into `bffc09f6`) parsed + pushed (`message_revision`, `http_push_ok`) but open legs stayed at 4038. Pipeline `any_opened=false` with no `basket_leg_modify` after the edit.
+- **Plain English:** When a channel edits a signal to change stop/targets, those changes now update the open trades again — and the updates run on the same fast parallel modify path as closes.
+- **Root cause (technical):** Teaser-completion `merge_modify_summary` does not create `trades`/`order_send` on the completion signal, so `manualDispatchAlreadyMaterialized` was false. The edit then lost the still-leased entry claim and skipped without modify. Live accept also dropped revisions while the first handle was in-flight; `isLiveMgmtFast` ignored market-now buy/sell edits that fail `shouldRouteAsBasketParameterRefresh`.
+- **Fix (files):**
+  - [`helpers.ts`](worker/src/tradeExecutor/basketMerge/helpers.ts) — successful `merge_modify_summary` counts as materialized.
+  - [`TradeExecutor.ts`](worker/src/tradeExecutor/TradeExecutor.ts) — message_revision waits on inflight instead of dropping; claim-lost revisions attempt SL/TP-only refresh before stale-claim takeover.
+  - [`dispatch.ts`](worker/src/tradeExecutor/dispatch.ts) — `message_revision` + SL/TP → `shouldUseMgmtFastPath` / `isLiveMgmtFast`.
+- **Tests/verification:** materialization + fastPath + entry-guard node:tests pass (13).
+- **Deploy state:** Worker code only (Migration); Railway trade (+ listener if separate) redeploy required.
+- **Follow-ups:** Redeploy; retest edit SL on an open Gold basket → expect `merge_modify_summary` + broker SL change; confirm parallel modifies (`liveMgmtFast`).
+
 ### 2026-11-11 — Range Trading empty-TP no longer collapses to 1×full lot
 
 - **Context:** Risk UI “Range Trading” (`trade_style=multi`, Fixed Lot 5, per-leg 5% → preview `0.25 × 20`) but MT5 opened a single **buy 5** on bare “Gold buy now” (signals `abeeb0a0` / `6f7303bf`). Range Layering was off.
