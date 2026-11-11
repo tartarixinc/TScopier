@@ -2,6 +2,16 @@
 
 ## Changelog
 
+### 2026-11-11 — WhatsApp signals showed Telegram logo in Copier Logs
+
+- **Context:** After WhatsApp ingest worked, Copier Process/Logs showed the Telegram paper-plane for “Signal test” WhatsApp rows.
+- **Plain English:** The trade worker re-saved each signal and stamped it as Telegram, so the UI drew the wrong logo.
+- **Root cause (technical):** `ensureSignalRow` defaulted `source_kind` to `telegram` whenever `channel_id` was set. Dispatch upsert (no source_kind) overwrote WhatsApp’s correct stamp. UI `resolveSignalSourceKind` also preferred the denormalized (wrong) value over the live channel map.
+- **Fix (files):** [`ensureSignalRow.ts`](worker/src/ensureSignalRow.ts) omits invented telegram; [`userListener.ts`](worker/src/userListener.ts) passes explicit telegram source; [`signalSourceMark.ts`](src/lib/signalSourceMark.ts) prefers live channel kind while the channel exists. Production backfill set `source_kind='whatsapp'` for WhatsApp channel rows (`75b82e21…`, `5b9a6bf5…`).
+- **Tests/verification:** `signalSourceMark.test.ts`, `ensureSignalRow.test.ts`.
+- **Deploy state:** Frontend logo fix needs Netlify redeploy; worker clobber fix needs Railway trade/listener redeploy. Existing production rows corrected in DB.
+- **Follow-ups:** None.
+
 ### 2026-11-11 — WhatsApp signals not reaching UniCopier (missing signals.source_kind)
 
 - **Context:** WhatsApp session connected and “Signal test” group linked/active on production, but posts never appeared as signals.
