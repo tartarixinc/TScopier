@@ -141,7 +141,7 @@ export function roundBasketLot(volume: number, params: BasketSymbolParams | null
   return Math.max(min, +rounded.toFixed(2))
 }
 
-function ingestBrokerTickets(orders: unknown[]): Set<number> {
+export function ingestBrokerTickets(orders: unknown[]): Set<number> {
   const tickets = new Set<number>()
   for (const raw of orders ?? []) {
     if (!raw || typeof raw !== 'object') continue
@@ -425,6 +425,16 @@ export async function runBasketLegModifies(args: {
     internalRebalance: internalRebalance === true,
   })
 
+  // One shared quote for the whole basket — never N× GetQuote when legs run in parallel.
+  let sharedQuotePrefetch = strictEntryPrefetch
+  if (!sharedQuotePrefetch) {
+    try {
+      sharedQuotePrefetch = await api.quote(uuid, symbol)
+    } catch {
+      /* legs fall back to entry price */
+    }
+  }
+
   type LegOutcome = {
     modifiedId?: string
     legError?: LegModifyError
@@ -499,7 +509,7 @@ export async function runBasketLegModifies(args: {
     let ref = Number(tr.entry_price) || 0
     let marketRef = 0
     try {
-      const q = strictEntryPrefetch ?? await api.quote(uuid, symbol)
+      const q = sharedQuotePrefetch ?? await api.quote(uuid, symbol)
       const quote = direction === 'buy' ? q.bid : q.ask
       if (Number.isFinite(quote) && quote > 0) {
         marketRef = quote
@@ -510,7 +520,7 @@ export async function runBasketLegModifies(args: {
     }
     if (ref <= 0) {
       try {
-        const q = strictEntryPrefetch ?? await api.quote(uuid, symbol)
+        const q = sharedQuotePrefetch ?? await api.quote(uuid, symbol)
         const quote = direction === 'buy' ? q.bid : q.ask
         if (Number.isFinite(quote) && quote > 0) marketRef = quote
         ref = direction === 'buy' ? q.ask : q.bid

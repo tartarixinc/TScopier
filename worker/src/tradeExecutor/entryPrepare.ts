@@ -291,6 +291,7 @@ export async function prepareEntryExecution(
     setPipelineTimestamp(signal.pipeline_ts, 'broker_resolution_started_at', Date.now())
   }
   const stampOnResolve = liveEntryFast && !!signal.pipeline_ts
+  const sameSignalRefresh = sendOpts?.sameSignalRefresh === true
   const sessionPromise = ctx.ensureBrokerSessionLiveFast(api, uuid, broker).then(r => {
     if (stampOnResolve && signal.pipeline_ts && signal.pipeline_ts.t_session_resolved == null) {
       signal.pipeline_ts.t_session_resolved = Date.now()
@@ -307,15 +308,32 @@ export async function prepareEntryExecution(
     }
     return r
   })
+  // Message revisions overlap materialization with session/symbol so we can take
+  // the modify-only fast path without waiting on a cold SymbolParams round-trip.
+  const materializationPromise = sameSignalRefresh
+    ? ctx.manualDispatchAlreadyMaterialized(signal.id, broker.id)
+    : Promise.resolve(false)
   const paramsPromise = ctx.getSymbolParams(uuid, requestedSymbol).catch(() => null)
-  const [sessionOk, symbol, paramsFromRequested] = await Promise.all([
+  const [sessionOk, symbol, paramsFromRequested, revisionAlreadyMaterialized] = await Promise.all([
     sessionPromise,
     symbolPromise,
     paramsPromise,
+    materializationPromise,
   ])
   let params = paramsFromRequested
   if (symbol.toUpperCase() !== requestedSymbol.toUpperCase()) {
-    params = await ctx.getSymbolParams(uuid, symbol).catch(() => params)
+    const cachedResolved = ctx.peekCachedSymbolParams(uuid, symbol)
+    if (cachedResolved) {
+      params = cachedResolved
+      // Keep cache warm without blocking the edit/modify path.
+      void ctx.getSymbolParams(uuid, symbol).catch(() => null)
+    } else if (sameSignalRefresh && revisionAlreadyMaterialized && liveEntryFast) {
+      // Modify-only revision: keep requested-symbol params (usually same pip/lot
+      // geometry) and refresh broker symbol params in the background.
+      void ctx.getSymbolParams(uuid, symbol).catch(() => null)
+    } else {
+      params = await ctx.getSymbolParams(uuid, symbol).catch(() => params)
+    }
   }
   if (stampOnResolve && signal.pipeline_ts && signal.pipeline_ts.t_params_resolved == null) {
     signal.pipeline_ts.t_params_resolved = Date.now()
@@ -341,10 +359,6 @@ export async function prepareEntryExecution(
     )
   }
   const baseLot = roundLot(computeLot(broker, parsed), params)
-  const sameSignalRefresh = sendOpts?.sameSignalRefresh === true
-  const revisionAlreadyMaterialized = sameSignalRefresh
-    ? await ctx.manualDispatchAlreadyMaterialized(signal.id, broker.id)
-    : false
   const missingSl = shouldRunMissingRequiredSlPolicy(isManual, revisionAlreadyMaterialized)
     ? missingRequiredSlFailure(parsed, manual)
     : null
@@ -377,6 +391,18 @@ export async function prepareEntryExecution(
   // edited signal can never trade.
   if (sameSignalRefresh) {
     if (revisionAlreadyMaterialized) {
+      let revisionQuote: { bid: number; ask: number } | null = null
+      const warmQuote = ctx.entryBrokerReadCache.get(uuid)?.quote
+      const warmFresh = warmQuote != null && Date.now() - warmQuote.at < 5_000
+      if (warmFresh) {
+        revisionQuote = { bid: warmQuote.bid, ask: warmQuote.ask }
+      } else {
+        try {
+          revisionQuote = await api.quote(uuid, symbol)
+        } catch {
+          /* modify path falls back to entry refs */
+        }
+      }
       const paramOutcome = await ctx.tryParameterFollowUpMergeModifyOnly({
         signal,
         parsed,
@@ -386,7 +412,7 @@ export async function prepareEntryExecution(
         params,
         symbol,
         uuid,
-        strictEntryPrefetch: null,
+        strictEntryPrefetch: revisionQuote,
         commentPrefix,
         sameSignalRefresh: true,
         liveMgmtFast: sendOpts?.liveMgmtFast === true,

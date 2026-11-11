@@ -3,6 +3,7 @@ import {
   closeStaleOpenTrades,
   fetchOpenBrokerTickets,
   GHOST_BASKET_CLOSED_USER_MESSAGE,
+  ingestBrokerTickets,
   markBasketReconcileDone,
   markBasketReconcileDoneForAnchor,
   runBasketLegModifies,
@@ -503,7 +504,15 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
 
     let openedTickets: Set<number> | null = null
     try {
-      openedTickets = await fetchOpenBrokerTickets(api, uuid)
+      if (liveMgmtFast) {
+        const warm = ctx.entryBrokerReadCache.get(uuid)?.openedOrders
+        if (warm && Date.now() - warm.at < 5_000 && Array.isArray(warm.rows)) {
+          openedTickets = ingestBrokerTickets(warm.rows)
+        }
+      }
+      if (!openedTickets) {
+        openedTickets = await fetchOpenBrokerTickets(api, uuid)
+      }
     } catch { /* preflight optional */ }
 
     const modifiedTradeIds = new Set<string>()

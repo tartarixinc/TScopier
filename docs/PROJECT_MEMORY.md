@@ -2,6 +2,41 @@
 
 ## Changelog
 
+### 2026-11-11 — Cut message-edit SL/TP pre-modify stalls (~20s SymbolParams + N×Quote)
+
+- **Context:** Edit on `e05e9e95` applied (`mgmt_fast=true`) but wall ~54s; OrderModify span only ~4.3s for 20 legs. ~20s sat on SymbolParams after symbol resolve; another ~24s before first modify (ghost OpenedOrders + per-leg GetQuote).
+- **Plain English:** Editing SL/TP on an open basket no longer waits on a cold symbol-params refetch or twenty separate price quotes before the parallel modifies start.
+- **Root cause (technical):** Revision modify-only still awaited `getSymbolParams(resolvedBrokerSymbol)` when `XAUUSD→XAUUSDm`; early path passed `strictEntryPrefetch: null` so `runBasketLegModifies` quoted per leg; live edits still ran full `reconcileGhostBasketLegs` OpenedOrders.
+- **Fix (files):**
+  - [`entryPrepare.ts`](worker/src/tradeExecutor/entryPrepare.ts) — overlap materialization; peek/cache resolved-symbol params on live materialized revisions; prefetch one quote into modify-only.
+  - [`brokerSymbolCache.ts`](worker/src/tradeExecutor/brokerSymbolCache.ts) / TradeExecutor — `peekCachedSymbolParams`.
+  - [`mergeRouting.ts`](worker/src/tradeExecutor/basketMerge/mergeRouting.ts) — skip ghost OpenedOrders on `liveMgmtFast` + sameSignalRefresh; non-blocking anchor log.
+  - [`slTpRefresh.ts`](worker/src/tradeExecutor/basketMerge/slTpRefresh.ts) — reuse warm `entryBrokerReadCache.openedOrders`.
+  - [`basketSlTpReconcile.ts`](worker/src/basketSlTpReconcile.ts) — one shared quote for the basket before parallel legs.
+- **Tests/verification:** shared-quote + peekCachedSymbolParams node:tests; existing basket modify suite.
+- **Deploy state:** Worker code (Migration); Railway trade redeploy needed.
+- **Follow-ups:** Retest edit on 20-leg Gold — expect `t_params_resolved`≈`t_symbol_resolved`, `quote_count`≈1, first modify soon after anchor.
+
+### 2026-11-11 — Demo 0.1 XAU ghost lot = active social copy follower (not signal double-send)
+
+- **Context:** Demo `46cd046d` (login `81765183`) showed buy 5 + buy 0.1 on XAUUSDm around signal `abeeb0a0` (“Gold buy now”); no 0.1 `trades` / `trade_execution_logs.order_send` row for that broker.
+- **Plain English:** The big lot came from the normal signal copier. The extra 0.1 lot came from Social Trading — this Demo account is actively copying another published provider at a fixed 0.1 lot. Social copies do not write the usual trade/order-send logs, so they looked “missing” in those tables.
+- **Root cause (technical):** Active `social_copy_subscriptions` `4985d304…` → source `0f6ded02…` (provider user `20733d28…`, MT5 Demo login `476205231`), `sizing_mode=fixed_lot`, `fixed_lot=0.1`, `max_lot=0.1`. Worker `SocialCopyMonitor.openPosition` / edge `social-copy-reconcile` call `orderSend` with comment `sc:<sub8>:<ticket>` and ledger only in `social_copy_trade_mappings` + `social_copy_execution_events`. Incident window: signal `order_send` volume 5 at 13:10:35 → dest ticket `557707632`; social open 13:10:48 source `3452591669` → dest `557709065` volume 0.1 (`sc:4985d304:3452591669`). Provider had no TScopier `signals` row in that minute (manual/other); frequent provider gold opens explain “whenever I signal” correlation. Mirror link `11f14bae…` has Demo as **source** only (slave `10144392`) — cannot open 0.1 on Demo. Demo also published as social source `146aec8a…` (`copy_source=true`). Empty `fxsocket_account_id`; provider `mtapi` — no FxSocket copy feature involved.
+- **Fix (files):** Investigation only; subscription stop applied on Migration (see next entry).
+- **Tests/verification:** Migration SQL on `supmsgcubipmmowrzoub` as above.
+- **Deploy state:** N/A (read-only diagnosis).
+- **Follow-ups:** optional UI/query on Copier Logs for `social_copy_*` so destination fills are visible beside `trades`.
+
+### 2026-11-11 — Stopped Demo social copy from James Peter
+
+- **Context:** User confirmed 0.1 XAU `#557803885` is “Copied from James Peter” and asked to stop Demo from copying that provider.
+- **Plain English:** The Demo→James Peter social copy subscription is stopped. The worker will also close any remaining copied positions from that link (same as the in-app “Stop and close copies” action).
+- **Root cause (technical):** N/A (ops).
+- **Fix (files):** Migration SQL on `supmsgcubipmmowrzoub` — `social_copy_subscriptions` `4985d304…` set `desired_status='stopped'`, `status='pending'`, `stopped_at=now()` (RPC `set_social_copy_subscription_status` requires `auth.uid()`, so mirrored its update as service SQL).
+- **Tests/verification:** Row returned pending/stopped intent; open mappings at stop time included dest tickets `557803885` and `556103671`.
+- **Deploy state:** Migration DB only; worker reconcile acknowledges stop.
+- **Follow-ups:** Confirm `status='stopped'` and open social mappings cleared after worker tick.
+
 ### 2026-11-11 — Edited signals refresh SL/TP (merge materialization + mgmt fast path)
 
 - **Context:** Migration signal `050b93ec` (live edit SL 4038→4028 after teaser completion into `bffc09f6`) parsed + pushed (`message_revision`, `http_push_ok`) but open legs stayed at 4038. Pipeline `any_opened=false` with no `basket_leg_modify` after the edit.

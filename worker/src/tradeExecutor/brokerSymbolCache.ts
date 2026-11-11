@@ -525,6 +525,19 @@ export async function prewarmBrokersForLiveEntry(ctx: TradeExecutorContext, brok
     }))
   }
 
+/** In-memory SymbolParams only — never starts a broker round-trip. */
+export function peekCachedSymbolParams(
+  ctx: TradeExecutorContext,
+  uuid: string,
+  symbol: string,
+): SymbolCacheEntry | null {
+  const key = `${uuid}:${symbol.toUpperCase()}`
+  const cached = ctx.symbolCache.get(key)
+  if (!cached) return null
+  if (Date.now() - cached.loadedAt >= SYMBOL_CACHE_TTL_MS) return null
+  return cached
+}
+
 export async function getSymbolParams(ctx: TradeExecutorContext, uuid: string, symbol: string): Promise<SymbolCacheEntry | null> {
     const key = `${uuid}:${symbol.toUpperCase()}`
     const cached = ctx.symbolCache.get(key)
