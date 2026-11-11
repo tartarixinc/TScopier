@@ -62,6 +62,8 @@ export type PipelineTimestamps = {
   /** Last broker OrderSend call returned for this signal. */
   t_last_broker_send?: number
   t_order_send_done?: number
+  /** Listener ingest path: live NewMessage vs catch-up poll. */
+  ingest_path?: 'live' | 'catchup'
 }
 
 export type PipelineCorrelationContext = {
@@ -100,7 +102,9 @@ export type PipelineEventName =
   | 'execution_skipped'
   | 'execution_duplicate_prevented'
 
-const TIMESTAMP_KEYS: Array<keyof PipelineTimestamps> = [
+type PipelineTimestampNumberKey = Exclude<keyof PipelineTimestamps, 'ingest_path'>
+
+const TIMESTAMP_KEYS: Array<PipelineTimestampNumberKey> = [
   'telegram_source_message_at',
   'telegram_message_received_at',
   'message_normalized_at',
@@ -155,6 +159,9 @@ export function parsePipelineTimestamps(raw: unknown): PipelineTimestamps | unde
       ts[key] = value
     }
   }
+  if (o.ingest_path === 'live' || o.ingest_path === 'catchup') {
+    ts.ingest_path = o.ingest_path
+  }
   ts.telegram_source_message_at = ts.telegram_source_message_at ?? ts.t_telegram_event
   ts.telegram_message_received_at = ts.telegram_message_received_at ?? ts.t_listener_received
   ts.parse_completed_at = ts.parse_completed_at ?? ts.t_parse_done
@@ -168,9 +175,11 @@ export function parsePipelineTimestamps(raw: unknown): PipelineTimestamps | unde
   return Object.values(ts).some(v => v != null) ? ts : undefined
 }
 
+export type { PipelineTimestampNumberKey }
+
 export function setPipelineTimestamp(
   ts: PipelineTimestamps | undefined,
-  key: keyof PipelineTimestamps,
+  key: PipelineTimestampNumberKey,
   at = Date.now(),
 ): PipelineTimestamps {
   const out = ts ?? {}

@@ -115,12 +115,46 @@ function isSessionGone(error: unknown): boolean {
 const tradeOpGate = createConcurrencyGate()
 /**
  * MTAPI rejects a burst of OrderSend/Modify on one session ("too many
- * requests"). The terminal also runs those ops one at a time, so the default
- * is a single in-flight send/modify per session. Raise MT_TRADE_OP_CONCURRENCY
- * only if a broker is known to accept overlap.
+ * requests"). Modify stays serial by default. OrderSend can overlap modestly
+ * for multi-leg range entries via MT_SEND_OP_CONCURRENCY.
  */
 function perAccountTradeConcurrency(): number {
   return Math.max(1, Number(process.env.MT_TRADE_OP_CONCURRENCY ?? 1) || 1)
+}
+
+/**
+ * Multi-leg range entries fan out with Promise.allSettled; without send overlap
+ * 34 legs take ~12s at ~350ms RTT. Cap at 6. On throttle we step this session
+ * down to 1 for SEND_THROTTLE_STEPDOWN_MS.
+ */
+function perAccountSendConcurrency(sessionId: string): number {
+  const stepDownUntil = sendThrottleStepDownUntil.get(sessionId) ?? 0
+  if (stepDownUntil > Date.now()) return 1
+  const raw = Number(process.env.MT_SEND_OP_CONCURRENCY ?? 3)
+  return Math.max(1, Math.min(6, Number.isFinite(raw) ? raw : 3))
+}
+
+const SEND_THROTTLE_STEPDOWN_MS = Math.max(
+  5_000,
+  Math.min(120_000, Number(process.env.MT_SEND_THROTTLE_STEPDOWN_MS ?? 45_000)),
+)
+const sendThrottleStepDownUntil = new Map<string, number>()
+
+function noteSendThrottle(sessionId: string, error: unknown): void {
+  const text = (
+    (error instanceof MtapiApiError ? `${error.code ?? ''} ${error.message}` : String(error))
+  ).toLowerCase()
+  const throttled = text.includes('too many')
+    || text.includes('rate_limited')
+    || text.includes('rate limit')
+    || text.includes('throttle')
+    || (error instanceof MtapiApiError && error.status === 429)
+  if (!throttled) return
+  sendThrottleStepDownUntil.set(sessionId, Date.now() + SEND_THROTTLE_STEPDOWN_MS)
+  console.warn(
+    `[mtapi] OrderSend throttle step-down session=${sessionId.slice(0, 8)}…`
+    + ` concurrency=1 for ${SEND_THROTTLE_STEPDOWN_MS}ms`,
+  )
 }
 
 /**
@@ -462,7 +496,7 @@ export class MtapiProvider implements BrokerProvider {
   }
 
   async orderSend(id: string, args: OrderSendArgs): Promise<OrderResult> {
-    const release = await tradeOpGate.acquire(id, perAccountTradeConcurrency())
+    const release = await tradeOpGate.acquire(id, perAccountSendConcurrency(id))
     try {
       const params: Record<string, string | number> = {
         symbol: args.symbol,
@@ -479,12 +513,17 @@ export class MtapiProvider implements BrokerProvider {
       // accepted it, and MT5 OrderSendSafe idempotency is not proven. Throttle
       // retry is opt-in (`MTAPI_ORDER_THROTTLE_RETRY=true`) until it is.
       const orderThrottleRetry = env('MTAPI_ORDER_THROTTLE_RETRY') === 'true' ? 'pre_accept' : 'off'
-      const raw = await this.requestWithRetry('OrderSendSafe', params, id, false, orderThrottleRetry)
-      const result = normalizeOrderResponse(raw, { platform: this.platform(id), operation: args.operation })
-      if (normalizeMtBrokerTicket(result.ticket) == null) {
-        throw new MtapiApiError('OrderSendSafe returned no valid broker ticket', 502, 'INVALID_TICKET')
+      try {
+        const raw = await this.requestWithRetry('OrderSendSafe', params, id, false, orderThrottleRetry)
+        const result = normalizeOrderResponse(raw, { platform: this.platform(id), operation: args.operation })
+        if (normalizeMtBrokerTicket(result.ticket) == null) {
+          throw new MtapiApiError('OrderSendSafe returned no valid broker ticket', 502, 'INVALID_TICKET')
+        }
+        return result
+      } catch (err) {
+        noteSendThrottle(id, err)
+        throw err
       }
-      return result
     } finally {
       release()
     }

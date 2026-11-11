@@ -390,6 +390,7 @@ export async function prepareEntryExecution(
         commentPrefix,
         sameSignalRefresh: true,
         liveMgmtFast: sendOpts?.liveMgmtFast === true,
+        liveEntryFast,
       })
       return {
         ok: false,
@@ -408,13 +409,19 @@ export async function prepareEntryExecution(
 
   let strictEntryPrefetch: { bid: number; ask: number } | null = null
   if (needsQuotePrefetch) {
-    try {
-      strictEntryPrefetch = await api.quote(uuid, symbol)
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      console.warn(
-        `[tradeExecutor] /Quote prefetch failed ${symbol} signal=${signal.id} broker=${broker.id}: ${msg}`,
-      )
+    const warmQuote = ctx.entryBrokerReadCache.get(uuid)?.quote
+    const warmFresh = warmQuote != null && Date.now() - warmQuote.at < 2_500
+    if (warmFresh) {
+      strictEntryPrefetch = { bid: warmQuote.bid, ask: warmQuote.ask }
+    } else {
+      try {
+        strictEntryPrefetch = await api.quote(uuid, symbol)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        console.warn(
+          `[tradeExecutor] /Quote prefetch failed ${symbol} signal=${signal.id} broker=${broker.id}: ${msg}`,
+        )
+      }
     }
   }
 
@@ -528,6 +535,7 @@ export async function prepareEntryExecution(
       commentPrefix,
       sameSignalRefresh,
       liveMgmtFast: sendOpts?.liveMgmtFast === true,
+      liveEntryFast,
     })
     if (sameSignalRefresh && paramOutcome.handled) {
       return {
@@ -578,6 +586,7 @@ export async function prepareEntryExecution(
       uuid,
       strictEntryPrefetch,
       commentPrefix,
+      liveEntryFast,
     })
     if (teaserOutcome.handled) {
       return {

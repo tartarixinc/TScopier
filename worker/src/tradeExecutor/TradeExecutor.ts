@@ -178,7 +178,13 @@ export class TradeExecutor {
   channelMetaCache = new Map<string, {
     keywords: ChannelKeywords | null
     commentSlug: string | null
+    sourceKind: string | null
     loadedAt: number
+  }>()
+  /** Short-TTL Quote / OpenedOrders from order-lane accept prewarm. */
+  entryBrokerReadCache = new Map<string, {
+    quote?: { bid: number; ask: number; at: number }
+    openedOrders?: { rows: unknown[]; at: number }
   }>()
   readonly lightConfigCache = new LightConfigCache()
   sessionPingAt = new Map<string, number>()
@@ -725,7 +731,7 @@ export class TradeExecutor {
       this.supabase
         .from('signals')
         .select(
-          'id,user_id,channel_id,parsed_data,status,parent_signal_id,is_modification,created_at,telegram_message_id,reply_to_message_id,raw_message,pipeline_ts,dispatch_source',
+          'id,user_id,channel_id,parsed_data,status,parent_signal_id,is_modification,created_at,telegram_message_id,reply_to_message_id,raw_message,pipeline_ts',
         )
         .eq('status', 'parsed')
         .gte('created_at', since)
@@ -758,7 +764,8 @@ export class TradeExecutor {
           status: 'warning',
           request_payload: {
             age_ms: Math.round(ageMs),
-            prior_dispatch_source: row.dispatch_source ?? null,
+            // dispatch_source is in-memory / push-only — not a signals column.
+            prior_dispatch_source: row.dispatch_source ?? 'unknown',
           },
         })
       }
@@ -1154,6 +1161,7 @@ export class TradeExecutor {
   async getChannelMeta(channelId: string | null): Promise<{
     keywords: ChannelKeywords | null
     commentSlug: string | null
+    sourceKind: string | null
   }> {
     return await dispatch.getChannelMeta(this, channelId)
   }
@@ -1271,6 +1279,7 @@ export class TradeExecutor {
     commentPrefix: string
     sameSignalRefresh?: boolean
     liveMgmtFast?: boolean
+    liveEntryFast?: boolean
   }): Promise<MergeOutcome> {
     return await basketMerge.tryParameterFollowUpMergeModifyOnly(this, args)
   }
@@ -1286,6 +1295,7 @@ export class TradeExecutor {
     uuid: string
     strictEntryPrefetch: { bid: number; ask: number } | null
     commentPrefix: string
+    liveEntryFast?: boolean
   }): Promise<MergeOutcome> {
     return await basketMerge.tryTeaserCompletionMerge(this, args)
   }
@@ -1611,32 +1621,21 @@ export class TradeExecutor {
       return { openedOrMerged: false, finalizeSkipReason: configReady.reason }
     }
 
-    let executionBroker = broker
-    if (signal.channel_id) {
-      // Production safety boundary: this light cache may wrap only the stable
-      // broker_channel_trading_configs refresh. Claims, idempotency,
-      // broker readiness, prices, order state, and kill switches stay live
-      // below this point and must not be added to the cache.
-      const fresh = await fetchBrokerForChannelWithLightConfigCache(
-        this.lightConfigCache,
-        this.supabase,
-        broker,
-        signal.channel_id,
-      )
-      if (fresh.channel_trading_configs !== broker.channel_trading_configs) {
-        this.applyBrokerCacheRow(fresh)
-        executionBroker = this.brokersById.get(broker.id) ?? fresh
-      }
-    }
-
-    const effectiveBroker = withChannelTradingConfig(executionBroker, signal.channel_id) as BrokerRow
-    const resolved = resolveChannelTradingConfig(executionBroker, signal.channel_id)
-    const entryKey = `${signal.id}:${effectiveBroker.id}`
     const liveFast = sendOpts?.liveEntryFast === true
-
     const isRevisionRefresh = sendOpts?.sameSignalRefresh === true
-
     const isRangeWake = signal.dispatch_source === SIGNAL_RANGE_WAKE_DISPATCH_SOURCE
+    // Start light config refresh immediately; overlap with claim once we know we will enter.
+    const configRefreshPromise = signal.channel_id
+      ? fetchBrokerForChannelWithLightConfigCache(
+          this.lightConfigCache,
+          this.supabase,
+          broker,
+          signal.channel_id,
+        )
+      : Promise.resolve(broker)
+
+    // broker.id is stable across channel config overlay — safe for inflight key.
+    const entryKey = `${signal.id}:${broker.id}`
 
     // Message revisions must wait for an in-flight first entry, then never open a
     // second market/pending basket (live-fast previously skipped this probe).
@@ -1647,9 +1646,9 @@ export class TradeExecutor {
           await new Promise(resolve => setTimeout(resolve, 100))
         }
       } else {
-        const materialized = await manualDispatchAlreadyMaterialized(this, signal.id, effectiveBroker.id)
+        const materialized = await manualDispatchAlreadyMaterialized(this, signal.id, broker.id)
         console.warn(
-          `[tradeExecutor] skip duplicate in-flight sendOrder signal=${signal.id} broker=${effectiveBroker.id}`
+          `[tradeExecutor] skip duplicate in-flight sendOrder signal=${signal.id} broker=${broker.id}`
           + ` materialized=${materialized}`,
         )
         emitPipelineEvent({
@@ -1659,7 +1658,7 @@ export class TradeExecutor {
             signalId: signal.id,
             channelId: signal.channel_id,
             telegramMessageId: signal.telegram_message_id,
-            brokerAccountId: effectiveBroker.id,
+            brokerAccountId: broker.id,
             dispatchSource: signal.dispatch_source,
           }),
           timestamps: signal.pipeline_ts,
@@ -1674,10 +1673,10 @@ export class TradeExecutor {
 
     let alreadyMaterialized = false
     if (!liveFast || isRevisionRefresh) {
-      alreadyMaterialized = await manualDispatchAlreadyMaterialized(this, signal.id, effectiveBroker.id)
+      alreadyMaterialized = await manualDispatchAlreadyMaterialized(this, signal.id, broker.id)
       if (alreadyMaterialized && !isRevisionRefresh) {
         console.warn(
-          `[tradeExecutor] skip already materialized signal=${signal.id} broker=${effectiveBroker.id}`,
+          `[tradeExecutor] skip already materialized signal=${signal.id} broker=${broker.id}`,
         )
         return { openedOrMerged: true }
       }
@@ -1692,17 +1691,38 @@ export class TradeExecutor {
     this.entryBrokerInflight.add(entryKey)
     try {
       // SL/TP-only revision path must not take/require the entry claim.
+      let claimed = true
+      let refreshedBroker = broker
       if (!blockNewEntry) {
         if (isRangeWake) {
-          await releaseSignalBrokerDispatchClaim(this.supabase, signal.id, effectiveBroker.id)
+          await releaseSignalBrokerDispatchClaim(this.supabase, signal.id, broker.id)
         }
         setPipelineTimestamp(signal.pipeline_ts ?? (signal.pipeline_ts = {}), 'execution_claim_started_at', Date.now())
-        let claimed = await claimSignalBrokerDispatch(
+        // Live-fast: claim insert overlaps light config refresh.
+        const claimPromise = claimSignalBrokerDispatch(
           this.supabase,
           signal.id,
-          effectiveBroker.id,
+          broker.id,
           signal.user_id,
         )
+        const [fresh, claimOk] = await Promise.all([configRefreshPromise, claimPromise])
+        refreshedBroker = fresh
+        claimed = claimOk
+      } else {
+        refreshedBroker = await configRefreshPromise
+      }
+
+      let executionBroker = broker
+      if (signal.channel_id && refreshedBroker.channel_trading_configs !== broker.channel_trading_configs) {
+        this.applyBrokerCacheRow(refreshedBroker)
+        executionBroker = this.brokersById.get(broker.id) ?? refreshedBroker
+      } else if (signal.channel_id) {
+        executionBroker = refreshedBroker
+      }
+      const effectiveBroker = withChannelTradingConfig(executionBroker, signal.channel_id) as BrokerRow
+      const resolved = resolveChannelTradingConfig(executionBroker, signal.channel_id)
+
+      if (!blockNewEntry) {
         if (!claimed) {
           // Another worker won entry. Revisions may still refresh SL/TP once materialized.
           if (isRevisionRefresh) {
