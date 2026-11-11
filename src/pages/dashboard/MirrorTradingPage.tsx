@@ -70,6 +70,147 @@ function mirrorPlatformIconSrc(platform: string): string {
   return platformIconSrc(platform) ?? '/MT5.png'
 }
 
+function MirrorEmptyArt() {
+  return (
+    <svg
+      viewBox="0 0 280 148"
+      className="mx-auto h-28 w-auto sm:h-32"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <defs>
+        <linearGradient id="mirrorEmptyWash" x1="40" y1="20" x2="240" y2="130" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#4ADE80" stopOpacity="0.18" />
+          <stop offset="1" stopColor="#A3E635" stopOpacity="0.06" />
+        </linearGradient>
+      </defs>
+      <rect x="16" y="18" width="248" height="112" rx="28" fill="url(#mirrorEmptyWash)" />
+      <rect
+        x="36"
+        y="44"
+        width="72"
+        height="60"
+        rx="14"
+        className="fill-white dark:fill-neutral-900"
+        stroke="#86EFAC"
+        strokeWidth="1.5"
+      />
+      <circle cx="54" cy="62" r="7" fill="#4ADE80" />
+      <rect x="66" y="56" width="28" height="5" rx="2.5" className="fill-neutral-200 dark:fill-neutral-700" />
+      <rect x="48" y="76" width="44" height="5" rx="2.5" className="fill-neutral-100 dark:fill-neutral-800" />
+      <rect x="48" y="86" width="32" height="5" rx="2.5" className="fill-neutral-100 dark:fill-neutral-800" />
+
+      <path
+        d="M116 64 C136 64, 148 52, 168 52"
+        stroke="#4ADE80"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeDasharray="4 5"
+        className="animate-pulse"
+      />
+      <path
+        d="M116 84 C136 84, 148 96, 168 96"
+        stroke="#4ADE80"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeDasharray="4 5"
+        className="animate-pulse"
+        style={{ animationDelay: '180ms' }}
+      />
+      <path d="M164 48 L172 52 L164 56" stroke="#4ADE80" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M164 92 L172 96 L164 100" stroke="#4ADE80" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+
+      <rect
+        x="176"
+        y="30"
+        width="68"
+        height="44"
+        rx="12"
+        className="fill-white dark:fill-neutral-900"
+        stroke="#D4D4D8"
+        strokeWidth="1.25"
+      />
+      <circle cx="192" cy="46" r="5.5" fill="#A3E635" />
+      <rect x="202" y="42" width="28" height="4" rx="2" className="fill-neutral-200 dark:fill-neutral-700" />
+      <rect x="188" y="56" width="40" height="4" rx="2" className="fill-neutral-100 dark:fill-neutral-800" />
+
+      <rect
+        x="176"
+        y="84"
+        width="68"
+        height="44"
+        rx="12"
+        className="fill-white dark:fill-neutral-900"
+        stroke="#D4D4D8"
+        strokeWidth="1.25"
+      />
+      <circle cx="192" cy="100" r="5.5" fill="#A3E635" />
+      <rect x="202" y="96" width="28" height="4" rx="2" className="fill-neutral-200 dark:fill-neutral-700" />
+      <rect x="188" y="110" width="40" height="4" rx="2" className="fill-neutral-100 dark:fill-neutral-800" />
+    </svg>
+  )
+}
+
+function MirrorEmptyState({
+  title,
+  body,
+  step1,
+  step2,
+  step3,
+  cta,
+  onAdd,
+}: {
+  title: string
+  body: string
+  step1: string
+  step2: string
+  step3: string
+  cta: string
+  onAdd: () => void
+}) {
+  const steps = [step1, step2, step3]
+  return (
+    <Card
+      padding="none"
+      className="relative overflow-hidden animate-fade-in"
+    >
+      <div
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(74,222,128,0.12),_transparent_55%)] dark:bg-[radial-gradient(ellipse_at_top,_rgba(74,222,128,0.08),_transparent_55%)]"
+        aria-hidden
+      />
+      <div className="relative mx-auto flex max-w-lg flex-col items-center px-6 py-14 text-center sm:px-10 sm:py-16">
+        <MirrorEmptyArt />
+        <h2 className="mt-6 text-lg font-semibold tracking-tight text-neutral-950 dark:text-neutral-50 sm:text-xl">
+          {title}
+        </h2>
+        <p className="mt-2 max-w-md text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">
+          {body}
+        </p>
+        <Button type="button" size="lg" className="mt-7" onClick={onAdd}>
+          <Plus className="h-4 w-4" aria-hidden />
+          {cta}
+        </Button>
+        <ol className="mt-10 grid w-full gap-3 text-left sm:grid-cols-3">
+          {steps.map((label, index) => (
+            <li
+              key={label}
+              className="flex items-start gap-2.5 rounded-xl bg-neutral-50/80 px-3.5 py-3 dark:bg-white/4"
+            >
+              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-green-400 text-[11px] font-semibold text-neutral-950">
+                {index + 1}
+              </span>
+              <span className="text-xs font-medium leading-snug text-neutral-800 dark:text-neutral-200">
+                {label}
+              </span>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </Card>
+  )
+}
+
 function AccountMark({ platform, size = 'md' }: { platform: string; size?: 'sm' | 'md' }) {
   const [failed, setFailed] = useState(false)
   if (failed) return null
@@ -635,9 +776,15 @@ export function MirrorTradingPage() {
       </div>
       {error ? <Alert variant="error">{error}</Alert> : null}
       {groups.length === 0 ? (
-        <Card>
-          <p className="text-sm text-neutral-900 dark:text-neutral-50">{copy.mastersEmpty}</p>
-        </Card>
+        <MirrorEmptyState
+          title={copy.emptyTitle}
+          body={copy.emptyBody}
+          step1={copy.emptyStep1}
+          step2={copy.emptyStep2}
+          step3={copy.emptyStep3}
+          cta={copy.addMaster}
+          onAdd={() => setChooser('master')}
+        />
       ) : (
         <Card padding="none" className="overflow-hidden">
           <div className="overflow-x-auto">

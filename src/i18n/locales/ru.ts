@@ -15,6 +15,7 @@ import { logsRu } from './logs/ru'
 import { mergeLocaleBundle } from './merge'
 import { pricingRu } from './pricing/ru'
 import { settingsRu } from './settings/ru'
+import { socialTradingRu } from './socialTrading/ru'
 import { toolsRu } from './tools/ru'
 import { tradingRu } from './trading/ru'
 import type { Translations } from './types'
@@ -29,6 +30,7 @@ export const ru: Translations = mergeLocaleBundle(en, {
   ...pricingRu,
   ...toolsRu,
   ...tradingRu,
+  ...socialTradingRu,
   landing: landingRu,
   ...legalRu,
   ...copierEngineRu,
@@ -40,5 +42,19 @@ export const ru: Translations = mergeLocaleBundle(en, {
   management: {
     ...en.management,
     subtitle: 'Просматривайте торговые активности вашего копировщика.',
+  },
+  mirrorTradingPage: {
+    ...en.mirrorTradingPage,
+    title: 'Зеркальные счета',
+    subtitle: 'Копируйте сделки с главного счёта на подчинённые счета.',
+    searchDescription: 'Копируйте сделки с главного счёта на подчинённые счета.',
+    addMaster: 'Добавить главный счёт',
+    mastersEmpty: 'Подключите счёт, сделки которого нужно копировать.',
+    emptyTitle: 'Зеркальных счетов пока нет',
+    emptyBody:
+      'Подключите главный счёт, сделки которого нужно копировать, затем добавьте подчинённые счета с собственными настройками риска.',
+    emptyStep1: 'Добавьте главный счёт',
+    emptyStep2: 'Подключите подчинённые',
+    emptyStep3: 'Начните копирование',
   },
 })

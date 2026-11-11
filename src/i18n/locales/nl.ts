@@ -15,6 +15,7 @@ import { logsNl } from './logs/nl'
 import { mergeLocaleBundle } from './merge'
 import { pricingNl } from './pricing/nl'
 import { settingsNl } from './settings/nl'
+import { socialTradingNl } from './socialTrading/nl'
 import { toolsNl } from './tools/nl'
 import { tradingNl } from './trading/nl'
 import type { Translations } from './types'
@@ -29,6 +30,7 @@ export const nl: Translations = mergeLocaleBundle(en, {
   ...pricingNl,
   ...toolsNl,
   ...tradingNl,
+  ...socialTradingNl,
   ...legalNl,
   ...copierEngineNl,
   landing: landingNl,
@@ -40,5 +42,19 @@ export const nl: Translations = mergeLocaleBundle(en, {
   management: {
     ...en.management,
     subtitle: 'Bekijk handelsactiviteiten van je copier.',
+  },
+  mirrorTradingPage: {
+    ...en.mirrorTradingPage,
+    title: 'Spiegelaccounts',
+    subtitle: 'Kopieer trades van een masteraccount naar slave-accounts.',
+    searchDescription: 'Kopieer trades van een masteraccount naar slave-accounts.',
+    addMaster: 'Masteraccount toevoegen',
+    mastersEmpty: 'Koppel het account waarvan de trades gekopieerd moeten worden.',
+    emptyTitle: 'Nog geen spiegelaccounts',
+    emptyBody:
+      'Koppel een masteraccount waarvan de trades gekopieerd moeten worden, en voeg daarna slave-accounts toe met hun eigen risicinstellingen.',
+    emptyStep1: 'Master toevoegen',
+    emptyStep2: 'Slaves koppelen',
+    emptyStep3: 'Kopiëren starten',
   },
 })

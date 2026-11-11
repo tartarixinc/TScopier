@@ -15,6 +15,7 @@ import { logsSv } from './logs/sv'
 import { mergeLocaleBundle } from './merge'
 import { pricingSv } from './pricing/sv'
 import { settingsSv } from './settings/sv'
+import { socialTradingSv } from './socialTrading/sv'
 import { toolsSv } from './tools/sv'
 import { tradingSv } from './trading/sv'
 import type { Translations } from './types'
@@ -29,6 +30,7 @@ export const sv: Translations = mergeLocaleBundle(en, {
   ...pricingSv,
   ...toolsSv,
   ...tradingSv,
+  ...socialTradingSv,
   landing: landingSv,
   ...legalSv,
   ...copierEngineSv,
@@ -40,5 +42,19 @@ export const sv: Translations = mergeLocaleBundle(en, {
   management: {
     ...en.management,
     subtitle: 'Granska handelsaktiviteter från din copier.',
+  },
+  mirrorTradingPage: {
+    ...en.mirrorTradingPage,
+    title: 'Spegelkonton',
+    subtitle: 'Kopiera affärer från ett huvudkonto till slavkonton.',
+    searchDescription: 'Kopiera affärer från ett huvudkonto till slavkonton.',
+    addMaster: 'Lägg till huvudkonto',
+    mastersEmpty: 'Anslut kontot vars affärer ska kopieras.',
+    emptyTitle: 'Inga spegelkonton ännu',
+    emptyBody:
+      'Anslut ett huvudkonto vars affärer ska kopieras, och koppla sedan slavkonton med egna riskinställningar.',
+    emptyStep1: 'Lägg till huvudkonto',
+    emptyStep2: 'Koppla slavkonton',
+    emptyStep3: 'Börja kopiera',
   },
 })
