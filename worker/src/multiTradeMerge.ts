@@ -359,15 +359,20 @@ export async function resolveOpenBasketAnchorForParameterFollowUp(
   opts?: {
     currentSignalId?: string
     currentSignalCreatedAt?: string | null
+    /** 0 = single lookup (live-fast bare entry). Default polls ~3s. */
     retryMs?: number
   },
 ): Promise<LatestBasketAnchor | null> {
   const retryMs = opts?.retryMs ?? PARAMETER_FOLLOW_UP_ANCHOR_RETRY_MS
+  const first = await resolveLatestOpenBasketAnchor(supabase, args)
+  if (first || retryMs <= 0) {
+    return first ?? resolveRecentEntrySignalAnchor(supabase, args, opts)
+  }
   const deadline = Date.now() + retryMs
   while (Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, PARAMETER_FOLLOW_UP_ANCHOR_POLL_MS))
     const anchor = await resolveLatestOpenBasketAnchor(supabase, args)
     if (anchor) return anchor
-    await new Promise(resolve => setTimeout(resolve, PARAMETER_FOLLOW_UP_ANCHOR_POLL_MS))
   }
   return resolveRecentEntrySignalAnchor(supabase, args, opts)
 }

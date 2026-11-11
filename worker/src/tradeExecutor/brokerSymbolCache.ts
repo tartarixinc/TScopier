@@ -22,6 +22,7 @@ import {
   type SymbolCacheEntry,
   type SymbolListCacheEntry,
 } from './types'
+import { runWithPriorityBrokerReads } from '../brokerEntryContext'
 
 const HEARTBEAT_CONCURRENCY = Math.max(
   1,
@@ -498,6 +499,29 @@ export async function prewarmBrokersForLiveEntry(ctx: TradeExecutorContext, brok
         ctx.getSymbolList(uuid).catch(() => null),
         ctx.getSymbolParams(uuid, requested).catch(() => null),
       ])
+      // Quote + OpenedOrders on the order lane at accept (not background 3 rps).
+      await runWithPriorityBrokerReads('order', async () => {
+        const resolved = await ctx.resolveBrokerSymbolForLiveEntry(uuid, requested, {
+          userDecorated: mapping.userDecorated,
+        }).catch(() => requested)
+        const symbol = resolved || requested
+        const [quoteSettled, openedSettled] = await Promise.allSettled([
+          api.quote(uuid, symbol),
+          api.openedOrders(uuid),
+        ])
+        const bucket = ctx.entryBrokerReadCache.get(uuid) ?? {}
+        if (quoteSettled.status === 'fulfilled') {
+          bucket.quote = {
+            bid: quoteSettled.value.bid,
+            ask: quoteSettled.value.ask,
+            at: Date.now(),
+          }
+        }
+        if (openedSettled.status === 'fulfilled') {
+          bucket.openedOrders = { rows: openedSettled.value, at: Date.now() }
+        }
+        ctx.entryBrokerReadCache.set(uuid, bucket)
+      })
     }))
   }
 

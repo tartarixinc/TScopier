@@ -213,8 +213,14 @@ export function isTradingViewSignalSource(...hints: Array<string | null | undefi
 export async function isTradingViewSourceChannel(
   supabase: TradeExecutorContext['supabase'],
   channelId: string | null,
+  sourceKindHint?: string | null,
 ): Promise<boolean> {
   if (!channelId) return false
+  if (sourceKindHint != null && String(sourceKindHint).trim() !== '') {
+    const value = isNonTelegramSignalSource(sourceKindHint)
+    tradingViewSourceCache.set(channelId.toLowerCase(), { at: Date.now(), value })
+    return value
+  }
   const key = channelId.toLowerCase()
   const hit = tradingViewSourceCache.get(key)
   if (hit && Date.now() - hit.at < 5 * 60_000) return hit.value
@@ -234,8 +240,12 @@ export async function isTradingViewSourceChannel(
 export async function isTradingViewChannelSource(
   supabase: TradeExecutorContext['supabase'],
   channelId: string | null,
+  sourceKindHint?: string | null,
 ): Promise<boolean> {
   if (!channelId) return false
+  if (sourceKindHint != null && String(sourceKindHint).trim() !== '') {
+    return isTradingViewSignalSource(sourceKindHint)
+  }
   const { data, error } = await supabase
     .from('telegram_channels')
     .select('source_kind')
@@ -655,13 +665,18 @@ export async function handleSignal(ctx: TradeExecutorContext,
       let userSub: Awaited<ReturnType<typeof loadCachedUserSubscription>>
       let isAdmin: boolean
       let extensionEndMs: number | null = null
+      const channelMetaEarly = channelMetaPromise ? await channelMetaPromise : null
       const nonTelegramSource = isNonTelegramSignalSource(
         opts?.dispatchSource,
         row.dispatch_source,
         typeof (row.parsed_data as { signal_source?: unknown } | null)?.signal_source === 'string'
           ? String((row.parsed_data as { signal_source?: unknown }).signal_source)
           : null,
-      ) || await isTradingViewSourceChannel(ctx.supabase, row.channel_id)
+      ) || await isTradingViewSourceChannel(
+        ctx.supabase,
+        row.channel_id,
+        channelMetaEarly?.sourceKind,
+      )
       if (
         !nonTelegramSource
         && (liveFast || liveMgmtFast)
@@ -771,7 +786,11 @@ export async function handleSignal(ctx: TradeExecutorContext,
         typeof (parsed as { signal_source?: unknown }).signal_source === 'string'
           ? String((parsed as { signal_source?: unknown }).signal_source)
           : null,
-      ) || await isTradingViewChannelSource(ctx.supabase, row.channel_id)
+      ) || await isTradingViewChannelSource(
+        ctx.supabase,
+        row.channel_id,
+        channelMetaEarly?.sourceKind,
+      )
       if (tradingViewSource) {
         if ((action === 'buy' || action === 'sell') && !String(parsed.symbol ?? '').trim()) {
           await ctx.logDispatchSkipped(row, 'symbol_required')
@@ -1354,31 +1373,48 @@ export async function handleSignal(ctx: TradeExecutorContext,
 export async function getChannelMeta(ctx: TradeExecutorContext, channelId: string | null): Promise<{
     keywords: ChannelKeywords | null
     commentSlug: string | null
+    sourceKind: string | null
   }> {
-    if (!channelId) return { keywords: null, commentSlug: null }
+    if (!channelId) return { keywords: null, commentSlug: null, sourceKind: null }
     const cached = ctx.channelMetaCache.get(channelId)
     if (cached && Date.now() - cached.loadedAt < 5 * 60_000) {
-      return { keywords: cached.keywords, commentSlug: cached.commentSlug }
+      return {
+        keywords: cached.keywords,
+        commentSlug: cached.commentSlug,
+        sourceKind: cached.sourceKind,
+      }
     }
     try {
       const { data } = await ctx.supabase
         .from('telegram_channels')
-        .select('channel_keywords, display_name, channel_username')
+        .select('channel_keywords, display_name, channel_username, source_kind')
         .eq('id', channelId)
         .maybeSingle()
       const row = data as {
         channel_keywords?: ChannelKeywords | null
         display_name?: string | null
         channel_username?: string | null
+        source_kind?: string | null
       } | null
       const keywords = row?.channel_keywords ?? null
       const label = resolveChannelLabelForComment(row?.display_name, row?.channel_username)
       const commentSlug = label ? sanitizeChannelCommentSlug(label) : null
-      ctx.channelMetaCache.set(channelId, { keywords, commentSlug, loadedAt: Date.now() })
-      return { keywords, commentSlug }
+      const sourceKind = row?.source_kind ?? null
+      ctx.channelMetaCache.set(channelId, {
+        keywords,
+        commentSlug,
+        sourceKind,
+        loadedAt: Date.now(),
+      })
+      return { keywords, commentSlug, sourceKind }
     } catch {
-      ctx.channelMetaCache.set(channelId, { keywords: null, commentSlug: null, loadedAt: Date.now() })
-      return { keywords: null, commentSlug: null }
+      ctx.channelMetaCache.set(channelId, {
+        keywords: null,
+        commentSlug: null,
+        sourceKind: null,
+        loadedAt: Date.now(),
+      })
+      return { keywords: null, commentSlug: null, sourceKind: null }
     }
   }
 

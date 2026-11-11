@@ -1973,7 +1973,6 @@ export class UserListener {
     // includes DB RTT and understates Telegram delivery / overstates listener work.
     const messageReceivedAt = Date.now()
     this.lastEventAt = messageReceivedAt
-    this.lastLiveMessageAt = messageReceivedAt
     incMetric('telegram_live_events')
 
     const message = event.message
@@ -1987,6 +1986,9 @@ export class UserListener {
       chatIdVariants.some(v => this.monitoredChannels.has(v)) ||
       (!!chatUsername && this.monitoredChannels.has(chatUsername))
     if (!isMonitored) return
+
+    // Only monitored chats pause catch-up — unrelated chats must not extend the deaf window.
+    this.lastLiveMessageAt = messageReceivedAt
 
     console.log(
       `[userListener] message candidate user=${this.userId} chatId=${chatId} variants=${chatIdVariants.join(',')} username=${chatUsername || '-'} msgId=${String(message.id)}`,
@@ -2883,6 +2885,8 @@ export class UserListener {
 
     const signalId = randomUUID()
     const pipelineTs: PipelineTimestamps = {}
+    const ingestPath = opts?.source === 'catchup' ? 'catchup' : 'live'
+    pipelineTs.ingest_path = ingestPath
     if (messageEpochSec > 0) {
       setPipelineTimestamp(pipelineTs, 'telegram_source_message_at', messageEpochSec * 1000)
     }
@@ -2893,13 +2897,13 @@ export class UserListener {
       signalId,
       telegramMessageId: messageId,
       channelId: channelRow.id,
-      dispatchSource: opts?.source ?? 'live',
+      dispatchSource: ingestPath,
     })
     emitPipelineEvent({
       event: 'signal_received',
       correlation,
       timestamps: pipelineTs,
-      path: opts?.source ?? 'live',
+      path: ingestPath,
     })
 
     let parseResult: Awaited<ReturnType<typeof parseChannelMessageSync>>

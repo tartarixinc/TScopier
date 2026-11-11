@@ -149,6 +149,9 @@ export class UserSessionManager {
   private shuttingDown = false
   /** Tracks start failures with timestamps so syncSessions doesn't retry in a tight loop. */
   private recentlyFailed = new Map<string, number>()
+  /** Fast re-acquire when startListener loses to a draining predecessor (not 30s syncSessions). */
+  private leaseRetryTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  private leaseRetrySession = new Map<string, string>()
 
   constructor(supabase: SupabaseClient) {
     this.supabase = supabase
@@ -1408,8 +1411,13 @@ export class UserSessionManager {
       const lease = await acquireSessionLease(this.supabase, userId)
       if (!lease.ok) {
         console.warn(`[sessionManager] skip listener for ${userId}: ${lease.reason}`)
+        // Predecessor still draining after deploy — retry in 1–2s, not next 30s sync.
+        if (/lease held/i.test(lease.reason ?? '')) {
+          this.scheduleLeaseRetry(userId, sessionString)
+        }
         return
       }
+      this.clearLeaseRetry(userId)
 
       const listener = new UserListener(
         userId,
@@ -1525,7 +1533,45 @@ export class UserSessionManager {
     console.log(`[sessionManager] Stopped listener for user ${userId}`)
   }
 
+  private clearLeaseRetry(userId: string): void {
+    const timer = this.leaseRetryTimers.get(userId)
+    if (timer) clearTimeout(timer)
+    this.leaseRetryTimers.delete(userId)
+    this.leaseRetrySession.delete(userId)
+  }
+
+  /**
+   * After "lease held" during deploy drain, retry acquire every 1–2s instead of
+   * waiting for the 30s syncSessions tick (closes the Telegram deaf window).
+   */
+  private scheduleLeaseRetry(userId: string, sessionString: string): void {
+    if (this.shuttingDown) return
+    if (this.leaseRetryTimers.has(userId)) {
+      this.leaseRetrySession.set(userId, sessionString)
+      return
+    }
+    this.leaseRetrySession.set(userId, sessionString)
+    const delayMs = Math.max(
+      1_000,
+      Math.min(2_000, Number(process.env.TELEGRAM_LEASE_RETRY_MS ?? 1_500) || 1_500),
+    )
+    const timer = setTimeout(() => {
+      this.leaseRetryTimers.delete(userId)
+      const session = this.leaseRetrySession.get(userId)
+      this.leaseRetrySession.delete(userId)
+      if (!session || this.shuttingDown || this.listeners.has(userId)) return
+      void this.startListener(userId, session).catch(err => {
+        console.warn(
+          `[sessionManager] lease retry start failed ${userId}:`,
+          err instanceof Error ? err.message : err,
+        )
+      })
+    }, delayMs)
+    this.leaseRetryTimers.set(userId, timer)
+  }
+
   private async stopListener(userId: string) {
+    this.clearLeaseRetry(userId)
     await this.withConnectionLock(userId, async () => {
       await this.disconnectListener(userId)
     })
@@ -1575,6 +1621,9 @@ export class UserSessionManager {
 
   async disconnectAll() {
     this.shuttingDown = true
+    for (const timer of this.leaseRetryTimers.values()) clearTimeout(timer)
+    this.leaseRetryTimers.clear()
+    this.leaseRetrySession.clear()
     for (const timer of this.realtimeRetryTimers.values()) clearTimeout(timer)
     this.realtimeRetryTimers.clear()
     if (this.channelChannel) {

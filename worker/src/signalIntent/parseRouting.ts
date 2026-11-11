@@ -421,7 +421,7 @@ async function runStageThree(args: {
 }): Promise<UniversalParseResult | null> {
   if (!universalParseReconcileEnabled()) return null
   if (!shouldReconcileSignal(args.det, args.universal)) return null
-  const stamp = (key: keyof import('../pipelineTimestamps').PipelineTimestamps): void => {
+  const stamp = (key: import('../pipelineTimestamps').PipelineTimestampNumberKey): void => {
     if (args.pipelineTs) setPipelineTimestamp(args.pipelineTs, key, Date.now())
   }
   stamp('t_stage3_started_at')
@@ -471,7 +471,7 @@ export async function routeSignalParse(args: {
     stage3_ms: null,
   }
 
-  const stamp = (key: keyof import('../pipelineTimestamps').PipelineTimestamps): void => {
+  const stamp = (key: import('../pipelineTimestamps').PipelineTimestampNumberKey): void => {
     if (args.pipelineTs) setPipelineTimestamp(args.pipelineTs, key, Date.now())
   }
 
