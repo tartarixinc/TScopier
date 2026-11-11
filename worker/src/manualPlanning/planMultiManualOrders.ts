@@ -19,13 +19,6 @@ import { resolveMultiTradeTargetUnits, multiTradeUnitsToLot } from './multiTrade
 import { resolveRangeDistancePips } from './signalEntryRange'
 import { resolvedParsedEntryZone } from './parsedEntry'
 import { normalizeAutoBeConfig, resolveAutoBeTpHitTriggerPrice } from '../autoManagement'
-import {
-  matchPredefinedTpPipsIndex,
-  predefinedSlPriceFromEntry,
-  predefinedTpPriceFromEntry,
-  resolvePredefinedSlPips,
-  resolvePredefinedTpPips,
-} from './manualStops'
 
 export interface PlanMultiManualOrdersArgs {
   parsed: ParsedSignal
@@ -227,45 +220,9 @@ export function planMultiManualOrders(args: PlanMultiManualOrdersArgs): PlannerR
         })
       : new Map<number, number>()
 
-  const stoplossForRangeStep = (stepIdx: number): number | null => {
-    const slPips = resolvePredefinedSlPips(manual)
-    if (slPips != null && entryAnchor != null && entryAnchor > 0) {
-      const trigger = rangeLayerTriggerForStep({
-        stepIdx,
-        leg: { stepPriceOffset, isBuy },
-        anchor: entryAnchor,
-        digits: rangeDigits,
-        legCount: rangeLegCount,
-        rangeLayering: rangeLayeringMeta,
-        pip,
-        triggerMap: rangeTriggerMap,
-      })
-      const sl = predefinedSlPriceFromEntry({
-        entry: trigger,
-        isBuy,
-        pip,
-        slPips,
-        digits: rangeDigits,
-      })
-      if (sl != null) return sl
-    }
-    return finalSl
-  }
-
-  const triggerForRangeStep = (stepIdx: number): number | null => {
-    if (entryAnchor == null || entryAnchor <= 0) return null
-    const trigger = rangeLayerTriggerForStep({
-      stepIdx,
-      leg: { stepPriceOffset, isBuy },
-      anchor: entryAnchor,
-      digits: rangeDigits,
-      legCount: rangeLegCount,
-      rangeLayering: rangeLayeringMeta,
-      pip,
-      triggerMap: rangeTriggerMap,
-    })
-    return trigger > 0 ? trigger : null
-  }
+  // Override SL/TP freezes absolute prices from the first entry (entryAnchor).
+  // Later range layers inherit those same prices — never recompute from trigger.
+  const stoplossForRangeStep = (_stepIdx: number): number | null => finalSl
 
   const tpForRangeIndex = (idx: number): number | null => {
     if (finalTps.length === 0) return null
@@ -317,29 +274,7 @@ export function planMultiManualOrders(args: PlanMultiManualOrdersArgs): PlannerR
     return finalTps[finalTps.length - 1] ?? null
   }
 
-  const takeprofitForRangeStep = (idx: number): number | null => {
-    const assigned = tpForRangeIndex(idx)
-    const tpPips = resolvePredefinedTpPips(manual)
-    const trigger = triggerForRangeStep(idx + 1)
-    if (tpPips != null && trigger != null && entryAnchor != null && entryAnchor > 0) {
-      const bucket = matchPredefinedTpPipsIndex({
-        existingTp: assigned,
-        entry: entryAnchor,
-        isBuy,
-        pip,
-        tpPips,
-      })
-      const tp = predefinedTpPriceFromEntry({
-        entry: trigger,
-        isBuy,
-        pip,
-        tpPips: tpPips[bucket] ?? tpPips[0]!,
-        digits: rangeDigits,
-      })
-      if (tp != null) return tp
-    }
-    return assigned
-  }
+  const takeprofitForRangeStep = (idx: number): number | null => tpForRangeIndex(idx)
 
   // Teaser / no-TP signals: never burst-split into N *full-lot* clones.
   // - No range: one full-lot immediate (classic teaser).

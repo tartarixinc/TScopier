@@ -556,7 +556,6 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
             orderCommentsEnabled: manual.order_comments_enabled !== false,
             explicitChannelTargets: true,
             bundleIdentity: manual.range_trading !== true,
-            manual,
           })
           for (const id of modifyPass.modifiedTradeIds) modifiedTradeIds.add(id)
           summary = modifyPass.summary
@@ -651,7 +650,6 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
             orderCommentsEnabled: manual.order_comments_enabled !== false,
             explicitChannelTargets: effectiveSlIsExplicitMgmt,
             bundleIdentity: manual.range_trading !== true,
-            manual,
           }).catch(err =>
             console.warn(
               `[tradeExecutor] v2 merge TP distribute failed signal=${signal.id} broker=${broker.id}:`,
@@ -734,7 +732,6 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
         orderCommentsEnabled: manual.order_comments_enabled !== false,
         explicitChannelTargets: effectiveSlIsExplicitMgmt,
         bundleIdentity: manual.range_trading !== true,
-        manual,
       })
       for (const id of pass.modifiedTradeIds) modifiedTradeIds.add(id)
       summary = pass.summary
