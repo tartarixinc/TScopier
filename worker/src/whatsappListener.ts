@@ -48,7 +48,12 @@ type BaileysSocket = {
 
 type AuthBucket = Record<string, Record<string, unknown>>
 
-const PORT = Math.max(1, Number(process.env.WHATSAPP_LISTENER_PORT ?? 8091))
+// Railway injects PORT and proxies public HTTPS → that port. Prefer it over the
+ // local default 8091, otherwise the dashboard fetch hits a closed public port.
+const PORT = Math.max(
+  1,
+  Number(process.env.PORT ?? process.env.WHATSAPP_LISTENER_PORT ?? 8091),
+)
 const sessions = new Map<string, LiveSession>()
 
 // Baileys rejects socket queries from its own timers. Those must not exit this process,
@@ -192,7 +197,14 @@ async function copyGroupMessage(
     .eq('user_id', userId)
     .eq('group_jid', groupJid)
     .maybeSingle()
-  if (error || !data) return
+  if (error) {
+    console.warn(`[whatsapp] group lookup failed user=${userId} jid=${groupJid}: ${error.message}`)
+    return
+  }
+  if (!data) {
+    console.warn(`[whatsapp] ignore unlinked group user=${userId} jid=${groupJid}`)
+    return
+  }
   const row = data as {
     channel_id: string
     is_active: boolean
@@ -209,29 +221,50 @@ async function copyGroupMessage(
     }>
   }
   const shadow = Array.isArray(row.telegram_channels) ? row.telegram_channels[0] : row.telegram_channels
-  if (!row.is_active || !shadow?.is_active || shadow.source_kind !== 'whatsapp') return
+  if (!row.is_active || !shadow?.is_active || shadow.source_kind !== 'whatsapp') {
+    console.warn(
+      `[whatsapp] ignore inactive/non-whatsapp group user=${userId} jid=${groupJid} `
+      + `group_active=${row.is_active} channel_active=${Boolean(shadow?.is_active)} `
+      + `source_kind=${shadow?.source_kind ?? 'missing'}`,
+    )
+    return
+  }
   const sourceDisplayName = shadow.display_name?.trim()
     || (shadow.channel_username?.trim() ? `@${shadow.channel_username.trim().replace(/^@/, '')}` : '')
     || 'WhatsApp'
 
   const parsed = await parseRawChannelMessage(supabase, row.channel_id, text)
-  if (parsed.status !== 'parsed' || parsed.parsed.action === 'ignore') return
+  if (parsed.status !== 'parsed' || parsed.parsed.action === 'ignore') {
+    console.warn(
+      `[whatsapp] parse dropped user=${userId} jid=${groupJid} `
+      + `status=${parsed.status} action=${parsed.status === 'parsed' ? parsed.parsed.action : 'n/a'}`,
+    )
+    return
+  }
   const signalId = crypto.randomUUID()
   const createdAt = new Date().toISOString()
-  const { error: insertError } = await supabase.from('signals').insert({
+  const baseRow = {
     id: signalId,
     user_id: userId,
     channel_id: row.channel_id,
-    source_kind: 'whatsapp',
-    source_display_name: sourceDisplayName,
     raw_message: text,
     parsed_data: parsed.parsed,
-    status: 'parsed',
+    status: 'parsed' as const,
     skip_reason: null,
     telegram_message_id: messageId,
     is_modification: false,
     created_at: createdAt,
-  })
+  }
+  let insertError = (await supabase.from('signals').insert({
+    ...baseRow,
+    source_kind: 'whatsapp',
+    source_display_name: sourceDisplayName,
+  })).error
+  // Older DBs (pre source_kind migration) reject the denormalized columns — retry core row.
+  if (insertError && /source_kind|source_display_name/i.test(insertError.message)) {
+    console.warn(`[whatsapp] retrying signal insert without source columns user=${userId}: ${insertError.message}`)
+    insertError = (await supabase.from('signals').insert(baseRow)).error
+  }
   if (insertError) {
     if (insertError.code !== '23505') {
       console.warn(`[whatsapp] signal insert failed user=${userId}: ${insertError.message}`)
