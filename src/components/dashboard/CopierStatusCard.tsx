@@ -25,6 +25,7 @@ import { getCachedTgSession, setCachedTgSession } from '../../lib/telegramSessio
 import { subscribeTradingViewWebhooksChanged } from '../../lib/tradingViewWebhook'
 import { subscribeWhatsAppSourcesChanged } from '../../lib/whatsappSource'
 import type { BrokerAccount } from '../../types/database'
+import { APP_CARD } from '../../lib/appSurface'
 import { SignalSourceLogo } from './SignalSourceLogo'
 
 const EXPANDED_STORAGE_KEY = 'tscopier.dashboard.copierStatusExpanded'
@@ -386,8 +387,7 @@ export function CopierStatusCard({
   return (
     <div
       className={clsx(
-        !embedded &&
-          'overflow-hidden rounded-2xl border border-neutral-200/65 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-neutral-800/55 dark:bg-neutral-950 dark:shadow-none',
+        !embedded && ['overflow-hidden', APP_CARD],
         className,
       )}
     >
@@ -397,8 +397,8 @@ export function CopierStatusCard({
         aria-expanded={expanded}
         className={clsx(
           'flex w-full items-center gap-2 px-5 py-4 text-left',
-          'transition-colors hover:bg-[#F7F8FA] dark:hover:bg-white/3',
-          expanded && 'border-b border-neutral-100 dark:border-neutral-800',
+          'transition-colors hover:bg-neutral-50 dark:hover:bg-white/3',
+          expanded && 'border-b border-neutral-100/90 dark:border-white/8',
         )}
       >
         <Activity className="h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50" />

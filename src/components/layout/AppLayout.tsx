@@ -26,6 +26,15 @@ import { useNeedsWelcome } from '../../hooks/useNeedsWelcome'
 import { CopierLogToasts } from '../dashboard/CopierLogToasts'
 import { consumePostAuthRedirect } from '../../lib/postAuthRedirect'
 import { buildFlags } from '../../lib/featureFlags'
+import {
+  APP_CANVAS,
+  APP_MAIN_SHELL,
+  APP_PILL,
+  APP_RAIL,
+  APP_RAIL_ACTIVE,
+  APP_RAIL_HOVER,
+  APP_SECTION_LABEL,
+} from '../../lib/appSurface'
 
 type NavItem = {
   to: string
@@ -214,10 +223,10 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
         'flex items-center px-3 py-2.5 rounded-xl text-sm transition-colors min-h-[20px]',
         isCollapsed ? 'justify-center' : 'gap-2',
         disabled
-          ? 'cursor-pointer font-medium text-neutral-900 opacity-45 hover:bg-white hover:text-neutral-900 hover:opacity-80 dark:text-neutral-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-50'
+          ? clsx('cursor-pointer font-medium text-neutral-600 opacity-45 dark:text-neutral-400', APP_RAIL_HOVER)
           : isActive
-            ? 'bg-green-400 text-neutral-950 font-semibold dark:bg-green-400 dark:text-neutral-950'
-            : 'text-neutral-900 font-medium hover:bg-white hover:text-neutral-900 dark:text-neutral-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
+            ? clsx(APP_RAIL_ACTIVE, 'font-semibold')
+            : clsx('font-medium text-neutral-600 dark:text-neutral-300', APP_RAIL_HOVER),
       )
 
   const renderNavItemContent = (
@@ -285,7 +294,8 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
         <div key={section.label}>
           <p
             className={clsx(
-              'px-3 text-[10px] font-semibold text-neutral-900 dark:text-neutral-50 tracking-widest mb-1.5',
+              'mb-1.5 px-3',
+              APP_SECTION_LABEL,
               opts.collapsed && 'hidden',
             )}
           >
@@ -353,7 +363,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
   )
 
   return (
-    <div className="flex h-full min-h-0 w-full overflow-hidden overscroll-none bg-[#F7F8FA] dark:bg-neutral-950">
+    <div className={clsx('flex h-full min-h-0 w-full flex-col overflow-hidden overscroll-none text-neutral-900 dark:text-neutral-50', APP_CANVAS)}>
       {mobileNavOpen && (
         <button
           type="button"
@@ -363,112 +373,56 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
         />
       )}
 
-      <aside
-        className={clsx(
-          'fixed inset-y-0 left-0 z-50 flex h-full min-h-0 flex-col overflow-hidden border-e border-neutral-100 dark:border-neutral-800 bg-[#F7F8FA] dark:bg-neutral-950 transition-transform duration-200 ease-out max-lg:overflow-visible rtl:left-auto rtl:right-0',
-          'w-64 max-w-[85vw]',
-          mobileNavOpen ? 'translate-x-0' : 'max-lg:-translate-x-full max-lg:rtl:translate-x-full',
-          'lg:sticky lg:top-0 lg:z-30 lg:max-w-none lg:translate-x-0',
-          isSidebarCollapsed ? 'lg:w-20' : 'lg:w-64',
-        )}
-      >
-        <div
-          className={clsx(
-            'flex h-16 shrink-0 items-center border-b border-neutral-100 dark:border-neutral-800',
-            sidebarExpanded ? 'justify-between px-2 lg:px-4' : 'justify-center px-2',
-          )}
-        >
-          <Link
-            to="/dashboard"
-            className="flex shrink-0 items-center lg:hidden"
-            aria-label={t.nav.items.dashboard}
-            onClick={() => setMobileNavOpen(false)}
-          >
-
-            <TscopierLogo brand="unicopier" className="h-6 w-auto" />
-          </Link>
-          <div className="flex shrink-0 items-center gap-0.5 lg:hidden">
-            <LanguageSwitcher compact className="max-lg:[&>button]:gap-0 max-lg:[&>button]:px-2" />
-            <ThemeToggle />
-          </div>
-          <div
-            className={clsx(
-              'hidden lg:block transition-all duration-200',
-              !sidebarExpanded && 'mx-auto',
-            )}
-          >
-            <Link
-              to="/dashboard"
-              className="flex items-center"
-              aria-label={t.nav.items.dashboard}
-            >
-              <TscopierLogo
-                brand="unicopier"
-                collapsed={!sidebarExpanded}
-                className={sidebarExpanded ? 'h-12 w-auto' : undefined}
-              />
-            </Link>
-          </div>
-          <button
-            type="button"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-neutral-900 hover:bg-neutral-100 dark:text-neutral-50 dark:hover:bg-neutral-800 lg:hidden"
-            aria-label={t.nav.closeMenu}
-            onClick={() => setMobileNavOpen(false)}
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <nav className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-3 py-4">
-          {renderNav({
-            collapsed: !sidebarExpanded,
-            onNavigate: () => setMobileNavOpen(false),
-          })}
-          <HelpSidebarNav
-            collapsed={!sidebarExpanded}
-            onNavigate={() => setMobileNavOpen(false)}
-          />
-        </nav>
-      </aside>
-
-      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden overscroll-none">
-        <AppSearchProvider headerEl={headerEl}>
+      <AppSearchProvider headerEl={headerEl}>
         <header
           ref={setHeaderEl}
           className={clsx(
-            'z-30 flex shrink-0 touch-none items-center gap-1 border-b border-neutral-100 bg-white px-1.5 dark:border-neutral-800 dark:bg-neutral-950 sm:gap-4 sm:px-6',
+            'z-30 flex shrink-0 touch-none items-center gap-1.5 px-2 sm:gap-3 sm:px-4',
             'fixed inset-x-0 top-(--app-banner-h,0px) h-[calc(3.5rem+env(safe-area-inset-top,0px))] pt-[env(safe-area-inset-top,0px)] sm:h-[calc(4rem+env(safe-area-inset-top,0px))]',
-            'lg:static lg:z-20 lg:h-16 lg:min-h-0 lg:pt-0 lg:touch-auto',
+            'bg-white/95 backdrop-blur dark:bg-neutral-950/95',
+            'lg:static lg:z-20 lg:h-auto lg:min-h-0 lg:bg-transparent lg:px-3 lg:py-2.5 lg:pt-2.5 lg:backdrop-blur-none lg:dark:bg-transparent lg:touch-auto',
           )}
         >
           <button
             type="button"
             onClick={() => setMobileNavOpen(true)}
-            className="shrink-0 p-1.5 rounded-lg text-neutral-900 hover:bg-neutral-100 dark:text-neutral-50 dark:hover:bg-neutral-800 transition-colors sm:p-2 lg:hidden"
+            className={clsx('shrink-0 p-1.5 text-neutral-700 transition-colors sm:p-2 lg:hidden', APP_PILL, 'hover:bg-neutral-50 dark:text-neutral-200 dark:hover:bg-neutral-800')}
             aria-label={t.nav.openMenu}
           >
             <Menu className="w-5 h-5" />
           </button>
 
+          <Link
+            to="/dashboard"
+            className="flex shrink-0 items-center"
+            aria-label={t.nav.items.dashboard}
+          >
+            <TscopierLogo brand="unicopier" className="h-7 w-auto lg:h-8" />
+          </Link>
+
           <button
             type="button"
             onClick={() => setIsSidebarCollapsed(prev => !prev)}
             title={isSidebarCollapsed ? t.nav.expandSidebar : t.nav.collapseSidebar}
-            className="hidden lg:block p-1.5 rounded-lg text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+            className={clsx(
+              'hidden lg:inline-flex h-9 w-9 items-center justify-center text-neutral-600 transition-colors dark:text-neutral-300',
+              APP_PILL,
+              'hover:bg-neutral-50 dark:hover:bg-neutral-800',
+            )}
           >
-            {isSidebarCollapsed ? <DirectionalIcon icon={PanelLeftOpen} className="w-5 h-5" /> : <DirectionalIcon icon={PanelLeftClose} className="w-5 h-5" />}
+            {isSidebarCollapsed ? <DirectionalIcon icon={PanelLeftOpen} className="w-4.5 h-4.5" /> : <DirectionalIcon icon={PanelLeftClose} className="w-4.5 h-4.5" />}
           </button>
 
-          <AppSearchDesktop className="flex-1 max-w-md min-w-0" />
+          <AppSearchDesktop className="mx-auto min-w-0 w-full max-w-xl flex-1" />
 
           <div className="flex-1 min-w-0 lg:hidden" />
 
-          <div className="relative z-40 flex shrink-0 items-center gap-0 sm:gap-2 lg:ms-auto">
+          <div className="relative z-40 flex shrink-0 items-center gap-1 sm:gap-1.5">
             {hasActiveSubscription && effectivePlan === 'basic' ? (
               <button
                 type="button"
                 onClick={() => openUpgrade('advanced')}
-                className="hidden sm:inline-flex items-center rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold text-green-500 transition-colors hover:bg-teal-100 dark:border-teal-800 dark:bg-teal-950/40 dark:text-teal-300 dark:hover:bg-teal-950/60"
+                className="hidden sm:inline-flex items-center rounded-full bg-teal-50 px-2.5 py-1.5 text-xs font-semibold text-green-600 shadow-xs ring-1 ring-teal-200/80 transition-colors hover:bg-teal-100 dark:bg-teal-950/40 dark:text-teal-300 dark:ring-teal-800"
               >
                 {subscribeCta}
               </button>
@@ -480,9 +434,10 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
               aria-label={t.nav.assistant.ariaLabel}
               title={t.nav.assistant.title}
               className={clsx(
-                'inline-flex h-9 w-9 items-center justify-center rounded-lg text-green-500 transition-colors sm:h-10 sm:w-10',
-                'hover:bg-teal-50 focus:outline-hidden focus:ring-2 focus:ring-green-400 focus:ring-offset-2 focus:ring-offset-white',
-                'dark:text-teal-300 dark:hover:bg-teal-950/50 dark:focus:ring-offset-neutral-900',
+                'inline-flex h-9 w-9 items-center justify-center text-green-500 transition-colors sm:h-10 sm:w-10',
+                APP_PILL,
+                'hover:bg-teal-50 focus:outline-hidden focus:ring-2 focus:ring-green-400/30',
+                'dark:text-teal-300 dark:hover:bg-teal-950/50',
               )}
             >
               <Sparkles className="h-5 w-5" aria-hidden />
@@ -517,22 +472,23 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
                 aria-expanded={userMenuOpen}
                 aria-label={t.nav.userMenu.menuLabel}
                 className={clsx(
-                  'flex min-h-10 items-center gap-2 rounded-lg ps-1 pe-1.5 transition-colors sm:min-h-[44px] sm:pe-2',
+                  'flex min-h-10 items-center gap-2 ps-1 pe-1.5 transition-colors sm:min-h-[44px] sm:pe-2',
+                  APP_PILL,
                   userMenuOpen
                     ? 'bg-neutral-100 dark:bg-neutral-800'
                     : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/60',
                 )}
               >
-              <UserAvatar user={user} profile={profile} email={user?.email} size="sm" />
-              <div className="hidden md:block text-start">
-                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 leading-tight truncate max-w-32">
-                  {displayName}
-                </p>
-                <p className="text-xs text-neutral-900 dark:text-neutral-50 leading-tight">{planName || t.nav.planFree}</p>
-              </div>
+                <UserAvatar user={user} profile={profile} email={user?.email} size="sm" />
+                <div className="hidden md:block text-start">
+                  <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 leading-tight truncate max-w-32">
+                    {displayName}
+                  </p>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 leading-tight">{planName || t.nav.planFree}</p>
+                </div>
                 <ChevronDown
                   className={clsx(
-                    'hidden md:block w-3.5 h-3.5 text-neutral-900 dark:text-neutral-50 shrink-0 transition-transform',
+                    'hidden md:block w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400 shrink-0 transition-transform',
                     userMenuOpen && 'rotate-180',
                   )}
                 />
@@ -545,11 +501,63 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
             </div>
           </div>
         </header>
-        </AppSearchProvider>
+      </AppSearchProvider>
+
+      <div className="relative flex min-h-0 min-w-0 flex-1 gap-2 overflow-hidden overscroll-none px-0 pb-0 lg:px-3 lg:pb-3">
+        <aside
+          className={clsx(
+            'fixed inset-y-0 left-0 z-50 flex min-h-0 flex-col overflow-hidden transition-transform duration-200 ease-out max-lg:overflow-visible rtl:left-auto rtl:right-0',
+            'w-64 max-w-[85vw]',
+            mobileNavOpen ? 'translate-x-0' : 'max-lg:-translate-x-full max-lg:rtl:translate-x-full',
+            'lg:relative lg:inset-auto lg:z-30 lg:h-full lg:max-w-none lg:translate-x-0 lg:shrink-0',
+            APP_RAIL,
+            'max-lg:rounded-none max-lg:shadow-xl',
+            isSidebarCollapsed ? 'lg:w-20' : 'lg:w-64',
+          )}
+        >
+          <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-neutral-200/70 px-2 dark:border-white/8 lg:hidden">
+            <Link
+              to="/dashboard"
+              className="flex shrink-0 items-center"
+              aria-label={t.nav.items.dashboard}
+              onClick={() => setMobileNavOpen(false)}
+            >
+              <TscopierLogo brand="unicopier" className="h-6 w-auto" />
+            </Link>
+            <div className="flex shrink-0 items-center gap-0.5">
+              <LanguageSwitcher compact className="max-lg:[&>button]:gap-0 max-lg:[&>button]:px-2" />
+              <ThemeToggle />
+              <button
+                type="button"
+                className={clsx(
+                  'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-neutral-700 dark:text-neutral-200',
+                  APP_RAIL_HOVER,
+                )}
+                aria-label={t.nav.closeMenu}
+                onClick={() => setMobileNavOpen(false)}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          <nav className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-2.5 py-3">
+            {renderNav({
+              collapsed: !sidebarExpanded,
+              onNavigate: () => setMobileNavOpen(false),
+            })}
+            <HelpSidebarNav
+              collapsed={!sidebarExpanded}
+              onNavigate={() => setMobileNavOpen(false)}
+            />
+          </nav>
+        </aside>
 
         <main
           className={clsx(
-            'min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain bg-[#F7F8FA] dark:bg-neutral-950',
+            'min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain',
+            APP_MAIN_SHELL,
+            'max-lg:rounded-none max-lg:ring-0',
             'pt-[calc(3.5rem+env(safe-area-inset-top,0px))] sm:pt-[calc(4rem+env(safe-area-inset-top,0px))]',
             'lg:pt-0',
           )}

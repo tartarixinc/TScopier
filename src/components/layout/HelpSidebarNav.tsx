@@ -4,6 +4,7 @@ import clsx from 'clsx'
 import { useT } from '../../context/LocaleContext'
 import { APP_HELP_ICONS, getAppRouteIcon, APP_ROUTE_ICONS } from '../../lib/appNavIcons'
 import { HELP_LINKS } from '../../lib/helpLinks'
+import { APP_RAIL_ACTIVE, APP_RAIL_HOVER, APP_SECTION_LABEL } from '../../lib/appSurface'
 
 type HelpSidebarNavProps = {
   collapsed: boolean
@@ -21,18 +22,19 @@ export function HelpSidebarNav({ collapsed, onNavigate }: HelpSidebarNavProps) {
 
   const itemClass = (isActive = false) =>
     clsx(
-      'flex items-center px-3 py-2.5 rounded-lg text-sm transition-colors min-h-[44px]',
+      'flex items-center px-3 py-2.5 rounded-xl text-sm transition-colors min-h-[44px]',
       collapsed ? 'justify-center' : 'gap-3',
       isActive
-        ? 'bg-green-400 text-neutral-950 font-semibold dark:bg-green-400 dark:text-neutral-950'
-        : 'text-neutral-900 font-medium hover:bg-neutral-50 hover:text-neutral-900 dark:text-neutral-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
+        ? clsx(APP_RAIL_ACTIVE, 'font-semibold')
+        : clsx('font-medium text-neutral-600 dark:text-neutral-300', APP_RAIL_HOVER),
     )
 
   return (
     <div className="space-y-3">
       <p
         className={clsx(
-          'px-3 text-[10px] font-semibold text-neutral-900 dark:text-neutral-50 tracking-widest',
+          'mb-1.5 px-3',
+          APP_SECTION_LABEL,
           collapsed && 'hidden',
         )}
       >
