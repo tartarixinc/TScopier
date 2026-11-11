@@ -73,7 +73,15 @@ export type RangeBasketTpSyncArgs = {
   signalId: string
   userId: string
   brokerAccountId: string
-  manual: { range_trading?: boolean; tp_lots?: ManualTpLot[] | null; order_comments_enabled?: boolean }
+  manual: {
+    range_trading?: boolean
+    tp_lots?: ManualTpLot[] | null
+    order_comments_enabled?: boolean
+    use_predefined_sl_pips?: boolean
+    predefined_sl_pips?: number
+    use_predefined_tp_pips?: boolean
+    predefined_tp_pips?: number[]
+  }
   parsed: RangeBasketParsedSlice
   plan?: PlannerResult | null
   /** When set, force phase B (range layer just fired). */
