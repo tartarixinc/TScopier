@@ -18,6 +18,7 @@ import { TscopierLogo } from '../ui/TscopierLogo'
 import { DirectionalIcon } from '../ui/DirectionalIcon'
 import { useLocale, useT } from '../../context/LocaleContext'
 import { getAppRouteIcon } from '../../lib/appNavIcons'
+import { APP_CARD } from '../../lib/appSurface'
 import { interpolate } from '../../i18n/interpolate'
 import { formatHeroLiveMoney, useLiveMoneyTicker } from './useLiveMoneyTicker'
 import type {
@@ -37,11 +38,10 @@ const COPIER_LOG_GRID_LTR =
 const COPIER_LOG_GRID_RTL =
   'grid grid-cols-[6.5rem_minmax(0,1fr)_minmax(3.5rem,0.85fr)_minmax(4.25rem,auto)_minmax(6rem,auto)] gap-x-2 items-center'
 
-const DASHBOARD_CARD =
-  'rounded-2xl border border-neutral-200/65 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-neutral-800/55 dark:bg-neutral-950 dark:shadow-none'
+const DASHBOARD_CARD = APP_CARD
 
 const SECTION_LINK =
-  'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-neutral-900 dark:text-neutral-50'
+  'inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-neutral-600 dark:text-neutral-300'
 
 function valueToneClass(tone: LandingBacktestPipsTone): string {
   if (tone === 'good') return 'text-green-500 dark:text-green-400'
