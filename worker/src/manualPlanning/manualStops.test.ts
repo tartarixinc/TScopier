@@ -5,6 +5,7 @@ import {
   mirrorParsedAbsoluteStopsForReverse,
   resolvePredefinedSlForEntry,
   resolvePredefinedTpForEntry,
+  restampBasketTargetsFromLegEntries,
 } from './manualStops'
 
 test('mirrorParsedAbsoluteStopsForReverse: reflects price-unit SL/TP and leaves pip offsets', () => {
@@ -193,5 +194,37 @@ test('resolvePredefinedSlForEntry: 80 pips from fill, even when shared SL would 
   assert.equal(sellSl, 2018)
   assert.ok(sellSl! > sellFill)
   assert.ok(!(sharedSellSl > sellFill), 'shared basket SL sits on the wrong side of this fill')
+})
+
+test('restampBasketTargetsFromLegEntries: shared absolute targets become per-fill overrides', () => {
+  const manual = {
+    use_predefined_sl_pips: true as const,
+    predefined_sl_pips: 100,
+    use_predefined_tp_pips: true as const,
+    predefined_tp_pips: [100, 150, 200],
+  }
+  // Shared basket targets from first fill (~4059.365 → SL 4069.365 / TP1 4049.365).
+  const shared = { stoploss: 4069.365, takeprofit: 4049.365 }
+  const out = restampBasketTargetsFromLegEntries({
+    manual,
+    direction: 'sell',
+    symbol: 'XAUUSD',
+    point: 0.01,
+    digits: 3,
+    contractSize: 100,
+    familyTrades: [
+      { entry_price: 4059.365, tp: 4049.365 },
+      { entry_price: 4059.665, tp: 4049.365 },
+      { entry_price: 4059.165, tp: 4049.365 },
+    ],
+    targets: [shared, shared, shared],
+  })
+  assert.equal(out.length, 3)
+  assert.equal(out[0]!.stoploss, 4069.365)
+  assert.equal(out[0]!.takeprofit, 4049.365)
+  assert.equal(out[1]!.stoploss, 4069.665)
+  assert.equal(out[1]!.takeprofit, 4049.665)
+  assert.equal(out[2]!.stoploss, 4069.165)
+  assert.equal(out[2]!.takeprofit, 4049.165)
 })
 

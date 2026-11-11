@@ -387,6 +387,7 @@ export class BasketSlTpReconcileMonitor {
       bundleIdentity: manual.range_trading !== true,
       effectiveStoploss: effectiveStoploss > 0 ? effectiveStoploss : undefined,
       orderCommentsEnabled: manual.order_comments_enabled !== false,
+      manual,
       // Explicit latest instruction (Manage Signals, basket target, or channel
       // Adjust) must apply even if it loosens; also when this job was enqueued
       // from a mgmt signal (source != anchor).
