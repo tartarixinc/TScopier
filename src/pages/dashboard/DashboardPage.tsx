@@ -143,8 +143,12 @@ import {
 } from '../../lib/linkedAccountSort'
 
 const DASHBOARD_MT_HISTORY_LIMIT = 5000
-/** Keep spinner visible briefly after load completes so charts/metrics can paint. */
-const DASHBOARD_METRICS_LOADER_DISMISS_MS = 5_000
+/** DB trades pulled on the first-paint critical path (charts fill from MT history after). */
+const DASHBOARD_TRADES_FETCH_LIMIT = 800
+/** Attributions / ticket links loaded in background enrichment (not first paint). */
+const DASHBOARD_ATTRIBUTIONS_FETCH_LIMIT = 2000
+/** Dismiss metrics skeleton right after critical setState (was 5s and dominated cold load). */
+const DASHBOARD_METRICS_LOADER_DISMISS_MS = 150
 
 /** Shared column template for dashboard Copier Logs header + rows. */
 const DASHBOARD_COPIER_LOG_GRID =
@@ -1099,17 +1103,28 @@ export function DashboardPage() {
     statsRef.current = stats
   }, [stats])
 
+  const dashboardMetricsDismissCancelledRef = useRef(false)
   const scheduleDismissDashboardMetricsLoader = () => {
     if (dashboardMetricsDismissTimerRef.current) {
       clearTimeout(dashboardMetricsDismissTimerRef.current)
     }
-    dashboardMetricsDismissTimerRef.current = window.setTimeout(() => {
+    dashboardMetricsDismissCancelledRef.current = false
+    // Double-rAF lets the critical metrics paint; timeout is a short fallback cap.
+    let settled = false
+    const settle = () => {
+      if (settled || dashboardMetricsDismissCancelledRef.current) return
+      settled = true
       dashboardMetricsDismissTimerRef.current = null
       setDashboardMetricsLoading(false)
-    }, DASHBOARD_METRICS_LOADER_DISMISS_MS)
+    }
+    requestAnimationFrame(() => {
+      requestAnimationFrame(settle)
+    })
+    dashboardMetricsDismissTimerRef.current = window.setTimeout(settle, DASHBOARD_METRICS_LOADER_DISMISS_MS)
   }
 
   const cancelDismissDashboardMetricsLoader = () => {
+    dashboardMetricsDismissCancelledRef.current = true
     if (dashboardMetricsDismissTimerRef.current) {
       clearTimeout(dashboardMetricsDismissTimerRef.current)
       dashboardMetricsDismissTimerRef.current = null
@@ -1483,47 +1498,17 @@ export function DashboardPage() {
       ? linkedAccountsRef.current
       : [] as BrokerAccount[]
     const mtBrokerConnectedEarly = hasActiveMtBroker(brokerAccountsEarly)
-    // Captured before the read: a partial provider failure raised during it
-    // must not be cleared by this read's success.
-    const feedGeneration = getLiveFeedGeneration()
-    let mtTradesPromise: Promise<MtTrade[]>
-    if (mtBrokerConnectedEarly) {
-      mtTradesPromise = fetchBrokerMtTrades({
-        scope: 'dashboard',
-        historyProfile: 'trades',
-        limit: DASHBOARD_MT_HISTORY_LIMIT,
-        accounts: brokerAccountsEarly,
-        includeBalanceCashflow: false,
-      })
-        .then(mtTrades => {
-          reportLiveFeedSuccess(feedGeneration)
-          return mtTrades
-        })
-        .catch(err => {
-          console.warn('[dashboard] broker history fetch failed', err)
-          if (!isAuthSessionError(err instanceof Error ? err.message : '')) {
-            reportLiveFeedFailure('dashboard broker history')
-          }
-          return [] as MtTrade[]
-        })
-    } else {
-      // No MT broker to read from: there is no live feed that could be
-      // degraded here, so an up banner (from an earlier outage or another
-      // page) must clear rather than stick forever. The generation token
-      // matches at clear time by construction (no await in between); any
-      // failure reported after this point re-raises the banner itself.
-      reportLiveFeedSuccess(feedGeneration)
-      mtTradesPromise = Promise.resolve([] as MtTrade[])
-    }
-
-    const [channelsRes, tradesRes, todaySignalsRes, yesterdaySignalsRes, logsRes, allSignalsRes, channelsMetaRes, attributionRes, aiLogsRes, prefetchedMtTrades, socialLogs, manualLogs, socialCopiedToday] = await Promise.all([
+    // First paint waits only on lightweight Supabase reads. MT history, execution
+    // logs, social/manual logs, attributions, and symbol lookup run after the
+    // metrics skeleton can dismiss (see enrichDashboard below).
+    const [channelsRes, tradesRes, todaySignalsRes, yesterdaySignalsRes, logsRes, channelsMetaRes] = await Promise.all([
       supabase.from('telegram_channels').select('id').eq('user_id', user!.id).eq('is_active', true),
       supabase
         .from('trades')
         .select('id,symbol,direction,profit,lot_size,status,opened_at,closed_at,broker_account_id,signal_id,metaapi_order_id,telegram_channel_id')
         .eq('user_id', user!.id)
         .order('opened_at', { ascending: false })
-        .limit(3000),
+        .limit(DASHBOARD_TRADES_FETCH_LIMIT),
       supabase.from('signals').select('status').eq('user_id', user!.id).gte('created_at', todayStart.toISOString()).lt('created_at', tomorrowStart.toISOString()),
       supabase.from('signals').select('status').eq('user_id', user!.id).gte('created_at', yesterdayStart.toISOString()).lt('created_at', todayStart.toISOString()),
       supabase
@@ -1533,50 +1518,42 @@ export function DashboardPage() {
         .or('skip_reason.is.null,skip_reason.neq.non_trade_message')
         .order('created_at', { ascending: false })
         .limit(10),
-      supabase.from('signals').select('id,channel_id').eq('user_id', user!.id),
       supabase.from('telegram_channels').select('id,display_name,channel_username,source_kind').eq('user_id', user!.id),
-      supabase
-        .from('trade_channel_attributions')
-        .select('broker_account_id,metaapi_order_id,signal_id,channel_id,channel_label')
-        .eq('user_id', user!.id),
-      supabase
-        .from('trade_execution_logs')
-        .select(
-          `
-          id,
-          created_at,
-          action,
-          status,
-          request_payload,
-          response_payload,
-          error_message,
-          signal_id,
-          broker_account_id,
-          signals ( channel_id, raw_message, parsed_data, status, skip_reason )
-        `,
-        )
-        .eq('user_id', user!.id)
-        .order('created_at', { ascending: false })
-        .limit(TRADE_ACTIVITY_FETCH_LIMIT),
-      mtTradesPromise,
-      fetchSocialCopyLogs(supabase, user!.id),
-      fetchManualSourceTradeLogs(supabase, user!.id).catch(() => [] as SocialCopyLogRow[]),
-      countSocialCopyOpensInRange(
-        supabase,
-        user!.id,
-        todayStart.toISOString(),
-        tomorrowStart.toISOString(),
-      ).catch(() => 0),
     ])
 
     const logs = ((logsRes.data ?? []) as Signal[]).filter(s => !isNonTradeSkipReason(s.skip_reason))
-    const symbolLookupPromise = buildSignalSymbolLookup(supabase, user!.id, logs)
 
     const allTrades = (tradesRes.data ?? []) as Trade[]
+    const tradeSignalIds = [...new Set(
+      allTrades
+        .map(t => t.signal_id)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0),
+    )]
+    // Bound to the trades we already loaded — never the full signals table.
+    let tradeSignals: Array<{ id: string; channel_id: string | null }> = []
+    if (tradeSignalIds.length > 0) {
+      const chunkSize = 100
+      const chunks: string[][] = []
+      for (let i = 0; i < tradeSignalIds.length; i += chunkSize) {
+        chunks.push(tradeSignalIds.slice(i, i + chunkSize))
+      }
+      const signalParts = await Promise.all(
+        chunks.map(ids =>
+          supabase
+            .from('signals')
+            .select('id,channel_id')
+            .eq('user_id', user!.id)
+            .in('id', ids),
+        ),
+      )
+      tradeSignals = signalParts.flatMap(
+        part => (part.data ?? []) as Array<{ id: string; channel_id: string | null }>,
+      )
+    }
+
     const openTrades = allTrades.filter(t => t.status === 'open')
     const todaySignals = (todaySignalsRes.data ?? []) as { status: string }[]
     const copiedToday = todaySignals.filter(s => s.status === 'executed' || s.status === 'parsed').length
-      + (Number.isFinite(socialCopiedToday) ? socialCopiedToday : 0)
     const openPnlFromTrades = openTrades.reduce((sum, t) => sum + (t.profit ?? 0), 0)
     const isInRange = (dateString: string | null | undefined, start: Date, end: Date) =>
       isMtTimestampInRange(dateString, start, end)
@@ -1676,17 +1653,21 @@ export function DashboardPage() {
     // for this single metric even when MT is the primary source above.
     const dbTradesToday = allTrades.filter(t => isInRange(t.opened_at, todayStart, tomorrowStart))
     const dbTradesYesterday = allTrades.filter(t => isInRange(t.opened_at, yesterdayStart, todayStart))
-    const mostProfitableChannel = (() => {
-      const signals = (allSignalsRes.data ?? []) as Array<{ id: string; channel_id: string | null }>
-      const channels = (channelsMetaRes.data ?? []) as Array<{ id: string; display_name: string }>
-      const signalToChannel = new Map<string, string | null>()
-      for (const s of signals) signalToChannel.set(s.id, s.channel_id)
-      const channelNameById = new Map<string, string>()
-      for (const c of channels) channelNameById.set(c.id, c.display_name || 'Unnamed channel')
+    const channelsMeta = (channelsMetaRes.data ?? []) as Array<{
+      id: string
+      display_name: string
+      channel_username?: string | null
+    }>
+    const signalToChannel = new Map<string, string | null>()
+    for (const s of tradeSignals) signalToChannel.set(s.id, s.channel_id)
+    const channelNameById = new Map<string, string>()
+    for (const c of channelsMeta) channelNameById.set(c.id, c.display_name || 'Unnamed channel')
+    const pickMostProfitableChannel = (rows: Trade[]) => {
       const pnlByChannel = new Map<string, number>()
-      for (const trade of dbTradesToday) {
-        if (!trade.signal_id) continue
-        const channelId = signalToChannel.get(trade.signal_id)
+      for (const trade of rows) {
+        const channelId = trade.telegram_channel_id
+          ?? (trade.signal_id ? signalToChannel.get(trade.signal_id) : null)
+          ?? null
         if (!channelId) continue
         pnlByChannel.set(channelId, (pnlByChannel.get(channelId) ?? 0) + (trade.profit ?? 0))
       }
@@ -1699,40 +1680,15 @@ export function DashboardPage() {
         }
       }
       return winnerName
-    })()
-    const yesterdayMostProfitableChannel = (() => {
-      const signals = (allSignalsRes.data ?? []) as Array<{ id: string; channel_id: string | null }>
-      const channels = (channelsMetaRes.data ?? []) as Array<{ id: string; display_name: string }>
-      const signalToChannel = new Map<string, string | null>()
-      for (const s of signals) signalToChannel.set(s.id, s.channel_id)
-      const channelNameById = new Map<string, string>()
-      for (const c of channels) channelNameById.set(c.id, c.display_name || 'Unnamed channel')
-      const pnlByChannel = new Map<string, number>()
-      for (const trade of dbTradesYesterday) {
-        if (!trade.signal_id) continue
-        const channelId = signalToChannel.get(trade.signal_id)
-        if (!channelId) continue
-        pnlByChannel.set(channelId, (pnlByChannel.get(channelId) ?? 0) + (trade.profit ?? 0))
-      }
-      let winnerName = '—'
-      let winnerPnl = Number.NEGATIVE_INFINITY
-      for (const [channelId, pnl] of pnlByChannel.entries()) {
-        if (pnl > winnerPnl) {
-          winnerPnl = pnl
-          winnerName = channelNameById.get(channelId) ?? 'Unknown channel'
-        }
-      }
-      return winnerName
-    })()
+    }
+    const mostProfitableChannel = pickMostProfitableChannel(dbTradesToday)
+    const yesterdayMostProfitableChannel = pickMostProfitableChannel(dbTradesYesterday)
     const brokerAccounts = linkedAccountsRef.current.length > 0
       ? linkedAccountsRef.current
       : [] as BrokerAccount[]
+    // Attributions arrive in enrichment; first paint uses trade + signal links only.
     const channelMaps = buildPerformanceChannelLinkMaps(
-      (channelsMetaRes.data ?? []) as Array<{
-        id: string
-        display_name: string
-        channel_username?: string | null
-      }>,
+      channelsMeta,
       allTrades
         .filter(t => t.metaapi_order_id && t.broker_account_id)
         .map(t => ({
@@ -1741,14 +1697,8 @@ export function DashboardPage() {
           signal_id: t.signal_id,
           telegram_channel_id: t.telegram_channel_id,
         })),
-      (allSignalsRes.data ?? []) as Array<{ id: string; channel_id: string | null }>,
-      (attributionRes.data ?? []) as Array<{
-        broker_account_id: string | null
-        metaapi_order_id: string | null
-        signal_id: string | null
-        channel_id: string | null
-        channel_label: string | null
-      }>,
+      tradeSignals,
+      [],
     )
     const mtBrokerConnected = hasActiveMtBroker(brokerAccounts)
     const activeBrokerCount = countLinkedBrokerSessionsForUi(brokerAccounts)
@@ -1833,7 +1783,7 @@ export function DashboardPage() {
       mergedBalances,
       openTrades.length,
     )
-    const channelRows = (channelsMetaRes.data ?? []) as ChannelNameRow[]
+    const channelRows = channelsMeta as ChannelNameRow[]
     const channelNames = buildChannelDisplayNames(channelRows)
     setChannelSourceKinds(buildChannelSourceKinds(channelRows))
     setChannelLinkMaps(channelMaps)
@@ -1882,7 +1832,6 @@ export function DashboardPage() {
     }
     if (fresh && generation !== loadGenerationRef.current) return
 
-    const aiLogs = dedupePipelineParseAttempts((aiLogsRes.data ?? []) as AiExpertLogRow[])
     const chartFromDb = resolveAnalyticsChartTrades(
       hasMtCache ? mtTradesRef.current : null,
       allTrades,
@@ -1904,14 +1853,6 @@ export function DashboardPage() {
     setBrokers(sortedBrokerAccounts)
     linkedBalancesRef.current = mergedBalances
     setLinkedAccountBalances(mergedBalances)
-    setAiExpertLogs(aiLogs)
-    setSocialCopyLogs(socialLogs)
-    setManualSourceLogs(manualLogs)
-
-    if (mtBrokerConnected && (syncLive || fresh)) {
-      await refreshMtTrades(brokerAccounts, { force: true, preloadedTrades: prefetchedMtTrades })
-      if (fresh && generation !== loadGenerationRef.current) return
-    }
 
     const chartForState = resolveAnalyticsChartTrades(mtTradesRef.current, allTrades, mtBrokerConnected)
     const chartToApply = chartForState.length > 0 ? chartForState : chartFromDb
@@ -1926,7 +1867,8 @@ export function DashboardPage() {
     )
     setCachedAnalytics(analytics)
 
-    const logSymbols = buildCopierLogSymbolLabels(logs, await symbolLookupPromise)
+    // Copier strip paints immediately; symbol labels fill in during enrichment.
+    const logSymbols = buildCopierLogSymbolLabels(logs, {})
     setCopierLogs(logs)
     setCopierLogSymbols(logSymbols)
 
@@ -1939,20 +1881,232 @@ export function DashboardPage() {
         linkedAccounts: sortedBrokerAccounts,
         linkedAccountBalances: linkedBalancesRef.current,
         chartTrades: chartToApply,
-        aiExpertLogs: aiLogs,
         mtTrades: mtTradesRef.current ?? undefined,
         channelLinkMaps: channelMaps,
         cachedAnalytics: analytics,
       })
     }
 
+    // Critical path done — allow skeleton dismiss / quiet refresh while enrichment runs.
+    dashboardReadyRef.current = true
+    setDashboardChartsReady(true)
+
     if (fresh && generation !== loadGenerationRef.current) return
+
+    // Never block first paint / quiet refresh on enrichment; always patch in background.
+    void enrichDashboardAfterCritical({
+      generation,
+      fresh,
+      syncLive,
+      userId: user!.id,
+      todayStart,
+      tomorrowStart,
+      logs,
+      allTrades,
+      tradeSignals,
+      channelsMeta,
+      brokerAccounts: sortedBrokerAccounts,
+      channelNames,
+      mtBrokerConnected,
+      mtBrokerConnectedEarly,
+      signalCopiedToday: copiedToday,
+      unlinkedChannelLabel: t.performance.unlinkedChannel,
+    })
     } finally {
       if (!fresh || generation === loadGenerationRef.current) {
         dashboardReadyRef.current = true
         setDashboardChartsReady(true)
       }
     }
+  }
+
+  const enrichDashboardAfterCritical = async (args: {
+    generation: number
+    fresh: boolean
+    syncLive: boolean
+    userId: string
+    todayStart: Date
+    tomorrowStart: Date
+    logs: Signal[]
+    allTrades: Trade[]
+    tradeSignals: Array<{ id: string; channel_id: string | null }>
+    channelsMeta: Array<{ id: string; display_name: string; channel_username?: string | null }>
+    brokerAccounts: BrokerAccount[]
+    channelNames: Record<string, string>
+    mtBrokerConnected: boolean
+    mtBrokerConnectedEarly: boolean
+    signalCopiedToday: number
+    unlinkedChannelLabel: string
+  }) => {
+    const {
+      generation,
+      fresh,
+      syncLive,
+      userId,
+      todayStart,
+      tomorrowStart,
+      logs,
+      allTrades,
+      tradeSignals,
+      channelsMeta,
+      brokerAccounts,
+      channelNames,
+      mtBrokerConnected,
+      mtBrokerConnectedEarly,
+      signalCopiedToday,
+      unlinkedChannelLabel,
+    } = args
+    if (fresh && generation !== loadGenerationRef.current) return
+
+    const feedGeneration = getLiveFeedGeneration()
+    let mtTradesPromise: Promise<MtTrade[]>
+    if (mtBrokerConnectedEarly) {
+      mtTradesPromise = fetchBrokerMtTrades({
+        scope: 'dashboard',
+        historyProfile: 'trades',
+        limit: DASHBOARD_MT_HISTORY_LIMIT,
+        accounts: brokerAccounts,
+        includeBalanceCashflow: false,
+      })
+        .then(mtTrades => {
+          reportLiveFeedSuccess(feedGeneration)
+          return mtTrades
+        })
+        .catch(err => {
+          console.warn('[dashboard] broker history fetch failed', err)
+          if (!isAuthSessionError(err instanceof Error ? err.message : '')) {
+            reportLiveFeedFailure('dashboard broker history')
+          }
+          return [] as MtTrade[]
+        })
+    } else {
+      reportLiveFeedSuccess(feedGeneration)
+      mtTradesPromise = Promise.resolve([] as MtTrade[])
+    }
+
+    const [
+      attributionRes,
+      aiLogsRes,
+      prefetchedMtTrades,
+      socialLogs,
+      manualLogs,
+      socialCopiedToday,
+      symbolLookup,
+    ] = await Promise.all([
+      supabase
+        .from('trade_channel_attributions')
+        .select('broker_account_id,metaapi_order_id,signal_id,channel_id,channel_label')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(DASHBOARD_ATTRIBUTIONS_FETCH_LIMIT),
+      supabase
+        .from('trade_execution_logs')
+        .select(
+          `
+          id,
+          created_at,
+          action,
+          status,
+          request_payload,
+          response_payload,
+          error_message,
+          signal_id,
+          broker_account_id,
+          signals ( channel_id, raw_message, parsed_data, status, skip_reason )
+        `,
+        )
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(TRADE_ACTIVITY_FETCH_LIMIT),
+      mtTradesPromise,
+      fetchSocialCopyLogs(supabase, userId),
+      fetchManualSourceTradeLogs(supabase, userId).catch(() => [] as SocialCopyLogRow[]),
+      countSocialCopyOpensInRange(
+        supabase,
+        userId,
+        todayStart.toISOString(),
+        tomorrowStart.toISOString(),
+      ).catch(() => 0),
+      buildSignalSymbolLookup(supabase, userId, logs),
+    ])
+
+    if (fresh && generation !== loadGenerationRef.current) return
+
+    const attributions = (attributionRes.data ?? []) as Array<{
+      broker_account_id: string | null
+      metaapi_order_id: string | null
+      signal_id: string | null
+      channel_id: string | null
+      channel_label: string | null
+    }>
+    const channelMaps = buildPerformanceChannelLinkMaps(
+      channelsMeta,
+      allTrades
+        .filter(t => t.metaapi_order_id && t.broker_account_id)
+        .map(t => ({
+          broker_account_id: t.broker_account_id,
+          metaapi_order_id: t.metaapi_order_id,
+          signal_id: t.signal_id,
+          telegram_channel_id: t.telegram_channel_id,
+        })),
+      tradeSignals,
+      attributions,
+    )
+    setChannelLinkMaps(channelMaps)
+
+    const aiLogs = dedupePipelineParseAttempts((aiLogsRes.data ?? []) as AiExpertLogRow[])
+    setAiExpertLogs(aiLogs)
+    setSocialCopyLogs(socialLogs)
+    setManualSourceLogs(manualLogs)
+
+    if (Number.isFinite(socialCopiedToday) && socialCopiedToday > 0) {
+      setStats(prev => {
+        const next = {
+          ...prev,
+          tradesCopiedToday: signalCopiedToday + socialCopiedToday,
+        }
+        statsRef.current = next
+        return next
+      })
+    }
+
+    if (mtBrokerConnected && (syncLive || fresh)) {
+      await refreshMtTrades(brokerAccounts, { force: true, preloadedTrades: prefetchedMtTrades })
+      if (fresh && generation !== loadGenerationRef.current) return
+    }
+
+    const chartForState = resolveAnalyticsChartTrades(mtTradesRef.current, allTrades, mtBrokerConnected)
+    if (chartForState.length > 0) {
+      setChartTrades(prev => applyAuthoritativeChartTrades(prev, chartForState, mtBrokerConnected))
+    }
+
+    const analytics = computeDashboardAnalyticsSnapshot(
+      chartForState.length > 0 ? chartForState : resolveAnalyticsChartTrades(null, allTrades, mtBrokerConnected),
+      mtTradesRef.current ?? [],
+      channelMaps,
+      unlinkedChannelLabel,
+      brokerAccounts,
+    )
+    setCachedAnalytics(analytics)
+
+    const logSymbols = buildCopierLogSymbolLabels(logs, symbolLookup)
+    setCopierLogSymbols(logSymbols)
+
+    writeDashboardCache(userId, {
+      stats: statsRef.current,
+      copierLogs: logs,
+      copierLogSymbols: logSymbols,
+      channelDisplayNames: channelNames,
+      linkedAccounts: brokerAccounts,
+      linkedAccountBalances: linkedBalancesRef.current,
+      chartTrades: chartForState.length > 0
+        ? chartForState
+        : resolveAnalyticsChartTrades(null, allTrades, mtBrokerConnected),
+      aiExpertLogs: aiLogs,
+      mtTrades: mtTradesRef.current ?? undefined,
+      channelLinkMaps: channelMaps,
+      cachedAnalytics: analytics,
+    })
   }
 
   useEffect(() => {

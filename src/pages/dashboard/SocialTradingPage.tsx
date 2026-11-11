@@ -635,7 +635,9 @@ export function OwnProviderProfileView() {
   const ownAvatarUrl = useOwnAvatarUrl()
   const [profileTab, setProfileTab] = useState<'performance' | 'trading' | 'portfolio'>('performance')
 
-  if (social.loading || social.performanceLoading || ownAccountView.loading) {
+  // Own profile paints once the directory row exists. Full directory performance
+  // hydration and own trade-history enrichment must not hold the skeleton.
+  if (social.loading && !directoryTrader) {
     return <SocialTraderProfileSkeleton />
   }
   if (!trader) {

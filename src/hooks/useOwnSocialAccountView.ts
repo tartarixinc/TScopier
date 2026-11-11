@@ -60,33 +60,24 @@ export function useOwnSocialAccountView(base: SocialTrader | undefined, accountI
   useEffect(() => {
     if (!base?.isYou || !user?.id || !accountId || !account) return
     let active = true
-    const pageSize = 1000
+    /** First paint only needs a bounded window (matches dashboard critical path). */
+    const OWN_TRADES_FETCH_LIMIT = 800
 
     void (async () => {
-      const rows: OwnTradeRow[] = []
-      let truncated = false
-      for (let from = 0; ; from += pageSize) {
-        const { data, error } = await supabase
-          .from('trades')
-          .select('id,symbol,direction,status,opened_at,closed_at,profit,metaapi_order_id')
-          .eq('user_id', user.id)
-          .eq('broker_account_id', accountId)
-          .order('opened_at', { ascending: false })
-          .range(from, from + pageSize - 1)
-        if (!active) return
-        if (error) {
-          setSnapshot({ accountId, trader: null, error: error.message })
-          return
-        }
-        const page = (data ?? []) as OwnTradeRow[]
-        rows.push(...page)
-        if (page.length < pageSize) break
-        // Hard stop so a runaway account cannot freeze the browser.
-        if (rows.length >= 20_000) {
-          truncated = true
-          break
-        }
+      const { data, error } = await supabase
+        .from('trades')
+        .select('id,symbol,direction,status,opened_at,closed_at,profit,metaapi_order_id')
+        .eq('user_id', user.id)
+        .eq('broker_account_id', accountId)
+        .order('opened_at', { ascending: false })
+        .limit(OWN_TRADES_FETCH_LIMIT)
+      if (!active) return
+      if (error) {
+        setSnapshot({ accountId, trader: null, error: error.message })
+        return
       }
+      const rows = (data ?? []) as OwnTradeRow[]
+      const truncated = rows.length >= OWN_TRADES_FETCH_LIMIT
       if (!active) return
 
       const seenTickets = new Set<string>()
