@@ -2,6 +2,19 @@
 
 ## Changelog
 
+### 2026-11-11 — Cut Adjust SL pre-modify stall (OpenedOrders + listener pre-parse)
+
+- **Context:** After edit-path cuts, channel “Adjust SL to 4023” (`0784c972`) still sat ~12s from `execution_planning_started` (14:13:18.95Z) to first `mgmt_modify` (14:13:31.10Z) on 20 Demo legs; user also saw listener delay before the instruction “started.”
+- **Plain English:** Adjust SL was waiting on a full open-orders snapshot (and extra DB) before touching the broker. Live Adjust now uses the parsed SL + one quote and starts modifying immediately; the listener also runs its early DB checks in parallel so Telegram→parse is shorter.
+- **Root cause (technical):** Live modify always went through `applyChannelStopsToBaskets`, which serially awaited Quote → `hasClosedBasketLegs`/`hasTpTouchedLock` → `OpenedOrders` before Phase-2 OrderModify; default `slFrom` also hit channel memory first. Listener stamped `message_normalized_at` only after serial `resolveSignalChannelId` + parse-context + dedup (~0.6–0.9s on top of ~0.5–1s Telegram→`handleMessage`).
+- **Fix (files):**
+  - [`channelStopApply.ts`](worker/src/channelStopApply.ts) — `liveFast` skips OpenedOrders preflight when verify-after-modify is off; SL-only skips TP-freeze DB; parallelize quote/freeze/orders; accept `prewarmedByUuid` + `onFirstBrokerSend`; honor `slFrom:'parsed'`.
+  - [`managementExecutor.ts`](worker/src/tradeExecutor/managementExecutor.ts) — warm Quote during basket expand on live modify; pass `liveFast`/`slFrom:'parsed'`/prewarm into channel-stop apply; stamp `t_first_broker_send`.
+  - [`userListener.ts`](worker/src/userListener.ts) — parallelize channel-id / parent / parse-context / dedup before normalize stamp.
+- **Tests/verification:** `channelStopApply.test.ts` liveFast SL-only does not call `openedOrders` and uses prewarmed quote.
+- **Deploy state:** Worker code (Migration); Railway listener + trade redeploy needed.
+- **Follow-ups:** Retest Adjust SL — expect first `mgmt_modify` within ~1–2s of dispatch receive; `ms_to_norm` well under prior ~700ms once listener is live.
+
 ### 2026-11-11 — Cut message-edit SL/TP pre-modify stalls (~20s SymbolParams + N×Quote)
 
 - **Context:** Edit on `e05e9e95` applied (`mgmt_fast=true`) but wall ~54s; OrderModify span only ~4.3s for 20 legs. ~20s sat on SymbolParams after symbol resolve; another ~24s before first modify (ghost OpenedOrders + per-leg GetQuote).

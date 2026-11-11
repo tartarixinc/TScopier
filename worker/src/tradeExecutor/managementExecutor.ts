@@ -46,6 +46,7 @@ import {
   mgmtRowsToStopLegs,
   mgmtUseChannelStopApply,
   type ChannelStopApplyResult,
+  type ChannelStopPrewarm,
 } from '../channelStopApply'
 import type { MgmtExecOptions, MgmtExecResult } from '../mgmtExecOptions'
 import { runWithPriorityBrokerReads, stashEntryBrokerTimings } from '../brokerEntryContext'
@@ -791,7 +792,15 @@ export async function applyManagement(
     const byBroker = new Map(brokers.map(b => [b.id, b]))
     /** Shared OpenedOrders snapshot for close/partial live-fast legs (one read per session). */
     const mgmtLiveOrdersByUuid = new Map<string, unknown[]>()
+    /** Quote (+ optional OpenedOrders) warmed during modify scope expand. */
+    const modifyPrewarmByUuid = new Map<string, ChannelStopPrewarm>()
     const action = String(parsed.action).toLowerCase()
+    const modifyHasNewSl = action === 'modify'
+      && parsed.sl != null
+      && Number(parsed.sl) > 0
+    const modifyHasNewTp = action === 'modify'
+      && Array.isArray(parsed.tp)
+      && parsed.tp.some(v => Number(v) > 0)
 
     const needsBasketExpand =
       action === 'modify'
@@ -800,8 +809,9 @@ export async function applyManagement(
       || action === 'partial_profit'
       || action === 'partial_breakeven'
 
-    // Expand baskets ∥ orphan DB ∥ OpenedOrders warm so first OrderClose/Modify
-    // is not blocked on serial scope prep (~1s measured on Migration close-all).
+    // Expand baskets ∥ orphan DB ∥ OpenedOrders/Quote warm so first OrderClose/Modify
+    // is not blocked on serial scope prep (~1s measured on Migration close-all;
+    // Adjust SL previously waited on Quote+OpenedOrders only after expand finished).
     if (needsBasketExpand && rows.length > 0) {
       const seedRows = rows
       const earlySnapshotUuids = new Set<string>()
@@ -835,11 +845,59 @@ export async function applyManagement(
             mgmtLiveOrdersByUuid.set(u, raw)
           }))
         : Promise.resolve()
+      // Live Adjust SL / Set TP: start Quote (and OpenedOrders only when verify is on)
+      // while basket expand runs so applyChannelStopsToBaskets does not pay that RTT
+      // after DB scope work.
+      const modifyWarmPromise = (
+        liveMgmtFast
+        && action === 'modify'
+        && (modifyHasNewSl || modifyHasNewTp)
+      )
+        ? Promise.all([...earlySnapshotUuids].map(async u => {
+            const trade = seedRows.find(r => {
+              const b = byBroker.get(r.broker_account_id)
+              return b ? brokerSessionUuid(b) === u : false
+            })
+            if (!trade) return
+            const broker = byBroker.get(trade.broker_account_id)
+            const api = broker ? ctx.apiFor(broker) : null
+            if (!api) return
+            const symbol = String(trade.symbol ?? '')
+            const needQuote = modifyHasNewSl && symbol.length > 0
+            const needOrders = mgmtVerifyAfterModify()
+            const [quote, orders] = await Promise.all([
+              needQuote
+                ? api.quote(u, symbol).then(q => ({ bid: q.bid, ask: q.ask })).catch(() => null)
+                : Promise.resolve(null),
+              needOrders
+                ? api.openedOrders(u).then(raw => {
+                    const tickets = new Set<number>()
+                    const ordersByTicket = new Map<number, unknown>()
+                    for (const row of raw ?? []) {
+                      if (!row || typeof row !== 'object') continue
+                      const o = row as Record<string, unknown>
+                      const ticket = Number(o.ticket ?? o.Ticket ?? o.orderId ?? o.OrderID ?? 0)
+                      if (Number.isFinite(ticket) && ticket > 0) {
+                        tickets.add(ticket)
+                        ordersByTicket.set(ticket, row)
+                      }
+                    }
+                    return { tickets, ordersByTicket }
+                  }).catch(() => null)
+                : Promise.resolve(null),
+            ])
+            modifyPrewarmByUuid.set(u, {
+              quote: quote ?? undefined,
+              orders: orders ?? undefined,
+            })
+          }))
+        : Promise.resolve()
 
       const [expanded, orphans] = await Promise.all([
         expandPromise,
         orphanPromise,
         snapshotPromise,
+        modifyWarmPromise,
       ]).then(([exp, orph]) => [exp, orph] as const)
 
       rows = expanded
@@ -889,6 +947,8 @@ export async function applyManagement(
 
     const cancelledPendingScopes = new Set<string>()
 
+    // Pending-leg scope is independent of OpenedOrders/Quote warm and can run after
+    // expand; for live modify we already overlapped warm with expand above.
     const pendingLegs = await loadRangePendingLegsInMgmtScope(ctx.supabase, {
       userId: signal.user_id,
       brokerAccountIds,
@@ -2152,6 +2212,17 @@ export async function applyManagement(
             hasNewTp,
             parsedSl: effectiveSl,
             parsedTpLevels: effectiveTpLevels,
+            // Live Adjust / Set TP must honor the parsed levels, not channel memory
+            // (which also cost an extra DB round-trip per basket before first modify).
+            slFrom: 'parsed',
+            liveFast: liveMgmtFast,
+            prewarmedByUuid: modifyPrewarmByUuid.size ? modifyPrewarmByUuid : undefined,
+            onFirstBrokerSend: liveMgmtFast && signal.pipeline_ts
+              ? () => {
+                  const pts = signal.pipeline_ts!
+                  if (pts.t_first_broker_send == null) pts.t_first_broker_send = Date.now()
+                }
+              : undefined,
             // Inline broker re-read/verify is off by default — the v2 reconciler
             // (or v1 basket reconcile monitor) re-verifies broker drift, so this
             // synchronous per-leg snapshot check is redundant and previously caused

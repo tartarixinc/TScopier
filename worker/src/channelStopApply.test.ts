@@ -254,6 +254,55 @@ describe('channelStopApply', () => {
     assert.equal(result.brokers[0]?.errors[0]?.skipReason, 'sl_quote_unavailable')
   })
 
+  it('liveFast SL-only skips OpenedOrders preflight and uses parsed SL + prewarmed quote', async () => {
+    const legs: ChannelStopLeg[] = [
+      testLeg({ id: 'buy-1', direction: 'buy', entry_price: 4119, sl: 4097, tp: 4132 }),
+    ]
+    const broker = testBroker()
+    let openedOrdersCalls = 0
+    let modifyCalls = 0
+    let firstSend = 0
+    const api = {
+      seedPlatformCache: () => {},
+      quote: async () => {
+        throw new Error('should use prewarmed quote')
+      },
+      openedOrders: async () => {
+        openedOrdersCalls += 1
+        return [{ ticket: 1001, stopLoss: 4097 }]
+      },
+      orderModify: async () => {
+        modifyCalls += 1
+        return {}
+      },
+    }
+
+    const { supabase } = recordingSupabase()
+    const result = await applyChannelStopsToBaskets({
+      supabase: supabase as never,
+      apiFor: () => api as never,
+      userId: 'user-1',
+      channelId: 'ch-1',
+      signalId: 'sig-mod',
+      brokersById: new Map([['b1', broker]]),
+      rowsByBrokerSignal: new Map([['b1|anchor', legs]]),
+      hasNewSl: true,
+      hasNewTp: false,
+      parsedSl: 4023,
+      parsedTpLevels: [],
+      slFrom: 'parsed',
+      liveFast: true,
+      verifyOnBroker: false,
+      prewarmedByUuid: new Map([[FX_UUID, { quote: { bid: 4105, ask: 4105.2 } }]]),
+      onFirstBrokerSend: () => { firstSend += 1 },
+    })
+
+    assert.equal(openedOrdersCalls, 0, 'liveFast Adjust must not block on OpenedOrders')
+    assert.equal(modifyCalls, 1)
+    assert.equal(firstSend, 1)
+    assert.equal(result.totalModified, 1)
+  })
+
   it('does not apply the live-market guard to a pending stop order', async () => {
     // Pending Buy Stop: entry 4100, live bid 4070, SL 4085 sits above the
     // current market but below entry — a valid pending-stop SL. Judging it
