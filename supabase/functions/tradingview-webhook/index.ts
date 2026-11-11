@@ -364,6 +364,7 @@ async function handleIngest(supabase: SupabaseClient, req: Request, token: strin
     id: signalId,
     user_id: webhook.user_id,
     channel_id: webhook.channel_id,
+    source_kind: "tradingview",
     raw_message: raw.slice(0, 8_000),
     parsed_data: parsed.alert.parsed,
     status: "parsed",

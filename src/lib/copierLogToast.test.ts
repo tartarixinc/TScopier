@@ -6,7 +6,10 @@ import {
   copierLogDestinationLabel,
   copierLogSourceIcon,
   copierLogSourceLabel,
+  copierLogToastFingerprint,
   copierLogToastFromSignal,
+  mergeCopierLogToastSeen,
+  shouldAnnounceCopierLogToast,
   signalHistoryToastLabels,
 } from './copierLogToast'
 import type { BrokerAccount } from '../types/database'
@@ -65,6 +68,60 @@ test('copier log toast ignores commentary that never appears in the log', () => 
     parsed_data: { action: 'ignore' },
   }, en.copierLogs, labels, route)
   assert.equal(toast, null)
+})
+
+test('mergeCopierLogToastSeen seeds fingerprints so identical status updates are ignored', () => {
+  const seen = new Map<string, string>()
+  mergeCopierLogToastSeen(seen, [{
+    id: 'sig-1',
+    status: 'executed',
+    skip_reason: null,
+  }])
+  assert.equal(seen.get('sig-1'), copierLogToastFingerprint({
+    id: 'sig-1',
+    status: 'executed',
+    skip_reason: null,
+  }))
+  assert.equal(
+    seen.get('sig-1') === copierLogToastFingerprint({
+      id: 'sig-1',
+      status: 'executed',
+      skip_reason: null,
+    }),
+    true,
+  )
+  assert.equal(
+    seen.get('sig-1') === copierLogToastFingerprint({
+      id: 'sig-1',
+      status: 'failed',
+      skip_reason: null,
+    }),
+    false,
+  )
+})
+
+test('shouldAnnounceCopierLogToast: UPDATE of unknown id seeds without announcing', () => {
+  const seen = new Map<string, string>()
+  const signal = { id: 'old-1', status: 'executed', skip_reason: null }
+  assert.equal(shouldAnnounceCopierLogToast(seen, signal, 'UPDATE'), 'seed')
+  assert.equal(seen.get('old-1'), copierLogToastFingerprint(signal))
+  assert.equal(shouldAnnounceCopierLogToast(seen, signal, 'UPDATE'), 'skip')
+})
+
+test('shouldAnnounceCopierLogToast: INSERT announces; status change UPDATE announces', () => {
+  const seen = new Map<string, string>()
+  assert.equal(
+    shouldAnnounceCopierLogToast(seen, { id: 'sig-2', status: 'pending', skip_reason: null }, 'INSERT'),
+    'show',
+  )
+  assert.equal(
+    shouldAnnounceCopierLogToast(seen, { id: 'sig-2', status: 'executed', skip_reason: null }, 'UPDATE'),
+    'show',
+  )
+  assert.equal(
+    shouldAnnounceCopierLogToast(seen, { id: 'sig-2', status: 'executed', skip_reason: null }, 'UPDATE'),
+    'skip',
+  )
 })
 
 test('copier log route names the channel and the linked broker', () => {

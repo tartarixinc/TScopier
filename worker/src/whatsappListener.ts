@@ -220,6 +220,7 @@ async function copyGroupMessage(
     id: signalId,
     user_id: userId,
     channel_id: row.channel_id,
+    source_kind: 'whatsapp',
     raw_message: text,
     parsed_data: parsed.parsed,
     status: 'parsed',

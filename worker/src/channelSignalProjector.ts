@@ -83,6 +83,7 @@ export async function projectChannelSignalToUser(
     id: signalId,
     user_id: subscription.user_id,
     channel_id: subscription.id,
+    source_kind: 'telegram' as const,
     channel_signal_id: canonical.id,
     raw_message: canonical.raw_message,
     parsed_data: canonical.parsed_data,

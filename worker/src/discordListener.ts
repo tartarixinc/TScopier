@@ -140,6 +140,7 @@ async function copyMessage(supabase: SupabaseClient, message: Message): Promise<
         id: signalId,
         user_id: subscriber.user_id,
         channel_id: subscriber.channel_id,
+        source_kind: 'discord',
         raw_message: text,
         parsed_data: parsed.parsed,
         status: 'parsed',
