@@ -10,8 +10,8 @@
 - **Fix (files):**
   - [`channelStopApply.ts`](worker/src/channelStopApply.ts) — `liveFast` skips OpenedOrders preflight when verify-after-modify is off; SL-only skips TP-freeze DB; parallelize quote/freeze/orders; accept `prewarmedByUuid` + `onFirstBrokerSend`; honor `slFrom:'parsed'`.
   - [`managementExecutor.ts`](worker/src/tradeExecutor/managementExecutor.ts) — warm Quote during basket expand on live modify; pass `liveFast`/`slFrom:'parsed'`/prewarm into channel-stop apply; stamp `t_first_broker_send`.
-  - [`userListener.ts`](worker/src/userListener.ts) — parallelize channel-id / parent / parse-context / dedup before normalize stamp.
-- **Tests/verification:** `channelStopApply.test.ts` liveFast SL-only does not call `openedOrders` and uses prewarmed quote.
+  - [`userListener.ts`](worker/src/userListener.ts) — parallelize channel-id / parent / parse-context / dedup before normalize stamp (`parentSignalId` kept as `let` for post-parse provider-number linking — Railway `tsc` TS2588).
+- **Tests/verification:** `channelStopApply.test.ts` liveFast SL-only does not call `openedOrders` and uses prewarmed quote; `tsc --noEmit` green after const→let fix.
 - **Deploy state:** Worker code (Migration); Railway listener + trade redeploy needed.
 - **Follow-ups:** Retest Adjust SL — expect first `mgmt_modify` within ~1–2s of dispatch receive; `ms_to_norm` well under prior ~700ms once listener is live.
 
