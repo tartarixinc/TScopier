@@ -178,6 +178,17 @@ async function finalizeMgmtSignal(ctx: TradeExecutorContext, signalId: string): 
 }
 
 /** Pending/range cancel + broker straggler sweep — safe after open legs are closed. */
+function ticketsFromOpenedOrdersSnapshot(rawOrders: unknown[] | undefined): Set<number> {
+  const tickets = new Set<number>()
+  for (const raw of rawOrders ?? []) {
+    if (!raw || typeof raw !== 'object') continue
+    const o = raw as Record<string, unknown>
+    const ticket = Number(o.ticket ?? o.Ticket ?? o.order ?? o.Order ?? 0)
+    if (Number.isFinite(ticket) && ticket > 0) tickets.add(ticket)
+  }
+  return tickets
+}
+
 function deferMgmtCloseCleanup(args: {
   ctx: TradeExecutorContext
   signal: SignalRow
@@ -187,6 +198,7 @@ function deferMgmtCloseCleanup(args: {
   byBroker: Map<string, BrokerRow>
   cancelledPendingScopes: Set<string>
   liveMgmtFast: boolean
+  preCloseTicketsBySession?: Map<string, Set<number>>
   onPendingCancelled?: (n: number) => void
   onBrokerStragglersClosed?: (n: number) => void
 }): void {
@@ -200,6 +212,7 @@ function deferMgmtCloseCleanup(args: {
       byBroker,
       cancelledPendingScopes,
       liveMgmtFast,
+      preCloseTicketsBySession,
       onPendingCancelled,
       onBrokerStragglersClosed,
     } = args
@@ -260,6 +273,7 @@ function deferMgmtCloseCleanup(args: {
           brokers: [broker],
           channelDisplayName: channelMeta.commentSlug,
           channelUsername: null,
+          preCloseTicketsBySession,
           closeWithVerification: (a, u, ticket) =>
             closeWithVerification(a, u, ticket, mgmtCloseOpts(liveMgmtFast)),
         })
@@ -1221,8 +1235,9 @@ export async function applyManagement(
       }))
     }
     const prepareMgmtLiveOrderSnapshots = async (): Promise<void> => {
-      if (!liveMgmtFast) return
-      if (action !== 'close' && action !== 'partial_profit') return
+      // Always snapshot before close so the broker straggler sweep can catch
+      // comment-less / naked orphans that were already open when Close all started.
+      if (action !== 'close' && !(liveMgmtFast && action === 'partial_profit')) return
       const byUuid = new Map<string, MgmtTradeRow[]>()
       for (const trade of eligibleTrades) {
         const broker = byBroker.get(trade.broker_account_id)
@@ -1240,6 +1255,14 @@ export async function applyManagement(
         const raw = (await api.openedOrders(u).catch(() => [])) ?? []
         mgmtLiveOrdersByUuid.set(u, raw)
       }))
+    }
+
+    const preCloseTicketsBySession = (): Map<string, Set<number>> => {
+      const out = new Map<string, Set<number>>()
+      for (const [uuid, raw] of mgmtLiveOrdersByUuid) {
+        out.set(uuid, ticketsFromOpenedOrdersSnapshot(raw))
+      }
+      return out
     }
 
     const processTrade = async (trade: MgmtTradeRow): Promise<void> => {
@@ -1978,6 +2001,7 @@ export async function applyManagement(
         byBroker,
         cancelledPendingScopes,
         liveMgmtFast,
+        preCloseTicketsBySession: preCloseTicketsBySession(),
         onPendingCancelled: n => { legsTotal += n },
         onBrokerStragglersClosed: n => { legsTotal += n },
       })
@@ -2316,6 +2340,7 @@ export async function applyManagement(
           brokers: [broker],
           channelDisplayName: channelMeta.commentSlug,
           channelUsername: null,
+          preCloseTicketsBySession: preCloseTicketsBySession(),
           closeWithVerification: (a, u, ticket) =>
             closeWithVerification(a, u, ticket, mgmtCloseOpts(liveMgmtFast)),
         })

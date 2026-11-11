@@ -28,6 +28,13 @@ export type BrokerOpenOrderLike = {
   comment: string
   lots: number
   isBuy: boolean
+  stopLoss: number
+  takeProfit: number
+}
+
+function readOptionalStop(raw: unknown): number {
+  const n = typeof raw === 'number' ? raw : Number(raw ?? 0)
+  return Number.isFinite(n) && n > 0 ? n : 0
 }
 
 export function extractOpenOrderFromBrokerRaw(raw: unknown): BrokerOpenOrderLike | null {
@@ -53,7 +60,15 @@ export function extractOpenOrderFromBrokerRaw(raw: unknown): BrokerOpenOrderLike
   } else if (numericKind != null && numericKind >= 2 && numericKind <= 5) {
     isBuy = numericKind === 2 || numericKind === 4
   }
-  return { ticket, symbol, comment, lots: Number.isFinite(lots) ? lots : 0, isBuy }
+  return {
+    ticket,
+    symbol,
+    comment,
+    lots: Number.isFinite(lots) ? lots : 0,
+    isBuy,
+    stopLoss: readOptionalStop(o.stopLoss ?? o.StopLoss ?? o.sl ?? o.SL),
+    takeProfit: readOptionalStop(o.takeProfit ?? o.TakeProfit ?? o.tp ?? o.TP),
+  }
 }
 
 export function filterTscopierOrdersForChannelClose(args: {
@@ -79,6 +94,41 @@ export function filterTscopierOrdersForChannelClose(args: {
   })
 }
 
+/**
+ * Close-all safety net: tickets that were already open when the close started,
+ * still open after DB-attributed closes, matching the close symbol, and either
+ * carrying our comment OR sitting naked (no SL/TP). Comment-less protected
+ * manual trades with stops are left alone.
+ */
+export function filterSnapshotStragglerOrdersForClose(args: {
+  orders: BrokerOpenOrderLike[]
+  preCloseTickets: Set<number>
+  symbolFilter: string | null
+  alreadyTargetedTickets?: Set<number>
+}): BrokerOpenOrderLike[] {
+  const { orders, preCloseTickets, symbolFilter, alreadyTargetedTickets } = args
+  if (!preCloseTickets.size) return []
+  return orders.filter(o => {
+    if (!preCloseTickets.has(o.ticket)) return false
+    if (alreadyTargetedTickets?.has(o.ticket)) return false
+    if (symbolFilter?.trim() && !symbolsCompatibleForBasket(symbolFilter, o.symbol)) return false
+    if (isTscopierComment(o.comment)) return true
+    return o.stopLoss <= 0 && o.takeProfit <= 0
+  })
+}
+
+function mergeOrderTargets(
+  primary: BrokerOpenOrderLike[],
+  extra: BrokerOpenOrderLike[],
+): BrokerOpenOrderLike[] {
+  const byTicket = new Map<number, BrokerOpenOrderLike>()
+  for (const order of primary) byTicket.set(order.ticket, order)
+  for (const order of extra) {
+    if (!byTicket.has(order.ticket)) byTicket.set(order.ticket, order)
+  }
+  return [...byTicket.values()]
+}
+
 export async function tryBrokerFallbackClose(args: {
   supabase: SupabaseClient
   api: FxsocketBrokerClient
@@ -87,6 +137,8 @@ export async function tryBrokerFallbackClose(args: {
   brokers: BrokerRow[]
   channelDisplayName?: string | null
   channelUsername?: string | null
+  /** Tickets observed open before DB-attributed closes began (per session uuid). */
+  preCloseTicketsBySession?: Map<string, Set<number>>
   closeWithVerification: (
     api: FxsocketBrokerClient,
     uuid: string,
@@ -94,7 +146,8 @@ export async function tryBrokerFallbackClose(args: {
   ) => Promise<{ confirmed: boolean; reason?: string }>
 }): Promise<{ closed: number; failed: number }> {
   const {
-    supabase, api, signal, parsed, brokers, channelDisplayName, channelUsername, closeWithVerification,
+    supabase, api, signal, parsed, brokers, channelDisplayName, channelUsername,
+    preCloseTicketsBySession, closeWithVerification,
   } = args
   const symbolFilter = parsed.symbol != null && String(parsed.symbol).trim()
     ? String(parsed.symbol).trim()
@@ -128,18 +181,29 @@ export async function tryBrokerFallbackClose(args: {
     let rawOrders: unknown[] = []
     try {
       rawOrders = await api.openedOrders(uuid) ?? []
-    } catch {
+    } catch (err) {
+      console.warn(
+        `[mgmtBrokerClose] OpenedOrders failed during fallback sweep broker=${broker.id}:`,
+        err instanceof Error ? err.message : err,
+      )
       return
     }
     const parsedOrders = rawOrders
       .map(extractOpenOrderFromBrokerRaw)
       .filter((o): o is BrokerOpenOrderLike => o != null)
-    const targets = filterTscopierOrdersForChannelClose({
+    const commentTargets = filterTscopierOrdersForChannelClose({
       orders: parsedOrders,
       channelSlug,
       symbolFilter,
       channelSignalIdPrefixes,
     })
+    const snapshotTargets = filterSnapshotStragglerOrdersForClose({
+      orders: parsedOrders,
+      preCloseTickets: preCloseTicketsBySession?.get(uuid) ?? new Set(),
+      symbolFilter,
+      alreadyTargetedTickets: new Set(commentTargets.map(o => o.ticket)),
+    })
+    const targets = mergeOrderTargets(commentTargets, snapshotTargets)
     for (const order of targets) {
       try {
         const result = await closeWithVerification(api, uuid, order.ticket)
@@ -181,6 +245,7 @@ export async function tryBrokerFallbackClose(args: {
             ticket: order.ticket,
             action: 'close',
             broker_fallback: true,
+            snapshot_straggler: !commentTargets.some(t => t.ticket === order.ticket),
             symbol: order.symbol,
           },
         })
