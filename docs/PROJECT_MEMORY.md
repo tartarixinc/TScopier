@@ -2,6 +2,20 @@
 
 ## Changelog
 
+### 2026-11-11 — Management sub-3s (close / SL·TP / modify)
+
+- **Context:** After entry latency work, Close-all + basket SL/TP still felt slow. Migration close `4c7f8543` had `parse_ms≈2367` (stage-2 AI), `mgmt_wall_ms≈10464`, `mgmt_scope_load_ms≈939`, `other_gateway_wait_ms≈3068` on 34 legs; concurrent serial `basket_leg_modify` fought the same MTAPI gate.
+- **Plain English:** “Close all” and SL/TP edits no longer wait on AI when the phrase is clear, can modify several tickets at once (like the faster buys), warm the open-order book while loading scope, and skip an extra broker re-read after live partial closes.
+- **Root cause (technical):** Management confidence 0.92 failed `FASTPATH_CONFIDENCE=0.99` → stage-2; `MT_TRADE_OP_CONCURRENCY=1` serialized OrderModify; close/scope/OpenedOrders were partly serial; partial close always re-read OpenedOrders; order RPS 12 paced large baskets.
+- **Fix (files):**
+  - [`universalSignalParser.ts`](worker/src/signalIntent/universalSignalParser.ts) / [`parseRouting.ts`](worker/src/signalIntent/parseRouting.ts) — management actions always fast-lane (incl. primary mode).
+  - [`mtapiProvider.ts`](worker/src/mtapiProvider.ts) — `MT_MODIFY_OP_CONCURRENCY` (default 3) + throttle step-down; close default concurrency 6.
+  - [`managementExecutor.ts`](worker/src/tradeExecutor/managementExecutor.ts) — expand∥orphan∥OpenedOrders; live partial skips post-readback; stamp first/last broker on live close.
+  - Env: `MT_MODIFY_OP_CONCURRENCY=3`, `MT_CLOSE_OP_CONCURRENCY=6`, `MTAPI_ORDER_PER_ACCOUNT_RPS=20`, `UNIVERSAL_PARSE_MODE=fastpath`.
+- **Tests/verification:** `tsc --noEmit` clean; parseRouting tests (incl. close @ 0.92 confidence). Live Close-all / SL·TP retest pending Railway deploy.
+- **Deploy state:** Code + local `worker/.env`; Railway trade+listener need same env.
+- **Follow-ups:** Redeploy Migration; avoid testing during post-entry TP sync; confirm close `parse_ms` &lt;100, `mgmt_wall_ms` &lt;3000 for ≤34 legs, modify span &lt;5s.
+
 ### 2026-11-11 — Fix post-handoff buy/range latency (send concurrency + prep + listener)
 
 - **Context:** After handoff was healthy (`http_push_ok`), Migration 34-leg Gold buy (`30c10c24`) still spent ~3s prep + ~12s serial OrderSend; Telegram→listener could lose 10–40s on deploy restart.

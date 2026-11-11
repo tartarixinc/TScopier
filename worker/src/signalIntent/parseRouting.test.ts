@@ -111,6 +111,30 @@ TP 2660`
     )
   })
 
+  it('fast-lanes management actions below entry FASTPATH_CONFIDENCE (0.92)', () => {
+    const msg = 'Close all trades now'
+    const det = {
+      status: 'parsed' as const,
+      skip_reason: null,
+      parsed: {
+        action: 'close',
+        symbol: null,
+        entry_price: null,
+        entry_zone_low: null,
+        entry_zone_high: null,
+        sl: null,
+        tp: [],
+        lot_size: null,
+        confidence: 0.92,
+        raw_instruction: msg,
+      },
+    }
+    assert.equal(
+      deterministicQualifiesForFastPath(det, msg, DEFAULT_CHANNEL_KEYWORDS),
+      true,
+    )
+  })
+
   it('rejects a high-confidence parse that missed a labeled entry (Fix C)', () => {
     const msg = `BUY XAUUSD
 AREA: 4358
