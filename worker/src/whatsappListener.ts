@@ -54,7 +54,12 @@ type BaileysSocket = {
 
 type AuthBucket = Record<string, Record<string, unknown>>
 
-const PORT = Math.max(1, Number(process.env.WHATSAPP_LISTENER_PORT ?? 8091))
+// Railway injects PORT and proxies public HTTPS → that port. Prefer it over the
+ // local default 8091, otherwise the dashboard fetch hits a closed public port.
+const PORT = Math.max(
+  1,
+  Number(process.env.PORT ?? process.env.WHATSAPP_LISTENER_PORT ?? 8091),
+)
 const sessions = new Map<string, LiveSession>()
 
 // Baileys rejects socket queries from its own timers. Those must not exit this process,

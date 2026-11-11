@@ -2,6 +2,16 @@
 
 ## Changelog
 
+### 2026-11-11 — WhatsApp listener “not running” on production (PORT + URL scheme)
+
+- **Context:** Railway WhatsApp service showed `[whatsapp] listener listening on 8091`, but production UI showed “The WhatsApp listener is not running.”
+- **Plain English:** The browser could not reach the WhatsApp service. The app URL was missing `https://`, and the service was listening on 8091 while Railway’s public proxy uses a different port.
+- **Root cause (technical):** `VITE_WHATSAPP_LISTENER_URL` was host-only (`whatsapp-listener-….up.railway.app`); `whatsappListener.ts` bound `WHATSAPP_LISTENER_PORT`/`8091` and ignored Railway `PORT`.
+- **Fix (files):** [`whatsappGroup.ts`](src/lib/whatsappGroup.ts) prepends `https://` when scheme missing; [`whatsappListener.ts`](worker/src/whatsappListener.ts) prefers `process.env.PORT`.
+- **Tests/verification:** Manual — redeploy WhatsApp worker; set Netlify `VITE_WHATSAPP_LISTENER_URL=https://….up.railway.app` and redeploy site.
+- **Deploy state:** Code fix local; needs Railway WhatsApp redeploy + Netlify env/redeploy.
+- **Follow-ups:** Use service start command `npm run whatsapp` (not a one-off console shell).
+
 ### 2026-11-11 — Cut Adjust SL pre-modify stall (OpenedOrders + listener pre-parse)
 
 - **Context:** After edit-path cuts, channel “Adjust SL to 4023” (`0784c972`) still sat ~12s from `execution_planning_started` (14:13:18.95Z) to first `mgmt_modify` (14:13:31.10Z) on 20 Demo legs; user also saw listener delay before the instruction “started.”
