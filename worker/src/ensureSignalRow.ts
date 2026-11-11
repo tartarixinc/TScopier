@@ -50,7 +50,9 @@ function resolveSourceKind(args: EnsureSignalRowArgs): string | null {
       return kind
     }
   }
-  return args.channel_id ? 'telegram' : null
+  // Do not invent `telegram` just because channel_id is set. Dispatch/FK recovery
+  // upserts without source_kind and must not clobber WhatsApp/Discord stamps.
+  return null
 }
 
 function buildSignalRowPatch(args: EnsureSignalRowArgs): Record<string, unknown> {

@@ -21,6 +21,16 @@ test('resolveSignalSourceKind prefers denormalized source_kind after channel del
   )
 })
 
+test('resolveSignalSourceKind prefers live channel over a wrong denormalized telegram stamp', () => {
+  assert.equal(
+    resolveSignalSourceKind(
+      { channel_id: 'ch-1', source_kind: 'telegram', parsed_data: null },
+      { 'ch-1': 'whatsapp' },
+    ),
+    'whatsapp',
+  )
+})
+
 test('resolveSignalSourceKind falls back to live channel map then parsed_data then telegram', () => {
   assert.equal(
     resolveSignalSourceKind(

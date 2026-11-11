@@ -318,3 +318,58 @@ test('ensureSignalRow preserves existing raw_message when raw_message is empty s
   const payload = calls[0]?.payload ?? {}
   assert.equal('raw_message' in payload, false, 'raw_message must not be written when empty')
 })
+
+test('ensureSignalRow omits source_kind when not provided so WhatsApp stamps are not clobbered', async () => {
+  const calls: Array<{ payload: Record<string, unknown> }> = []
+  const supabase = {
+    from() {
+      return {
+        upsert(payload: Record<string, unknown>) {
+          calls.push({ payload })
+          return Promise.resolve({ error: null })
+        },
+      }
+    },
+  }
+
+  const result = await ensureSignalRow(supabase as never, {
+    id: '68b4b9a4-1111-2222-3333-444444444444',
+    user_id: 'user-1',
+    channel_id: 'wa-channel',
+    status: 'parsed',
+    parsed_data: { action: 'sell', symbol: 'XAUUSD' },
+    telegram_message_id: 'wa-1',
+  })
+
+  assert.equal(result.ok, true)
+  const payload = calls[0]?.payload ?? {}
+  assert.equal('source_kind' in payload, false)
+})
+
+test('ensureSignalRow stamps explicit whatsapp source_kind', async () => {
+  const calls: Array<{ payload: Record<string, unknown> }> = []
+  const supabase = {
+    from() {
+      return {
+        upsert(payload: Record<string, unknown>) {
+          calls.push({ payload })
+          return Promise.resolve({ error: null })
+        },
+      }
+    },
+  }
+
+  const result = await ensureSignalRow(supabase as never, {
+    id: '68b4b9a4-1111-2222-3333-444444444444',
+    user_id: 'user-1',
+    channel_id: 'wa-channel',
+    source_kind: 'whatsapp',
+    source_display_name: 'Signal test',
+    status: 'parsed',
+  })
+
+  assert.equal(result.ok, true)
+  const payload = calls[0]?.payload ?? {}
+  assert.equal(payload.source_kind, 'whatsapp')
+  assert.equal(payload.source_display_name, 'Signal test')
+})

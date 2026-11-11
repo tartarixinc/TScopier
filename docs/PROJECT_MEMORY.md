@@ -2,25 +2,40 @@
 
 ## Changelog
 
-### 2026-11-11 — WhatsApp signals not reaching UniCopier (missing signals.source_kind)
+### 2026-11-11 — Account Trades / Performance / Own provider profile under 2s
 
-- **Context:** WhatsApp session connected and “Signal test” group linked/active on production, but posts never appeared as signals.
-- **Plain English:** The WhatsApp listener was receiving messages, but saving each signal into the database failed because two new columns were only on the Migration DB, not production.
-- **Root cause (technical):** Listener inserts `signals.source_kind` / `source_display_name` (migrations `20261111081000`, `20261111091500`). Production `sxkpcovbyaficvtkpsdo` lacked both columns → PostgREST insert error → silent drop after warn log. Session `a23f24d9-…` connected; group `120363431517126646@g.us` → channel `6b52a137-…`.
-- **Fix (files):** Applied `signals_source_kind` + `signals_source_display_name` to production. [`whatsappListener.ts`](worker/src/whatsappListener.ts) logs unlinked/inactive/parse drops and retries insert without source columns if schema still lags.
-- **Tests/verification:** Production columns now `has_source_kind=true`, `has_source_display_name=true`. Resend a parsable signal in “Signal test”.
-- **Deploy state:** Production schema fixed (hotfix). Listener logging/retry is local — redeploy WhatsApp Railway service for better drop visibility; ingest should already work with existing listener once schema is live.
-- **Follow-ups:** Confirm Railway WhatsApp has `TRADE_WORKER_URL` + `WORKER_INTERNAL_TOKEN` so parsed rows also execute; ensure `SUPABASE_URL` is production (not Migration) for this service.
+- **Context:** After Dashboard, Account Trades, Performance, and Social “Your provider profile” still held skeletons on heavy live history.
+- **Plain English:** Those pages now show saved/recent data first, then fill in full broker history in the background instead of waiting on it.
+- **Root cause (technical):** Trades tied skeleton to unbounded MT history + blocking time hydration. Performance awaited 400d MT + serial `refreshSummary` with 800ms sleeps + unbounded map queries. Own provider profile waited on directory-wide `performanceLoading` and up to 20k paginated own trades.
+- **Fix (files):**
+  - [`useTradesData.ts`](src/hooks/useTradesData.ts) — DB critical paint; live fetch `limit` 5000; time hydration background-only.
+  - [`usePerformanceData.ts`](src/hooks/usePerformanceData.ts) — critical 30d/3k MT + cached equity + bounded maps; enrich full history + concurrent summaries (no 800ms sleep).
+  - [`useOwnSocialAccountView.ts`](src/hooks/useOwnSocialAccountView.ts) — single `limit` 800 trades query.
+  - [`SocialTradingPage.tsx`](src/pages/dashboard/SocialTradingPage.tsx) — own profile skeleton only while directory missing.
+  - [`useSocialTradingPreview.ts`](src/hooks/useSocialTradingPreview.ts) — hydrate own first; skip heavy history RPC for `isYou`.
+- **Tests/verification:** `tsc --noEmit` clean.
+- **Deploy state:** Frontend only (Netlify).
+- **Follow-ups:** Discover still hydrates other traders’ history for trade tables.
 
-### 2026-11-11 — WhatsApp listener “not running” on production (PORT + URL scheme)
+### 2026-11-11 — Dashboard cold load skeleton under 2s (cut 5s hold + critical path)
 
-- **Context:** Railway WhatsApp service showed `[whatsapp] listener listening on 8091`, but production UI showed “The WhatsApp listener is not running.”
-- **Plain English:** The browser could not reach the WhatsApp service. The app URL was missing `https://`, and the service was listening on 8091 while Railway’s public proxy uses a different port.
-- **Root cause (technical):** `VITE_WHATSAPP_LISTENER_URL` was host-only (`whatsapp-listener-….up.railway.app`); `whatsappListener.ts` bound `WHATSAPP_LISTENER_PORT`/`8091` and ignored Railway `PORT`.
-- **Fix (files):** [`whatsappGroup.ts`](src/lib/whatsappGroup.ts) prepends `https://` when scheme missing; [`whatsappListener.ts`](worker/src/whatsappListener.ts) prefers `process.env.PORT`.
-- **Tests/verification:** Manual — redeploy WhatsApp worker; set Netlify `VITE_WHATSAPP_LISTENER_URL=https://….up.railway.app` and redeploy site.
-- **Deploy state:** Code fix local; needs Railway WhatsApp redeploy + Netlify env/redeploy.
-- **Follow-ups:** Use service start command `npm run whatsapp` (not a one-off console shell).
+- **Context:** Dashboard metrics skeleton stayed up ~6s on mount/refresh; target under 2s.
+- **Plain English:** The loading screen was kept on for five extra seconds after data was ready, and the first paint also waited on heavy broker history and log queries.
+- **Root cause (technical):** `DASHBOARD_METRICS_LOADER_DISMISS_MS = 5000` after `loadDashboard`. Critical `Promise.all` included MT history (5000), unbounded `signals(id,channel_id)`, unbounded attributions, execution logs, and social/manual helpers.
+- **Fix (files):** [`DashboardPage.tsx`](src/pages/dashboard/DashboardPage.tsx) — dismiss via double-rAF + 150ms cap; critical path only channels/counts/strip/trades≤800 + bounded signal ids for those trades; `enrichDashboardAfterCritical` loads MT history, attributions≤2000, execution logs, social/manual, symbol lookup and patches state without holding the skeleton.
+- **Tests/verification:** `tsc --noEmit` clean. Cold refresh should dismiss skeleton shortly after brokers+critical Supabase settle; charts/copier activity may fill a beat later.
+- **Deploy state:** Frontend only (Netlify redeploy).
+- **Follow-ups:** If still >2s, profile Auth→Profile→Brokers gate next.
+
+### 2026-11-11 — WhatsApp signals showed Telegram logo in Copier Logs
+
+- **Context:** After WhatsApp ingest worked, Copier Process/Logs showed the Telegram paper-plane for “Signal test” WhatsApp rows.
+- **Plain English:** The trade worker re-saved each signal and stamped it as Telegram, so the UI drew the wrong logo.
+- **Root cause (technical):** `ensureSignalRow` defaulted `source_kind` to `telegram` whenever `channel_id` was set. Dispatch upsert (no source_kind) overwrote WhatsApp’s correct stamp. UI `resolveSignalSourceKind` also preferred the denormalized (wrong) value over the live channel map.
+- **Fix (files):** [`ensureSignalRow.ts`](worker/src/ensureSignalRow.ts) omits invented telegram; [`userListener.ts`](worker/src/userListener.ts) passes explicit telegram source; [`signalSourceMark.ts`](src/lib/signalSourceMark.ts) prefers live channel kind while the channel exists. Production backfill set `source_kind='whatsapp'` for WhatsApp channel rows (`75b82e21…`, `5b9a6bf5…`).
+- **Tests/verification:** `signalSourceMark.test.ts`, `ensureSignalRow.test.ts`.
+- **Deploy state:** Frontend logo fix needs Netlify redeploy; worker clobber fix needs Railway trade/listener redeploy. Existing production rows corrected in DB.
+- **Follow-ups:** None.
 
 ### 2026-11-11 — Cut Adjust SL pre-modify stall (OpenedOrders + listener pre-parse)
 
