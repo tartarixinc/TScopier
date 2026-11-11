@@ -220,14 +220,20 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
   const navLinkClass = (isCollapsed: boolean, disabled = false) =>
     ({ isActive }: { isActive: boolean }) =>
       clsx(
-        'flex items-center px-3 py-2.5 rounded-xl text-sm transition-colors min-h-[20px]',
-        isCollapsed ? 'justify-center' : 'gap-2',
+        'flex items-center rounded-full px-3 py-2.5 text-sm min-h-10 transition-[colors,gap,padding] duration-300 ease-out',
+        isCollapsed ? 'justify-center gap-0' : 'gap-3',
         disabled
           ? clsx('cursor-pointer font-medium text-neutral-600 opacity-45 dark:text-neutral-400', APP_RAIL_HOVER)
           : isActive
             ? clsx(APP_RAIL_ACTIVE, 'font-semibold')
             : clsx('font-medium text-neutral-600 dark:text-neutral-300', APP_RAIL_HOVER),
       )
+
+  const navLabelClass = (collapsed: boolean) =>
+    clsx(
+      'overflow-hidden whitespace-nowrap transition-[opacity,max-width,margin] duration-300 ease-out',
+      collapsed ? 'max-w-0 opacity-0' : 'max-w-[11rem] opacity-100',
+    )
 
   const renderNavItemContent = (
     opts: { collapsed: boolean },
@@ -253,9 +259,10 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
         <span className="relative inline-flex shrink-0">
           <Icon
             className={clsx(
-              'w-4 h-4',
+              'h-5 w-5',
               isActive ? 'text-neutral-950' : '',
             )}
+            strokeWidth={1.75}
           />
           {showOpenIndicator && opts.collapsed ? (
             <span className="absolute -inset-e-2.5 -top-1.5 min-w-4 rounded-full bg-green-400 px-1 text-center text-[9px] font-semibold leading-4 text-neutral-950 tabular-nums">
@@ -269,15 +276,28 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
             />
           ) : null}
         </span>
-        <span className={clsx(opts.collapsed && 'lg:hidden')}>{label}</span>
-        {showOpenIndicator && !opts.collapsed ? (
-          <span className="ms-auto inline-flex shrink-0 items-center rounded-md border border-green-200 bg-green-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums leading-none text-neutral-950 dark:border-green-200 dark:bg-green-100 dark:text-neutral-950">
+        <span className={navLabelClass(opts.collapsed)}>{label}</span>
+        <span
+          className={clsx(
+            'ms-auto inline-flex shrink-0 items-center overflow-hidden transition-[opacity,max-width,margin] duration-300 ease-out',
+            showOpenIndicator && !opts.collapsed
+              ? 'max-w-[6rem] opacity-100'
+              : 'max-w-0 opacity-0',
+          )}
+        >
+          <span className="inline-flex items-center rounded-md border border-green-200 bg-green-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums leading-none text-neutral-950">
             {openTradesTag}
           </span>
-        ) : null}
-        {showFireIndicator && !opts.collapsed && !showOpenIndicator ? (
-          <Flame className="ms-auto h-3.5 w-3.5 shrink-0 text-orange-500" aria-hidden />
-        ) : null}
+        </span>
+        <Flame
+          className={clsx(
+            'ms-auto h-3.5 w-3.5 shrink-0 text-orange-500 transition-[opacity,max-width,margin] duration-300 ease-out',
+            showFireIndicator && !opts.collapsed && !showOpenIndicator
+              ? 'max-w-[1rem] opacity-100'
+              : 'max-w-0 opacity-0',
+          )}
+          aria-hidden
+        />
       </>
     )
   }
@@ -294,9 +314,9 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
         <div key={section.label}>
           <p
             className={clsx(
-              'mb-1.5 px-3',
+              'mb-1.5 overflow-hidden px-3 whitespace-nowrap transition-[opacity,max-height,margin] duration-300 ease-out',
               APP_SECTION_LABEL,
-              opts.collapsed && 'hidden',
+              opts.collapsed ? 'mb-0 max-h-0 opacity-0' : 'max-h-6 opacity-100',
             )}
           >
             {section.label}
@@ -380,7 +400,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
             'z-30 flex shrink-0 touch-none items-center gap-1.5 px-2 sm:gap-3 sm:px-4',
             'fixed inset-x-0 top-(--app-banner-h,0px) h-[calc(3.5rem+env(safe-area-inset-top,0px))] pt-[env(safe-area-inset-top,0px)] sm:h-[calc(4rem+env(safe-area-inset-top,0px))]',
             'bg-white/95 backdrop-blur dark:bg-neutral-950/95',
-            'lg:static lg:z-20 lg:h-auto lg:min-h-0 lg:bg-transparent lg:px-3 lg:py-2.5 lg:pt-2.5 lg:backdrop-blur-none lg:dark:bg-transparent lg:touch-auto',
+            'lg:static lg:z-20 lg:h-auto lg:min-h-0 lg:gap-2 lg:bg-transparent lg:px-3 lg:py-2.5 lg:pt-2.5 lg:backdrop-blur-none lg:dark:bg-transparent lg:touch-auto',
           )}
         >
           <button
@@ -392,32 +412,55 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
             <Menu className="w-5 h-5" />
           </button>
 
-          <Link
-            to="/dashboard"
-            className="flex shrink-0 items-center"
-            aria-label={t.nav.items.dashboard}
-          >
-            <TscopierLogo brand="unicopier" className="h-7 w-auto lg:h-8" />
-          </Link>
-
-          <button
-            type="button"
-            onClick={() => setIsSidebarCollapsed(prev => !prev)}
-            title={isSidebarCollapsed ? t.nav.expandSidebar : t.nav.collapseSidebar}
+          {/* Logo column matches sidebar width so search sits on the main content edge. */}
+          <div
             className={clsx(
-              'hidden lg:inline-flex h-9 w-9 items-center justify-center text-neutral-600 transition-colors dark:text-neutral-300',
-              APP_PILL,
-              'hover:bg-neutral-50 dark:hover:bg-neutral-800',
+              'hidden shrink-0 items-center transition-[width] duration-300 ease-out lg:flex',
+              isSidebarCollapsed ? 'w-20 justify-center' : 'w-64',
             )}
           >
-            {isSidebarCollapsed ? <DirectionalIcon icon={PanelLeftOpen} className="w-4.5 h-4.5" /> : <DirectionalIcon icon={PanelLeftClose} className="w-4.5 h-4.5" />}
-          </button>
+            <Link
+              to="/dashboard"
+              className="flex shrink-0 items-center transition-transform duration-300 ease-out"
+              aria-label={t.nav.items.dashboard}
+            >
+              <TscopierLogo
+                brand="unicopier"
+                collapsed={isSidebarCollapsed}
+                className={clsx(
+                  'transition-[width,height,opacity] duration-300 ease-out',
+                  isSidebarCollapsed ? undefined : 'h-9 w-auto lg:h-11',
+                )}
+              />
+            </Link>
+          </div>
 
-          <AppSearchDesktop className="mx-auto min-w-0 w-full max-w-xl flex-1" />
+          <Link
+            to="/dashboard"
+            className="flex shrink-0 items-center lg:hidden"
+            aria-label={t.nav.items.dashboard}
+          >
+            <TscopierLogo brand="unicopier" className="h-9 w-auto" />
+          </Link>
 
-          <div className="flex-1 min-w-0 lg:hidden" />
+          <div className="relative z-40 flex min-w-0 flex-1 items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setIsSidebarCollapsed(prev => !prev)}
+              title={isSidebarCollapsed ? t.nav.expandSidebar : t.nav.collapseSidebar}
+              className={clsx(
+                'hidden h-9 w-9 shrink-0 items-center justify-center text-neutral-600 transition-colors lg:inline-flex dark:text-neutral-300',
+                APP_PILL,
+                'hover:bg-neutral-50 dark:hover:bg-neutral-800',
+              )}
+            >
+              {isSidebarCollapsed ? <DirectionalIcon icon={PanelLeftOpen} className="w-4.5 h-4.5" /> : <DirectionalIcon icon={PanelLeftClose} className="w-4.5 h-4.5" />}
+            </button>
+            <AppSearchDesktop className="hidden w-[min(100%,18rem)] shrink-0 lg:block" />
 
-          <div className="relative z-40 flex shrink-0 items-center gap-1 sm:gap-1.5">
+            <div className="min-w-0 flex-1" />
+
+            <div className="relative z-40 flex shrink-0 items-center gap-1 sm:gap-1.5">
             {hasActiveSubscription && effectivePlan === 'basic' ? (
               <button
                 type="button"
@@ -499,6 +542,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
                 onSignOut={handleSignOut}
               />
             </div>
+            </div>
           </div>
         </header>
       </AppSearchProvider>
@@ -506,7 +550,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
       <div className="relative flex min-h-0 min-w-0 flex-1 gap-2 overflow-hidden overscroll-none px-0 pb-0 lg:px-3 lg:pb-3">
         <aside
           className={clsx(
-            'fixed inset-y-0 left-0 z-50 flex min-h-0 flex-col overflow-hidden transition-transform duration-200 ease-out max-lg:overflow-visible rtl:left-auto rtl:right-0',
+            'fixed inset-y-0 left-0 z-50 flex min-h-0 flex-col overflow-hidden transition-[width,transform] duration-300 ease-out max-lg:overflow-visible rtl:left-auto rtl:right-0',
             'w-64 max-w-[85vw]',
             mobileNavOpen ? 'translate-x-0' : 'max-lg:-translate-x-full max-lg:rtl:translate-x-full',
             'lg:relative lg:inset-auto lg:z-30 lg:h-full lg:max-w-none lg:translate-x-0 lg:shrink-0',

@@ -29,6 +29,7 @@ export function TscopierLogo({ className, collapsed, brand = 'unicopier', onDark
         src={isDark ? unicopierForDark : unicopierForLight}
         alt="UniCopier"
         className={clsx(
+          'transition-[width,height,opacity] duration-300 ease-out',
           collapsed ? 'h-9 w-9 object-cover object-left' : className,
         )}
       />

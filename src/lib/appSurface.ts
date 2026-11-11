@@ -15,13 +15,16 @@ export const APP_RAIL =
 export const APP_MAIN_SHELL =
   'rounded-2xl bg-white shadow-xs ring-1 ring-black/5 dark:bg-neutral-950 dark:ring-white/10 dark:shadow-none'
 
-/** Soft dashboard / section cards inside the main shell. */
+/**
+ * Content cards (dashboard sections, settings panels, etc.).
+ * White fill + stroke — matches Settings / Backtest / Contact Support.
+ */
 export const APP_CARD =
-  'rounded-2xl bg-white shadow-xs ring-1 ring-black/5 dark:bg-neutral-950 dark:ring-white/10 dark:shadow-none'
+  'rounded-2xl border border-neutral-200/65 bg-white dark:border-neutral-800/55 dark:bg-neutral-950'
 
 /** Inset workspace / muted panel inside a white shell. */
 export const APP_WORKSPACE =
-  'bg-[#FAFBFC] dark:bg-white/3'
+  'bg-neutral-50 dark:bg-white/3'
 
 /** Pill controls and search fields. */
 export const APP_PILL =
@@ -29,7 +32,7 @@ export const APP_PILL =
 
 /** Active nav chip on the rail. */
 export const APP_RAIL_ACTIVE =
-  'rounded-xl bg-white text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-50'
+  'rounded-full bg-white text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-50'
 
 /** Inactive nav hover on the rail. */
 export const APP_RAIL_HOVER =
