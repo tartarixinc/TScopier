@@ -131,10 +131,10 @@ export const chromeJa: AppChromeTranslations = {
       cancel: 'Cancel',
       welcomeTitle: 'I can help you set up and run UniCopier.',
       suggestions: [
-        'Is my Telegram linked?',
+        'Are my Signals connected?',
+        'Add an account in Account Configuration',
+        'Show my Account Trades',
         'Pause the copier',
-        'Connect an MT5 account',
-        'What are trading presets?',
       ],
       emptyReply: 'How else can I help?',
       actionDone: 'Done.',
