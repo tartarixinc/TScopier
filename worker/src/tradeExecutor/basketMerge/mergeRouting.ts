@@ -381,7 +381,8 @@ export async function tryParameterFollowUpMergeModifyOnly(ctx: TradeExecutorCont
       `[tradeExecutor] merge_anchor_selected signal=${signal.id} broker=${broker.id}`
       + ` anchor=${anchor.anchorSignalId} symbol=${symbol} direction=${direction}`,
     )
-    await writeExecutionLog(ctx.supabase, {
+    // Fire-and-forget on the live edit path — awaiting this log added 50–150ms.
+    void writeExecutionLog(ctx.supabase, {
       user_id: signal.user_id,
       signal_id: signal.id,
       broker_account_id: broker.id,
@@ -395,18 +396,22 @@ export async function tryParameterFollowUpMergeModifyOnly(ctx: TradeExecutorCont
         newest_opened_at: anchor.newestOpenedAt,
       } as unknown as Record<string, unknown>,
     })
-    const ghostCheck = await reconcileGhostBasketLegs(ctx, {
-      signal,
-      broker,
-      uuid,
-      anchorSignalId: anchor.anchorSignalId,
-      symbol,
-      familyTrades: anchorFamily,
-    })
-    if (ghostCheck.isGhostBasket) {
-      return { handled: false }
+    // Live message-revision SL/TP refresh just opened these legs — skip a full
+    // OpenedOrders ghost sweep (often multi-second under MTAPI load).
+    const skipGhostReconcile = args.liveMgmtFast === true && sameSignalRefresh
+    if (!skipGhostReconcile) {
+      const ghostCheck = await reconcileGhostBasketLegs(ctx, {
+        signal,
+        broker,
+        uuid,
+        anchorSignalId: anchor.anchorSignalId,
+        symbol,
+        familyTrades: anchorFamily,
+      })
+      if (ghostCheck.isGhostBasket) {
+        return { handled: false }
+      }
     }
-
 
     const outcome = await applyBasketSlTpRefresh(ctx, {
       signal,

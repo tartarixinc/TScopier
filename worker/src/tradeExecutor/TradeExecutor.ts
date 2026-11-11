@@ -2041,6 +2041,10 @@ export class TradeExecutor {
     return await brokerSymbolCache.getSymbolParams(this, uuid, symbol)
   }
 
+  peekCachedSymbolParams(uuid: string, symbol: string): SymbolCacheEntry | null {
+    return brokerSymbolCache.peekCachedSymbolParams(this, uuid, symbol)
+  }
+
   /**
    * Force-refresh a single symbol params entry. Coalesces concurrent callers
    * (background refreshers + live-path lookups) via `symbolParamsInflight` so

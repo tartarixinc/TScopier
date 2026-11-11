@@ -67,6 +67,24 @@ test('collectPrewarmSymbolsForBroker includes mapped variants', () => {
   assert.ok(symbols.includes('EURUSD'))
 })
 
+test('peekCachedSymbolParams returns TTL-fresh cache without broker fetch', () => {
+  const ctx = makeCtx()
+  const entry = {
+    digits: 2,
+    point: 0.01,
+    minLot: 0.01,
+    maxLot: 100,
+    lotStep: 0.01,
+    contractSize: null,
+    stopsLevel: 0,
+    freezeLevel: 0,
+    loadedAt: Date.now(),
+  }
+  ctx.symbolCache.set(`${FX_UUID}:XAUUSDM`, entry)
+  assert.equal(brokerSymbolCache.peekCachedSymbolParams(ctx, FX_UUID, 'XAUUSDm'), entry)
+  assert.equal(brokerSymbolCache.peekCachedSymbolParams(ctx, FX_UUID, 'EURUSD'), null)
+})
+
 test('sessionHeartbeatTick stamps sessionPingAt without keepSessionAlive network call', async () => {
   let calls = 0
   const ctx = makeCtx({
