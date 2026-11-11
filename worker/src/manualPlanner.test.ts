@@ -654,7 +654,7 @@ test('planMultiManualOrders: explicit cap consolidates legs, volume + TP split p
   assert.ok(plan.orders.every(o => /:tp\d+/.test(String(o.comment ?? ''))))
 })
 
-test('planMultiManualOrders: empty finalTps without range uses one full-lot immediate (teaser)', () => {
+test('planMultiManualOrders: empty finalTps without range splits to N×leg (UI Range Trading)', () => {
   const manual: ManualSettings = {
     ...baseManual,
     multi_trade_leg_percent: 10,
@@ -672,12 +672,37 @@ test('planMultiManualOrders: empty finalTps without range uses one full-lot imme
     ctx: baseCtx,
     commentPrefix: 'TScopier:44sClub:979b6ac0',
   })
-  assert.equal(plan.orders.length, 1)
-  assert.ok(Math.abs(Number(plan.orders[0]?.volume) - 0.4) < 1e-9)
+  // 10% of 0.4 → 0.04 × 10 (matches Risk preview), not 1×0.4 teaser.
+  assert.equal(plan.orders.length, 10)
+  assert.ok(plan.orders.every(o => Math.abs(Number(o.volume) - 0.04) < 1e-9))
+  const totalVolume = plan.orders.reduce((s, o) => s + Number(o.volume), 0)
+  assert.ok(Math.abs(totalVolume - 0.4) < 1e-9)
   assert.equal(plan.fallback_reason, 'multi_trade_fallback_empty_tps')
   assert.equal((plan.virtualPendings ?? []).length, 0)
-  // Comment stays the single-order prefix (no :tp1/:tp2 clones).
-  assert.equal(plan.orders[0]?.comment, 'TScopier:44sClub:979b6ac0')
+  assert.ok(plan.orders.every(o => /:tp\d+/.test(String(o.comment ?? ''))))
+})
+
+test('planMultiManualOrders: empty finalTps 5 lot @ 5% → 20×0.25 (Gold buy now)', () => {
+  const manual: ManualSettings = {
+    ...baseManual,
+    multi_trade_leg_percent: 5,
+    multi_trade_max_orders: 50,
+    range_trading: false,
+    tp_lots: [{ label: 'TP', lot: 0, percent: 100, enabled: true }],
+  }
+  const plan = planManualOrders({
+    parsed: { ...baseParsed, tp: [], sl: null },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'Buy',
+    manual,
+    channelKeywords: null,
+    manualLot: 5,
+    ctx: baseCtx,
+    commentPrefix: 'TScopier:Gold:abeeb0a0',
+  })
+  assert.equal(plan.orders.length, 20)
+  assert.ok(plan.orders.every(o => Math.abs(Number(o.volume) - 0.25) < 1e-9))
+  assert.equal(plan.fallback_reason, 'multi_trade_fallback_empty_tps')
 })
 
 test('planMultiManualOrders: empty finalTps with range emits one order per instant leg', () => {

@@ -2,6 +2,16 @@
 
 ## Changelog
 
+### 2026-11-11 — Range Trading empty-TP no longer collapses to 1×full lot
+
+- **Context:** Risk UI “Range Trading” (`trade_style=multi`, Fixed Lot 5, per-leg 5% → preview `0.25 × 20`) but MT5 opened a single **buy 5** on bare “Gold buy now” (signals `abeeb0a0` / `6f7303bf`). Range Layering was off.
+- **Plain English:** Multi / Range Trading now opens the many small legs the Risk preview shows even when the signal has no TP list — not one fat order for the whole fixed lot.
+- **Root cause (technical):** `planMultiManualOrders` empty-`finalTps` path treated `range_trading=false` as a classic teaser → `buildSingleOrder` at full `manualLot` (`multi_trade_fallback_empty_tps`). UI label “Range Trading” maps to `trade_style=multi` and does not set `range_trading`.
+- **Fix (files):** [`planMultiManualOrders.ts`](worker/src/manualPlanning/planMultiManualOrders.ts) — empty-TP always emits `immediateLegs × targetLeg` (+ remainder when no range reservation); [`manualPlanner.test.ts`](worker/src/manualPlanner.test.ts) — teaser expectation → N×leg + 5@5%→20×0.25 regression.
+- **Tests/verification:** `node --import tsx --test src/manualPlanner.test.ts` — 95 pass.
+- **Deploy state:** Worker code only (Migration); Railway trade worker redeploy needed before live retest.
+- **Follow-ups:** Redeploy trade worker; retest bare Gold buy now → expect ~20×0.25 not 1×5; optional UI copy to separate Range Layering from Trade Style.
+
 ### 2026-11-11 — Management sub-3s (close / SL·TP / modify)
 
 - **Context:** After entry latency work, Close-all + basket SL/TP still felt slow. Migration close `4c7f8543` had `parse_ms≈2367` (stage-2 AI), `mgmt_wall_ms≈10464`, `mgmt_scope_load_ms≈939`, `other_gateway_wait_ms≈3068` on 34 legs; concurrent serial `basket_leg_modify` fought the same MTAPI gate.
