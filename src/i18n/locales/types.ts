@@ -2026,6 +2026,7 @@ export interface ChannelsPageTranslations {
   discordHow2: string
   discordHow3: string
   discordConnect: string
+  discordDisconnect: string
   discordListTitle: string
   discordEmptyChannels: string
   discordPickChannels: string

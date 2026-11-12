@@ -136,3 +136,39 @@ export async function removeDiscordChannel(
   notifyDiscordSourcesChanged()
   return { error: null, brokers: updated }
 }
+
+/** Remove all Discord installs, linked channels, and broker links for this user. */
+export async function disconnectDiscord(
+  supabase: SupabaseClient,
+  userId: string,
+  brokers: BrokerAccount[],
+): Promise<{ error: string | null; brokers: BrokerAccount[] }> {
+  const { data: links, error: listError } = await supabase
+    .from('discord_channels')
+    .select('channel_id')
+    .eq('user_id', userId)
+  if (listError) return { error: listError.message, brokers: [] }
+
+  const updated: BrokerAccount[] = []
+  let brokerState = [...brokers]
+  const shadowIds = [...new Set((links ?? []).map(row => String(row.channel_id)).filter(Boolean))]
+  for (const shadowId of shadowIds) {
+    const removed = await removeDiscordChannel(supabase, userId, shadowId, brokerState)
+    if (removed.error) return { error: removed.error, brokers: updated }
+    for (const broker of removed.brokers) {
+      const idx = updated.findIndex(item => item.id === broker.id)
+      if (idx >= 0) updated[idx] = broker
+      else updated.push(broker)
+      brokerState = brokerState.map(item => item.id === broker.id ? broker : item)
+    }
+  }
+
+  const { error: installError } = await supabase
+    .from('discord_installations')
+    .delete()
+    .eq('user_id', userId)
+  if (installError) return { error: installError.message, brokers: updated }
+
+  notifyDiscordSourcesChanged()
+  return { error: null, brokers: updated }
+}

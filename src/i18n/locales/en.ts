@@ -1816,6 +1816,7 @@ broker: {
     discordHow2: 'Choose the text channels that post trade signals',
     discordHow3: 'Link those channels to the broker accounts that should copy them',
     discordConnect: 'Connect Discord',
+    discordDisconnect: 'Disconnect Discord',
     discordListTitle: 'Your Discord channels',
     discordEmptyChannels: 'No Discord channels added yet.',
     discordPickChannels: 'Text channels',

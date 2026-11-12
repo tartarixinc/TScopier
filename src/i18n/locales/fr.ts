@@ -1713,6 +1713,7 @@ export const fr: Translations = {
     discordHow2: 'Choisissez les salons texte qui publient des signaux',
     discordHow3: 'Liez ces salons aux comptes courtier qui doivent les copier',
     discordConnect: 'Connecter Discord',
+    discordDisconnect: 'Déconnecter Discord',
     discordListTitle: 'Vos salons Discord',
     discordEmptyChannels: 'Aucun salon Discord pour le moment.',
     discordPickChannels: 'Salons texte',

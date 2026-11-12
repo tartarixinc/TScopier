@@ -18,6 +18,7 @@ import {
 import { isBrokerCopyEnabledForUi } from '../../lib/brokerLink'
 import {
   addDiscordChannel,
+  disconnectDiscord,
   discordClientId,
   discordInviteUrl,
   discordRedirectUri,
@@ -70,6 +71,7 @@ export function DiscordSourcePanel({
   const [connectingBrokerId, setConnectingBrokerId] = useState<string | null>(null)
   const [connectingAllId, setConnectingAllId] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [disconnecting, setDisconnecting] = useState(false)
   const inviteHandled = useRef<string | null>(null)
 
   const load = useCallback(async () => {
@@ -144,6 +146,21 @@ export function DiscordSourcePanel({
       return
     }
     window.open(discordInviteUrl(clientId, discordRedirectUri()), '_blank', 'noopener,noreferrer')
+  }
+
+  const disconnect = async () => {
+    if (!user?.id || disconnecting) return
+    setDisconnecting(true)
+    setError('')
+    const result = await disconnectDiscord(supabase, user.id, brokers)
+    setDisconnecting(false)
+    if (result.error) {
+      setError(result.error)
+      return
+    }
+    for (const broker of result.brokers) replaceBroker(broker)
+    void refreshSubscription()
+    await load()
   }
 
   const refreshGuilds = async () => {
@@ -234,9 +251,14 @@ export function DiscordSourcePanel({
               <RefreshCw className="h-3.5 w-3.5" />
               {copy.discordSync}
             </Button>
-            <Button size="sm" onClick={connect}>
-              <Plus className="h-3.5 w-3.5" />
-              {copy.discordConnect}
+            <Button
+              variant="ghost"
+              size="sm"
+              loading={disconnecting}
+              onClick={() => void disconnect()}
+              className="text-error-600 hover:bg-error-50 hover:text-error-700"
+            >
+              {copy.discordDisconnect}
             </Button>
           </div>
         </div>

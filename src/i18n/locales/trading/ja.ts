@@ -180,6 +180,7 @@ export const tradingJa: TradingPagesBundleTranslations = {
     discordHow2: '取引シグナルを投稿するテキストチャンネルを選ぶ',
     discordHow3: 'コピー先のブローカー口座にそのチャンネルをリンクする',
     discordConnect: 'Discordを接続',
+    discordDisconnect: 'Discordを切断',
     discordListTitle: 'あなたのDiscordチャンネル',
     discordEmptyChannels: 'Discordチャンネルはまだありません。',
     discordPickChannels: 'テキストチャンネル',

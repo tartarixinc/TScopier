@@ -1713,6 +1713,7 @@ export const es: Translations = {
     discordHow2: 'Elige los canales de texto que publican señales',
     discordHow3: 'Vincula esos canales a las cuentas de bróker que deben copiarlos',
     discordConnect: 'Conectar Discord',
+    discordDisconnect: 'Desconectar Discord',
     discordListTitle: 'Tus canales de Discord',
     discordEmptyChannels: 'Todavía no hay canales de Discord.',
     discordPickChannels: 'Canales de texto',
