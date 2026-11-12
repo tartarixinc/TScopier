@@ -2,6 +2,26 @@
 
 ## Changelog
 
+### 2026-11-12 — Discord signals silent: DB env mismatch + no ingest logs
+
+- **Context:** Gateway can start, but posting in Discord still yields no UniCopier signal.
+- **Plain English:** Discord was connected on the **Migration** app (1 linked `#general`). **Production** has 0 Discord installs/links. A production-pointed Railway listener looks up subscribers on production, finds none, and drops the message with no log.
+- **Root cause (technical):** `loadSubscribers` returns `[]` when `discord_channels` is empty on that `SUPABASE_URL`; [`copyMessage`](worker/src/discordListener.ts) previously returned silently. Migration still has 0 `source_kind=discord` signals.
+- **Fix (files):** Ops — point Discord Railway `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` at the same project where Connect Discord was done (Migration `supmsgcubipmmowrzoub` for preview), **or** Connect Discord + link `#general` on production. Code — log empty body / zero subscribers / parse ignore in `discordListener.ts`.
+- **Tests/verification:** After align + redeploy, post in linked `#general`; Railway log should show insert path or an explicit skip reason; DB `signals.source_kind=discord` increases.
+- **Deploy state:** Logging needs worker image redeploy; env alignment is Railway Variables.
+- **Follow-ups:** Confirm Message Content Intent stayed on; bot can View/Read the linked channel.
+
+### 2026-11-12 — Discord gateway 4014 DisallowedIntents
+
+- **Context:** Railway `discord_listener` started (`role=discord_listener shard=0/1`) then crash-looped: `shard 0 disconnected code=4014 (DisallowedIntents)`.
+- **Plain English:** The bot asked Discord for privileged intents (message content) that are still off in the Developer Portal.
+- **Root cause (technical):** [`discordListener.ts`](worker/src/discordListener.ts) enables `GatewayIntentBits.MessageContent` (plus Guilds / GuildMessages). Discord closes with 4014 when Message Content Intent is not enabled for the application.
+- **Fix (files):** Ops only — Discord Developer Portal → Application → Bot → Privileged Gateway Intents → enable **Message Content Intent** (Save). Redeploy/restart Discord service.
+- **Tests/verification:** Logs show `[discord] gateway ready as …` instead of 4014.
+- **Deploy state:** Worker start path OK; portal intent toggle required.
+- **Follow-ups:** None if intent stays on; bot must stay under Discord’s privileged-intent approval rules at 100+ servers.
+
 ### 2026-11-12 — Discord listener crash: Node 20 WebSocket
 
 - **Context:** Railway Discord service crash-looped on start with `Node.js 20 detected without native WebSocket support` from `@supabase/realtime-js`.
