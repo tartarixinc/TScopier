@@ -2,6 +2,24 @@
 
 ## Changelog
 
+### 2026-11-12 — Fix Netlify tsc: empty copier log symbol lookup
+
+- **Context:** Netlify `npm run build` failed: `buildCopierLogSymbolLabels(logs, {})` no longer matches `CopierSymbolContext | Map`.
+- **Plain English:** Critical-path dashboard copier logs now pass an empty Map until enrichment fills symbols.
+- **Fix (files):** [`DashboardPage.tsx`](src/pages/dashboard/DashboardPage.tsx) — `new Map()` instead of `{}`.
+- **Tests/verification:** `tsc -b`.
+- **Deploy state:** Frontend only (unblocks Netlify).
+- **Follow-ups:** None.
+
+### 2026-11-12 — Promote TradingView alert_config to production
+
+- **Context:** `tradingview_webhooks.alert_config` was only on the Migration branch; Configure modal persistence needed production.
+- **Plain English:** Production now has the same TradingView alert JSON settings column as Migration.
+- **Fix (files):** Applied `tradingview_webhook_alert_config` via MCP `apply_migration` to production `sxkpcovbyaficvtkpsdo` (`add column if not exists alert_config jsonb`).
+- **Tests/verification:** `information_schema` shows `alert_config` jsonb; migration version `20261112114811` listed on production.
+- **Deploy state:** Production DB updated; Migration already had it.
+- **Follow-ups:** None.
+
 ### 2026-11-12 — TradingView Configure owns webhook URL; remove Show Details
 
 - **Context:** Webhook URL lived in a separate Details modal; list had both Configure and Show Details. Portrait modal required heavy scrolling.
