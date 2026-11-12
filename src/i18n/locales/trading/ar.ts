@@ -180,6 +180,7 @@ export const tradingAr: TradingPagesBundleTranslations = {
     discordHow2: 'اختر قنوات النص التي تنشر إشارات التداول',
     discordHow3: 'اربط هذه القنوات بحسابات الوسيط التي يجب أن تنسخها',
     discordConnect: 'ربط Discord',
+    discordDisconnect: 'قطع اتصال Discord',
     discordListTitle: 'قنوات Discord الخاصة بك',
     discordEmptyChannels: 'لا توجد قنوات Discord بعد.',
     discordPickChannels: 'قنوات النص',

@@ -180,6 +180,7 @@ export const tradingRu: TradingPagesBundleTranslations = {
     discordHow2: 'Выберите текстовые каналы, где публикуются сигналы',
     discordHow3: 'Привяжите эти каналы к брокерским счетам, которые должны их копировать',
     discordConnect: 'Подключить Discord',
+    discordDisconnect: 'Отключить Discord',
     discordListTitle: 'Ваши каналы Discord',
     discordEmptyChannels: 'Каналов Discord пока нет.',
     discordPickChannels: 'Текстовые каналы',

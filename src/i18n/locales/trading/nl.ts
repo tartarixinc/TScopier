@@ -180,6 +180,7 @@ export const tradingNl: TradingPagesBundleTranslations = {
     discordHow2: 'Kies de tekstkanalen die handelssignalen plaatsen',
     discordHow3: 'Koppel die kanalen aan de brokeraccounts die ze moeten kopiëren',
     discordConnect: 'Discord verbinden',
+    discordDisconnect: 'Discord ontkoppelen',
     discordListTitle: 'Je Discord-kanalen',
     discordEmptyChannels: 'Nog geen Discord-kanalen.',
     discordPickChannels: 'Tekstkanalen',

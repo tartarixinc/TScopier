@@ -2,6 +2,15 @@
 
 ## Changelog
 
+### 2026-11-12 — Discord panel: Disconnect when connected
+
+- **Context:** Connected Discord UI still showed “+ Connect Discord”.
+- **Plain English:** Once a server is linked, the header action is now **Disconnect Discord** (same pattern as WhatsApp).
+- **Fix (files):** [`DiscordSourcePanel.tsx`](src/components/dashboard/DiscordSourcePanel.tsx); [`disconnectDiscord`](src/lib/discordSource.ts) removes installs, shadow channels, and broker links; i18n `discordDisconnect`.
+- **Tests/verification:** With an installation present, header shows Disconnect; click clears installs/channels and returns to Connect hero.
+- **Deploy state:** Frontend only.
+- **Follow-ups:** None.
+
 ### 2026-11-12 — Discord signals silent: DB env mismatch + no ingest logs
 
 - **Context:** Gateway can start, but posting in Discord still yields no UniCopier signal.

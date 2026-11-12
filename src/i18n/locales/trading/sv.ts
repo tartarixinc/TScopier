@@ -180,6 +180,7 @@ export const tradingSv: TradingPagesBundleTranslations = {
     discordHow2: 'Välj textkanalerna som publicerar handelssignaler',
     discordHow3: 'Koppla kanalerna till de mäklarkonton som ska kopiera dem',
     discordConnect: 'Anslut Discord',
+    discordDisconnect: 'Koppla från Discord',
     discordListTitle: 'Dina Discord-kanaler',
     discordEmptyChannels: 'Inga Discord-kanaler ännu.',
     discordPickChannels: 'Textkanaler',
