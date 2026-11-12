@@ -9,11 +9,6 @@ import { useConfirm } from '../../context/ConfirmDialogContext'
 import { useT } from '../../context/LocaleContext'
 import { interpolate } from '../../i18n/interpolate'
 import {
-  TRADINGVIEW_ALERT_TEMPLATE,
-  TRADINGVIEW_ALERT_TEMPLATE_BUY,
-  TRADINGVIEW_ALERT_TEMPLATE_SELL,
-} from '../../../supabase/functions/_shared/tradingViewAlert'
-import {
   brokersMatchingChannel,
   brokersNotMatchingChannel,
   connectChannelToBroker,
@@ -23,10 +18,18 @@ import {
 } from '../../lib/brokerChannelLink'
 import { isBrokerCopyEnabledForUi } from '../../lib/brokerLink'
 import {
+  TRADINGVIEW_TP_COUNT_MAX,
+  TRADINGVIEW_TP_COUNT_MIN,
+  buildTradingViewAlertTemplates,
+  normalizeTradingViewAlertConfig,
+  type TradingViewAlertConfig,
+} from '../../lib/tradingViewAlertTemplate'
+import {
   createTradingViewWebhook,
   deleteTradingViewWebhook,
   rotateTradingViewWebhook,
   setTradingViewWebhookActive,
+  updateTradingViewAlertConfig,
 } from '../../lib/tradingViewWebhook'
 import type { BrokerAccount, TradingViewWebhook, TradingViewWebhookDelivery } from '../../types/database'
 import { Card } from '../ui/Card'
@@ -35,7 +38,10 @@ import { Input } from '../ui/Input'
 import { Toggle } from '../ui/Toggle'
 import { Badge } from '../ui/Badge'
 
-type WebhookRow = Pick<TradingViewWebhook, 'id' | 'channel_id' | 'name' | 'token' | 'is_active' | 'created_at'>
+type WebhookRow = Pick<
+  TradingViewWebhook,
+  'id' | 'channel_id' | 'name' | 'token' | 'is_active' | 'created_at' | 'alert_config'
+>
 type DeliveryRow = Pick<TradingViewWebhookDelivery, 'id' | 'webhook_id' | 'status' | 'skip_reason' | 'created_at'>
 
 function webhookUrl(token: string): string {
@@ -73,13 +79,14 @@ export function TradingViewSourcePanel({
   const [connectingAllId, setConnectingAllId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [configureId, setConfigureId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     if (!user?.id) return
     const [hooks, recent] = await Promise.all([
       supabase
         .from('tradingview_webhooks')
-        .select('id, channel_id, name, token, is_active, created_at')
+        .select('id, channel_id, name, token, is_active, created_at, alert_config')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false }),
       supabase
@@ -136,7 +143,7 @@ export function TradingViewSourcePanel({
     setName('')
     setCreateOpen(false)
     await load()
-    setSelectedId(result.id)
+    setConfigureId(result.id)
   }
 
   const copyText = async (key: string, value: string) => {
@@ -160,6 +167,25 @@ export function TradingViewSourcePanel({
   }
 
   const selected = webhooks.find(webhook => webhook.id === selectedId) ?? null
+  const configuring = webhooks.find(webhook => webhook.id === configureId) ?? null
+
+  const saveAlertConfig = async (webhookId: string, config: TradingViewAlertConfig) => {
+    if (!user?.id) return false
+    setBusy(true)
+    setError(null)
+    const result = await updateTradingViewAlertConfig(supabase, user.id, webhookId, config)
+    setBusy(false)
+    if (result.error) {
+      setError(result.error)
+      return false
+    }
+    setWebhooks(current =>
+      current.map(webhook => (
+        webhook.id === webhookId ? { ...webhook, alert_config: result.config } : webhook
+      )),
+    )
+    return true
+  }
 
   const connectBroker = async (webhook: WebhookRow, brokerId: string) => {
     if (!user?.id) return
@@ -249,6 +275,10 @@ export function TradingViewSourcePanel({
                   setError(null)
                   setSelectedId(webhook.id)
                 }}
+                onConfigure={() => {
+                  setError(null)
+                  setConfigureId(webhook.id)
+                }}
                 onToggleConnectMenu={() => setConnectMenuId(current => (current === webhook.id ? null : webhook.id))}
                 onCloseConnectMenu={() => setConnectMenuId(null)}
                 onConnectBroker={brokerId => void connectBroker(webhook, brokerId)}
@@ -271,7 +301,10 @@ export function TradingViewSourcePanel({
                     void run(async () => {
                       const result = await deleteTradingViewWebhook(supabase, user.id, webhook, brokers)
                       for (const broker of result.brokers) replaceBroker(broker)
-                      if (!result.error) setSelectedId(current => (current === webhook.id ? null : current))
+                      if (!result.error) {
+                        setSelectedId(current => (current === webhook.id ? null : current))
+                        setConfigureId(current => (current === webhook.id ? null : current))
+                      }
                       return { error: result.error }
                     })
                   })
@@ -317,6 +350,10 @@ export function TradingViewSourcePanel({
             statusLabel={statusLabel}
             skipReasonLabel={skipReasonLabel}
             onCopy={copyText}
+            onConfigure={() => {
+              setSelectedId(null)
+              setConfigureId(selected.id)
+            }}
             onRotate={() => {
               if (!user?.id) return
               void confirm({
@@ -330,6 +367,26 @@ export function TradingViewSourcePanel({
                 if (!approved) return
                 void run(() => rotateTradingViewWebhook(supabase, user.id, selected.id))
               })
+            }}
+          />
+        </ModalFrame>
+      ) : null}
+
+      {configuring ? (
+        <ModalFrame
+          title={copy.tradingViewConfigureTitle ?? 'Configure alert JSON'}
+          onClose={() => { if (!busy) setConfigureId(null) }}
+        >
+          <WebhookConfigure
+            webhook={configuring}
+            copy={copy}
+            error={error}
+            copied={copied}
+            busy={busy}
+            onCopy={copyText}
+            onSave={async config => {
+              const ok = await saveAlertConfig(configuring.id, config)
+              if (ok) setConfigureId(null)
             }}
           />
         </ModalFrame>
@@ -349,6 +406,7 @@ function WebhookListRow({
   disconnectingLinkKey,
   busy,
   onOpen,
+  onConfigure,
   onToggleConnectMenu,
   onCloseConnectMenu,
   onConnectBroker,
@@ -367,6 +425,7 @@ function WebhookListRow({
   disconnectingLinkKey: string | null
   busy: boolean
   onOpen: () => void
+  onConfigure: () => void
   onToggleConnectMenu: () => void
   onCloseConnectMenu: () => void
   onConnectBroker: (brokerId: string) => void
@@ -407,7 +466,10 @@ function WebhookListRow({
           <p className="mt-0.5 truncate text-xs text-neutral-900 dark:text-neutral-50">{lastEventLabel}</p>
         </button>
         <div className="flex shrink-0 items-center gap-2">
-          <Button type="button" variant="secondary" size="sm" onClick={onOpen}>
+          <Button type="button" variant="secondary" size="sm" onClick={onConfigure}>
+            {t.channelsPage.tradingViewConfigure ?? 'Configure'}
+          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={onOpen}>
             {t.channelsPage.tradingViewShowDetails}
           </Button>
           <Toggle checked={webhook.is_active} disabled={busy} onChange={onToggle} />
@@ -612,6 +674,7 @@ function WebhookDetails({
   statusLabel,
   skipReasonLabel,
   onCopy,
+  onConfigure,
   onRotate,
 }: {
   webhook: WebhookRow
@@ -622,6 +685,7 @@ function WebhookDetails({
   statusLabel: (status: DeliveryRow['status']) => string
   skipReasonLabel: (reason: string | null | undefined) => string | null
   onCopy: (key: string, value: string) => void
+  onConfigure: () => void
   onRotate: () => void
 }) {
   const [howToOpen, setHowToOpen] = useState(false)
@@ -648,63 +712,17 @@ function WebhookDetails({
         copyLabel={copied === webhook.id ? copy.tradingViewCopied : copy.tradingViewCopy}
         onCopy={() => onCopy(webhook.id, webhookUrl(webhook.token))}
       />
-      <div className="space-y-4">
-        <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{copy.tradingViewTemplate}</p>
-        {(() => {
-          const renderTemplate = (template: {
-            key: string
-            label: string
-            body: string
-            hint?: string
-          }) => {
-            const copyKey = `${webhook.id}:template-${template.key}`
-            return (
-              <div key={template.key}>
-                <div className="mb-1.5 flex items-center justify-between gap-3">
-                  <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{template.label}</p>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => onCopy(copyKey, template.body)}
-                  >
-                    <Copy className="h-3.5 w-3.5" />
-                    {copied === copyKey ? copy.tradingViewCopied : copy.tradingViewCopy}
-                  </Button>
-                </div>
-                <pre className="overflow-x-auto rounded-lg bg-neutral-50 p-3 text-xs text-neutral-900 dark:bg-neutral-900 dark:text-neutral-50">
-                  {template.body}
-                </pre>
-                {template.hint ? (
-                  <p className="mt-1.5 text-xs text-neutral-900 dark:text-neutral-50">{template.hint}</p>
-                ) : null}
-              </div>
-            )
-          }
-          return (
-            <>
-              {renderTemplate({
-                key: 'strategy',
-                label: copy.tradingViewTemplateStrategy,
-                body: TRADINGVIEW_ALERT_TEMPLATE,
-              })}
-              <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
-                {copy.tradingViewTemplateIndicators}
-              </p>
-              {renderTemplate({
-                key: 'buy',
-                label: copy.tradingViewTemplateBuy,
-                body: TRADINGVIEW_ALERT_TEMPLATE_BUY,
-                hint: copy.tradingViewTemplateSymbolHint,
-              })}
-              {renderTemplate({
-                key: 'sell',
-                label: copy.tradingViewTemplateSell,
-                body: TRADINGVIEW_ALERT_TEMPLATE_SELL,
-                hint: copy.tradingViewTemplateSymbolHint,
-              })}
-            </>
-          )
-        })()}
+      <div className="rounded-xl border border-neutral-200/80 bg-neutral-50/80 px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900/40">
+        <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
+          {copy.tradingViewTemplate}
+        </p>
+        <p className="mt-1 text-xs leading-relaxed text-neutral-600 dark:text-neutral-400">
+          {copy.tradingViewConfigureHint
+            ?? 'Build a tailored alert JSON for Indicator or Strategy alerts, including optional SL and TPs.'}
+        </p>
+        <Button type="button" size="sm" className="mt-3" onClick={onConfigure}>
+          {copy.tradingViewConfigureCta ?? 'Configure alert JSON'}
+        </Button>
       </div>
       <div>
         <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{copy.tradingViewDeliveries}</p>
@@ -742,6 +760,175 @@ function WebhookDetails({
         </ModalFrame>
       ) : null}
     </div>
+  )
+}
+
+function WebhookConfigure({
+  webhook,
+  copy,
+  error,
+  copied,
+  busy,
+  onCopy,
+  onSave,
+}: {
+  webhook: WebhookRow
+  copy: ReturnType<typeof useT>['channelsPage']
+  error: string | null
+  copied: string | null
+  busy: boolean
+  onCopy: (key: string, value: string) => void
+  onSave: (config: TradingViewAlertConfig) => Promise<void>
+}) {
+  const [config, setConfig] = useState<TradingViewAlertConfig>(() =>
+    normalizeTradingViewAlertConfig(webhook.alert_config),
+  )
+  const templates = useMemo(() => buildTradingViewAlertTemplates(config), [config])
+  const selectClass =
+    'w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 focus:border-transparent focus:outline-hidden focus:ring-2 focus:ring-green-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100'
+
+  const renderTemplate = (key: string, label: string, body: string, hint?: string) => {
+    const copyKey = `${webhook.id}:cfg-${key}`
+    return (
+      <div key={key}>
+        <div className="mb-1.5 flex items-center justify-between gap-3">
+          <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{label}</p>
+          <Button variant="secondary" size="sm" onClick={() => onCopy(copyKey, body)}>
+            <Copy className="h-3.5 w-3.5" />
+            {copied === copyKey ? copy.tradingViewCopied : copy.tradingViewCopy}
+          </Button>
+        </div>
+        <pre className="overflow-x-auto rounded-lg bg-neutral-50 p-3 text-xs text-neutral-900 dark:bg-neutral-900 dark:text-neutral-50">
+          {body}
+        </pre>
+        {hint ? <p className="mt-1.5 text-xs text-neutral-600 dark:text-neutral-400">{hint}</p> : null}
+      </div>
+    )
+  }
+
+  return (
+    <form
+      className="space-y-4"
+      onSubmit={event => {
+        event.preventDefault()
+        void onSave(normalizeTradingViewAlertConfig(config))
+      }}
+    >
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
+          {copy.tradingViewAlertType ?? 'Alert type'}
+        </label>
+        <select
+          className={selectClass}
+          value={config.kind}
+          onChange={event => {
+            const kind = event.target.value === 'strategy' ? 'strategy' : 'indicator'
+            setConfig(current => ({ ...current, kind }))
+          }}
+        >
+          <option value="indicator">{copy.tradingViewAlertTypeIndicator ?? 'Indicator'}</option>
+          <option value="strategy">{copy.tradingViewAlertTypeStrategy ?? 'Strategy'}</option>
+        </select>
+      </div>
+
+      {config.kind === 'indicator' ? (
+        <Input
+          label={copy.tradingViewSymbol ?? 'Symbol'}
+          value={config.symbol ?? 'XAUUSD'}
+          onChange={event => setConfig(current => ({ ...current, symbol: event.target.value.toUpperCase() }))}
+          hint={copy.tradingViewSymbolHint ?? copy.tradingViewTemplateSymbolHint}
+          hintInTooltip
+        />
+      ) : null}
+
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200/80 px-3 py-2.5 dark:border-neutral-800">
+        <div>
+          <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
+            {copy.tradingViewIncludeSl ?? 'Include stop loss (SL)'}
+          </p>
+          <p className="text-xs text-neutral-600 dark:text-neutral-400">
+            {copy.tradingViewIncludeSlHint ?? 'Adds an "sl" field. Replace 0 with your Pine value.'}
+          </p>
+        </div>
+        <Toggle
+          checked={config.includeSl}
+          onChange={checked => setConfig(current => ({ ...current, includeSl: checked }))}
+        />
+      </div>
+
+      <div className="space-y-3 rounded-xl border border-neutral-200/80 px-3 py-2.5 dark:border-neutral-800">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
+              {copy.tradingViewIncludeTp ?? 'Include take profits (TP)'}
+            </p>
+            <p className="text-xs text-neutral-600 dark:text-neutral-400">
+              {copy.tradingViewIncludeTpHint ?? 'Adds a "tp" array. Replace each 0 with your Pine values.'}
+            </p>
+          </div>
+          <Toggle
+            checked={config.includeTp}
+            onChange={checked => setConfig(current => ({ ...current, includeTp: checked }))}
+          />
+        </div>
+        {config.includeTp ? (
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
+              {copy.tradingViewTpCount ?? 'Number of TPs'}
+            </label>
+            <select
+              className={selectClass}
+              value={String(config.tpCount)}
+              onChange={event => {
+                const tpCount = Number(event.target.value)
+                setConfig(current => ({ ...current, tpCount }))
+              }}
+            >
+              {Array.from(
+                { length: TRADINGVIEW_TP_COUNT_MAX - TRADINGVIEW_TP_COUNT_MIN + 1 },
+                (_, index) => TRADINGVIEW_TP_COUNT_MIN + index,
+              ).map(count => (
+                <option key={count} value={count}>{count}</option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="space-y-3">
+        <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
+          {copy.tradingViewJsonPreview ?? 'Alert JSON'}
+        </p>
+        <p className="text-xs text-neutral-600 dark:text-neutral-400">
+          {copy.tradingViewJsonPlaceholderHint
+            ?? 'Paste into the TradingView alert Message field. Replace 0 placeholders with your indicator/strategy values, or omit SL/TP and use broker Override SL/TP instead.'}
+        </p>
+        {config.kind === 'strategy' && templates.strategy
+          ? renderTemplate('strategy', copy.tradingViewTemplateStrategy, templates.strategy)
+          : null}
+        {config.kind === 'indicator' && templates.buy
+          ? renderTemplate(
+            'buy',
+            copy.tradingViewTemplateBuy,
+            templates.buy,
+            copy.tradingViewTemplateSymbolHint,
+          )
+          : null}
+        {config.kind === 'indicator' && templates.sell
+          ? renderTemplate(
+            'sell',
+            copy.tradingViewTemplateSell,
+            templates.sell,
+            copy.tradingViewTemplateSymbolHint,
+          )
+          : null}
+      </div>
+
+      {error ? <p className="text-sm text-red-600 dark:text-red-400">{error}</p> : null}
+      <Button type="submit" className="w-full" loading={busy}>
+        {copy.tradingViewSaveConfig ?? 'Save configuration'}
+      </Button>
+    </form>
   )
 }
 
