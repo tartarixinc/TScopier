@@ -47,6 +47,16 @@ function isNumbered(line: string) {
   return /^\d+[.)]\s+/.test(line)
 }
 
+/** Light cleanup when the model dumps numbered/bulleted steps on one line. */
+function normalizeChatMarkdown(raw: string): string {
+  return raw
+    .replace(/\r\n/g, '\n')
+    .replace(/([^\n])\s+(\d+\.\s+\*\*)/g, '$1\n\n$2')
+    .replace(/([^\n])\s+(\d+\.\s+[A-Z])/g, '$1\n\n$2')
+    .replace(/([.:])\s+-\s+/g, '$1\n- ')
+    .trim()
+}
+
 /** Lightweight formatting for assistant replies (paragraphs, lists, bold, code). */
 export function AssistantMessageContent({
   text,
@@ -55,7 +65,7 @@ export function AssistantMessageContent({
   text: string
   variant: Variant
 }) {
-  const lines = text.replace(/\r\n/g, '\n').split('\n')
+  const lines = normalizeChatMarkdown(text).split('\n')
   const blocks: ReactNode[] = []
   let i = 0
   let key = 0
