@@ -189,6 +189,8 @@ export const channelWorkerNl: ChannelWorkerTranslations = {
       'dit kanaal staat in single-slot-modus (Add to Existing Trades staat uit), dus nieuwe entries moeten TP/SL-parameters bevatten',
     entry_requires_imperative_or_labeled_stops:
       'bericht bevatte geen entry-opdracht (bijv. buy now, gold sell now) of gelabelde SL/TP',
+    tradingview_missing_sl_tp:
+      'TradingView-alert had geen SL- en TP-prijs — voeg ze toe aan het alertbericht, of schakel Override SL en Override TP in bij de configuratie',
     entry_tp_without_sl: 'SL not given — set predefined SL pips in broker configuration',
     signal_missing_required_sl: 'SL not given — set predefined SL pips in broker configuration',
     delete_pendings_no_parent:

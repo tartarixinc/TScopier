@@ -12,6 +12,14 @@ export interface PlatformUpdate {
  */
 export const PLATFORM_UPDATES: PlatformUpdate[] = [
   {
+    id: 'tradingview-alert-configure-2026-11',
+    date: '2026-11-12',
+    title: 'TradingView alerts, now configured right inside Unicopier',
+    description:
+      '• The new Configure builder generates ready-to-paste alert JSON for Indicator or Strategy alerts, with optional SL and take-profit levels\n• Alerts that arrive without SL/TP prices are refused with a clear reason — add them to the message, or enable Override SL and Override TP in configuration (no more unprotected copies)\n• Webhook URLs are now always-on — alerts copy instantly, without cold-start delays\n• Templates include a symbol hint, so you can trade instruments other than XAUUSD\n• The connection panel shows your webhook status at a glance, and saved alerts keep their SL/TP defaults',
+    type: 'feature',
+  },
+  {
     id: 'unicopier-rebrand-2026-11',
     date: '2026-11-04',
     title: 'TSCopier is now Unicopier',

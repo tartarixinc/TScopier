@@ -190,6 +190,8 @@ export const channelWorkerAr: ChannelWorkerTranslations = {
       'هذه القناة في وضع فتحة واحدة (إضافة إلى الصفقات الحالية معطّلة) لذا يجب أن تتضمن الدخولات الجديدة معاملات TP/SL',
     entry_requires_imperative_or_labeled_stops:
       'الرسالة لم تتضمن عبارة دخول (مثل buy now أو gold sell now) أو SL/TP موسومة',
+    tradingview_missing_sl_tp:
+      'لمحتوى تنبيه TradingView لا يحتوي على سعري SL وTP — أضفهما إلى رسالة التنبيه، أو فعّل Override SL وOverride TP في الإعدادات',
     entry_tp_without_sl: 'SL not given — set predefined SL pips in broker configuration',
     signal_missing_required_sl: 'SL not given — set predefined SL pips in broker configuration',
     delete_pendings_no_parent:

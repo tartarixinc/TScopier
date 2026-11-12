@@ -189,6 +189,8 @@ export const channelWorkerJa: ChannelWorkerTranslations = {
       'このチャネルは single-slot モードです（Add to Existing Trades がオフ）。新規エントリーには TP/SL パラメータが必要です',
     entry_requires_imperative_or_labeled_stops:
       'メッセージにエントリー命令（buy now、gold sell now など）またはラベル付き SL/TP がありませんでした',
+    tradingview_missing_sl_tp:
+      'TradingViewアラートにSL/TPの価格がありません — アラートメッセージに追加するか、設定でOverride SLとOverride TPを有効にしてください',
     entry_tp_without_sl: 'SL not given — set predefined SL pips in broker configuration',
     signal_missing_required_sl: 'SL not given — set predefined SL pips in broker configuration',
     delete_pendings_no_parent:

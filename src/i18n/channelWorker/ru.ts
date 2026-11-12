@@ -190,6 +190,8 @@ export const channelWorkerRu: ChannelWorkerTranslations = {
       'этот канал работает в режиме одного слота (Add to Existing Trades отключен), поэтому новые входы должны включать параметры TP/SL',
     entry_requires_imperative_or_labeled_stops:
       'в сообщении не было фразы входа (например buy now, gold sell now) или помеченных SL/TP',
+    tradingview_missing_sl_tp:
+      'В алерте TradingView не было цен SL и TP — добавьте их в сообщение алерта или включите Override SL и Override TP в настройках',
     entry_tp_without_sl: 'SL not given — set predefined SL pips in broker configuration',
     signal_missing_required_sl: 'SL not given — set predefined SL pips in broker configuration',
     delete_pendings_no_parent:
