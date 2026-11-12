@@ -891,7 +891,7 @@ function ModalFrame({
         className={clsx(
           'relative flex w-full flex-col overflow-hidden rounded-t-2xl border border-neutral-200/65 bg-white shadow-2xl dark:border-neutral-800/55 dark:bg-neutral-950 sm:rounded-2xl',
           size === 'wide'
-            ? 'max-h-[90vh] sm:max-w-4xl'
+            ? 'max-h-[90vh] sm:max-w-6xl'
             : 'max-h-[92vh] sm:max-w-lg',
         )}
       >
