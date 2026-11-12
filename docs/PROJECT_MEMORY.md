@@ -2,6 +2,15 @@
 
 ## Changelog
 
+### 2026-11-12 — TradingView always-on Railway ingest
+
+- **Context:** TradingView alerts hit Supabase Edge `tradingview-webhook`, which cold-starts before ACK/dispatch.
+- **Plain English:** New webhook URLs can point at the always-on Railway trade worker (`/webhooks/tradingview/{token}`) so alerts skip Edge cold starts. Old Supabase URLs still work until users paste the new URL.
+- **Fix (files):** [`worker/src/tradingViewIngest.ts`](worker/src/tradingViewIngest.ts) + [`tradingViewAlert.ts`](worker/src/tradingViewAlert.ts); public routes on auth/trade HTTP in [`httpServer.ts`](worker/src/httpServer.ts); warm ping in [`index.ts`](worker/src/index.ts); dashboard URL via `VITE_TRADINGVIEW_INGEST_BASE_URL` in [`TradingViewSourcePanel.tsx`](src/components/dashboard/TradingViewSourcePanel.tsx).
+- **Tests/verification:** `worker` `tradingViewIngest.test.ts` (5 pass); worker `tsc --noEmit`.
+- **Deploy state:** Code ready — set Railway public trade-entry URL + Netlify `VITE_TRADINGVIEW_INGEST_BASE_URL`; edge left for legacy.
+- **Follow-ups:** Users with old URLs should re-copy Webhook URL from Configure once env is set.
+
 ### 2026-11-12 — Fix Netlify tsc: empty copier log symbol lookup
 
 - **Context:** Netlify `npm run build` failed: `buildCopierLogSymbolLabels(logs, {})` no longer matches `CopierSymbolContext | Map`.

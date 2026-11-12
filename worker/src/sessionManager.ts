@@ -271,6 +271,10 @@ export class UserSessionManager {
     }
   }
 
+  getTradeExecutor(): TradeExecutor | null {
+    return this.tradeExecutor
+  }
+
   async loadAll() {
     if (this.shuttingDown) return
     if (!workerConfig.runsListener) return

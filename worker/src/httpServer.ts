@@ -21,6 +21,53 @@ import { retrySignal } from './retrySignal'
 import { getBrokerExecutionCapability } from './brokerExecutionMode'
 import { configuredInternalToken, internalTokenMatches } from './internalToken'
 import { workerConfig } from './workerConfig'
+import {
+  processTradingViewIngest,
+  tradingViewClientIp,
+  tradingViewPathToken,
+  tradingViewWebhookIpAllowed,
+} from './tradingViewIngest'
+
+/** Shared public TradingView routes for auth + trade HTTP servers. */
+async function tryHandleTradingViewHttp(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: string,
+  sessionManager: UserSessionManager,
+): Promise<boolean> {
+  if (url === '/webhooks/tradingview/_warm' && (req.method === 'GET' || req.method === 'POST')) {
+    sendJson(res, 200, { ok: true, warm: true })
+    return true
+  }
+
+  if (url.startsWith('/webhooks/tradingview/') && req.method === 'POST') {
+    const token = tradingViewPathToken(url)
+    if (!token) {
+      sendJson(res, 404, { ok: false, status: 'error' })
+      return true
+    }
+    const ip = tradingViewClientIp(req.headers)
+    if (!tradingViewWebhookIpAllowed(ip)) {
+      sendJson(res, 403, { ok: false, status: 'error' })
+      return true
+    }
+    const raw = await readText(req)
+    void processTradingViewIngest(
+      sessionManager.getSupabase(),
+      token,
+      raw,
+      sessionManager.getTradeExecutor(),
+    ).catch(err => {
+      console.warn(
+        `[httpServer] tradingview ingest failed: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    })
+    sendJson(res, 200, { ok: true, status: 'accepted' })
+    return true
+  }
+
+  return false
+}
 
 const INTERNAL_TOKEN = configuredInternalToken()
 const PORT = parseInt(process.env.WORKER_PORT ?? '8080', 10)
@@ -171,6 +218,10 @@ export function startHttpServer(
       if (url === '/health' && (req.method === 'GET' || req.method === 'POST')) {
         const payload = await sessionManager.getHealthPayload()
         return sendJson(res, payload.ok ? 200 : 503, payload)
+      }
+
+      if (await tryHandleTradingViewHttp(req, res, url, sessionManager)) {
+        return
       }
 
       if (req.method !== 'POST') {
@@ -468,7 +519,7 @@ export function startHttpServer(
 }
 
 /**
- * Trade workers: `/health` + optional `/internal/dispatch-signal` (listener push).
+ * Trade workers: `/health` + public TradingView ingest + `/internal/dispatch-signal`.
  */
 export function startTradeHttpServer(
   sessionManager: UserSessionManager,
@@ -487,6 +538,10 @@ export function startTradeHttpServer(
           queue,
           ...brokerCapability,
         })
+      }
+
+      if (await tryHandleTradingViewHttp(req, res, url, sessionManager)) {
+        return
       }
 
       if (url === '/internal/parse-signal' && req.method === 'POST') {
@@ -794,10 +849,14 @@ export function startTradeHttpServer(
   return server
 }
 
-async function readJson(req: IncomingMessage): Promise<unknown> {
+async function readText(req: IncomingMessage): Promise<string> {
   const chunks: Buffer[] = []
   for await (const c of req) chunks.push(c as Buffer)
-  const raw = Buffer.concat(chunks).toString('utf8')
+  return Buffer.concat(chunks).toString('utf8')
+}
+
+async function readJson(req: IncomingMessage): Promise<unknown> {
+  const raw = await readText(req)
   if (!raw) return {}
   try { return JSON.parse(raw) } catch { return {} }
 }
