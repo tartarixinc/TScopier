@@ -411,6 +411,7 @@ export interface DashboardTranslations {
     checksFailed: string
     signalSources: string
     notConnected: string
+    connectSource: string
     connected: string
     reconnectRequired: string
     reconnecting: string

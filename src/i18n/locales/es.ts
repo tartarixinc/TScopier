@@ -1212,7 +1212,7 @@ export const es: Translations = {
     healthDegraded: 'Degradado',
     healthOffline: 'Desconectado',
     copierStatus: {
-      title: 'Estado del copiador',
+      title: 'Estado de conexión',
       allBrokerConnections: 'Conexiones del bróker',
       healthy: 'Correctas',
       issues: 'Problemas',
@@ -1228,6 +1228,7 @@ export const es: Translations = {
       checksFailed: 'Problemas detectados.',
       signalSources: 'Fuentes de señales',
       notConnected: 'No conectada',
+      connectSource: 'Conectar',
       connected: 'Conectada',
       reconnectRequired: 'Reconexión necesaria',
       reconnecting: 'Reconectando',

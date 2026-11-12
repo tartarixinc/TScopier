@@ -42,7 +42,7 @@ export const dashboardSv: DashboardBundleTranslations = {
     healthDegraded: 'Försämrad',
     healthOffline: 'Offline',
     copierStatus: {
-      title: 'Kopierarstatus',
+      title: 'Anslutningsstatus',
       allBrokerConnections: 'Alla mäklaranslutningar',
       healthy: 'Friska',
       issues: 'Problem',
@@ -58,6 +58,7 @@ export const dashboardSv: DashboardBundleTranslations = {
       checksFailed: 'Problem upptäckta.',
       signalSources: 'Signalkällor',
       notConnected: 'Inte ansluten',
+      connectSource: 'Anslut',
       connected: 'Ansluten',
       reconnectRequired: 'Återanslutning krävs',
       reconnecting: 'Återansluter',

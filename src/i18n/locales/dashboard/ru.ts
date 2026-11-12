@@ -42,7 +42,7 @@ export const dashboardRu: DashboardBundleTranslations = {
     healthDegraded: 'Ухудшено',
     healthOffline: 'Не в сети',
     copierStatus: {
-      title: 'Статус копировщика',
+      title: 'Статус подключения',
       allBrokerConnections: 'Подключения брокера',
       healthy: 'В норме',
       issues: 'Проблемы',
@@ -58,6 +58,7 @@ export const dashboardRu: DashboardBundleTranslations = {
       checksFailed: 'Обнаружены проблемы.',
       signalSources: 'Источники сигналов',
       notConnected: 'Не подключен',
+      connectSource: 'Подключить',
       connected: 'Подключен',
       reconnectRequired: 'Нужно переподключить',
       reconnecting: 'Переподключение',
