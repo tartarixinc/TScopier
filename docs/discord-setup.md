@@ -52,7 +52,7 @@ Run the gateway as its own service from the same image:
 
 | Setting | Value |
 |---|---|
-| Start command | default (`node dist/index.js`) — do **not** set `npm run discord` on Railway |
+| Start command | leave **empty** (Dockerfile `CMD` is already `node dist/index.js`) — do **not** set `npm run discord` or bare `dist/index.js` |
 | `WORKER_ROLE` | `discord_listener` |
 | `DISCORD_BOT_TOKEN` | bot token |
 | `SUPABASE_URL` | same project as the app |
