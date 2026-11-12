@@ -135,6 +135,7 @@ const monitorLoops: MonitorLoopHandle[] = []
 let stopLogRetention: (() => void) | null = null
 let stopWorkWake: (() => void) | null = null
 let stopTradeLivenessTick: (() => void) | null = null
+let stopTradingViewWarmPing: (() => void) | null = null
 
 function trackMonitor(m: { stop: () => void; getLoopHandle?: () => MonitorLoopHandle | null; getLoopHandles?: () => MonitorLoopHandle[] }) {
   monitors.push(m)
@@ -363,6 +364,23 @@ async function main() {
           + ' and point WORKER_PUBLIC_URL / VITE_WORKER_URL here (not the listener service)',
         )
       }
+
+      // Keep TradingView ingest path warm (no TV session — process uptime + local ping).
+      const warmPort = parseInt(process.env.WORKER_PORT ?? '8080', 10)
+      const warmMs = Math.max(
+        15_000,
+        Math.min(120_000, Number(process.env.TRADINGVIEW_WARM_PING_MS ?? 30_000)),
+      )
+      const warmTick = () => {
+        const base = `http://127.0.0.1:${warmPort}`
+        void fetch(`${base}/webhooks/tradingview/_warm`).catch(() => {})
+        void fetch(`${base}/health`).catch(() => {})
+      }
+      warmTick()
+      const warmTimer = setInterval(warmTick, warmMs)
+      warmTimer.unref?.()
+      stopTradingViewWarmPing = () => clearInterval(warmTimer)
+      console.log(`[worker] tradingview warm ping every ${warmMs}ms on :${warmPort}`)
     }
 
     const queueCfg = signalQueueConfig()
@@ -471,6 +489,7 @@ async function main() {
     stopWorkWake?.()
     stopTradePushProbe?.()
     stopTradeLivenessTick?.()
+    stopTradingViewWarmPing?.()
     stopLogRetention?.()
     setQueueMetricsProvider(null)
     await signalQueueConsumers?.stop()

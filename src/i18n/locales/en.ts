@@ -1758,7 +1758,7 @@ broker: {
     tradingViewTemplateHelp: 'Use Configure to build Indicator or Strategy alert JSON with optional SL and TPs. Paste the generated message into TradingView. Set action to close to close copied trades for that symbol.',
     tradingViewHowToTitle: 'How to Add to TradingView',
     tradingViewHowTo1: 'In TradingView, open Alerts and create a new alert from the chart (use a chart condition — not “Any alert() function call only”).',
-    tradingViewHowTo2: 'Turn on Webhook URL and paste the current Webhook URL from this modal (copy it again after Rotate URL or recreating the webhook).',
+    tradingViewHowTo2: 'Turn on Webhook URL and paste the current Webhook URL from this modal (copy it again after Rotate URL or recreating the webhook). If you still use an older Supabase functions URL, replace it with the URL shown here so alerts hit the always-on worker.',
     tradingViewHowTo3: 'Open Configure on this webhook, choose Indicator or Strategy, set SL/TP options, then paste the generated JSON into the Message field. For indicator alerts, use a real symbol — do not leave {{ticker}} in the message.',
     tradingViewHowTo4: 'Save the alert. Recent alerts here must show Accepted with a real symbol. TradingView “Webhook successfully delivered” only means HTTP 200 — if Recent alerts shows Skipped (unresolved symbol), no trade was created.',
     tradingViewSkipUnresolvedSymbol: 'Symbol placeholders were not expanded — edit the Message to a real symbol (e.g. XAUUSD) and recreate the alert',
