@@ -1225,7 +1225,7 @@ broker: {
     healthDegraded: 'Degraded',
     healthOffline: 'Offline',
     copierStatus: {
-      title: 'Copier Status',
+      title: 'Connection Status',
       allBrokerConnections: 'All broker connections',
       healthy: 'Healthy',
       issues: 'Issues',
@@ -1241,6 +1241,7 @@ broker: {
       checksFailed: 'Issues detected.',
       signalSources: 'Signal sources',
       notConnected: 'Not connected',
+      connectSource: 'Connect',
       connected: 'Connected',
       reconnectRequired: 'Reconnect required',
       reconnecting: 'Reconnecting',

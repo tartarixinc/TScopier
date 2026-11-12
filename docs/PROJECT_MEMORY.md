@@ -2,6 +2,33 @@
 
 ## Changelog
 
+### 2026-11-12 — TradingView Configure owns webhook URL; remove Show Details
+
+- **Context:** Webhook URL lived in a separate Details modal; list had both Configure and Show Details. Portrait modal required heavy scrolling.
+- **Plain English:** Configure is a wide landscape modal: settings on the left, alert JSON on the right, URL on top. Show Details is gone from the list.
+- **Fix (files):** [`TradingViewSourcePanel.tsx`](src/components/dashboard/TradingViewSourcePanel.tsx) — URL + rotate + deliveries in `WebhookConfigure`; `ModalFrame` `size="wide"`; two-column layout; removed details modal / Show Details.
+- **Tests/verification:** Visual on TradingView configure.
+- **Deploy state:** Frontend only.
+- **Follow-ups:** None.
+
+### 2026-11-12 — Dark mode sidebar active icon color
+
+- **Context:** Active nav icons (e.g. Dashboard) stayed black in dark mode while labels were white.
+- **Plain English:** The selected sidebar icon is now white in dark mode so it stays visible on the dark active chip.
+- **Fix (files):** [`AppLayout.tsx`](src/components/layout/AppLayout.tsx) — active icon `text-neutral-950 dark:text-neutral-50`.
+- **Tests/verification:** Visual in dark mode sidebar.
+- **Deploy state:** Frontend only.
+- **Follow-ups:** None.
+
+### 2026-11-12 — Dashboard Connection Status redesign + Connect
+
+- **Context:** Connection Status looked sparse: uneven metric alignment, loud green Connect pills, weak hierarchy between sources and broker health.
+- **Plain English:** The card now has a tinted status banner, a 2×2 source grid with quieter Connect actions, and three evenly aligned health metrics.
+- **Fix (files):** [`CopierStatusCard.tsx`](src/components/dashboard/CopierStatusCard.tsx) visual redesign; Connect → `/channels?source=…`. [`CopierEnginePage.tsx`](src/pages/dashboard/CopierEnginePage.tsx) honors `?source=`. i18n title + `connectSource`.
+- **Tests/verification:** `tsc --noEmit`.
+- **Deploy state:** Frontend only (Netlify).
+- **Follow-ups:** None.
+
 ### 2026-11-12 — TradingView Configure → tailored alert JSON
 
 - **Context:** TradingView details modal stacked three static alert JSON templates with no SL/TP, while the parser and worker expect optional `sl` / `tp[]`.

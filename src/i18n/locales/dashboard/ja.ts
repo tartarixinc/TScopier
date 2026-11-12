@@ -41,7 +41,7 @@ export const dashboardJa: DashboardBundleTranslations = {
     healthDegraded: '低下',
     healthOffline: 'オフライン',
     copierStatus: {
-      title: 'コピー状態',
+      title: '接続ステータス',
       allBrokerConnections: 'ブローカー接続',
       healthy: '正常',
       issues: '問題あり',
@@ -57,6 +57,7 @@ export const dashboardJa: DashboardBundleTranslations = {
       checksFailed: '問題が検出されました。',
       signalSources: 'シグナルソース',
       notConnected: '未接続',
+      connectSource: '接続',
       connected: '接続済み',
       reconnectRequired: '再接続が必要',
       reconnecting: '再接続中',

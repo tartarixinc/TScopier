@@ -1,7 +1,9 @@
 import clsx from 'clsx'
 import { Activity, ChevronDown, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
+import { isSignalSourceLocked } from '../../lib/featureFlags'
 import { useSubscription } from '../../context/SubscriptionContext'
 import { useT } from '../../context/LocaleContext'
 import { isBrokerSessionConnected, isBrokerSessionHealthy } from '../../lib/brokerReconnect'
@@ -25,7 +27,7 @@ import { getCachedTgSession, setCachedTgSession } from '../../lib/telegramSessio
 import { subscribeTradingViewWebhooksChanged } from '../../lib/tradingViewWebhook'
 import { subscribeWhatsAppSourcesChanged } from '../../lib/whatsappSource'
 import type { BrokerAccount } from '../../types/database'
-import { APP_CARD } from '../../lib/appSurface'
+import { APP_CARD, APP_SECTION_LABEL, APP_WORKSPACE } from '../../lib/appSurface'
 import { SignalSourceLogo } from './SignalSourceLogo'
 
 const EXPANDED_STORAGE_KEY = 'tscopier.dashboard.copierStatusExpanded'
@@ -60,36 +62,32 @@ function readExpandedPreference(defaultValue: boolean): boolean {
   return defaultValue
 }
 
-function StatusValue({ children, tone }: { children: string; tone: Tone }) {
-  return (
-    <span
-      className={clsx(
-        'font-medium tabular-nums',
-        tone === 'ok' && 'text-green-500 dark:text-green-400',
-        tone === 'warn' && 'text-amber-600 dark:text-amber-400',
-        tone === 'bad' && 'text-rose-600 dark:text-rose-400',
-        tone === 'muted' && 'text-neutral-900 dark:text-neutral-50',
-      )}
-    >
-      {children}
-    </span>
-  )
+function toneText(tone: Tone): string {
+  if (tone === 'ok') return 'text-green-600 dark:text-green-400'
+  if (tone === 'warn') return 'text-amber-600 dark:text-amber-400'
+  if (tone === 'bad') return 'text-rose-600 dark:text-rose-400'
+  return 'text-neutral-600 dark:text-neutral-300'
 }
 
-function StatusRow({
-  label,
-  value,
-  tone,
-}: {
-  label: string
-  value: string
-  tone: Tone
-}) {
+function toneDot(tone: Tone): string {
+  if (tone === 'ok') return 'bg-green-500'
+  if (tone === 'warn') return 'bg-amber-500'
+  if (tone === 'bad') return 'bg-rose-500'
+  return 'bg-neutral-300 dark:bg-neutral-600'
+}
+
+function toneWash(tone: Tone): string {
+  if (tone === 'ok') return 'border-green-200/70 bg-green-50/70 dark:border-green-900/50 dark:bg-green-950/30'
+  if (tone === 'warn') return 'border-amber-200/70 bg-amber-50/70 dark:border-amber-900/50 dark:bg-amber-950/30'
+  if (tone === 'bad') return 'border-rose-200/70 bg-rose-50/70 dark:border-rose-900/50 dark:bg-rose-950/30'
+  return 'border-neutral-200/70 bg-neutral-50/80 dark:border-neutral-800 dark:bg-white/3'
+}
+
+function StatusValue({ children, tone }: { children: string; tone: Tone }) {
   return (
-    <div className="flex items-baseline justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
-      <span className="text-sm text-neutral-900 dark:text-neutral-50">{label}</span>
-      <StatusValue tone={tone}>{value}</StatusValue>
-    </div>
+    <span className={clsx('font-medium tabular-nums', toneText(tone))}>
+      {children}
+    </span>
   )
 }
 
@@ -105,6 +103,23 @@ function processTone(state: CopierProcessState): Tone {
   if (state === 'degraded') return 'warn'
   if (state === 'offline') return 'bad'
   return 'muted'
+}
+
+function MetricCell({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: string
+  tone: Tone
+}) {
+  return (
+    <div className={clsx('rounded-xl border px-3.5 py-3', APP_WORKSPACE, 'border-neutral-200/60 dark:border-neutral-800/60')}>
+      <p className={APP_SECTION_LABEL}>{label}</p>
+      <p className={clsx('mt-1.5 text-sm font-semibold tracking-tight', toneText(tone))}>{value}</p>
+    </div>
+  )
 }
 
 export function CopierStatusCard({
@@ -384,6 +399,14 @@ export function CopierStatusCard({
     void refreshSources()
   }
 
+  const bannerTone: Tone = headline === 'issues'
+    ? 'bad'
+    : headline === 'ready'
+      ? 'ok'
+      : headline === 'checking'
+        ? 'warn'
+        : 'muted'
+
   return (
     <div
       className={clsx(
@@ -396,17 +419,30 @@ export function CopierStatusCard({
         onClick={toggleExpanded}
         aria-expanded={expanded}
         className={clsx(
-          'flex w-full items-center gap-2 px-5 py-4 text-left',
+          'flex w-full items-center gap-2.5 px-5 py-4 text-left',
           'transition-colors hover:bg-neutral-50 dark:hover:bg-white/3',
           expanded && 'border-b border-neutral-100/90 dark:border-white/8',
         )}
       >
-        <Activity className="h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50" />
+        <span
+          className={clsx(
+            'flex h-8 w-8 shrink-0 items-center justify-center rounded-xl',
+            expanded ? 'bg-neutral-100 dark:bg-white/6' : toneWash(collapsedSummaryTone),
+          )}
+        >
+          <Activity
+            className={clsx(
+              'h-4 w-4',
+              expanded ? 'text-neutral-700 dark:text-neutral-200' : toneText(collapsedSummaryTone),
+            )}
+          />
+        </span>
         {!expanded ? (
           <span className="min-w-0 flex-1 truncate text-sm">
             <span className="font-semibold text-neutral-900 dark:text-neutral-50">
-              {cs.title}:{' '}
+              {cs.title}
             </span>
+            <span className="mx-2 text-neutral-300 dark:text-neutral-700" aria-hidden>·</span>
             <StatusValue tone={collapsedSummaryTone}>{collapsedSummary}</StatusValue>
           </span>
         ) : (
@@ -419,7 +455,7 @@ export function CopierStatusCard({
         )}
         <ChevronDown
           className={clsx(
-            'w-4 h-4 text-neutral-900 dark:text-neutral-50 shrink-0 transition-transform',
+            'h-4 w-4 shrink-0 text-neutral-400 transition-transform dark:text-neutral-500',
             expanded && 'rotate-180',
           )}
           aria-hidden
@@ -428,52 +464,98 @@ export function CopierStatusCard({
       </button>
 
       {expanded ? (
-        <div className="divide-y divide-neutral-100 px-5 py-4 dark:divide-neutral-800/80">
+        <div className="space-y-4 px-5 py-4">
           {statusMessage || lastHealthy ? (
-            <div className="pb-3 text-sm text-neutral-900 dark:text-neutral-50">
-              {statusMessage ? <div>{statusMessage}</div> : null}
+            <div className={clsx('rounded-xl border px-3.5 py-3', toneWash(bannerTone))}>
+              {statusMessage ? (
+                <p className={clsx('text-sm font-medium leading-snug', toneText(bannerTone))}>
+                  {statusMessage}
+                </p>
+              ) : null}
               {lastHealthy ? (
-                <div className={clsx(statusMessage && 'mt-1', 'text-xs text-neutral-900 dark:text-neutral-50')}>
+                <p className={clsx(
+                  'text-xs text-neutral-500 dark:text-neutral-400',
+                  statusMessage && 'mt-1',
+                )}
+                >
                   {cs.lastHealthy}: {lastHealthy}
-                </div>
+                </p>
               ) : null}
             </div>
           ) : null}
-          <div className="py-1">
-            <p className="pb-1 text-xs font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50">
-              {cs.signalSources}
-            </p>
-            {SOURCE_ORDER.map(kind => (
-              <div key={kind} className="flex items-center justify-between gap-3 py-2">
-                <span className="flex min-w-0 items-center gap-2 text-sm text-neutral-900 dark:text-neutral-50">
-                  <SignalSourceLogo kind={kind} className="h-4 w-4 shrink-0" />
-                  <span className="truncate">{SIGNAL_SOURCE_MARKS[kind].label}</span>
-                </span>
-                <StatusValue tone={sourceTone(links[kind])}>{sourceLabel(links[kind])}</StatusValue>
-              </div>
-            ))}
+
+          <div>
+            <p className={clsx(APP_SECTION_LABEL, 'mb-2.5')}>{cs.signalSources}</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {SOURCE_ORDER.map(kind => {
+                const link = links[kind]
+                const tone = sourceTone(link)
+                const showConnect = link === 'not_connected' && !isSignalSourceLocked(kind)
+                return (
+                  <div
+                    key={kind}
+                    className="flex items-center gap-3 rounded-xl border border-neutral-200/65 bg-white px-3 py-2.5 dark:border-neutral-800/55 dark:bg-neutral-950"
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-neutral-50 ring-1 ring-neutral-200/70 dark:bg-white/4 dark:ring-white/8">
+                      <SignalSourceLogo kind={kind} className="h-5 w-5" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                        {SIGNAL_SOURCE_MARKS[kind].label}
+                      </p>
+                      {!showConnect ? (
+                        <p className={clsx('mt-0.5 flex items-center gap-1.5 text-xs font-medium', toneText(tone))}>
+                          <span className={clsx('h-1.5 w-1.5 shrink-0 rounded-full', toneDot(tone))} aria-hidden />
+                          {sourceLabel(link)}
+                        </p>
+                      ) : (
+                        <p className="mt-0.5 text-xs text-neutral-400 dark:text-neutral-500">
+                          {cs.notConnected}
+                        </p>
+                      )}
+                    </div>
+                    {showConnect ? (
+                      <Link
+                        to={`/channels?source=${kind}`}
+                        className="inline-flex shrink-0 items-center rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-xs font-medium text-neutral-900 transition-colors hover:border-green-400 hover:bg-green-50 hover:text-neutral-950 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50 dark:hover:border-green-500/60 dark:hover:bg-green-950/40"
+                      >
+                        {cs.connectSource}
+                      </Link>
+                    ) : null}
+                  </div>
+                )
+              })}
+            </div>
           </div>
-          <div className="grid sm:grid-cols-2 sm:gap-x-10 sm:divide-y-0">
-            <StatusRow
+
+          <div className="grid gap-2 sm:grid-cols-3">
+            <MetricCell
               label={cs.allBrokerConnections}
               value={brokerConnectionsLabel}
               tone={brokerConnectionsTone}
             />
-            <StatusRow label={cs.copierEngine} value={processLabel(processState)} tone={!hasActiveSubscription ? 'muted' : processTone(processState)} />
-            <StatusRow
+            <MetricCell
+              label={cs.copierEngine}
+              value={processLabel(processState)}
+              tone={!hasActiveSubscription ? 'muted' : processTone(processState)}
+            />
+            <MetricCell
               label={cs.brokerErrors}
               value={String(brokerErrorCount)}
               tone={brokerErrorCount > 0 ? 'bad' : 'ok'}
             />
           </div>
-          <button
-            type="button"
-            onClick={refreshAll}
-            className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-green-500 hover:text-teal-800 dark:text-teal-300 dark:hover:text-teal-200"
-          >
-            <RefreshCw className="h-4 w-4" aria-hidden />
-            {cs.refreshStatus}
-          </button>
+
+          <div className="flex justify-end border-t border-neutral-100 pt-3 dark:border-neutral-800/80">
+            <button
+              type="button"
+              onClick={refreshAll}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-neutral-500 transition-colors hover:text-green-600 dark:text-neutral-400 dark:hover:text-green-400"
+            >
+              <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+              {cs.refreshStatus}
+            </button>
+          </div>
         </div>
       ) : null}
     </div>
