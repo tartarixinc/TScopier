@@ -1,6 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { disconnectChannelFromBroker } from './brokerChannelLink'
+import {
+  normalizeTradingViewAlertConfig,
+  type TradingViewAlertConfig,
+} from './tradingViewAlertTemplate'
 import type { BrokerAccount } from '../types/database'
+
+export type { TradingViewAlertConfig }
 
 const MAX_WEBHOOKS_PER_USER = 20
 const WEBHOOKS_CHANGED = 'tradingview-webhooks-changed'
@@ -104,6 +110,24 @@ export async function rotateTradingViewWebhook(
     .eq('id', webhookId)
     .eq('user_id', userId)
   return { error: error?.message ?? null }
+}
+
+export async function updateTradingViewAlertConfig(
+  supabase: SupabaseClient,
+  userId: string,
+  webhookId: string,
+  config: TradingViewAlertConfig,
+): Promise<{ error: string | null; config: TradingViewAlertConfig }> {
+  const alertConfig = normalizeTradingViewAlertConfig(config)
+  const { error } = await supabase
+    .from('tradingview_webhooks')
+    .update({
+      alert_config: alertConfig,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', webhookId)
+    .eq('user_id', userId)
+  return { error: error?.message ?? null, config: alertConfig }
 }
 
 export async function deleteTradingViewWebhook(
