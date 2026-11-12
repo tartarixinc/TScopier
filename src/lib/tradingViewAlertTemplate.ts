@@ -12,8 +12,8 @@ export type TradingViewAlertConfig = {
 
 export const DEFAULT_TRADINGVIEW_ALERT_CONFIG: TradingViewAlertConfig = {
   kind: 'indicator',
-  includeSl: true,
-  includeTp: true,
+  includeSl: false,
+  includeTp: false,
   tpCount: 1,
   symbol: 'XAUUSD',
 }

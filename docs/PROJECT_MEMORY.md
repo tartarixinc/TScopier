@@ -2,6 +2,15 @@
 
 ## Changelog
 
+### 2026-11-12 — TradingView Configure defaults SL/TP off
+
+- **Context:** New TradingView alert JSON configs defaulted Include SL and Include TP to on.
+- **Plain English:** Fresh Configure settings now start with SL and TP toggles off until the user turns them on.
+- **Fix (files):** [`tradingViewAlertTemplate.ts`](src/lib/tradingViewAlertTemplate.ts) `DEFAULT_TRADINGVIEW_ALERT_CONFIG`.
+- **Tests/verification:** `tradingViewAlertTemplate.test.ts`.
+- **Deploy state:** Frontend only.
+- **Follow-ups:** Existing saved `alert_config` rows keep their stored toggles.
+
 ### 2026-11-12 — TradingView always-on Railway ingest
 
 - **Context:** TradingView alerts hit Supabase Edge `tradingview-webhook`, which cold-starts before ACK/dispatch.
