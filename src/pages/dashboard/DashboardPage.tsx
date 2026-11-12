@@ -1868,7 +1868,7 @@ export function DashboardPage() {
     setCachedAnalytics(analytics)
 
     // Copier strip paints immediately; symbol labels fill in during enrichment.
-    const logSymbols = buildCopierLogSymbolLabels(logs, {})
+    const logSymbols = buildCopierLogSymbolLabels(logs, new Map())
     setCopierLogs(logs)
     setCopierLogSymbols(logSymbols)
 
