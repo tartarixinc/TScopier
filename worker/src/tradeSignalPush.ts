@@ -530,6 +530,35 @@ export function resetTradePushBreakersForTests(): void {
   pushBreakers.clear()
 }
 
+/**
+ * Loud startup warning for discord_listener when low-latency push cannot run.
+ * Process still starts (sweep/realtime fallback); Railway logs must show the gap.
+ */
+export function warnDiscordTradePushConfig(): void {
+  const token = internalToken()
+  const entryUrl = String(process.env.TRADE_WORKER_URL ?? '').trim()
+  const shardUrls = parseTradeWorkerShardUrls(process.env.TRADE_WORKER_SHARD_URLS)
+  const hasUrl = Boolean(entryUrl || shardUrls.length > 0)
+  const pushOn = tradePushEnabled()
+  if (pushOn && token && hasUrl) {
+    const sample = pickTradeWorkerUrl('buy', '00000000-0000-0000-0000-000000000001')
+    console.log(
+      `[discord] trade push configured token=${internalTokenFingerprint() ?? 'missing'}`
+      + ` url=${sample ?? (entryUrl || shardUrls[0] || 'none')}`,
+    )
+    return
+  }
+  const missing: string[] = []
+  if (!pushOn) missing.push('TRADE_SIGNAL_PUSH_ENABLED=false')
+  if (!token) missing.push('WORKER_INTERNAL_TOKEN')
+  if (!hasUrl) missing.push('TRADE_WORKER_URL (or TRADE_WORKER_SHARD_URLS)')
+  console.error(
+    `[discord] FATAL-CONFIG: low-latency trade push unavailable — missing ${missing.join(', ')}.`
+    + ' Signals will wait on trade-worker sweep/realtime (~1–5s).'
+    + ' Set the same TRADE_WORKER_URL + WORKER_INTERNAL_TOKEN as the Telegram listener.',
+  )
+}
+
 /** Fire-and-forget push — listener must not block on trade completion. */
 export function pushParsedSignalToTradeWorker(
   row: TradeSignalPushPayload,

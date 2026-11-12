@@ -16,12 +16,10 @@ import {
   linkChannelToAllActiveBrokers,
 } from '../../lib/brokerChannelLink'
 import { isBrokerCopyEnabledForUi } from '../../lib/brokerLink'
+import * as discordInvite from '../../lib/discordInvite'
 import {
   addDiscordChannel,
   disconnectDiscord,
-  discordClientId,
-  discordInviteUrl,
-  discordRedirectUri,
   removeDiscordChannel,
   saveDiscordInstallation,
   setDiscordChannelActive,
@@ -140,12 +138,18 @@ export function DiscordSourcePanel({
   const unselected = available.filter(row => !selectedKeys.has(`${row.guild_id}:${row.discord_channel_id}`))
 
   const connect = () => {
-    const clientId = discordClientId()
+    // Namespace import: named discordClientId was minified onto the same local as a
+    // useState setter in the CopierEnginePage chunk, so Connect always looked unconfigured.
+    const clientId = discordInvite.discordClientId()
     if (!clientId) {
       setError(copy.discordClientMissing)
       return
     }
-    window.open(discordInviteUrl(clientId, discordRedirectUri()), '_blank', 'noopener,noreferrer')
+    window.open(
+      discordInvite.discordInviteUrl(clientId, discordInvite.discordRedirectUri()),
+      '_blank',
+      'noopener,noreferrer',
+    )
   }
 
   const disconnect = async () => {
