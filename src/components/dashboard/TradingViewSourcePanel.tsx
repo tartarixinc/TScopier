@@ -45,6 +45,13 @@ type WebhookRow = Pick<
 type DeliveryRow = Pick<TradingViewWebhookDelivery, 'id' | 'webhook_id' | 'status' | 'skip_reason' | 'created_at'>
 
 function webhookUrl(token: string): string {
+  // Prefer always-on Railway ingest when configured; fall back to Supabase Edge (legacy).
+  const ingest = String(import.meta.env.VITE_TRADINGVIEW_INGEST_BASE_URL ?? '')
+    .trim()
+    .replace(/\/$/, '')
+  if (ingest) {
+    return `${ingest}/webhooks/tradingview/${token}`
+  }
   const base = String(import.meta.env.VITE_SUPABASE_URL ?? '').replace(/\/$/, '')
   return `${base}/functions/v1/tradingview-webhook/${token}`
 }
