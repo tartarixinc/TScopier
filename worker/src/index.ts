@@ -424,10 +424,14 @@ async function main() {
   }
 
   let stopTradePushProbe: (() => void) | null = null
+  // Discord also pushes via /internal/dispatch-signal; probe so breakers recover
+  // after token/URL mismatches (same path as Telegram listener).
+  if (workerConfig.runsListener || workerConfig.runsDiscordListener) {
+    stopTradePushProbe = startTradePushProbeLoop()
+  }
   if (workerConfig.runsListener) {
     // Authenticated probe of TRADE_*_WORKER_URL targets — opens a breaker on 401/404
     // so Close-all does not wait on the idle DB sweep after a token mismatch.
-    stopTradePushProbe = startTradePushProbeLoop()
 
     // Register periodic lease renewal + session sync BEFORE (and independent of)
     // loadAll. Previously loadAll was awaited first, so a single hung listener
