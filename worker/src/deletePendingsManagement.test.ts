@@ -44,6 +44,7 @@ function makeBroker(overrides: Partial<BrokerRow> = {}): BrokerRow {
 function makeSupabase(opts: {
   entryPending?: boolean
   rangePending?: boolean
+  channelSignals?: Array<{ id: string }>
   signalUpdates?: Array<Record<string, unknown>>
   logs?: Array<Record<string, unknown>>
   tradesPending?: Array<{ id: string; broker_account_id: string; metaapi_order_id: string | null }>
@@ -51,6 +52,21 @@ function makeSupabase(opts: {
 }) {
   const signalUpdates = opts.signalUpdates ?? []
   const logs = opts.logs ?? []
+  // The pending-row lookups are reached through different filter orders
+  // (reply path: eq(signal).in(broker)… / channel path: in(signal).in(broker)…),
+  // so expose every filter as a pass-through until the terminal limit().
+  const pendingChain = (data: Array<Record<string, unknown>>) => {
+    const chain: Record<string, unknown> = {}
+    for (const m of ['eq', 'in', 'order']) chain[m] = () => chain
+    chain.limit = () => Promise.resolve({ data, error: null })
+    return { select: () => chain }
+  }
+  const sepRows = opts.entryPending
+    ? [{ id: 'sep-1', signal_id: 'sig-ch-1', broker_account_id: 'broker-1' }]
+    : []
+  const rangeRows = opts.rangePending
+    ? [{ id: 'rpl-1', signal_id: 'sig-ch-1', broker_account_id: 'broker-1' }]
+    : []
   return {
     from(table: string) {
       if (table === 'signals') {
@@ -67,6 +83,17 @@ function makeSupabase(opts: {
               },
             }
           },
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                limit: () =>
+                  Promise.resolve({
+                    data: opts.channelSignals ?? [{ id: 'sig-ch-9' }],
+                    error: null,
+                  }),
+              }),
+            }),
+          }),
         }
       }
       if (table === 'trade_execution_logs') {
@@ -77,58 +104,8 @@ function makeSupabase(opts: {
           },
         }
       }
-      if (table === 'signal_entry_pending_orders') {
-        return {
-          select() {
-            return {
-              eq() {
-                return {
-                  in() {
-                    return {
-                      eq() {
-                        return {
-                          limit() {
-                            return Promise.resolve({
-                              data: opts.entryPending ? [{ id: 'sep-1' }] : [],
-                              error: null,
-                            })
-                          },
-                        }
-                      },
-                    }
-                  },
-                }
-              },
-            }
-          },
-        }
-      }
-      if (table === 'range_pending_legs') {
-        return {
-          select() {
-            return {
-              eq() {
-                return {
-                  in() {
-                    return {
-                      in() {
-                        return {
-                          limit() {
-                            return Promise.resolve({
-                              data: opts.rangePending ? [{ id: 'rpl-1' }] : [],
-                              error: null,
-                            })
-                          },
-                        }
-                      },
-                    }
-                  },
-                }
-              },
-            }
-          },
-        }
-      }
+      if (table === 'signal_entry_pending_orders') return pendingChain(sepRows)
+      if (table === 'range_pending_legs') return pendingChain(rangeRows)
       if (table === 'trades') {
         // Lookup: select().in(signal).in(broker).eq(status).order().limit()
         // Settle: update(payload).eq(id).eq(status).select(id)
@@ -167,12 +144,19 @@ function makeSupabase(opts: {
 }
 
 describe('applyManagement delete_pendings', () => {
-  it('skips when not a reply', async () => {
+  it('sweeps the whole channel when the message is standalone (not a reply)', async () => {
     process.env.FXSOCKET_API_KEY = 'test-key'
     const logs: Array<Record<string, unknown>> = []
+    const signalUpdates: Array<Record<string, unknown>> = []
     const cancelCalls: unknown[] = []
     const ctx = {
-      supabase: makeSupabase({ logs }),
+      supabase: makeSupabase({
+        channelSignals: [{ id: 'sig-ch-1' }],
+        entryPending: true,
+        rangePending: true,
+        logs,
+        signalUpdates,
+      }),
       cancelRangePendingLegsForScopes: async (...args: unknown[]) => {
         cancelCalls.push(args)
       },
@@ -180,16 +164,49 @@ describe('applyManagement delete_pendings', () => {
 
     await applyManagement(
       ctx,
-      makeSignal({ reply_to_message_id: null, parent_signal_id: 'sig-parent-1' }),
+      makeSignal({ reply_to_message_id: null, parent_signal_id: null }),
       { action: 'delete_pendings' } as never,
       [makeBroker()],
     )
 
-    assert.equal(cancelCalls.length, 0)
-    assert.equal(
-      (logs.find(l => l.action === 'mgmt_skip')?.request_payload as { skip_reason?: string })?.skip_reason,
-      'delete_pendings_requires_reply',
+    assert.ok(
+      !logs.some(l => l.action === 'mgmt_skip'),
+      'standalone delete_pendings must not skip',
     )
+    const ok = logs.find(l => l.action === 'delete_pendings' && l.status === 'success')
+    assert.ok(ok, 'must write a channel-wide delete_pendings success log')
+    const payload = ok.request_payload as { mgmt_scope?: string; reply_scoped?: boolean }
+    assert.equal(payload.mgmt_scope, 'channel')
+    assert.equal(payload.reply_scoped, false)
+    assert.equal(cancelCalls.length, 1)
+    const scopes = (cancelCalls[0] as unknown[])[2] as Array<{
+      signalId: string
+      brokerAccountId: string
+    }>
+    assert.deepEqual(scopes, [{ signalId: 'sig-ch-1', brokerAccountId: 'broker-1', symbol: '' }])
+    assert.ok(signalUpdates.some(u => u.status === 'executed'))
+  })
+
+  it('reports delete_pendings_none for a standalone message when nothing is pending', async () => {
+    process.env.FXSOCKET_API_KEY = 'test-key'
+    const logs: Array<Record<string, unknown>> = []
+    const ctx = {
+      supabase: makeSupabase({ channelSignals: [{ id: 'sig-ch-1' }], logs }),
+      cancelRangePendingLegsForScopes: async () => {},
+    } as unknown as TradeExecutorContext
+
+    await applyManagement(
+      ctx,
+      makeSignal({ reply_to_message_id: null, parent_signal_id: null }),
+      { action: 'delete_pendings' } as never,
+      [makeBroker()],
+    )
+
+    const skip = logs.find(l => l.action === 'mgmt_skip')
+    assert.ok(skip, 'must log a skip when the channel has nothing pending')
+    const payload = skip.request_payload as { skip_reason?: string; mgmt_scope?: string }
+    assert.equal(payload.skip_reason, 'delete_pendings_none')
+    assert.equal(payload.mgmt_scope, 'channel')
   })
 
   it('skips when reply has no parent_signal_id', async () => {

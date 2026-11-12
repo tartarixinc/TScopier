@@ -566,10 +566,183 @@ export async function applyManagement(
     const actionPre = String(parsed.action ?? '').toLowerCase()
 
     if (actionPre === 'delete_pendings') {
-      if (!replyScoped) {
-        await skipMgmtSignalWithLog(ctx, signal, 'delete_pendings_requires_reply', {
-          action: 'delete_pendings',
+      // A standalone (no reply) cancel WITH a parent signal — e.g. a
+      // provider-linked "cancel pending for signal #123" — still scopes to
+      // that parent's basket: fall through to the reply path below, which
+      // keys off parent_signal_id. Only a parentless standalone message
+      // sweeps the whole channel.
+      if (!replyScoped && !String(signal.parent_signal_id ?? '').trim()) {
+        // Standalone "cancel pending orders" applies to the WHOLE channel:
+        // sweep every resting pending order the channel has — broker-pending
+        // entry rows, resting LIMIT/STOP trade rows, range legs. Previously
+        // this skipped with `delete_pendings_requires_reply`, which dropped
+        // real channel instructions like "ON SUPPRIME TOUS LES BUY/SELL
+        // LIMIT RESTANTS" (2026-11-11 decision: channel-wide scope).
+        const eligibleBrokers = brokers.filter(
+          b => !isChannelManagementBlocked(
+            normalizeChannelMessageFiltersMap(b.channel_message_filters),
+            signal.channel_id,
+            'delete_pendings',
+          ),
+        )
+        if (!eligibleBrokers.length) {
+          await skipMgmtSignalWithLog(ctx, signal, 'channel_filter_ignored', {
+            action: 'delete_pendings',
+            reply_scoped: false,
+            mgmt_scope: 'channel',
+          })
+          return emptyMgmtResult(legConcurrency)
+        }
+        const eligibleIds = eligibleBrokers.map(b => b.id)
+        const { data: channelSignals, error: channelSignalsError } = await ctx.supabase
+          .from('signals')
+          .select('id')
+          .eq('user_id', signal.user_id)
+          .eq('channel_id', signal.channel_id)
+          .limit(5000)
+        if (channelSignalsError) {
+          console.warn(
+            `[tradeExecutor] delete_pendings channel signal lookup failed`
+            + ` channel=${signal.channel_id}: ${channelSignalsError.message}`,
+          )
+        }
+        const channelSignalIds = (channelSignals ?? []).map(r => r.id)
+        if (!channelSignalIds.length) {
+          await skipMgmtSignalWithLog(ctx, signal, 'delete_pendings_none', {
+            action: 'delete_pendings',
+            reply_scoped: false,
+            mgmt_scope: 'channel',
+          })
+          return emptyMgmtResult(legConcurrency)
+        }
+        // Same pieces as the reply-scoped path below, widened from the single
+        // parent signal to every signal on the channel. Resting explicit
+        // LIMIT/STOP entries live only in `trades` (status pending).
+        const trades = await cancelTradesPendingOrders({
+          supabase: ctx.supabase,
+          signalIds: channelSignalIds,
+          brokerAccountIds: eligibleIds,
+          limit: 5000,
+          resolve: brokerAccountId => {
+            const broker = eligibleBrokers.find(b => b.id === brokerAccountId)
+            if (!broker) return null
+            const sessionId = brokerSessionUuid(broker)
+            const api = ctx.apiFor(broker)
+            return sessionId && api ? { api, sessionId } : null
+          },
         })
+        const [{ data: seRows }, { data: rangeRows }] = await Promise.all([
+          ctx.supabase
+            .from('signal_entry_pending_orders')
+            .select('id, signal_id, broker_account_id')
+            .in('signal_id', channelSignalIds)
+            .in('broker_account_id', eligibleIds)
+            .eq('status', 'broker_pending')
+            .limit(5000),
+          ctx.supabase
+            .from('range_pending_legs')
+            .select('id, signal_id, broker_account_id')
+            .in('signal_id', channelSignalIds)
+            .in('broker_account_id', eligibleIds)
+            .in('status', ['pending', 'claimed', 'broker_pending'])
+            .limit(5000),
+        ])
+        // Anything that hit a query cap means the sweep may be incomplete —
+        // surface it instead of logging an unqualified success.
+        const truncated = channelSignalIds.length >= 5000
+          || (seRows?.length ?? 0) >= 5000
+          || (rangeRows?.length ?? 0) >= 5000
+          || trades.found >= 5000
+        if (truncated) {
+          console.warn(
+            `[tradeExecutor] delete_pendings channel sweep hit a query cap`
+            + ` signal=${signal.id} channel=${signal.channel_id} — some pendings may remain`,
+          )
+        }
+        if (!(seRows?.length) && !(rangeRows?.length) && trades.cancelled === 0) {
+          if (trades.found === 0) {
+            await skipMgmtSignalWithLog(ctx, signal, 'delete_pendings_none', {
+              action: 'delete_pendings',
+              reply_scoped: false,
+              mgmt_scope: 'channel',
+            })
+            return emptyMgmtResult(legConcurrency)
+          }
+          await skipMgmtSignalWithLog(ctx, signal, 'delete_pendings_cancel_failed', {
+            action: 'delete_pendings',
+            reply_scoped: false,
+            mgmt_scope: 'channel',
+            trades_pending_found: trades.found,
+            trades_pending_cancelled: trades.cancelled,
+            trades_pending_failed: trades.failed,
+            trades_pending_filled: trades.filled,
+            trades_pending_absent: trades.absent,
+            trades_pending_unresolvable: trades.unresolvable,
+            trades_pending_unverifiable: trades.unverifiable,
+          })
+          return emptyMgmtResult(legConcurrency)
+        }
+        const scopeKeys = new Set<string>()
+        const channelScopes: RangePendingCancelScope[] = []
+        for (const row of [...(seRows ?? []), ...(rangeRows ?? [])] as Array<{
+          signal_id: string
+          broker_account_id: string
+        }>) {
+          if (!row.signal_id || !row.broker_account_id) continue
+          const key = `${row.signal_id}|${row.broker_account_id}`
+          if (scopeKeys.has(key)) continue
+          scopeKeys.add(key)
+          channelScopes.push({
+            signalId: row.signal_id,
+            brokerAccountId: row.broker_account_id,
+            symbol: '',
+          })
+        }
+        if (channelScopes.length) {
+          // Batched: each scope runs several DB queries plus broker calls in
+          // parallel inside the helper — hand it bounded batches so a big
+          // channel cannot fire hundreds of concurrent broker requests.
+          const BATCH = 25
+          for (let i = 0; i < channelScopes.length; i += BATCH) {
+            await ctx.cancelRangePendingLegsForScopes(
+              signal.user_id,
+              signal.id,
+              channelScopes.slice(i, i + BATCH),
+              'delete_pendings',
+            )
+          }
+        }
+        await writeExecutionLog(ctx.supabase, {
+          user_id: signal.user_id,
+          signal_id: signal.id,
+          broker_account_id: null,
+          action: 'delete_pendings',
+          status: 'success',
+          request_payload: {
+            mgmt_scope: 'channel',
+            reply_scoped: false,
+            brokers: eligibleIds.length,
+            signals_scanned: channelSignalIds.length,
+            had_entry_pending: Boolean(seRows?.length),
+            had_range_pending: Boolean(rangeRows?.length),
+            truncated,
+            trades_pending_found: trades.found,
+            trades_pending_cancelled: trades.cancelled,
+            trades_pending_failed: trades.failed,
+          } as unknown as Record<string, unknown>,
+        })
+        try {
+          await ctx.supabase
+            .from('signals')
+            .update({ status: 'executed' })
+            .eq('id', signal.id)
+            .eq('status', 'parsed')
+        } catch { /* best-effort */ }
+        console.log(
+          `[tradeExecutor] delete_pendings channel-wide sweep signal=${signal.id}`
+          + ` channel=${signal.channel_id} scopes=${channelScopes.length}`
+          + ` trades_cancelled=${trades.cancelled}`,
+        )
         return emptyMgmtResult(legConcurrency)
       }
       const parentId = String(signal.parent_signal_id ?? '').trim()

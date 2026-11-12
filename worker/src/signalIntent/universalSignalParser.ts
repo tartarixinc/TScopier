@@ -153,8 +153,8 @@ Rules:
 - New trade entries: kind entry, side BUY or SELL, entry as [price] or zone [low, high].
 - SL/TP updates on open trades: kind modify (keep side from parent/recent context when omitted).
 - For modification messages (modify/close/breakeven/partial_close), the target symbol MUST match an entry in open_trades when open_trades is present. Never pick a symbol that has no open trade.
-- Full close: kind close. Move SL to entry: kind breakeven. Partial close: kind partial_close.
-- Cancel/delete buy/sell limit or pending, or "trade invalid" / "setup invalid": kind cancel_pending (not a full market close).
+- Full close: kind close. "close all (trades)", "close everything", "close my positions", "flatten" → kind close ALWAYS — never cancel_pending (cancel_pending only cancels orders that have NOT been executed yet; it never closes open trades). Move SL to entry: kind breakeven. Partial close: kind partial_close.
+- Cancel/delete buy/sell limit or pending, or "trade invalid" / "setup invalid": kind cancel_pending (not a full market close) — ONLY when the message explicitly cancels/removes/invalidates. A message that merely LISTS pending entries ("BUY LIMITS GOLD @ 4050/4045 AREA", "SELL LIMIT 4131", "BUY STOP 4082") with no cancel verb is kind entry with those prices, never cancel_pending.
 - TP-hit announcements, status updates, "TP2 reached", ATUALIZAÇÃO without new entry → kind commentary or ignore.
 - Conditional tense, retrospective discussion, macro news → kind commentary.
 - If the message could be an executable trade but the instruction, side, price, or intent is genuinely ambiguous → kind uncertain.
@@ -185,6 +185,7 @@ Return strict JSON only matching this schema:
 }
 Rules:
 - Resolve the disagreement using the RAW message as the only source of truth.
+- "close all (trades)", "close everything", "close my positions", "flatten" → kind close, never cancel_pending. A message that only LISTS pending buy/sell limit/stop entries with no cancel verb → kind entry, never cancel_pending.
 - Never invent prices, sides, or stop-losses that are not present in the message. Invented values from stage 2 must be rejected.
 - Extract TRADING INTENT, never translate the message literally.
 - Map instrument aliases: GOLD, OR, XAU-USD, XAU/USD → XAUUSD; SILVER → XAGUSD.

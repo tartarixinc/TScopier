@@ -1,9 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ChannelKeywords, ChannelLexiconRow, ParseChannelMessageResult } from '../parseSignal'
 import { setPipelineTimestamp } from '../pipelineTimestamps'
-import { getUniversalParseMode, humanReviewEscalationEnabled, universalParseAiVetoEnabled, universalParseReconcileEnabled } from './parseConfig'
+import { getUniversalParseMode, humanReviewEscalationEnabled, universalParseAiVetoEnabled, universalParseReconcileEnabled, universalParseReconcileMinConf } from './parseConfig'
 export { getUniversalParseMode }
 import { compareParseShadowDiff } from './shadowDiff'
+import { parsedDataToTradeIntent } from './parsedDataToTradeIntent'
 import { tradeIntentToChannelParsedSignal } from './tradeIntentAdapter'
 import type { TradeIntent, TradeIntentKind } from './tradeIntent'
 import {
@@ -317,6 +318,20 @@ function withIntentSymbol(
  * (OSS) is uncertain, when the hallucination guard rejected stage 2's prices,
  * or when stage 2 blocks a trade the deterministic parser found. OSS-confirmed
  * and OSS-recovered results are trusted without the final model.
+ *
+ * Additional triggers (2026-11-11, after "Close all trades now" ran two
+ * different ways on prod and staging from the same second; note that the
+ * 5cd1580f fast-lane already keeps RECOGNIZED management phrases away from
+ * stage 2 entirely — these cover what still reaches the AI):
+ *  - a rule-vs-AI KIND conflict — the rules parsed the message one way and
+ *    stage 2 answered with a different kind (e.g. rules `close` vs AI
+ *    `cancel_pending`), including opposite entry sides;
+ *  - stage 2 says `cancel_pending` while the rules do not confirm that
+ *    reading (covers rules-skipped messages the AI wrongly turned into
+ *    cancels, e.g. "BUY LIMITS GOLD @ 4050/4045 AREA" → cancel_pending);
+ *  - an executable stage-2 answer below the confidence floor
+ *    (`UNIVERSAL_PARSE_RECONCILE_MIN_CONF`, default 0.7) — a 0.5 guess never
+ *    gets the final word again.
  */
 export function shouldReconcileSignal(
   det: ParseChannelMessageResult,
@@ -331,8 +346,39 @@ export function shouldReconcileSignal(
     return true
   }
   const detParsed = det.status === 'parsed' && det.parsed.action !== 'ignore'
-  const uniExecutable = EXECUTABLE_KINDS.has(universal.intent.kind)
-  return detParsed && !uniExecutable
+  const kind = universal.intent.kind
+  const uniExecutable = EXECUTABLE_KINDS.has(kind)
+
+  // Existing trigger: stage 2 blocked a trade the rules parsed.
+  if (detParsed && !uniExecutable) return true
+
+  if (detParsed) {
+    const detIntent = parsedDataToTradeIntent(det.parsed)
+    // Rule-vs-AI kind conflict (values-only differences stay with stage 2).
+    if (detIntent.kind !== 'ignore' && detIntent.kind !== kind) return true
+    // Same kind but opposite entry side — the trade would go the wrong way.
+    if (
+      detIntent.kind === 'entry' && kind === 'entry'
+      && detIntent.side && universal.intent.side
+      && detIntent.side !== universal.intent.side
+    ) {
+      return true
+    }
+  }
+
+  // Stage 2 invented a cancel the rules never saw. Rules-skipped messages
+  // land here too (det action `ignore` → kind `ignore` ≠ cancel_pending).
+  if (kind === 'cancel_pending') {
+    const detKind = detParsed ? parsedDataToTradeIntent(det.parsed).kind : 'ignore'
+    if (detKind !== 'cancel_pending') return true
+  }
+
+  // Executable but unsure → arbiter decides, never the raw guess.
+  if (uniExecutable && (universal.intent.confidence ?? 1) < universalParseReconcileMinConf()) {
+    return true
+  }
+
+  return false
 }
 
 export function routeStageThreeResult(

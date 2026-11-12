@@ -107,6 +107,18 @@ export function universalParseReconcileEnabled(): boolean {
   return parseEnvBool('UNIVERSAL_PARSE_RECONCILE_ENABLED', false)
 }
 
+/**
+ * An executable stage-2 answer below this confidence must be adjudicated by
+ * stage 3 instead of being trusted as final. A 0.5 "cancel_pending" once
+ * overruled a confident deterministic `close` and skipped a real
+ * "Close all trades now" incident (2026-11-11).
+ */
+export function universalParseReconcileMinConf(): number {
+  const raw = process.env.UNIVERSAL_PARSE_RECONCILE_MIN_CONF?.trim()
+  const n = Number(raw && raw.length ? raw : 0.7)
+  return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0.7
+}
+
 export function universalParseReconcileModel(): string {
   return String(
     process.env.UNIVERSAL_PARSE_RECONCILE_MODEL ?? RECONCILE_MODEL,
