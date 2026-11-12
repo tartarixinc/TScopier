@@ -22,7 +22,11 @@ import { flattenDiscordMessage } from './discordMessage'
 import { discordReadyWatchdogAction } from './discordReadyWatchdog'
 import { installRelayFetch } from './relayFetch'
 import { parseRawChannelMessage } from './parseSignal'
-import { pushParsedSignalToTradeWorker } from './tradeSignalPush'
+import type { PipelineTimestamps } from './pipelineTimestamps'
+import {
+  pushParsedSignalToTradeWorkerAccept,
+  warnDiscordTradePushConfig,
+} from './tradeSignalPush'
 
 // Node.js 20 has no native WebSocket; supabase-js realtime refuses to construct
 // without one. Same polyfill as index.ts / whatsappListener (noop on Node 22+).
@@ -143,6 +147,7 @@ async function loadSubscribers(
 async function copyMessage(supabase: SupabaseClient, message: Message): Promise<void> {
   if (!message.guild || message.author.id === message.client.user?.id) return
   if (message.channel.type !== ChannelType.GuildText) return
+  const tMsgReceived = Date.now()
   const text = flattenDiscordMessage(message.content ?? '', message.embeds.map(embed => ({
     title: embed.title,
     description: embed.description,
@@ -166,7 +171,9 @@ async function copyMessage(supabase: SupabaseClient, message: Message): Promise<
   }
   for (const subscriber of subscribers) {
     try {
+      const tParseStarted = Date.now()
       const parsed = await parseRawChannelMessage(supabase, subscriber.channel_id, text)
+      const tParseDone = Date.now()
       if (parsed.status !== 'parsed' || parsed.parsed.action === 'ignore') {
         console.log(
           `[discord] parse skipped user=${subscriber.user_id} status=${parsed.status}`
@@ -177,6 +184,15 @@ async function copyMessage(supabase: SupabaseClient, message: Message): Promise<
       }
       const signalId = crypto.randomUUID()
       const createdAt = new Date().toISOString()
+      const pipelineTs: PipelineTimestamps = {
+        t_listener_received: tMsgReceived,
+        telegram_message_received_at: tMsgReceived,
+        parse_started_at: tParseStarted,
+        parse_completed_at: tParseDone,
+        t_parse_done: tParseDone,
+        signal_persist_started_at: Date.now(),
+        ingest_path: 'live',
+      }
       const { error } = await supabase.from('signals').insert({
         id: signalId,
         user_id: subscriber.user_id,
@@ -190,13 +206,17 @@ async function copyMessage(supabase: SupabaseClient, message: Message): Promise<
         telegram_message_id: message.id,
         is_modification: false,
         created_at: createdAt,
+        pipeline_ts: pipelineTs,
       })
       if (error) {
         if (error.code === '23505') continue
         console.warn(`[discord] signal insert failed user=${subscriber.user_id}: ${error.message}`)
         continue
       }
-      pushParsedSignalToTradeWorker({
+      pipelineTs.signal_persist_completed_at = Date.now()
+      pipelineTs.t_dispatch_sent = Date.now()
+      const pushStarted = Date.now()
+      const accepted = await pushParsedSignalToTradeWorkerAccept({
         id: signalId,
         user_id: subscriber.user_id,
         channel_id: subscriber.channel_id,
@@ -205,8 +225,22 @@ async function copyMessage(supabase: SupabaseClient, message: Message): Promise<
         telegram_message_id: message.id,
         is_modification: false,
         created_at: createdAt,
+        pipeline_ts: pipelineTs,
         dispatch_source: 'discord',
       }, { source: 'discord' })
+      const pushMs = Date.now() - pushStarted
+      if (accepted) {
+        console.log(
+          `[discord] push accepted signal=${signalId} user=${subscriber.user_id}`
+          + ` push_ms=${pushMs} ingest_ms=${Date.now() - tMsgReceived}`,
+        )
+      } else {
+        console.warn(
+          `[discord] push NOT accepted signal=${signalId} user=${subscriber.user_id}`
+          + ` push_ms=${pushMs} — falling back to trade-worker sweep/realtime`
+          + ` (set TRADE_WORKER_URL + WORKER_INTERNAL_TOKEN on discord_listener)`,
+        )
+      }
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err)
       console.warn(`[discord] copy failed user=${subscriber.user_id}: ${detail}`)
@@ -215,6 +249,7 @@ async function copyMessage(supabase: SupabaseClient, message: Message): Promise<
 }
 
 export async function startDiscordListener(): Promise<DiscordListenerHandle> {
+  warnDiscordTradePushConfig()
   const token = requireEnv('DISCORD_BOT_TOKEN')
   const supabase = createClient(requireEnv('SUPABASE_URL'), requireEnv('SUPABASE_SERVICE_ROLE_KEY'))
   const client = new Client({

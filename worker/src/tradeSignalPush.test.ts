@@ -7,6 +7,7 @@ import {
   resetTradePushBreakersForTests,
   validateListenerMgmtShardConfig,
   validateListenerTradeShardConfig,
+  warnDiscordTradePushConfig,
 } from './tradeSignalPush'
 
 describe('parseTradeWorkerShardUrls', () => {
@@ -195,5 +196,52 @@ describe('pushParsedSignalToTradeWorkerAccept accepted gate', () => {
     assert.equal(await pushParsedSignalToTradeWorkerAccept(row), false)
     assert.equal(await pushParsedSignalToTradeWorkerAccept({ ...row, id: 'sig-4' }), false)
     assert.equal(calls, 1, 'second push must not hit the network while breaker is open')
+  })
+})
+
+describe('warnDiscordTradePushConfig', () => {
+  const keys = [
+    'TRADE_SIGNAL_PUSH_ENABLED',
+    'WORKER_INTERNAL_TOKEN',
+    'TRADE_WORKER_URL',
+    'TRADE_WORKER_SHARD_URLS',
+  ] as const
+  const prev: Record<string, string | undefined> = {}
+  const lines: string[] = []
+  let log: typeof console.log
+  let error: typeof console.error
+
+  beforeEach(() => {
+    for (const k of keys) {
+      prev[k] = process.env[k]
+      delete process.env[k]
+    }
+    lines.length = 0
+    log = console.log
+    error = console.error
+    console.log = (...args: unknown[]) => { lines.push(args.map(String).join(' ')) }
+    console.error = (...args: unknown[]) => { lines.push(args.map(String).join(' ')) }
+  })
+
+  afterEach(() => {
+    console.log = log
+    console.error = error
+    for (const k of keys) {
+      if (prev[k] === undefined) delete process.env[k]
+      else process.env[k] = prev[k]
+    }
+  })
+
+  it('errors when TRADE_WORKER_URL and token are missing', () => {
+    warnDiscordTradePushConfig()
+    assert.ok(lines.some(l => l.includes('FATAL-CONFIG') && l.includes('TRADE_WORKER_URL')))
+  })
+
+  it('logs configured when URL and token are set', () => {
+    process.env.WORKER_INTERNAL_TOKEN = 'test-token-abcdef'
+    process.env.TRADE_WORKER_URL = 'https://trade.example.com'
+    warnDiscordTradePushConfig()
+    assert.ok(lines.some(l => l.includes('trade push configured') && l.includes('trade.example.com')))
+    assert.ok(!lines.some(l => l.includes('FATAL-CONFIG')))
   })
 })

@@ -2,6 +2,16 @@
 
 ## Changelog
 
+### 2026-11-12 — Discord latency: enable trade push + pipeline stamps
+
+- **Context:** Discord→trade took ~7–11s. Prod signals had **0** `dispatch_push_attempt` logs; `created_at`→`t_dispatch_received` was 1–5s (sweep/realtime), then `broker_ready` another 3–6s.
+- **Plain English:** Discord was not HTTP-pushing to the trade worker (missing Railway push env). Code now measures Discord ingest and warns loudly when push is misconfigured; Discord role also runs the trade-push probe.
+- **Root cause (technical):** `discord_listener` without `TRADE_WORKER_URL`/`WORKER_INTERNAL_TOKEN` falls back to parsed sweep (`EXECUTOR_SWEEP_IDLE_MS` up to 5s). Push probe previously started only for Telegram `runsListener`.
+- **Fix (files):** [`discordListener.ts`](worker/src/discordListener.ts) `pipeline_ts` + `pushParsedSignalToTradeWorkerAccept` logging; [`warnDiscordTradePushConfig`](worker/src/tradeSignalPush.ts); [`index.ts`](worker/src/index.ts) probe for discord role; [`docs/discord-setup.md`](docs/discord-setup.md) latency checklist (prod URL `https://tscopier-worker-production.up.railway.app`).
+- **Tests/verification:** `tradeSignalPush.test.ts` warn cases; ops — set Discord Railway `TRADE_WORKER_URL` + token, redeploy, confirm `dispatch_push_attempt` + sub-300ms insert→dispatch.
+- **Deploy state:** Worker image + Discord Railway env (CLI unauthorized here — set vars in Railway UI).
+- **Follow-ups:** After push is green, profile `broker_ready_at` if wall time still multi-second.
+
 ### 2026-11-12 — Production “Discord invite is not configured” false positive
 
 - **Context:** Production Netlify already had `VITE_DISCORD_CLIENT_ID` baked in (`155839…`), but Connect still showed “Discord invite is not configured yet.”

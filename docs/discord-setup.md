@@ -57,9 +57,41 @@ Run the gateway as its own service from the same image:
 | `DISCORD_BOT_TOKEN` | bot token |
 | `SUPABASE_URL` | same project as the app |
 | `SUPABASE_SERVICE_ROLE_KEY` | service role key |
-| `WORKER_INTERNAL_TOKEN` | same value as the trade worker (dispatch) |
-| `TRADE_WORKER_URL` | trade worker base URL (dispatch) |
+| `WORKER_INTERNAL_TOKEN` | same value as the trade worker (dispatch) — **required for low latency** |
+| `TRADE_WORKER_URL` | trade-entry public base URL (same as Telegram listener). Production today: `https://tscopier-worker-production.up.railway.app` |
+| `TRADE_WORKER_SHARD_URLS` / `TRADE_MGMT_*` | copy from Telegram listener if production uses shards |
 | `SENTRY_WORKER_HEARTBEAT_MONITOR_SLUG` | a slug of its own, not the listener's |
+
+### Latency checklist (Discord → trade)
+
+Without push env, Discord signals wait on the trade worker’s parsed-signal sweep/realtime (**~1–5s** before execution starts). Production Discord rows with **0** `dispatch_push_attempt` logs mean push is not wired.
+
+1. On the Discord Railway service set `TRADE_WORKER_URL` + `WORKER_INTERNAL_TOKEN` (identical to the Telegram listener / trade worker).
+2. Redeploy Discord. Boot log must show `[discord] trade push configured …` — not `FATAL-CONFIG: low-latency trade push unavailable`.
+3. Post a test signal in a linked channel.
+4. Confirm in SQL (same Supabase project as the listener):
+
+```sql
+select created_at, status,
+  (pipeline_ts->>'t_listener_received')::bigint as t_recv,
+  (pipeline_ts->>'t_dispatch_sent')::bigint as t_sent,
+  (pipeline_ts->>'t_dispatch_received')::bigint as t_disp
+from signals
+where source_kind = 'discord'
+order by created_at desc
+limit 5;
+
+select created_at, signal_id, status, request_payload
+from trade_execution_logs
+where action = 'dispatch_push_attempt'
+  and signal_id in (
+    select id from signals where source_kind = 'discord'
+    order by created_at desc limit 3
+  )
+order by created_at desc;
+```
+
+Expect: `dispatch_push_attempt` rows with `ok=true`, and `t_dispatch_received - created_at` typically under ~300ms (not multi-second).
 
 Rules:
 
@@ -93,6 +125,7 @@ heartbeat check-ins, graceful shutdown, role and shard guards).
 2. The bot caches the guild's text channels (`discord_guild_channels`).
 3. Select the channels that post signals and link them to a broker account.
 4. Post a test signal in one of those channels and confirm the copy on a test account.
+5. Run the latency checklist above so the trade is pushed, not only swept.
 
 ## Known gaps
 
