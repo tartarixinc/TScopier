@@ -2,6 +2,36 @@
 
 ## Changelog
 
+### 2026-11-12 — Discord listener crash: Node 20 WebSocket
+
+- **Context:** Railway Discord service crash-looped on start with `Node.js 20 detected without native WebSocket support` from `@supabase/realtime-js`.
+- **Plain English:** The Discord process creates a Supabase client before login; on Node 20 that needs the `ws` package polyfill. Railway was also started with `npm run discord`, which skips `index.ts` where that polyfill already lived.
+- **Root cause (technical):** [`discordListener.ts`](worker/src/discordListener.ts) called `createClient` with no `globalThis.WebSocket` install; `ws` is already a dependency and polyfilled in [`index.ts`](worker/src/index.ts) / [`whatsappListener.ts`](worker/src/whatsappListener.ts).
+- **Fix (files):** Polyfill `ws` in `discordListener.ts` before `createClient`. Docs: Railway start command must stay `node dist/index.js` + `WORKER_ROLE=discord_listener`.
+- **Tests/verification:** Redeploy Discord service; expect `[discord] gateway ready` (not TokenInvalid / WebSocket error).
+- **Deploy state:** Code fix local — redeploy worker image / Discord service.
+- **Follow-ups:** Prefer `WORKER_ROLE=discord_listener` over custom `npm run discord` start on Railway.
+
+### 2026-11-12 — Discord signals never reach UniCopier (no gateway)
+
+- **Context:** User had Discord connected (guild synced, `#general` linked) but posted signals never appeared in UniCopier.
+- **Plain English:** Connect Discord only registers the server and channels. A separate always-on Discord bot process must listen to those channels and write `signals` rows. That process was not running.
+- **Root cause (technical):** Migration has active `discord_channels` + shadow `telegram_channels` (`source_kind=discord`, channel `dc:926393892734119967:926393892734119971`) but **0** `signals` with `source_kind=discord` (production also 0). Docs mark Railway `WORKER_ROLE=discord_listener` as **planned**. `discord-gateway-production.up.railway.app` returns 502 (likely crash-loop / healthcheck on a role with no HTTP). Edge `discord-sync` only caches channel names; ingest is solely [`worker/src/discordListener.ts`](worker/src/discordListener.ts). Local `npm run discord` also failed: Discord.js `TokenInvalid` for `worker/.env` `DISCORD_BOT_TOKEN` (revoked/rotated or stale copy).
+- **Fix (files):** Ops — regenerate bot token in Discord Developer Portal; set the same value on Migration (`supabase secrets set DISCORD_BOT_TOKEN`), Railway Discord service, and `worker/.env`; deploy/repair Railway service per [`docs/discord-setup.md`](docs/discord-setup.md) (`WORKER_ROLE=discord_listener`, replicas=1, **disable healthcheck**, Message Content Intent on).
+- **Tests/verification:** Gateway log `gateway ready`; post a parseable signal in linked `#general`; expect a new `signals` row with `source_kind=discord`.
+- **Deploy state:** Diagnosis only — gateway not running; token currently invalid.
+- **Follow-ups:** After new token: redeploy Discord Railway service; confirm Message Content Intent; one process per token.
+
+### 2026-11-12 — Discord connect 503: missing DISCORD_BOT_TOKEN on Migration
+
+- **Context:** Connect Discord saved the guild install, then `discord-sync` failed with “Edge Function returned a non-2xx status code”.
+- **Plain English:** The Migration edge function could not talk to Discord because its bot token secret was not set.
+- **Root cause (technical):** Logs show `POST …/functions/v1/discord-sync` → **503**; [`discord-sync/index.ts`](supabase/functions/discord-sync/index.ts) returns `bot_not_configured` when `DISCORD_BOT_TOKEN` is empty.
+- **Fix (files):** Set `DISCORD_BOT_TOKEN` on Migration project `supmsgcubipmmowrzoub` via `supabase secrets set` (same token as worker Discord listener).
+- **Tests/verification:** Retry Connect Discord / guild sync; expect 200 from `discord-sync`.
+- **Deploy state:** Migration edge secret only (no code change).
+- **Follow-ups:** Confirm production `sxkpcovbyaficvtkpsdo` already has the secret if prod Discord connect is used.
+
 ### 2026-11-12 — TradingView Configure defaults SL/TP off
 
 - **Context:** New TradingView alert JSON configs defaulted Include SL and Include TP to on.
