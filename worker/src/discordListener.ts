@@ -17,11 +17,18 @@ import {
   type Message,
   type TextChannel,
 } from 'discord.js'
+import WebSocket from 'ws'
 import { flattenDiscordMessage } from './discordMessage'
 import { discordReadyWatchdogAction } from './discordReadyWatchdog'
 import { installRelayFetch } from './relayFetch'
 import { parseRawChannelMessage } from './parseSignal'
 import { pushParsedSignalToTradeWorker } from './tradeSignalPush'
+
+// Node.js 20 has no native WebSocket; supabase-js realtime refuses to construct
+// without one. Same polyfill as index.ts / whatsappListener (noop on Node 22+).
+if (!globalThis.WebSocket) {
+  globalThis.WebSocket = WebSocket as unknown as typeof globalThis.WebSocket
+}
 
 type Subscriber = {
   user_id: string
