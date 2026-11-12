@@ -17,11 +17,18 @@ import {
   type Message,
   type TextChannel,
 } from 'discord.js'
+import WebSocket from 'ws'
 import { flattenDiscordMessage } from './discordMessage'
 import { discordReadyWatchdogAction } from './discordReadyWatchdog'
 import { installRelayFetch } from './relayFetch'
 import { parseRawChannelMessage } from './parseSignal'
 import { pushParsedSignalToTradeWorker } from './tradeSignalPush'
+
+// Node.js 20 has no native WebSocket; supabase-js realtime refuses to construct
+// without one. Same polyfill as index.ts / whatsappListener (noop on Node 22+).
+if (!globalThis.WebSocket) {
+  globalThis.WebSocket = WebSocket as unknown as typeof globalThis.WebSocket
+}
 
 type Subscriber = {
   user_id: string
@@ -141,13 +148,33 @@ async function copyMessage(supabase: SupabaseClient, message: Message): Promise<
     description: embed.description,
     fields: embed.fields,
   })))
-  if (!text.trim()) return
+  if (!text.trim()) {
+    console.log(
+      `[discord] skip empty message guild=${message.guild.id} channel=${message.channel.id}`
+      + ` embeds=${message.embeds.length} (enable Message Content Intent if body should be readable)`,
+    )
+    return
+  }
 
   const subscribers = await loadSubscribers(supabase, message.guild.id, message.channel.id)
+  if (subscribers.length === 0) {
+    console.log(
+      `[discord] no active UniCopier links for guild=${message.guild.id} channel=${message.channel.id}`
+      + ` — check discord_channels on this SUPABASE_URL`,
+    )
+    return
+  }
   for (const subscriber of subscribers) {
     try {
       const parsed = await parseRawChannelMessage(supabase, subscriber.channel_id, text)
-      if (parsed.status !== 'parsed' || parsed.parsed.action === 'ignore') continue
+      if (parsed.status !== 'parsed' || parsed.parsed.action === 'ignore') {
+        console.log(
+          `[discord] parse skipped user=${subscriber.user_id} status=${parsed.status}`
+          + ` action=${parsed.status === 'parsed' ? parsed.parsed.action : 'n/a'}`
+          + ` text=${JSON.stringify(text.slice(0, 120))}`,
+        )
+        continue
+      }
       const signalId = crypto.randomUUID()
       const createdAt = new Date().toISOString()
       const { error } = await supabase.from('signals').insert({

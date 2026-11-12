@@ -180,6 +180,7 @@ export const tradingPl: TradingPagesBundleTranslations = {
     discordHow2: 'Wybierz kanały tekstowe, na których pojawiają się sygnały',
     discordHow3: 'Połącz te kanały z kontami brokera, które mają je kopiować',
     discordConnect: 'Połącz Discord',
+    discordDisconnect: 'Odłącz Discord',
     discordListTitle: 'Twoje kanały Discord',
     discordEmptyChannels: 'Nie ma jeszcze kanałów Discord.',
     discordPickChannels: 'Kanały tekstowe',

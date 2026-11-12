@@ -2,6 +2,74 @@
 
 ## Changelog
 
+### 2026-11-12 — Discord panel: Disconnect when connected
+
+- **Context:** Connected Discord UI still showed “+ Connect Discord”.
+- **Plain English:** Once a server is linked, the header action is now **Disconnect Discord** (same pattern as WhatsApp).
+- **Fix (files):** [`DiscordSourcePanel.tsx`](src/components/dashboard/DiscordSourcePanel.tsx); [`disconnectDiscord`](src/lib/discordSource.ts) removes installs, shadow channels, and broker links; i18n `discordDisconnect`.
+- **Tests/verification:** With an installation present, header shows Disconnect; click clears installs/channels and returns to Connect hero.
+- **Deploy state:** Frontend only.
+- **Follow-ups:** None.
+
+### 2026-11-12 — Discord signals silent: DB env mismatch + no ingest logs
+
+- **Context:** Gateway can start, but posting in Discord still yields no UniCopier signal.
+- **Plain English:** Discord was connected on the **Migration** app (1 linked `#general`). **Production** has 0 Discord installs/links. A production-pointed Railway listener looks up subscribers on production, finds none, and drops the message with no log.
+- **Root cause (technical):** `loadSubscribers` returns `[]` when `discord_channels` is empty on that `SUPABASE_URL`; [`copyMessage`](worker/src/discordListener.ts) previously returned silently. Migration still has 0 `source_kind=discord` signals.
+- **Fix (files):** Ops — point Discord Railway `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` at the same project where Connect Discord was done (Migration `supmsgcubipmmowrzoub` for preview), **or** Connect Discord + link `#general` on production. Code — log empty body / zero subscribers / parse ignore in `discordListener.ts`.
+- **Tests/verification:** After align + redeploy, post in linked `#general`; Railway log should show insert path or an explicit skip reason; DB `signals.source_kind=discord` increases.
+- **Deploy state:** Logging needs worker image redeploy; env alignment is Railway Variables.
+- **Follow-ups:** Confirm Message Content Intent stayed on; bot can View/Read the linked channel.
+
+### 2026-11-12 — Discord gateway 4014 DisallowedIntents
+
+- **Context:** Railway `discord_listener` started (`role=discord_listener shard=0/1`) then crash-looped: `shard 0 disconnected code=4014 (DisallowedIntents)`.
+- **Plain English:** The bot asked Discord for privileged intents (message content) that are still off in the Developer Portal.
+- **Root cause (technical):** [`discordListener.ts`](worker/src/discordListener.ts) enables `GatewayIntentBits.MessageContent` (plus Guilds / GuildMessages). Discord closes with 4014 when Message Content Intent is not enabled for the application.
+- **Fix (files):** Ops only — Discord Developer Portal → Application → Bot → Privileged Gateway Intents → enable **Message Content Intent** (Save). Redeploy/restart Discord service.
+- **Tests/verification:** Logs show `[discord] gateway ready as …` instead of 4014.
+- **Deploy state:** Worker start path OK; portal intent toggle required.
+- **Follow-ups:** None if intent stays on; bot must stay under Discord’s privileged-intent approval rules at 100+ servers.
+
+### 2026-11-12 — Discord listener crash: Node 20 WebSocket
+
+- **Context:** Railway Discord service crash-looped on start with `Node.js 20 detected without native WebSocket support` from `@supabase/realtime-js`.
+- **Plain English:** The Discord process creates a Supabase client before login; on Node 20 that needs the `ws` package polyfill. Railway was also started with `npm run discord`, which skips `index.ts` where that polyfill already lived.
+- **Root cause (technical):** [`discordListener.ts`](worker/src/discordListener.ts) called `createClient` with no `globalThis.WebSocket` install; `ws` is already a dependency and polyfilled in [`index.ts`](worker/src/index.ts) / [`whatsappListener.ts`](worker/src/whatsappListener.ts).
+- **Fix (files):** Polyfill `ws` in `discordListener.ts` before `createClient`. Docs: Railway start command must stay `node dist/index.js` + `WORKER_ROLE=discord_listener`.
+- **Tests/verification:** Redeploy Discord service; expect `[discord] gateway ready` (not TokenInvalid / WebSocket error).
+- **Deploy state:** Code fix local — redeploy worker image / Discord service.
+- **Follow-ups:** Prefer `WORKER_ROLE=discord_listener` over custom `npm run discord` start on Railway.
+
+### 2026-11-12 — Discord signals never reach UniCopier (no gateway)
+
+- **Context:** User had Discord connected (guild synced, `#general` linked) but posted signals never appeared in UniCopier.
+- **Plain English:** Connect Discord only registers the server and channels. A separate always-on Discord bot process must listen to those channels and write `signals` rows. That process was not running.
+- **Root cause (technical):** Migration has active `discord_channels` + shadow `telegram_channels` (`source_kind=discord`, channel `dc:926393892734119967:926393892734119971`) but **0** `signals` with `source_kind=discord` (production also 0). Docs mark Railway `WORKER_ROLE=discord_listener` as **planned**. `discord-gateway-production.up.railway.app` returns 502 (likely crash-loop / healthcheck on a role with no HTTP). Edge `discord-sync` only caches channel names; ingest is solely [`worker/src/discordListener.ts`](worker/src/discordListener.ts). Local `npm run discord` also failed: Discord.js `TokenInvalid` for `worker/.env` `DISCORD_BOT_TOKEN` (revoked/rotated or stale copy).
+- **Fix (files):** Ops — regenerate bot token in Discord Developer Portal; set the same value on Migration (`supabase secrets set DISCORD_BOT_TOKEN`), Railway Discord service, and `worker/.env`; deploy/repair Railway service per [`docs/discord-setup.md`](docs/discord-setup.md) (`WORKER_ROLE=discord_listener`, replicas=1, **disable healthcheck**, Message Content Intent on).
+- **Tests/verification:** Gateway log `gateway ready`; post a parseable signal in linked `#general`; expect a new `signals` row with `source_kind=discord`.
+- **Deploy state:** Diagnosis only — gateway not running; token currently invalid.
+- **Follow-ups:** After new token: redeploy Discord Railway service; confirm Message Content Intent; one process per token.
+
+### 2026-11-12 — Discord connect 503: missing DISCORD_BOT_TOKEN on Migration
+
+- **Context:** Connect Discord saved the guild install, then `discord-sync` failed with “Edge Function returned a non-2xx status code”.
+- **Plain English:** The Migration edge function could not talk to Discord because its bot token secret was not set.
+- **Root cause (technical):** Logs show `POST …/functions/v1/discord-sync` → **503**; [`discord-sync/index.ts`](supabase/functions/discord-sync/index.ts) returns `bot_not_configured` when `DISCORD_BOT_TOKEN` is empty.
+- **Fix (files):** Set `DISCORD_BOT_TOKEN` on Migration project `supmsgcubipmmowrzoub` via `supabase secrets set` (same token as worker Discord listener).
+- **Tests/verification:** Retry Connect Discord / guild sync; expect 200 from `discord-sync`.
+- **Deploy state:** Migration edge secret only (no code change).
+- **Follow-ups:** Confirm production `sxkpcovbyaficvtkpsdo` already has the secret if prod Discord connect is used.
+
+### 2026-11-12 — TradingView Configure defaults SL/TP off
+
+- **Context:** New TradingView alert JSON configs defaulted Include SL and Include TP to on.
+- **Plain English:** Fresh Configure settings now start with SL and TP toggles off until the user turns them on.
+- **Fix (files):** [`tradingViewAlertTemplate.ts`](src/lib/tradingViewAlertTemplate.ts) `DEFAULT_TRADINGVIEW_ALERT_CONFIG`.
+- **Tests/verification:** `tradingViewAlertTemplate.test.ts`.
+- **Deploy state:** Frontend only.
+- **Follow-ups:** Existing saved `alert_config` rows keep their stored toggles.
+
 ### 2026-11-12 — TradingView always-on Railway ingest
 
 - **Context:** TradingView alerts hit Supabase Edge `tradingview-webhook`, which cold-starts before ACK/dispatch.
