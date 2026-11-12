@@ -2,6 +2,16 @@
 
 ## Changelog
 
+### 2026-11-12 — Production “Discord invite is not configured” false positive
+
+- **Context:** Production Netlify already had `VITE_DISCORD_CLIENT_ID` baked in (`155839…`), but Connect still showed “Discord invite is not configured yet.”
+- **Plain English:** A build bug made the Connect button call the wrong function, so it always thought Discord wasn’t set up.
+- **Root cause (technical):** In the `CopierEnginePage` chunk, Rolldown aliased imported `discordClientId` to the same minified name as a `useState` setter inside `DiscordSourcePanel` (`Je`). `Je()` invoked the setter (falsy), not the client-id reader. Live evidence: `function x(){return\`155839…\`}` export existed, but Connect used shadowed `Je`.
+- **Fix (files):** [`DiscordSourcePanel.tsx`](src/components/dashboard/DiscordSourcePanel.tsx) — `import * as discordInvite` and call `discordInvite.discordClientId()` / invite URL helpers (property access can’t be shadowed by a local binding).
+- **Tests/verification:** Redeploy frontend; Connect Discord should open the OAuth invite without the missing-config error.
+- **Deploy state:** Frontend only — needs Netlify production deploy.
+- **Follow-ups:** Watch for similar named-import + useState minify collisions in other fat page chunks.
+
 ### 2026-11-12 — Discord panel: Disconnect when connected
 
 - **Context:** Connected Discord UI still showed “+ Connect Discord”.
