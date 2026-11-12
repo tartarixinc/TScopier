@@ -42,7 +42,7 @@ export const dashboardAr: DashboardBundleTranslations = {
     healthDegraded: 'أداء منخفض',
     healthOffline: 'غير متصل',
     copierStatus: {
-      title: 'حالة الناسخ',
+      title: 'حالة الاتصال',
       allBrokerConnections: 'اتصالات الوسيط',
       healthy: 'سليمة',
       issues: 'مشاكل',
@@ -58,6 +58,7 @@ export const dashboardAr: DashboardBundleTranslations = {
       checksFailed: 'تم اكتشاف مشاكل.',
       signalSources: 'مصادر الإشارات',
       notConnected: 'غير متصل',
+      connectSource: 'اتصال',
       connected: 'متصل',
       reconnectRequired: 'يلزم إعادة الاتصال',
       reconnecting: 'جارٍ إعادة الاتصال',

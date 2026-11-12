@@ -2,6 +2,70 @@
 
 ## Changelog
 
+### 2026-11-12 — TradingView Configure owns webhook URL; remove Show Details
+
+- **Context:** Webhook URL lived in a separate Details modal; list had both Configure and Show Details. Portrait modal required heavy scrolling.
+- **Plain English:** Configure is a wide landscape modal: settings on the left, alert JSON on the right, URL on top. Show Details is gone from the list.
+- **Fix (files):** [`TradingViewSourcePanel.tsx`](src/components/dashboard/TradingViewSourcePanel.tsx) — URL + rotate + deliveries in `WebhookConfigure`; `ModalFrame` `size="wide"`; two-column layout; removed details modal / Show Details.
+- **Tests/verification:** Visual on TradingView configure.
+- **Deploy state:** Frontend only.
+- **Follow-ups:** None.
+
+### 2026-11-12 — Dark mode sidebar active icon color
+
+- **Context:** Active nav icons (e.g. Dashboard) stayed black in dark mode while labels were white.
+- **Plain English:** The selected sidebar icon is now white in dark mode so it stays visible on the dark active chip.
+- **Fix (files):** [`AppLayout.tsx`](src/components/layout/AppLayout.tsx) — active icon `text-neutral-950 dark:text-neutral-50`.
+- **Tests/verification:** Visual in dark mode sidebar.
+- **Deploy state:** Frontend only.
+- **Follow-ups:** None.
+
+### 2026-11-12 — Dashboard Connection Status redesign + Connect
+
+- **Context:** Connection Status looked sparse: uneven metric alignment, loud green Connect pills, weak hierarchy between sources and broker health.
+- **Plain English:** The card now has a tinted status banner, a 2×2 source grid with quieter Connect actions, and three evenly aligned health metrics.
+- **Fix (files):** [`CopierStatusCard.tsx`](src/components/dashboard/CopierStatusCard.tsx) visual redesign; Connect → `/channels?source=…`. [`CopierEnginePage.tsx`](src/pages/dashboard/CopierEnginePage.tsx) honors `?source=`. i18n title + `connectSource`.
+- **Tests/verification:** `tsc --noEmit`.
+- **Deploy state:** Frontend only (Netlify).
+- **Follow-ups:** None.
+
+### 2026-11-12 — TradingView Configure → tailored alert JSON
+
+- **Context:** TradingView details modal stacked three static alert JSON templates with no SL/TP, while the parser and worker expect optional `sl` / `tp[]`.
+- **Plain English:** Each webhook now has Configure: pick Indicator or Strategy, optional SL and how many TPs, then copy a matching JSON. Details is slimmed to URL + recent alerts.
+- **Fix (files):** Migration `alert_config` on `tradingview_webhooks` (Migration branch). [`tradingViewAlertTemplate.ts`](src/lib/tradingViewAlertTemplate.ts) + tests. [`TradingViewSourcePanel.tsx`](src/components/dashboard/TradingViewSourcePanel.tsx) Configure modal + list CTA. [`tradingViewWebhook.ts`](src/lib/tradingViewWebhook.ts) save helper. i18n en/es/fr + trading locales.
+- **Tests/verification:** `tradingViewAlertTemplate` unit tests; `tsc --noEmit`.
+- **Deploy state:** DB on Migration (`supmsgcubipmmowrzoub`); frontend Netlify.
+- **Follow-ups:** Promote migration when shipping to staging/production.
+
+### 2026-11-11 — Social Trading / provider page i18n for all locales
+
+- **Context:** Social Trading (directory + provider profile) only had full `socialTradingPage` copy in en/es/fr; pl/ru/sv/nl/ja/ar fell back to English via shallow merge.
+- **Plain English:** The Social Trading and provider screens now show localized UI in every supported language.
+- **Fix (files):** New bundle [`src/i18n/locales/socialTrading/`](src/i18n/locales/socialTrading/) (`pl`/`ru`/`sv`/`nl`/`ja`/`ar` + types), wired into each locale root. Fixed Spanish mojibake/accents in `copySetup` and social error strings.
+- **Tests/verification:** Key parity 174 top-level + 59 `copySetup`; `tsc --noEmit` clean.
+- **Deploy state:** Frontend only (Netlify).
+- **Follow-ups:** None.
+
+### 2026-11-11 — Mirror Trading empty state redesign
+
+- **Context:** Mirror Accounts empty view was a plain card with one line of instructional text and a lot of unused space.
+- **Plain English:** The empty page now shows a master→slave illustration, a clear title and explanation, an Add master account button, and three short setup steps — translated in all app locales.
+- **Fix (files):** [`MirrorTradingPage.tsx`](src/pages/dashboard/MirrorTradingPage.tsx) — `MirrorEmptyArt` + `MirrorEmptyState`. i18n `emptyTitle` / `emptyBody` / `emptyStep1–3` (+ title/CTA) in en/es/fr and pl/ru/sv/nl/ja/ar + types.
+- **Tests/verification:** Visual check on Mirror Accounts with no masters; `tsc` if needed.
+- **Deploy state:** Frontend only (Netlify).
+- **Follow-ups:** None.
+
+### 2026-11-11 — Mirror Accounts delete appeared to work then slave returned on refresh
+
+- **Context:** Deleting a slave on Mirror Accounts cleared the table, but refresh brought Fusion Markets slave back.
+- **Plain English:** The delete looked successful in the app, but the database never actually removed the mirror link, so the slave came back.
+- **Root cause (technical):** `mirror_copy_block_delete_with_open_copies` BEFORE DELETE trigger used `NEW.id` / `RETURN NEW`. On DELETE, `NEW` is null, so returning null cancels the row delete with no client error. UI still cleared `links` + localStorage slave ids; refresh rebuilt slaves from surviving `broker_copy_links` destinations.
+- **Fix (files):** Migration [`20261111223000_fix_mirror_delete_trigger_old_row.sql`](supabase/migrations/20261111223000_fix_mirror_delete_trigger_old_row.sql) uses `OLD.id` / `RETURN OLD`. Applied to Migration + production. [`brokerCopyLink.ts`](src/lib/brokerCopyLink.ts) `.delete().select('id')` + leftover check so silent cancel cannot look like success.
+- **Tests/verification:** Trigger replaced on `sxkpcovbyaficvtkpsdo` and `supmsgcubipmmowrzoub`. Delete the slave again — it should stay gone after refresh.
+- **Deploy state:** DB fix live on production; client verify needs Netlify/frontend deploy (optional hardening).
+- **Follow-ups:** None required for the stuck row once user deletes again after trigger fix.
+
 ### 2026-11-11 — Account Trades / Performance / Own provider profile under 2s
 
 - **Context:** After Dashboard, Account Trades, Performance, and Social “Your provider profile” still held skeletons on heavy live history.

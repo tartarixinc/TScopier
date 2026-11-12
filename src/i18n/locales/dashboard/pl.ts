@@ -42,7 +42,7 @@ export const dashboardPl: DashboardBundleTranslations = {
     healthDegraded: 'Obniżona wydajność',
     healthOffline: 'Offline',
     copierStatus: {
-      title: 'Status kopiatora',
+      title: 'Status połączenia',
       allBrokerConnections: 'Połączenia brokera',
       healthy: 'Sprawne',
       issues: 'Problemy',
@@ -58,6 +58,7 @@ export const dashboardPl: DashboardBundleTranslations = {
       checksFailed: 'Wykryto problemy.',
       signalSources: 'Źródła sygnałów',
       notConnected: 'Niepołączone',
+      connectSource: 'Połącz',
       connected: 'Połączone',
       reconnectRequired: 'Wymagane ponowne połączenie',
       reconnecting: 'Ponowne łączenie',

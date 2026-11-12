@@ -16,6 +16,7 @@ import { logsPl } from './logs/pl'
 import { mergeLocaleBundle } from './merge'
 import { pricingPl } from './pricing/pl'
 import { settingsPl } from './settings/pl'
+import { socialTradingPl } from './socialTrading/pl'
 import { toolsPl } from './tools/pl'
 import { tradingPl } from './trading/pl'
 import type { Translations } from './types'
@@ -30,6 +31,7 @@ export const pl: Translations = mergeLocaleBundle(en, {
   ...pricingPl,
   ...toolsPl,
   ...tradingPl,
+  ...socialTradingPl,
   landing: landingPl,
   ...legalPl,
   ...copierEnginePl,
@@ -42,5 +44,19 @@ export const pl: Translations = mergeLocaleBundle(en, {
   management: {
     ...en.management,
     subtitle: 'Przeglądaj aktywności tradingowe z kopiera.',
+  },
+  mirrorTradingPage: {
+    ...en.mirrorTradingPage,
+    title: 'Konta lustrzane',
+    subtitle: 'Kopiuj transakcje z konta głównego na konta podrzędne.',
+    searchDescription: 'Kopiuj transakcje z konta głównego na konta podrzędne.',
+    addMaster: 'Dodaj konto główne',
+    mastersEmpty: 'Połącz konto, którego transakcje mają być kopiowane.',
+    emptyTitle: 'Brak kont lustrzanych',
+    emptyBody:
+      'Połącz konto główne, którego transakcje mają być kopiowane, a następnie dodaj konta podrzędne z własnymi ustawieniami ryzyka.',
+    emptyStep1: 'Dodaj konto główne',
+    emptyStep2: 'Dołącz konta podrzędne',
+    emptyStep3: 'Rozpocznij kopiowanie',
   },
 })

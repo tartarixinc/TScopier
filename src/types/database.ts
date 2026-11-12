@@ -710,6 +710,15 @@ export interface TelegramAuthPending {
   expires_at: string
 }
 
+/** Persisted TradingView alert JSON builder choices (UI only). */
+export type TradingViewWebhookAlertConfig = {
+  kind: 'indicator' | 'strategy'
+  includeSl: boolean
+  includeTp: boolean
+  tpCount: number
+  symbol?: string
+}
+
 export interface TradingViewWebhook {
   id: string
   user_id: string
@@ -718,6 +727,8 @@ export interface TradingViewWebhook {
   token_hash: string
   token: string
   is_active: boolean
+  /** Alert message JSON builder preferences for this webhook. */
+  alert_config?: TradingViewWebhookAlertConfig | null
   created_at: string
   updated_at: string
 }

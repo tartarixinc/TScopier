@@ -272,7 +272,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
           <Icon
             className={clsx(
               'h-4 w-4',
-              isActive ? 'text-neutral-950' : '',
+              isActive ? 'text-neutral-950 dark:text-neutral-50' : '',
             )}
             strokeWidth={1.75}
           />

@@ -166,9 +166,16 @@ export function CopierEnginePage() {
   const [searchParams] = useSearchParams()
   // Production builds ignore Discord invite links until the Discord worker ships.
   const guildFromInvite = buildFlags.extraSourcesLocked ? null : searchParams.get('guild_id')
-  const [source, setSource] = useState<AddedSignalSource | null>(guildFromInvite ? 'discord' : null)
+  const sourceFromQueryRaw = searchParams.get('source')
+  const sourceFromQuery = isAddedSignalSource(sourceFromQueryRaw) && !isSignalSourceLocked(sourceFromQueryRaw)
+    ? sourceFromQueryRaw
+    : null
+  const appliedQuerySourceRef = useRef<AddedSignalSource | null>(null)
+  const [source, setSource] = useState<AddedSignalSource | null>(
+    guildFromInvite ? 'discord' : sourceFromQuery,
+  )
   const [settingUpSource, setSettingUpSource] = useState<AddedSignalSource | null>(
-    guildFromInvite ? 'discord' : null,
+    guildFromInvite ? 'discord' : sourceFromQuery,
   )
   const [pickedSources, setPickedSources] = useState<AddedSignalSource[]>(() => (
     user?.id ? readAddedSignalSources(user.id) : []
@@ -981,13 +988,13 @@ export function CopierEnginePage() {
         readAddedSignalSources(user.id),
         prev,
         connectedSources,
-        guildFromInvite ? 'discord' : null,
+        guildFromInvite ? 'discord' : sourceFromQuery,
       )
       const unchanged = next.length === prev.length && next.every((kind, index) => kind === prev[index])
       if (!unchanged) writeAddedSignalSources(user.id, next)
       return unchanged ? prev : next
     })
-  }, [connectedSources, guildFromInvite, sourcesReady, user?.id])
+  }, [connectedSources, guildFromInvite, sourceFromQuery, sourcesReady, user?.id])
 
   useEffect(() => {
     if (!sourcesReady) return
@@ -1015,6 +1022,13 @@ export function CopierEnginePage() {
     setSource(kind)
     setSourcePickerOpen(false)
   }
+
+  useEffect(() => {
+    if (!sourcesReady || !sourceFromQuery) return
+    if (appliedQuerySourceRef.current === sourceFromQuery) return
+    appliedQuerySourceRef.current = sourceFromQuery
+    addSignalSource(sourceFromQuery)
+  }, [connectedSources, sourceFromQuery, sourcesReady])
 
   const sourceTabLabel = (kind: AddedSignalSource) => {
     if (kind === 'telegram') return t.channelsPage.tabTelegram

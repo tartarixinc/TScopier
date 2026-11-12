@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { createSupportTicket } from '../../lib/supportTickets'
 import clsx from 'clsx'
+import { AssistantMessageContent } from '../assistant/AssistantMessageContent'
 import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
 import { useOptionalUserProfile } from '../../context/UserProfileContext'
@@ -1219,7 +1220,9 @@ export function SupportWidget({
                                   key={m.id}
                                   className="mx-auto max-w-[95%] px-2 text-center text-xs leading-relaxed text-neutral-400"
                                 >
-                                  {m.body}
+                                  {m.body ? (
+                                    <AssistantMessageContent text={m.body} variant="assistant" />
+                                  ) : null}
                                 </div>
                               )
                             }
@@ -1231,7 +1234,9 @@ export function SupportWidget({
                                 >
                                   {m.body &&
                                   !(m.images?.length && m.body === 'Shared an image')
-                                    ? m.body
+                                    ? (
+                                      <AssistantMessageContent text={m.body} variant="user" />
+                                    )
                                     : null}
                                   <MessageImages images={m.images} onUser />
                                   <span className="mt-1 block text-[10px] text-white/55 dark:text-neutral-800/65">
@@ -1265,7 +1270,9 @@ export function SupportWidget({
                                   ) : null}
                                   {m.body &&
                                   !(m.images?.length && m.body === 'Shared an image')
-                                    ? m.body
+                                    ? (
+                                      <AssistantMessageContent text={m.body} variant="assistant" />
+                                    )
                                     : null}
                                   <MessageImages images={m.images} />
                                   <span className="mt-1 block text-[10px] text-neutral-400">

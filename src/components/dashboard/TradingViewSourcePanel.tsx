@@ -9,11 +9,6 @@ import { useConfirm } from '../../context/ConfirmDialogContext'
 import { useT } from '../../context/LocaleContext'
 import { interpolate } from '../../i18n/interpolate'
 import {
-  TRADINGVIEW_ALERT_TEMPLATE,
-  TRADINGVIEW_ALERT_TEMPLATE_BUY,
-  TRADINGVIEW_ALERT_TEMPLATE_SELL,
-} from '../../../supabase/functions/_shared/tradingViewAlert'
-import {
   brokersMatchingChannel,
   brokersNotMatchingChannel,
   connectChannelToBroker,
@@ -23,10 +18,18 @@ import {
 } from '../../lib/brokerChannelLink'
 import { isBrokerCopyEnabledForUi } from '../../lib/brokerLink'
 import {
+  TRADINGVIEW_TP_COUNT_MAX,
+  TRADINGVIEW_TP_COUNT_MIN,
+  buildTradingViewAlertTemplates,
+  normalizeTradingViewAlertConfig,
+  type TradingViewAlertConfig,
+} from '../../lib/tradingViewAlertTemplate'
+import {
   createTradingViewWebhook,
   deleteTradingViewWebhook,
   rotateTradingViewWebhook,
   setTradingViewWebhookActive,
+  updateTradingViewAlertConfig,
 } from '../../lib/tradingViewWebhook'
 import type { BrokerAccount, TradingViewWebhook, TradingViewWebhookDelivery } from '../../types/database'
 import { Card } from '../ui/Card'
@@ -35,7 +38,10 @@ import { Input } from '../ui/Input'
 import { Toggle } from '../ui/Toggle'
 import { Badge } from '../ui/Badge'
 
-type WebhookRow = Pick<TradingViewWebhook, 'id' | 'channel_id' | 'name' | 'token' | 'is_active' | 'created_at'>
+type WebhookRow = Pick<
+  TradingViewWebhook,
+  'id' | 'channel_id' | 'name' | 'token' | 'is_active' | 'created_at' | 'alert_config'
+>
 type DeliveryRow = Pick<TradingViewWebhookDelivery, 'id' | 'webhook_id' | 'status' | 'skip_reason' | 'created_at'>
 
 function webhookUrl(token: string): string {
@@ -72,14 +78,16 @@ export function TradingViewSourcePanel({
   const [connectingBrokerId, setConnectingBrokerId] = useState<string | null>(null)
   const [connectingAllId, setConnectingAllId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [configureId, setConfigureId] = useState<string | null>(null)
+  const [configureHowToOpen, setConfigureHowToOpen] = useState(false)
+  const configureDraftRef = useRef<TradingViewAlertConfig | null>(null)
 
   const load = useCallback(async () => {
     if (!user?.id) return
     const [hooks, recent] = await Promise.all([
       supabase
         .from('tradingview_webhooks')
-        .select('id, channel_id, name, token, is_active, created_at')
+        .select('id, channel_id, name, token, is_active, created_at, alert_config')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false }),
       supabase
@@ -136,7 +144,7 @@ export function TradingViewSourcePanel({
     setName('')
     setCreateOpen(false)
     await load()
-    setSelectedId(result.id)
+    setConfigureId(result.id)
   }
 
   const copyText = async (key: string, value: string) => {
@@ -152,14 +160,25 @@ export function TradingViewSourcePanel({
     return copy.tradingViewError
   }
 
-  const skipReasonLabel = (reason: string | null | undefined) => {
-    if (!reason) return null
-    if (reason === 'unresolved_symbol_placeholder') return copy.tradingViewSkipUnresolvedSymbol
-    if (reason === 'unresolved_action_placeholder') return copy.tradingViewSkipUnresolvedAction
-    return reason
-  }
+  const configuring = webhooks.find(webhook => webhook.id === configureId) ?? null
 
-  const selected = webhooks.find(webhook => webhook.id === selectedId) ?? null
+  const saveAlertConfig = async (webhookId: string, config: TradingViewAlertConfig) => {
+    if (!user?.id) return false
+    setBusy(true)
+    setError(null)
+    const result = await updateTradingViewAlertConfig(supabase, user.id, webhookId, config)
+    setBusy(false)
+    if (result.error) {
+      setError(result.error)
+      return false
+    }
+    setWebhooks(current =>
+      current.map(webhook => (
+        webhook.id === webhookId ? { ...webhook, alert_config: result.config } : webhook
+      )),
+    )
+    return true
+  }
 
   const connectBroker = async (webhook: WebhookRow, brokerId: string) => {
     if (!user?.id) return
@@ -229,7 +248,7 @@ export function TradingViewSourcePanel({
               </span>
             </div>
           </div>
-          {!createOpen && !selected && error ? (
+          {!createOpen && !configuring && error ? (
             <p className="border-b border-neutral-100 px-4 py-3 text-sm text-red-600 dark:border-neutral-800 dark:text-red-400">{error}</p>
           ) : null}
           <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
@@ -245,9 +264,9 @@ export function TradingViewSourcePanel({
                 connectingAll={connectingAllId === webhook.id}
                 disconnectingLinkKey={linking}
                 busy={busy}
-                onOpen={() => {
+                onConfigure={() => {
                   setError(null)
-                  setSelectedId(webhook.id)
+                  setConfigureId(webhook.id)
                 }}
                 onToggleConnectMenu={() => setConnectMenuId(current => (current === webhook.id ? null : webhook.id))}
                 onCloseConnectMenu={() => setConnectMenuId(null)}
@@ -271,7 +290,9 @@ export function TradingViewSourcePanel({
                     void run(async () => {
                       const result = await deleteTradingViewWebhook(supabase, user.id, webhook, brokers)
                       for (const broker of result.brokers) replaceBroker(broker)
-                      if (!result.error) setSelectedId(current => (current === webhook.id ? null : current))
+                      if (!result.error) {
+                        setConfigureId(current => (current === webhook.id ? null : current))
+                      }
                       return { error: result.error }
                     })
                   })
@@ -306,17 +327,43 @@ export function TradingViewSourcePanel({
         </ModalFrame>
       ) : null}
 
-      {selected ? (
-        <ModalFrame title={selected.name} onClose={() => { if (!busy) setSelectedId(null) }}>
-          <WebhookDetails
-            webhook={selected}
+      {configuring ? (
+        <ModalFrame
+          title={copy.tradingViewConfigureTitle ?? 'Configure alert JSON'}
+          size="wide"
+          headerAside={(
+            <button
+              type="button"
+              onClick={() => setConfigureHowToOpen(true)}
+              className="text-sm font-medium text-green-500 underline-offset-2 hover:underline"
+            >
+              {copy.tradingViewHowToTitle}
+            </button>
+          )}
+          onClose={() => {
+            if (busy) return
+            const draft = configureDraftRef.current
+            const webhookId = configuring.id
+            setConfigureHowToOpen(false)
+            setConfigureId(null)
+            if (draft) {
+              void saveAlertConfig(webhookId, draft).finally(() => {
+                configureDraftRef.current = null
+              })
+            } else {
+              configureDraftRef.current = null
+            }
+          }}
+        >
+          <WebhookConfigure
+            webhook={configuring}
             copy={copy}
             error={error}
             copied={copied}
-            recent={deliveries.filter(row => row.webhook_id === selected.id).slice(0, 8)}
-            statusLabel={statusLabel}
-            skipReasonLabel={skipReasonLabel}
             onCopy={copyText}
+            onConfigChange={config => {
+              configureDraftRef.current = config
+            }}
             onRotate={() => {
               if (!user?.id) return
               void confirm({
@@ -328,10 +375,21 @@ export function TradingViewSourcePanel({
                 tone: 'primary',
               }).then(approved => {
                 if (!approved) return
-                void run(() => rotateTradingViewWebhook(supabase, user.id, selected.id))
+                void run(() => rotateTradingViewWebhook(supabase, user.id, configuring.id))
               })
             }}
           />
+        </ModalFrame>
+      ) : null}
+
+      {configureHowToOpen ? (
+        <ModalFrame title={copy.tradingViewHowToTitle} nested onClose={() => setConfigureHowToOpen(false)}>
+          <ol className="list-decimal space-y-2.5 pl-4 text-base text-neutral-900 dark:text-neutral-50">
+            <li>{copy.tradingViewHowTo1}</li>
+            <li>{copy.tradingViewHowTo2}</li>
+            <li>{copy.tradingViewHowTo3}</li>
+            <li>{copy.tradingViewHowTo4}</li>
+          </ol>
         </ModalFrame>
       ) : null}
     </>
@@ -348,7 +406,7 @@ function WebhookListRow({
   connectingAll,
   disconnectingLinkKey,
   busy,
-  onOpen,
+  onConfigure,
   onToggleConnectMenu,
   onCloseConnectMenu,
   onConnectBroker,
@@ -366,7 +424,7 @@ function WebhookListRow({
   connectingAll: boolean
   disconnectingLinkKey: string | null
   busy: boolean
-  onOpen: () => void
+  onConfigure: () => void
   onToggleConnectMenu: () => void
   onCloseConnectMenu: () => void
   onConnectBroker: (brokerId: string) => void
@@ -401,14 +459,14 @@ function WebhookListRow({
     <div className={clsx('transition-colors hover:bg-neutral-50 dark:hover:bg-neutral-800/80', connectMenuOpen && 'relative z-20')}>
       <div className="flex items-center gap-3 px-4 py-3">
         <img src="/tradingview-logo.png" alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />
-        <button type="button" onClick={onOpen} className="min-w-0 flex-1 text-left">
+        <button type="button" onClick={onConfigure} className="min-w-0 flex-1 text-left">
           <h3 className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">{webhook.name}</h3>
           <p className="mt-0.5 text-xs text-neutral-900 dark:text-neutral-50">{createdLabel}</p>
           <p className="mt-0.5 truncate text-xs text-neutral-900 dark:text-neutral-50">{lastEventLabel}</p>
         </button>
         <div className="flex shrink-0 items-center gap-2">
-          <Button type="button" variant="secondary" size="sm" onClick={onOpen}>
-            {t.channelsPage.tradingViewShowDetails}
+          <Button type="button" variant="secondary" size="sm" onClick={onConfigure}>
+            {t.channelsPage.tradingViewConfigure ?? 'Configure'}
           </Button>
           <Toggle checked={webhook.is_active} disabled={busy} onChange={onToggle} />
           <button
@@ -603,144 +661,191 @@ function WelcomeCard({
   )
 }
 
-function WebhookDetails({
+function WebhookConfigure({
   webhook,
   copy,
   error,
   copied,
-  recent,
-  statusLabel,
-  skipReasonLabel,
   onCopy,
   onRotate,
+  onConfigChange,
 }: {
   webhook: WebhookRow
   copy: ReturnType<typeof useT>['channelsPage']
   error: string | null
   copied: string | null
-  recent: DeliveryRow[]
-  statusLabel: (status: DeliveryRow['status']) => string
-  skipReasonLabel: (reason: string | null | undefined) => string | null
   onCopy: (key: string, value: string) => void
   onRotate: () => void
+  onConfigChange: (config: TradingViewAlertConfig) => void
 }) {
-  const [howToOpen, setHowToOpen] = useState(false)
+  const [config, setConfig] = useState<TradingViewAlertConfig>(() =>
+    normalizeTradingViewAlertConfig(webhook.alert_config),
+  )
+  const templates = useMemo(() => buildTradingViewAlertTemplates(config), [config])
+  const onConfigChangeRef = useRef(onConfigChange)
+  onConfigChangeRef.current = onConfigChange
+  const selectClass =
+    'w-full rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-base text-neutral-900 focus:border-transparent focus:outline-hidden focus:ring-2 focus:ring-green-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 md:text-sm'
+
+  useEffect(() => {
+    onConfigChangeRef.current(normalizeTradingViewAlertConfig(config))
+  }, [config])
+
+  const renderTemplate = (key: string, label: string, body: string) => {
+    const copyKey = `${webhook.id}:cfg-${key}`
+    return (
+      <div key={key} className="min-w-0 flex-1">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{label}</p>
+          <Button variant="secondary" size="sm" onClick={() => onCopy(copyKey, body)}>
+            <Copy className="h-3.5 w-3.5" />
+            {copied === copyKey ? copy.tradingViewCopied : copy.tradingViewCopy}
+          </Button>
+        </div>
+        <pre className="max-h-56 overflow-auto rounded-lg bg-neutral-50 p-3 text-xs leading-relaxed text-neutral-900 dark:bg-neutral-900 dark:text-neutral-50 sm:text-sm">
+          {body}
+        </pre>
+      </div>
+    )
+  }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <button
-          type="button"
-          onClick={() => setHowToOpen(true)}
-          className="text-sm font-medium text-green-500 underline-offset-2 hover:underline"
-        >
-          {copy.tradingViewHowToTitle}
-        </button>
-        <Button variant="secondary" size="sm" onClick={onRotate}>
-          <RefreshCw className="h-3.5 w-3.5" />
-          {copy.tradingViewRotate}
-        </Button>
-      </div>
-      {error ? <p className="text-sm text-red-600 dark:text-red-400">{error}</p> : null}
+    <div className="flex flex-col gap-4">
       <CopyRow
         label={copy.tradingViewUrl}
         value={webhookUrl(webhook.token)}
         copyLabel={copied === webhook.id ? copy.tradingViewCopied : copy.tradingViewCopy}
         onCopy={() => onCopy(webhook.id, webhookUrl(webhook.token))}
-      />
-      <div className="space-y-4">
-        <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{copy.tradingViewTemplate}</p>
-        {(() => {
-          const renderTemplate = (template: {
-            key: string
-            label: string
-            body: string
-            hint?: string
-          }) => {
-            const copyKey = `${webhook.id}:template-${template.key}`
-            return (
-              <div key={template.key}>
-                <div className="mb-1.5 flex items-center justify-between gap-3">
-                  <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{template.label}</p>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => onCopy(copyKey, template.body)}
-                  >
-                    <Copy className="h-3.5 w-3.5" />
-                    {copied === copyKey ? copy.tradingViewCopied : copy.tradingViewCopy}
-                  </Button>
-                </div>
-                <pre className="overflow-x-auto rounded-lg bg-neutral-50 p-3 text-xs text-neutral-900 dark:bg-neutral-900 dark:text-neutral-50">
-                  {template.body}
-                </pre>
-                {template.hint ? (
-                  <p className="mt-1.5 text-xs text-neutral-900 dark:text-neutral-50">{template.hint}</p>
-                ) : null}
-              </div>
-            )
-          }
-          return (
-            <>
-              {renderTemplate({
-                key: 'strategy',
-                label: copy.tradingViewTemplateStrategy,
-                body: TRADINGVIEW_ALERT_TEMPLATE,
-              })}
-              <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
-                {copy.tradingViewTemplateIndicators}
-              </p>
-              {renderTemplate({
-                key: 'buy',
-                label: copy.tradingViewTemplateBuy,
-                body: TRADINGVIEW_ALERT_TEMPLATE_BUY,
-                hint: copy.tradingViewTemplateSymbolHint,
-              })}
-              {renderTemplate({
-                key: 'sell',
-                label: copy.tradingViewTemplateSell,
-                body: TRADINGVIEW_ALERT_TEMPLATE_SELL,
-                hint: copy.tradingViewTemplateSymbolHint,
-              })}
-            </>
-          )
-        })()}
-      </div>
-      <div>
-        <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{copy.tradingViewDeliveries}</p>
-        {recent.length === 0 ? (
-          <p className="mt-2 text-sm text-neutral-900 dark:text-neutral-50">{copy.tradingViewNoDeliveries}</p>
-        ) : (
-          <ul className="mt-2 space-y-2">
-            {recent.map(row => (
-              <li key={row.id} className="flex items-center justify-between gap-3 text-sm">
-                <span className="text-neutral-900 dark:text-neutral-50">{formatWhen(row.created_at)}</span>
-                <span className="flex items-center gap-2">
-                  <Badge variant={row.status === 'accepted' ? 'success' : row.status === 'error' ? 'error' : 'neutral'}>
-                    {statusLabel(row.status)}
-                  </Badge>
-                  {row.skip_reason ? (
-                    <span className="max-w-[14rem] text-xs text-neutral-900 dark:text-neutral-50">
-                      {skipReasonLabel(row.skip_reason)}
-                    </span>
-                  ) : null}
-                </span>
-              </li>
-            ))}
-          </ul>
+        actions={(
+          <Button type="button" variant="secondary" size="sm" onClick={onRotate}>
+            <RefreshCw className="h-3.5 w-3.5" />
+            {copy.tradingViewRotate}
+          </Button>
         )}
-      </div>
+      />
 
-      {howToOpen ? (
-        <ModalFrame title={copy.tradingViewHowToTitle} nested onClose={() => setHowToOpen(false)}>
-          <ol className="list-decimal space-y-2 pl-4 text-sm text-neutral-900 dark:text-neutral-50">
-            <li>{copy.tradingViewHowTo1}</li>
-            <li>{copy.tradingViewHowTo2}</li>
-            <li>{copy.tradingViewHowTo3}</li>
-            <li>{copy.tradingViewHowTo4}</li>
-          </ol>
-        </ModalFrame>
-      ) : null}
+      <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
+        <div className="flex flex-col gap-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-neutral-900 dark:text-neutral-50 md:text-base">
+                {copy.tradingViewAlertType ?? 'Alert type'}
+              </label>
+              <select
+                className={selectClass}
+                value={config.kind}
+                onChange={event => {
+                  const kind = event.target.value === 'strategy' ? 'strategy' : 'indicator'
+                  setConfig(current => ({ ...current, kind }))
+                }}
+              >
+                <option value="indicator">{copy.tradingViewAlertTypeIndicator ?? 'Indicator'}</option>
+                <option value="strategy">{copy.tradingViewAlertTypeStrategy ?? 'Strategy'}</option>
+              </select>
+            </div>
+            {config.kind === 'indicator' ? (
+              <Input
+                label={copy.tradingViewSymbol ?? 'Symbol'}
+                value={config.symbol ?? 'XAUUSD'}
+                onChange={event => setConfig(current => ({ ...current, symbol: event.target.value.toUpperCase() }))}
+                hint={copy.tradingViewSymbolHint ?? copy.tradingViewTemplateSymbolHint}
+                hintInTooltip
+              />
+            ) : (
+              <div className="hidden sm:block" aria-hidden />
+            )}
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200/80 px-3.5 py-3 dark:border-neutral-800">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50 md:text-base">
+                  {copy.tradingViewIncludeSl ?? 'Include stop loss (SL)'}
+                </p>
+                <p className="mt-0.5 text-xs leading-snug text-neutral-500 dark:text-neutral-400">
+                  {copy.tradingViewIncludeSlHint ?? 'Adds an "sl" field. Replace 0 with your Pine value.'}
+                </p>
+              </div>
+              <Toggle
+                checked={config.includeSl}
+                onChange={checked => setConfig(current => ({ ...current, includeSl: checked }))}
+              />
+            </div>
+            <div className="space-y-2.5 rounded-xl border border-neutral-200/80 px-3.5 py-3 dark:border-neutral-800">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50 md:text-base">
+                    {copy.tradingViewIncludeTp ?? 'Include take profits (TP)'}
+                  </p>
+                  <p className="mt-0.5 text-xs leading-snug text-neutral-500 dark:text-neutral-400">
+                    {copy.tradingViewIncludeTpHint ?? 'Adds a "tp" array. Replace each 0 with your Pine values.'}
+                  </p>
+                </div>
+                <Toggle
+                  checked={config.includeTp}
+                  onChange={checked => setConfig(current => ({ ...current, includeTp: checked }))}
+                />
+              </div>
+              {config.includeTp ? (
+                <div className="flex items-center gap-2">
+                  <label className="shrink-0 text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                    {copy.tradingViewTpCount ?? 'Number of TPs'}
+                  </label>
+                  <select
+                    className={clsx(selectClass, 'py-2')}
+                    value={String(config.tpCount)}
+                    onChange={event => {
+                      const tpCount = Number(event.target.value)
+                      setConfig(current => ({ ...current, tpCount }))
+                    }}
+                  >
+                    {Array.from(
+                      { length: TRADINGVIEW_TP_COUNT_MAX - TRADINGVIEW_TP_COUNT_MIN + 1 },
+                      (_, index) => TRADINGVIEW_TP_COUNT_MIN + index,
+                    ).map(count => (
+                      <option key={count} value={count}>{count}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          {error ? <p className="text-sm text-red-600 dark:text-red-400">{error}</p> : null}
+        </div>
+
+        <div className="flex flex-col gap-3 rounded-xl border border-neutral-200/70 bg-neutral-50/50 p-4 dark:border-neutral-800 dark:bg-white/2">
+          <div>
+            <p className="text-base font-medium text-neutral-900 dark:text-neutral-50">
+              {copy.tradingViewJsonPreview ?? 'Alert JSON'}
+            </p>
+            <p className="mt-1 text-sm leading-snug text-neutral-500 dark:text-neutral-400">
+              {copy.tradingViewJsonPlaceholderHint
+                ?? 'Paste into the TradingView alert Message field. Replace 0 placeholders with your indicator/strategy values, or omit SL/TP and use broker Override SL/TP instead.'}
+            </p>
+          </div>
+          <div className={clsx(
+            'grid gap-3',
+            config.kind === 'indicator' ? 'sm:grid-cols-2' : 'grid-cols-1',
+          )}
+          >
+            {config.kind === 'strategy' && templates.strategy
+              ? renderTemplate('strategy', copy.tradingViewTemplateStrategy, templates.strategy)
+              : null}
+            {config.kind === 'indicator' && templates.buy
+              ? renderTemplate('buy', copy.tradingViewTemplateBuy, templates.buy)
+              : null}
+            {config.kind === 'indicator' && templates.sell
+              ? renderTemplate('sell', copy.tradingViewTemplateSell, templates.sell)
+              : null}
+          </div>
+          {config.kind === 'indicator' ? (
+            <p className="text-sm text-neutral-500 dark:text-neutral-400">
+              {copy.tradingViewTemplateSymbolHint}
+            </p>
+          ) : null}
+        </div>
+      </div>
     </div>
   )
 }
@@ -750,11 +855,15 @@ function ModalFrame({
   onClose,
   children,
   nested = false,
+  size = 'md',
+  headerAside,
 }: {
   title: string
   onClose: () => void
   children: ReactNode
   nested?: boolean
+  size?: 'md' | 'wide'
+  headerAside?: ReactNode
 }) {
   const closeLabel = useT().accountConfig.configureModal.close
 
@@ -771,16 +880,26 @@ function ModalFrame({
   return createPortal(
     <div
       className={clsx(
-        'fixed inset-0 flex items-end justify-center p-0 sm:items-center sm:p-6',
+        'fixed inset-0 flex items-end justify-center p-0 sm:items-center sm:p-4 lg:p-6',
         nested ? 'z-[60]' : 'z-50',
       )}
       role="dialog"
       aria-modal="true"
     >
       <button type="button" className="absolute inset-0 bg-neutral-950/55" aria-label={closeLabel} onClick={onClose} />
-      <div className="relative flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl border border-neutral-200/65 bg-white shadow-2xl dark:border-neutral-800/55 dark:bg-neutral-950 sm:max-w-lg sm:rounded-2xl">
+      <div
+        className={clsx(
+          'relative flex w-full flex-col overflow-hidden rounded-t-2xl border border-neutral-200/65 bg-white shadow-2xl dark:border-neutral-800/55 dark:bg-neutral-950 sm:rounded-2xl',
+          size === 'wide'
+            ? 'max-h-[90vh] sm:max-w-6xl'
+            : 'max-h-[92vh] sm:max-w-lg',
+        )}
+      >
         <div className="flex items-center justify-between gap-3 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
-          <h2 className="min-w-0 truncate text-base font-semibold text-neutral-900 dark:text-neutral-50">{title}</h2>
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-1">
+            <h2 className="min-w-0 truncate text-lg font-semibold text-neutral-900 dark:text-neutral-50">{title}</h2>
+            {headerAside}
+          </div>
           <button
             type="button"
             onClick={onClose}
@@ -790,7 +909,7 @@ function ModalFrame({
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="overflow-y-auto px-5 py-4">{children}</div>
+        <div className="overflow-y-auto px-5 py-5">{children}</div>
       </div>
     </div>,
     document.body,
@@ -802,23 +921,30 @@ function CopyRow({
   value,
   copyLabel,
   onCopy,
+  actions,
 }: {
   label: string
   value: string
   copyLabel: string
   onCopy: () => void
+  actions?: ReactNode
 }) {
   return (
     <div>
-      <p className="mb-1.5 text-sm font-medium text-neutral-900 dark:text-neutral-50">{label}</p>
-      <div className="flex gap-2">
-        <code className="min-w-0 flex-1 truncate rounded-lg bg-neutral-50 px-3 py-2 text-xs text-neutral-900 dark:bg-neutral-900 dark:text-neutral-50">
+      <p className="mb-1.5 text-sm font-medium text-neutral-900 dark:text-neutral-50 md:text-base">
+        {label}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <code className="min-w-0 flex-1 truncate rounded-lg bg-neutral-50 px-3 py-2.5 text-sm text-neutral-900 dark:bg-neutral-900 dark:text-neutral-50">
           {value}
         </code>
-        <Button variant="secondary" size="sm" onClick={onCopy}>
-          <Copy className="h-3.5 w-3.5" />
-          {copyLabel}
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={onCopy}>
+            <Copy className="h-3.5 w-3.5" />
+            {copyLabel}
+          </Button>
+          {actions}
+        </div>
       </div>
     </div>
   )

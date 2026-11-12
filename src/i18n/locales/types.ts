@@ -411,6 +411,7 @@ export interface DashboardTranslations {
     checksFailed: string
     signalSources: string
     notConnected: string
+    connectSource: string
     connected: string
     reconnectRequired: string
     reconnecting: string
@@ -1014,6 +1015,11 @@ export interface MirrorTradingPageTranslations {
   addMaster: string
   addSlave: string
   mastersEmpty: string
+  emptyTitle: string
+  emptyBody: string
+  emptyStep1: string
+  emptyStep2: string
+  emptyStep3: string
   slavesEmpty: string
   connectNew: string
   noAccounts: string
@@ -1975,6 +1981,23 @@ export interface ChannelsPageTranslations {
   tradingViewDelete: string
   tradingViewDeleteConfirm?: string
   tradingViewShowDetails: string
+  tradingViewConfigure: string
+  tradingViewConfigureTitle: string
+  tradingViewConfigureHint: string
+  tradingViewConfigureCta: string
+  tradingViewAlertType: string
+  tradingViewAlertTypeIndicator: string
+  tradingViewAlertTypeStrategy: string
+  tradingViewIncludeSl: string
+  tradingViewIncludeSlHint: string
+  tradingViewIncludeTp: string
+  tradingViewIncludeTpHint: string
+  tradingViewTpCount: string
+  tradingViewSymbol: string
+  tradingViewSymbolHint: string
+  tradingViewJsonPreview: string
+  tradingViewJsonPlaceholderHint: string
+  tradingViewSaveConfig: string
   tradingViewEmpty: string
   tradingViewHeroTitle: string
   tradingViewHeroSubtitle: string

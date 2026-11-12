@@ -42,7 +42,7 @@ export const dashboardNl: DashboardBundleTranslations = {
     healthDegraded: 'Verminderd',
     healthOffline: 'Offline',
     copierStatus: {
-      title: 'Copierstatus',
+      title: 'Verbindingsstatus',
       allBrokerConnections: 'Alle brokerverbindingen',
       healthy: 'Gezond',
       issues: 'Problemen',
@@ -58,6 +58,7 @@ export const dashboardNl: DashboardBundleTranslations = {
       checksFailed: 'Problemen gedetecteerd.',
       signalSources: 'Signaalbronnen',
       notConnected: 'Niet verbonden',
+      connectSource: 'Verbinden',
       connected: 'Verbonden',
       reconnectRequired: 'Opnieuw verbinden',
       reconnecting: 'Opnieuw verbinden…',
