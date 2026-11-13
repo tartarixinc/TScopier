@@ -2,6 +2,15 @@
 
 ## Changelog
 
+### 2026-11-13 — Mobile list views for Copier + Linked Accounts
+
+- **Context:** Dashboard Copier and Linked Accounts used wide grids that forced horizontal scroll on phones.
+- **Plain English:** On mobile, Copier and Linked Accounts show stacked cards (symbol/source/destination or account metrics + toggle). Desktop keeps the table grids.
+- **Fix (files):** [`DashboardPage.tsx`](src/pages/dashboard/DashboardPage.tsx) — `LogCard`, `LinkedAccountCard`, responsive wrappers.
+- **Tests/verification:** Local — resize below `md`/`lg`.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** None.
+
 ### 2026-11-13 — Stacked Destination logos (max 3)
 
 - **Context:** Multiple destination logos sat side-by-side and crowded the Copier Log Destination column.

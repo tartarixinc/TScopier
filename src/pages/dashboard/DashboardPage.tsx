@@ -156,6 +156,7 @@ import { useLocale, useT } from '../../context/LocaleContext'
 import { useFormatMoney } from '../../hooks/useFormatMoney'
 import { lossTextClass, pnlSignTextClass } from '../../lib/pnlDisplay'
 import { formatMoneyWithCode } from '../../lib/currency'
+import { platformIconSrc } from '../../lib/activityRoute'
 import { interpolate } from '../../i18n/interpolate'
 import { ListenerLeaseOfflineBanner } from '../../components/dashboard/ListenerLeaseOfflineBanner'
 import {
@@ -3105,46 +3106,67 @@ export function DashboardPage() {
           </button>
         </div>
 
-        <div className="overflow-x-auto">
-        <div
-          className={`${DASHBOARD_COPIER_LOG_GRID} border-b border-neutral-100/90 px-4 sm:px-5 py-2.5 text-xs font-medium uppercase tracking-[0.06em] text-neutral-500 dark:text-neutral-400 dark:border-white/8`}
-        >
-          <span className="min-w-0">{t.copierLogs.colStatus}</span>
-          <span className="min-w-0">{t.copierLogs.colReason}</span>
-          <span className="min-w-0">{t.copierLogs.colChannel}</span>
-          <span className="min-w-0">{t.copierLogs.colDestination}</span>
-          <span className="min-w-0">{t.copierLogs.colSymbol}</span>
-          <span className="min-w-0">{t.copierLogs.colMessage}</span>
-          <span className="min-w-0">{t.copierLogs.colType}</span>
-          <span className="min-w-0 text-right">{t.copierLogs.colTime}</span>
-        </div>
-
         {visibleCopierLogRows.length === 0 && chartsEmpty ? (
-          <div className={`${DASHBOARD_COPIER_LOG_GRID} px-4 sm:px-5 py-3.5`}>
-            {[...Array(8)].map((_, j) => (
-              <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse min-w-0" />
-            ))}
-          </div>
+          <>
+            <div className="md:hidden space-y-3 px-4 py-4">
+              <div className="h-5 w-24 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
+              <div className="h-4 w-full bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
+              <div className="h-4 w-2/3 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
+            </div>
+            <div className={`hidden md:grid ${DASHBOARD_COPIER_LOG_GRID} px-4 sm:px-5 py-3.5`}>
+              {[...Array(8)].map((_, j) => (
+                <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse min-w-0" />
+              ))}
+            </div>
+          </>
         ) : visibleCopierLogRows.length === 0 ? (
           <div className="m-4 flex flex-col items-center justify-center rounded-2xl bg-neutral-50 px-4 py-16 text-center dark:bg-white/3">
             <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400">{t.dashboard.noData}</p>
           </div>
         ) : (
-          <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
-            {visibleCopierLogRows.map(row => (
-              <LogRow
-                key={row.key}
-                row={row}
-                onOpenDetail={
-                  row.signal || row.social || row.manual || row.closed
-                    ? () => setCopierLogDetail(row)
-                    : undefined
-                }
-              />
-            ))}
-          </div>
+          <>
+            <div className="md:hidden divide-y divide-neutral-100 dark:divide-neutral-800">
+              {visibleCopierLogRows.map(row => (
+                <LogCard
+                  key={`m-${row.key}`}
+                  row={row}
+                  onOpenDetail={
+                    row.signal || row.social || row.manual || row.closed
+                      ? () => setCopierLogDetail(row)
+                      : undefined
+                  }
+                />
+              ))}
+            </div>
+            <div className="hidden md:block overflow-x-auto">
+              <div
+                className={`${DASHBOARD_COPIER_LOG_GRID} border-b border-neutral-100/90 px-4 sm:px-5 py-2.5 text-xs font-medium uppercase tracking-[0.06em] text-neutral-500 dark:text-neutral-400 dark:border-white/8`}
+              >
+                <span className="min-w-0">{t.copierLogs.colStatus}</span>
+                <span className="min-w-0">{t.copierLogs.colReason}</span>
+                <span className="min-w-0">{t.copierLogs.colChannel}</span>
+                <span className="min-w-0">{t.copierLogs.colDestination}</span>
+                <span className="min-w-0">{t.copierLogs.colSymbol}</span>
+                <span className="min-w-0">{t.copierLogs.colMessage}</span>
+                <span className="min-w-0">{t.copierLogs.colType}</span>
+                <span className="min-w-0 text-right">{t.copierLogs.colTime}</span>
+              </div>
+              <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                {visibleCopierLogRows.map(row => (
+                  <LogRow
+                    key={row.key}
+                    row={row}
+                    onOpenDetail={
+                      row.signal || row.social || row.manual || row.closed
+                        ? () => setCopierLogDetail(row)
+                        : undefined
+                    }
+                  />
+                ))}
+              </div>
+            </div>
+          </>
         )}
-        </div>
       </div>
 
       {/* Linked Accounts */}
@@ -3178,81 +3200,20 @@ export function DashboardPage() {
           </div>
         ) : null}
 
-        <div className="overflow-x-auto">
-        <div className="min-w-208 lg:min-w-0">
-        <div className="hidden lg:grid grid-cols-9 gap-2 border-b border-neutral-100 px-5 py-2.5 text-[11px] font-medium uppercase tracking-[0.06em] text-neutral-900 dark:text-neutral-50 dark:border-neutral-800/80">
-          <LinkedAccountSortHeader
-            label={la.colAccount}
-            sortKey="account"
-            activeKey={linkedAccountSortKey}
-            direction={linkedAccountSortDir}
-            onSort={onLinkedAccountSort}
-          />
-          <LinkedAccountSortHeader
-            label={la.colBroker}
-            sortKey="broker"
-            activeKey={linkedAccountSortKey}
-            direction={linkedAccountSortDir}
-            onSort={onLinkedAccountSort}
-          />
-          <LinkedAccountSortHeader
-            label={la.colAccountType}
-            sortKey="accountType"
-            activeKey={linkedAccountSortKey}
-            direction={linkedAccountSortDir}
-            onSort={onLinkedAccountSort}
-          />
-          <LinkedAccountSortHeader
-            label={la.colBalance}
-            sortKey="balance"
-            activeKey={linkedAccountSortKey}
-            direction={linkedAccountSortDir}
-            onSort={onLinkedAccountSort}
-          />
-          <LinkedAccountSortHeader
-            label={la.colPnl}
-            sortKey="pnl"
-            activeKey={linkedAccountSortKey}
-            direction={linkedAccountSortDir}
-            onSort={onLinkedAccountSort}
-            title={la.colPnlHint}
-          />
-          <LinkedAccountSortHeader
-            label={la.colOpenPnl}
-            sortKey="openPnl"
-            activeKey={linkedAccountSortKey}
-            direction={linkedAccountSortDir}
-            onSort={onLinkedAccountSort}
-            title={la.colOpenPnlHint}
-          />
-          <LinkedAccountSortHeader
-            label={la.colWinRate}
-            sortKey="winRate"
-            activeKey={linkedAccountSortKey}
-            direction={linkedAccountSortDir}
-            onSort={onLinkedAccountSort}
-          />
-          <LinkedAccountSortHeader
-            label={la.colDd}
-            sortKey="dd"
-            activeKey={linkedAccountSortKey}
-            direction={linkedAccountSortDir}
-            onSort={onLinkedAccountSort}
-          />
-          <LinkedAccountSortHeader
-            label={la.colStatus}
-            sortKey="status"
-            activeKey={linkedAccountSortKey}
-            direction={linkedAccountSortDir}
-            onSort={onLinkedAccountSort}
-            align="right"
-          />
-        </div>
-
         {linkedAccounts.length === 0 && chartsEmpty ? (
           <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
             {[...Array(3)].map((_, i) => (
-              <div key={i} className="hidden lg:flex px-4 sm:px-5 py-3 gap-4">
+              <div key={i} className="px-4 sm:px-5 py-4 space-y-3 lg:hidden">
+                <div className="h-5 w-32 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
+                <div className="grid grid-cols-2 gap-3">
+                  {[...Array(4)].map((_, j) => (
+                    <div key={j} className="h-8 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
+                  ))}
+                </div>
+              </div>
+            ))}
+            {[...Array(3)].map((_, i) => (
+              <div key={`d-${i}`} className="hidden lg:flex px-4 sm:px-5 py-3 gap-4">
                 {[...Array(9)].map((_, j) => (
                   <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse flex-1" />
                 ))}
@@ -3262,30 +3223,123 @@ export function DashboardPage() {
         ) : linkedAccounts.length === 0 ? (
           <div className="px-5 py-8 text-sm text-neutral-900 dark:text-neutral-50">{la.empty}</div>
         ) : (
-          <div className="divide-y divide-neutral-100 dark:divide-neutral-800"> 
-            {displayedLinkedAccounts.map(account => (
-              <LinkedAccountRow
-                key={account.id}
-                account={account}
-                accountSummary={linkedAccountBalances[account.id]}
-                performance={linkedAccountPerformance[account.id]}
-                connectPnl={connectPnlByAccountId[account.id] ?? null}
-                onToggleActive={is_active => { void toggleBrokerActive(account.id, is_active) }}
-                toggleDisabled={togglingBrokerId === account.id}
-                showReconnect={brokerCanReconnect(account)}
-                isReconnecting={isBrokerReconnecting(account.id)}
-                onReconnect={() => { void _reconnectBroker(account.id) }}
-                onOpenStats={() =>
-                  navigate(`/dashboard/broker/${account.id}`, {
-                    state: { accountPreview: brokerStatsPreviewFromAccount(account) },
-                  })
-                }
-              />
-            ))}
-          </div>
+          <>
+            <div className="lg:hidden divide-y divide-neutral-100 dark:divide-neutral-800">
+              {displayedLinkedAccounts.map(account => (
+                <LinkedAccountCard
+                  key={`m-${account.id}`}
+                  account={account}
+                  accountSummary={linkedAccountBalances[account.id]}
+                  performance={linkedAccountPerformance[account.id]}
+                  connectPnl={connectPnlByAccountId[account.id] ?? null}
+                  onToggleActive={is_active => { void toggleBrokerActive(account.id, is_active) }}
+                  toggleDisabled={togglingBrokerId === account.id}
+                  showReconnect={brokerCanReconnect(account)}
+                  isReconnecting={isBrokerReconnecting(account.id)}
+                  onReconnect={() => { void _reconnectBroker(account.id) }}
+                  onOpenStats={() =>
+                    navigate(`/dashboard/broker/${account.id}`, {
+                      state: { accountPreview: brokerStatsPreviewFromAccount(account) },
+                    })
+                  }
+                />
+              ))}
+            </div>
+            <div className="hidden lg:block overflow-x-auto">
+              <div className="min-w-208 xl:min-w-0">
+                <div className="grid grid-cols-9 gap-2 border-b border-neutral-100 px-5 py-2.5 text-[11px] font-medium uppercase tracking-[0.06em] text-neutral-900 dark:text-neutral-50 dark:border-neutral-800/80">
+                  <LinkedAccountSortHeader
+                    label={la.colAccount}
+                    sortKey="account"
+                    activeKey={linkedAccountSortKey}
+                    direction={linkedAccountSortDir}
+                    onSort={onLinkedAccountSort}
+                  />
+                  <LinkedAccountSortHeader
+                    label={la.colBroker}
+                    sortKey="broker"
+                    activeKey={linkedAccountSortKey}
+                    direction={linkedAccountSortDir}
+                    onSort={onLinkedAccountSort}
+                  />
+                  <LinkedAccountSortHeader
+                    label={la.colAccountType}
+                    sortKey="accountType"
+                    activeKey={linkedAccountSortKey}
+                    direction={linkedAccountSortDir}
+                    onSort={onLinkedAccountSort}
+                  />
+                  <LinkedAccountSortHeader
+                    label={la.colBalance}
+                    sortKey="balance"
+                    activeKey={linkedAccountSortKey}
+                    direction={linkedAccountSortDir}
+                    onSort={onLinkedAccountSort}
+                  />
+                  <LinkedAccountSortHeader
+                    label={la.colPnl}
+                    sortKey="pnl"
+                    activeKey={linkedAccountSortKey}
+                    direction={linkedAccountSortDir}
+                    onSort={onLinkedAccountSort}
+                    title={la.colPnlHint}
+                  />
+                  <LinkedAccountSortHeader
+                    label={la.colOpenPnl}
+                    sortKey="openPnl"
+                    activeKey={linkedAccountSortKey}
+                    direction={linkedAccountSortDir}
+                    onSort={onLinkedAccountSort}
+                    title={la.colOpenPnlHint}
+                  />
+                  <LinkedAccountSortHeader
+                    label={la.colWinRate}
+                    sortKey="winRate"
+                    activeKey={linkedAccountSortKey}
+                    direction={linkedAccountSortDir}
+                    onSort={onLinkedAccountSort}
+                  />
+                  <LinkedAccountSortHeader
+                    label={la.colDd}
+                    sortKey="dd"
+                    activeKey={linkedAccountSortKey}
+                    direction={linkedAccountSortDir}
+                    onSort={onLinkedAccountSort}
+                  />
+                  <LinkedAccountSortHeader
+                    label={la.colStatus}
+                    sortKey="status"
+                    activeKey={linkedAccountSortKey}
+                    direction={linkedAccountSortDir}
+                    onSort={onLinkedAccountSort}
+                    align="right"
+                  />
+                </div>
+                <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                  {displayedLinkedAccounts.map(account => (
+                    <LinkedAccountRow
+                      key={account.id}
+                      account={account}
+                      accountSummary={linkedAccountBalances[account.id]}
+                      performance={linkedAccountPerformance[account.id]}
+                      connectPnl={connectPnlByAccountId[account.id] ?? null}
+                      onToggleActive={is_active => { void toggleBrokerActive(account.id, is_active) }}
+                      toggleDisabled={togglingBrokerId === account.id}
+                      showReconnect={brokerCanReconnect(account)}
+                      isReconnecting={isBrokerReconnecting(account.id)}
+                      onReconnect={() => { void _reconnectBroker(account.id) }}
+                      onOpenStats={() =>
+                        navigate(`/dashboard/broker/${account.id}`, {
+                          state: { accountPreview: brokerStatsPreviewFromAccount(account) },
+                        })
+                      }
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </>
         )}
-        </div>
-        </div>
       </div>
 
         </>
@@ -3520,6 +3574,127 @@ function DashboardDestinationCell({ destinations }: { destinations: readonly Cop
   )
 }
 
+function copierLogStatusConfig(t: ReturnType<typeof useT>) {
+  return {
+    executed: { variant: 'success' as const, label: t.copierLogs.statusExecuted },
+    open: {
+      variant: 'success' as const,
+      label: t.copierLogs.statusOpen,
+      className: 'bg-teal-100 text-teal-900 dark:bg-teal-900/50 dark:text-teal-200',
+    },
+    closed: { variant: 'neutral' as const, label: t.copierLogs.statusClosed },
+    skipped: { variant: 'warning' as const, label: t.copierLogs.statusSkipped },
+    failed: { variant: 'error' as const, label: t.copierLogs.statusFailed },
+    pending: { variant: 'neutral' as const, label: t.copierLogs.statusPending },
+    parsed: { variant: 'primary' as const, label: t.copierLogs.statusParsed },
+  } satisfies Record<string, { variant: DashboardLogStatusVariant; label: string; className?: string }>
+}
+
+function formatCopierLogTime(iso: string): string {
+  return new Date(iso).toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function CopierSourceMark({ row }: { row: DashboardCopierLogRow }) {
+  if (row.isSocial) {
+    return <Users className="h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50" aria-hidden />
+  }
+  if (row.isManual) {
+    return <Hand className="h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50" aria-hidden />
+  }
+  if (row.sourceKind) {
+    return <SignalSourceLogo kind={row.sourceKind} className="h-4 w-4" />
+  }
+  return null
+}
+
+/** Mobile Copier strip card — stacked fields instead of the wide desktop grid. */
+function LogCard({
+  row,
+  onOpenDetail,
+}: {
+  row: DashboardCopierLogRow
+  onOpenDetail?: () => void
+}) {
+  const t = useT()
+  const action = row.action
+  const viewDetailsLabel = t.copierLogs.detailModal?.viewDetails ?? 'View details'
+  const status = copierLogStatusConfig(t)[row.status]
+    ?? { variant: 'neutral' as const, label: row.status }
+  const typeLabel = action ? action.replace(/_/g, ' ') : null
+  const timeLabel = row.at ? formatCopierLogTime(row.at) : '—'
+
+  return (
+    <article
+      className={clsx(
+        'group px-4 py-4 transition-colors',
+        APP_ROW_HOVER,
+        onOpenDetail && 'cursor-pointer',
+      )}
+      onClick={onOpenDetail}
+      onKeyDown={onOpenDetail ? (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onOpenDetail()
+        }
+      } : undefined}
+      role={onOpenDetail ? 'button' : undefined}
+      tabIndex={onOpenDetail ? 0 : undefined}
+      aria-label={onOpenDetail ? viewDetailsLabel : undefined}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-base font-semibold text-neutral-900 dark:text-neutral-50 truncate">{row.symbol}</p>
+          <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-neutral-900 dark:text-neutral-50" title={row.channelTitle}>
+            <CopierSourceMark row={row} />
+            <span className="truncate">{row.channelName}</span>
+          </p>
+          <div className="mt-1.5">
+            <DashboardDestinationCell destinations={row.destinations} />
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <Badge variant={status.variant} size="sm" className={clsx('w-fit', status.className)}>{status.label}</Badge>
+          <span className="text-xs tabular-nums text-neutral-900 dark:text-neutral-50 whitespace-nowrap">{timeLabel}</span>
+        </div>
+      </div>
+
+      {typeLabel ? (
+        <p className={clsx(
+          'mt-3 text-sm font-medium uppercase',
+          action === 'buy' ? 'text-green-400' : action === 'sell' ? 'text-error-600' : 'text-neutral-900 dark:text-neutral-50',
+        )}>
+          {typeLabel}
+        </p>
+      ) : null}
+
+      {row.messagePreview && row.messagePreview !== '—' ? (
+        <p className="mt-2 line-clamp-2 text-sm text-neutral-900 dark:text-neutral-50" title={row.messageFull}>
+          {row.messagePreview}
+        </p>
+      ) : null}
+
+      {row.reasonShort && row.reasonShort !== '—' ? (
+        <p className="mt-2 text-xs text-neutral-900 dark:text-neutral-50">
+          <span className="font-medium">{t.copierLogs.colReason}: </span>
+          <span className="underline decoration-dotted underline-offset-2">{row.reasonShort}</span>
+        </p>
+      ) : null}
+
+      {onOpenDetail ? (
+        <p className="mt-3 flex items-center justify-end gap-1 text-xs font-medium text-neutral-500 dark:text-neutral-400">
+          {viewDetailsLabel}
+          <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+        </p>
+      ) : null}
+    </article>
+  )
+}
+
 function LogRow({
   row,
   onOpenDetail,
@@ -3530,18 +3705,8 @@ function LogRow({
   const t = useT()
   const action = row.action
   const viewDetailsLabel = t.copierLogs.detailModal?.viewDetails ?? 'View details'
-
-  const statusConfig: Record<string, { variant: DashboardLogStatusVariant; label: string; className?: string }> = {
-    executed: { variant: 'success', label: t.copierLogs.statusExecuted },
-    open: { variant: 'success', label: t.copierLogs.statusOpen, className: 'bg-teal-100 text-teal-900 dark:bg-teal-900/50 dark:text-teal-200' },
-    closed: { variant: 'neutral', label: t.copierLogs.statusClosed },
-    skipped: { variant: 'warning', label: t.copierLogs.statusSkipped },
-    failed: { variant: 'error', label: t.copierLogs.statusFailed },
-    pending: { variant: 'neutral', label: t.copierLogs.statusPending },
-    parsed: { variant: 'primary', label: t.copierLogs.statusParsed },
-  }
-
-  const status = statusConfig[row.status] ?? { variant: 'neutral' as const, label: row.status }
+  const status = copierLogStatusConfig(t)[row.status]
+    ?? { variant: 'neutral' as const, label: row.status }
   const typeLabel = action ? action.replace(/_/g, ' ') : '—'
 
   return (
@@ -3573,13 +3738,7 @@ function LogRow({
         {row.reasonShort}
       </span>
       <span className="flex min-w-0 items-center gap-1.5 text-sm text-neutral-900 dark:text-neutral-50" title={row.channelTitle}>
-        {row.isSocial ? (
-          <Users className="h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50" aria-hidden />
-        ) : row.isManual ? (
-          <Hand className="h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50" aria-hidden />
-        ) : row.sourceKind ? (
-          <SignalSourceLogo kind={row.sourceKind} className="h-4 w-4" />
-        ) : null}
+        <CopierSourceMark row={row} />
         <span className="min-w-0 truncate">{row.channelName}</span>
       </span>
       <DashboardDestinationCell destinations={row.destinations} />
@@ -3603,14 +3762,7 @@ function LogRow({
         {typeLabel}
       </span>
       <span className="min-w-0 flex items-center justify-end gap-1 text-sm text-neutral-900 dark:text-neutral-50 whitespace-nowrap tabular-nums">
-        {row.at
-          ? new Date(row.at).toLocaleString([], {
-              month: 'short',
-              day: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-            })
-          : '—'}
+        {row.at ? formatCopierLogTime(row.at) : '—'}
         {onOpenDetail ? (
           <ChevronRight
             className="h-3.5 w-3.5 shrink-0 text-neutral-900 opacity-0 transition-opacity group-hover:opacity-100 dark:text-neutral-50"
@@ -3669,20 +3821,19 @@ function LinkedAccountSortHeader({
   )
 }
 
-function LinkedAccountRow({
-  account,
-  accountSummary,
-  performance,
-  connectPnl,
-  onToggleActive,
-  toggleDisabled,
-  showReconnect,
-  isReconnecting,
-  onReconnect,
-  onOpenStats,
-}: {
+type LinkedAccountSummary = {
+  balance?: number
+  equity?: number
+  currency?: string
+  broker?: string
+  mt_server_hint?: string
+  account_type?: LinkedAccountType
+  open_pnl?: number
+}
+
+type LinkedAccountListProps = {
   account: BrokerAccount
-  accountSummary?: { balance?: number; equity?: number; currency?: string; broker?: string; mt_server_hint?: string; account_type?: LinkedAccountType; open_pnl?: number }
+  accountSummary?: LinkedAccountSummary
   performance?: LinkedAccountPerformance
   /** Balance P/L since first connect; null when baseline or balance is unavailable. */
   connectPnl?: number | null
@@ -3692,7 +3843,14 @@ function LinkedAccountRow({
   isReconnecting?: boolean
   onReconnect?: () => void
   onOpenStats: () => void
-}) {
+}
+
+function useLinkedAccountDisplay(
+  account: BrokerAccount,
+  accountSummary: LinkedAccountSummary | undefined,
+  performance: LinkedAccountPerformance | undefined,
+  connectPnl: number | null | undefined,
+) {
   const t = useT()
   const la = t.dashboard.linkedAccounts
   const { locale } = useLocale()
@@ -3704,7 +3862,6 @@ function LinkedAccountRow({
       ? 'text-green-500 border-teal-200 bg-teal-50 dark:text-teal-300 dark:border-teal-800 dark:bg-teal-950/50'
       : 'text-neutral-900 border-neutral-200 bg-neutral-100 dark:text-neutral-50 dark:border-neutral-700 dark:bg-neutral-800/80'
   const cashBalance = accountSummary?.balance ?? account.last_balance ?? null
-  // Cash balance stays put while positions tick. Show cash + live floating P/L.
   const balance = equityWithFloatingPnl(
     cashBalance,
     accountSummary?.open_pnl,
@@ -3713,7 +3870,6 @@ function LinkedAccountRow({
   const accountCurrency = (accountSummary?.currency ?? account.last_currency ?? '').trim() || undefined
   const balanceText = formatMoneyWithCode(balance, accountCurrency, { locale: intlLocale })
   const pnl = connectPnl ?? 0
-  const pnlColor = pnlSignTextClass
   const pnlFormatted = formatMoneyWithCode(Math.abs(pnl), accountCurrency, { locale: intlLocale, nullAsDash: false })
   const openPnl = resolveAccountOpenPnl(account, accountSummary)
   const openPnlColor =
@@ -3735,9 +3891,9 @@ function LinkedAccountRow({
     ?? accountSummary?.account_type
     ?? '—'
   const accountTypeClass = linkedAccountTypeValueClass(accountType === '—' ? undefined : accountType)
-
   const accountLabel = account.label || la.unnamedAccount
   const platformLabel = (account.platform ?? '').trim().toUpperCase() || '—'
+  const platformIcon = platformIconSrc(account.platform ?? '')
   const accountLogin = resolveAccountLogin(account)
   const platformLine = accountLogin ? `${platformLabel} • ${accountLogin}` : platformLabel
   const accountTypeLabel =
@@ -3751,9 +3907,190 @@ function LinkedAccountRow({
   const winRate = performance?.winRate ?? null
   const maxDd = performance?.maxDrawdownPct ?? null
   const winRateColor =
-    winRate == null ? 'text-neutral-900 dark:text-neutral-50' : winRate >= 50 ? 'text-green-500 dark:text-green-400' : 'text-neutral-900 dark:text-neutral-50'
-  const ddColor =
-    maxDd == null ? 'text-neutral-900 dark:text-neutral-50' : lossTextClass
+    winRate == null
+      ? 'text-neutral-900 dark:text-neutral-50'
+      : winRate >= 50
+        ? 'text-green-500 dark:text-green-400'
+        : 'text-neutral-900 dark:text-neutral-50'
+  const ddColor = maxDd == null ? 'text-neutral-900 dark:text-neutral-50' : lossTextClass
+  const statusLabel = brokerConnectionStatusLabel(account, la)
+
+  return {
+    la,
+    statusClass,
+    statusLabel,
+    balanceText,
+    connectPnl,
+    pnl,
+    pnlFormatted,
+    openPnl,
+    openPnlColor,
+    openPnlFormatted,
+    brokerText,
+    accountTypeClass,
+    accountLabel,
+    platformIcon,
+    platformLine,
+    accountTypeLabel,
+    winRate,
+    maxDd,
+    winRateColor,
+    ddColor,
+  }
+}
+
+function LinkedAccountMetric({
+  label,
+  value,
+  valueClassName,
+}: {
+  label: string
+  value: ReactNode
+  valueClassName?: string
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400">{label}</p>
+      <p className={clsx('mt-0.5 text-sm font-semibold tabular-nums truncate', valueClassName)}>
+        {value}
+      </p>
+    </div>
+  )
+}
+
+/** Mobile Linked Accounts card — key metrics without the 9-column scroll grid. */
+function LinkedAccountCard({
+  account,
+  accountSummary,
+  performance,
+  connectPnl,
+  onToggleActive,
+  toggleDisabled,
+  showReconnect,
+  isReconnecting,
+  onReconnect,
+  onOpenStats,
+}: LinkedAccountListProps) {
+  const d = useLinkedAccountDisplay(account, accountSummary, performance, connectPnl)
+
+  return (
+    <article
+      role="button"
+      tabIndex={0}
+      onClick={onOpenStats}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onOpenStats()
+        }
+      }}
+      className={clsx('group cursor-pointer px-4 py-4 transition-colors', APP_ROW_HOVER)}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-base font-semibold text-neutral-900 dark:text-neutral-50 truncate" title={d.accountLabel}>
+            {d.accountLabel}
+          </p>
+          <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-neutral-900 dark:text-neutral-50" title={d.platformLine}>
+            {d.platformIcon ? (
+              <img src={d.platformIcon} alt="" aria-hidden className="h-4 w-4 shrink-0 object-contain" />
+            ) : null}
+            <span className="truncate">{d.platformLine}</span>
+          </p>
+          <p className="mt-0.5 truncate text-xs text-neutral-500 dark:text-neutral-400">
+            {d.brokerText}
+            {d.accountTypeLabel !== '—' ? ` · ${d.accountTypeLabel}` : ''}
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${d.statusClass}`}>
+            {d.statusLabel}
+          </span>
+          <ChevronRight className="h-4 w-4 text-neutral-400 dark:text-neutral-500" aria-hidden />
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3">
+        <LinkedAccountMetric label={d.la.colBalance} value={d.balanceText} valueClassName="text-neutral-900 dark:text-neutral-50" />
+        <LinkedAccountMetric
+          label={d.la.colOpenPnl}
+          value={
+            d.openPnl == null ? '—' : (
+              <>
+                {d.openPnl >= 0 ? '+' : '-'}
+                {d.openPnlFormatted}
+              </>
+            )
+          }
+          valueClassName={d.openPnlColor}
+        />
+        <LinkedAccountMetric
+          label={d.la.colPnl}
+          value={
+            d.connectPnl == null ? '—' : (
+              <>
+                {d.pnl >= 0 ? '+' : '-'}
+                {d.pnlFormatted}
+              </>
+            )
+          }
+          valueClassName={pnlSignTextClass(d.pnl)}
+        />
+        <LinkedAccountMetric
+          label={d.la.colWinRate}
+          value={formatPerformancePct(d.winRate, 0)}
+          valueClassName={d.winRateColor}
+        />
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <span
+          className="inline-flex items-center gap-2"
+          onClick={e => e.stopPropagation()}
+          onKeyDown={e => e.stopPropagation()}
+        >
+          <Toggle
+            checked={account.is_active}
+            onChange={onToggleActive}
+            disabled={toggleDisabled}
+          />
+          <span className="text-xs text-neutral-500 dark:text-neutral-400">
+            {account.is_active ? d.la.statusActive : d.la.statusPaused}
+          </span>
+        </span>
+        {showReconnect ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            loading={isReconnecting}
+            onClick={e => {
+              e.stopPropagation()
+              onReconnect?.()
+            }}
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            {d.la.reconnect}
+          </Button>
+        ) : null}
+      </div>
+    </article>
+  )
+}
+
+function LinkedAccountRow({
+  account,
+  accountSummary,
+  performance,
+  connectPnl,
+  onToggleActive,
+  toggleDisabled,
+  showReconnect,
+  isReconnecting,
+  onReconnect,
+  onOpenStats,
+}: LinkedAccountListProps) {
+  const d = useLinkedAccountDisplay(account, accountSummary, performance, connectPnl)
 
   return (
     <div
@@ -3771,43 +4108,43 @@ function LinkedAccountRow({
       <div className="flex flex-col min-w-0">
         <span
           className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 truncate"
-          title={accountLabel}
+          title={d.accountLabel}
         >
-          {accountLabel}
+          {d.accountLabel}
         </span>
         <span
           className="truncate text-[11px] font-medium tracking-wide text-neutral-900 dark:text-neutral-50"
-          title={platformLine}
+          title={d.platformLine}
         >
-          {platformLine}
+          {d.platformLine}
         </span>
       </div>
       <span
         className="min-w-0 text-sm font-medium text-neutral-900 dark:text-neutral-50 truncate"
-        title={brokerText}
+        title={d.brokerText}
       >
-        {brokerText}
+        {d.brokerText}
       </span>
-      <span className={`text-sm font-semibold ${accountTypeClass}`}>{accountTypeLabel}</span>
-      <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{balanceText}</span>
-      <span className={`text-sm font-semibold ${pnlColor}`}>
-        {connectPnl == null ? '—' : (
+      <span className={`text-sm font-semibold ${d.accountTypeClass}`}>{d.accountTypeLabel}</span>
+      <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{d.balanceText}</span>
+      <span className={`text-sm font-semibold ${pnlSignTextClass(d.pnl)}`}>
+        {d.connectPnl == null ? '—' : (
           <>
-            {pnl >= 0 ? '+' : '-'}
-            {pnlFormatted}
+            {d.pnl >= 0 ? '+' : '-'}
+            {d.pnlFormatted}
           </>
         )}
       </span>
-      <span className={`text-sm font-semibold  ${openPnlColor}`}>
-        {openPnl == null ? '—' : (
+      <span className={`text-sm font-semibold ${d.openPnlColor}`}>
+        {d.openPnl == null ? '—' : (
           <>
-            {openPnl >= 0 ? '+' : '-'}
-            {openPnlFormatted}
+            {d.openPnl >= 0 ? '+' : '-'}
+            {d.openPnlFormatted}
           </>
         )}
       </span>
-      <span className={`text-sm font-semibold  ${winRateColor}`}>{formatPerformancePct(winRate, 0)}</span>
-      <span className={`text-sm font-semibold  ${ddColor}`}>{formatPerformancePct(maxDd)}</span>
+      <span className={`text-sm font-semibold ${d.winRateColor}`}>{formatPerformancePct(d.winRate, 0)}</span>
+      <span className={`text-sm font-semibold ${d.ddColor}`}>{formatPerformancePct(d.maxDd)}</span>
       <div className="flex justify-end items-center gap-2">
         {showReconnect ? (
           <Button
@@ -3821,7 +4158,7 @@ function LinkedAccountRow({
             }}
           >
             <RefreshCw className="w-3.5 h-3.5" />
-            {la.reconnect}
+            {d.la.reconnect}
           </Button>
         ) : null}
         <span onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
@@ -3831,8 +4168,8 @@ function LinkedAccountRow({
             disabled={toggleDisabled}
           />
         </span>
-        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusClass}`}>
-          {brokerConnectionStatusLabel(account, la)}
+        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${d.statusClass}`}>
+          {d.statusLabel}
         </span>
         <ChevronRight
           className="h-3.5 w-3.5 shrink-0 text-neutral-900 opacity-0 transition-opacity group-hover:opacity-100 dark:text-neutral-50"
