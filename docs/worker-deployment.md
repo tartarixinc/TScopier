@@ -446,7 +446,7 @@ sequenceDiagram
 3. **Entry fast path** — Live `buy`/`sell` bypass queue and heavy DB idempotency (`inflight` only); `OrderSend` first, management (opposite close, merge, channel SL/TP, pip stops) in `postFillFollowUp`.
 4. **Broker pre-warm** — `EXECUTOR_PREWARM_SYMBOLS` loads symbol list/params on start and on each heartbeat tick; `BROKER_SESSION_HEARTBEAT_MS` (default **15s**, recommend **10s** in production) keeps FxSocket sessions warm via `keepSessionAlive`.
 5. **No market `/Quote` on live path** — Clamp from cached `SymbolParams`; pip/channel stops applied via `OrderModify` post-fill.
-6. **Concurrent queue drain** — `EXECUTOR_MAX_CONCURRENT_SIGNALS` (default **4**) for sweep/realtime/management.
+6. **Concurrent queue drain** — `EXECUTOR_MAX_CONCURRENT_SIGNALS` (default **4**, max **16**) for sweep/realtime/management. FIFO backlog; warn when queued ≥ 2× the cap. Pair with global MTAPI order fairness (`MTAPI_GLOBAL_ORDER_CONCURRENCY`, default **6**) so multi-signal × multi-broker bursts fail fast with `BROKER_BUSY` instead of ~50s `OrderSendSafe` timeouts.
 7. **Lease gate cache** — `WORKER_LEASE_GATE_CACHE_MS` (default **8000**).
 8. **MT HTTP pool** — `MT4API_HTTP_CONNECTIONS` (default **128**) per MT4/MT5 host; raise for burst copy at scale.
 9. **Broker keepalive** — `TradeExecutor.sessionHeartbeatTick` pings cached sessions; `BrokerConnectionMonitor` handles reconnect/status only (no duplicate heartbeat loop).
@@ -756,7 +756,10 @@ Live management (`close_worse_entries`, `close`, `modify`, edited SL/TP) bypasse
 | `AI_MODIFICATION_PARSE_ENABLED=false` | Optional: deterministic-only if channel keywords cover your phrases |
 | `AI_MODIFICATION_PARSE_TIMEOUT_MS=1500` | Lower if AI modification parse stays enabled |
 | `TRADE_MGMT_WORKER_URL` | Dedicated mgmt worker URL on listener (not shared with entry) |
-| `EXECUTOR_MAX_CONCURRENT_SIGNALS=6` | More parallel signal handlers on mgmt shard |
+| `EXECUTOR_MAX_CONCURRENT_SIGNALS=6` | More parallel signal handlers on mgmt shard (keep ≤ bridge capacity) |
+| `MTAPI_GLOBAL_ORDER_CONCURRENCY=6` | Shared OrderSendSafe in-flight cap across all brokers |
+| `MTAPI_GLOBAL_ORDER_WAIT_MS=8000` | Bound wait for a global send slot; then `BROKER_BUSY` |
+| `MT_SEND_LEG_GAP_MS=50` | Inter-leg delay only when the global lane is saturated |
 | `MGMT_LEG_CONCURRENCY=6` | Parallel CWE/SL legs per broker (max 12) |
 | `TRADE_SIGNAL_QUEUE_MGMT_CONSUMER_BLOCK_MS=150` | Lower Redis mgmt consumer latency |
 | `TRADE_SIGNAL_PUSH_TIMEOUT_MS=5000` | HTTP push fallback timeout for mgmt (when queue off) |

@@ -231,6 +231,44 @@ export function countOpenMarketPositionsByBroker(
   return out
 }
 
+/**
+ * All broker-open rows, including pending limit/stop entries.
+ * Matches Account Trades / sidebar "N Open" (status === 'open').
+ */
+export function countOpenTradesByBroker(
+  trades: Array<{ broker_id: string; status?: string }>,
+): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const t of trades) {
+    if (t.status !== 'open') continue
+    out[t.broker_id] = (out[t.broker_id] ?? 0) + 1
+  }
+  return out
+}
+
+/** Pending open legs for one broker — used to top up live position-book counts. */
+export function countPendingOpenTradesForBroker(
+  trades: Array<{ broker_id: string; status?: string; type?: string | null }>,
+  brokerId: string,
+): number {
+  let n = 0
+  for (const t of trades) {
+    if (t.broker_id !== brokerId || t.status !== 'open') continue
+    if (isMtTradePendingEntry(t)) n += 1
+  }
+  return n
+}
+
+/** Headline open count: live market book + pending opens from the last trade list. */
+export function resolveOpenTradesHeadlineCount(
+  marketOpenCount: number,
+  trades: Array<{ broker_id: string; status?: string; type?: string | null }> | null | undefined,
+  brokerId: string,
+): number {
+  const market = Number.isFinite(marketOpenCount) ? Math.max(0, marketOpenCount) : 0
+  return market + countPendingOpenTradesForBroker(trades ?? [], brokerId)
+}
+
 /** Sum floating P/L on open market legs per broker (REST bootstrap / WS fallback). */
 export function sumOpenPnlByBroker(
   trades: Array<{

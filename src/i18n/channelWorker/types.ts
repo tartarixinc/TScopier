@@ -159,6 +159,8 @@ export interface ChannelWorkerTranslations {
   errorBrokerBridgeUnavailable: string
   errorTradeEaNotReady: string
   errorBrokerNotConnected: string
+  errorBrokerBusy: string
+  errorOrderSendTimedOut: string
   errorInvalidStops: string
   errorBridgeGlitch: string
   errorStopsAlreadySet: string

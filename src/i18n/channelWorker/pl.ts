@@ -214,6 +214,10 @@ export const channelWorkerPl: ChannelWorkerTranslations = {
     'Trade EA is not ready on your MT5 terminal — enable Algo Trading and refresh broker health',
   errorBrokerNotConnected:
     'Broker nie jest połączony — w Konfiguracji konta użyj Reconnect i wpisz hasło MT dla tego konta',
+  errorBrokerBusy:
+    'Broker zajęty — zbyt wiele zleceń w toku; kolejne sygnały uruchomią się, gdy obciążenie spadnie',
+  errorOrderSendTimedOut:
+    'OrderSend timed out — sprawdź otwarte pozycje; zlecenie mogło zostać zrealizowane',
   errorInvalidStops:
     'Broker odrzucił te poziomy stop — sprawdź, czy SL/TP są po właściwej stronie rynku i spełniają minimalną odległość.',
   errorBridgeGlitch:

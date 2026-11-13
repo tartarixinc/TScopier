@@ -237,6 +237,12 @@ function translateBrokerError(message: string, cw: ChannelWorkerTranslations, sy
   if (/not connected/i.test(message) || /broker session is not connected/i.test(message)) {
     return cw.errorBrokerNotConnected
   }
+  if (/broker busy|OrderSendSafe broker busy|CONCURRENCY_BUSY/i.test(message)) {
+    return cw.errorBrokerBusy
+  }
+  if (/OrderSendSafe timed out|OrderSend timed out|OrderSendSafe.*timed out/i.test(message)) {
+    return cw.errorOrderSendTimedOut
+  }
   if (/order rejected|invalid stops?|invalid stop/i.test(message)) {
     return cw.errorInvalidStops
   }

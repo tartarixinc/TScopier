@@ -213,6 +213,10 @@ export const channelWorkerJa: ChannelWorkerTranslations = {
     'Trade EA is not ready on your MT5 terminal — enable Algo Trading and refresh broker health',
   errorBrokerNotConnected:
     'ブローカーが未接続です — Account Configuration で Reconnect を実行し、この口座の MT パスワードを入力してください',
+  errorBrokerBusy:
+    'ブローカーが混雑しています — 進行中の注文が多すぎます。負荷が下がると後続シグナルが実行されます',
+  errorOrderSendTimedOut:
+    'OrderSend timed out — 建玉を確認してください。約定している可能性があります',
   errorInvalidStops:
     'ブローカーがこれらのストップ水準を拒否しました — SL/TP が相場の正しい側にあり、最小距離を満たしているか確認してください。',
   errorBridgeGlitch:

@@ -1,6 +1,10 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { createConcurrencyGate, runWithAccountLimit } from './perAccountConcurrency'
+import {
+  ConcurrencyBusyError,
+  createConcurrencyGate,
+  runWithAccountLimit,
+} from './perAccountConcurrency'
 
 const tick = () => new Promise<void>(r => setTimeout(r, 5))
 
@@ -68,5 +72,43 @@ describe('createConcurrencyGate', () => {
     })))
     assert.equal(peak, 1)
     assert.equal(order.length, 5)
+  })
+
+  it('acquireWithDeadline rejects with ConcurrencyBusyError when saturated', async () => {
+    const gate = createConcurrencyGate()
+    const release = await gate.acquireWithDeadline('global', 1, 50)
+    assert.equal(gate.activeCount('global'), 1)
+    await assert.rejects(
+      () => gate.acquireWithDeadline('global', 1, 30),
+      (err: unknown) => err instanceof ConcurrencyBusyError && err.code === 'CONCURRENCY_BUSY',
+    )
+    assert.equal(gate.waitingCount('global'), 0)
+    release()
+    assert.equal(gate.activeCount('global'), 0)
+  })
+
+  it('fair multi-key burst stays within a shared global limit', async () => {
+    const gate = createConcurrencyGate()
+    const globalLimit = 4
+    let active = 0
+    let peak = 0
+    let done = 0
+    const run = async (key: string) => {
+      const release = await gate.acquireWithDeadline('__global__', globalLimit, 2_000)
+      try {
+        active += 1
+        peak = Math.max(peak, active)
+        await new Promise<void>(r => setTimeout(r, 15))
+        active -= 1
+        done += 1
+      } finally {
+        release()
+      }
+      void key
+    }
+    const brokers = ['a', 'b', 'c', 'd', 'e', 'f']
+    await Promise.all(brokers.flatMap(b => Array.from({ length: 4 }, () => run(b))))
+    assert.equal(done, brokers.length * 4)
+    assert.ok(peak <= globalLimit, `peak ${peak} must stay <= ${globalLimit}`)
   })
 })

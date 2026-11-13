@@ -37,10 +37,12 @@ import {
   type FxsocketPositionBook,
 } from '../../lib/fxsocketLivePositionBook'
 import {
-  countOpenMarketPositionsByBroker,
+  countOpenTradesByBroker,
   isFxsocketMarketPositionRow,
+  isMtTradePendingEntry,
   parseFxsocketAccountStreamData,
   resolveFxsocketFloatingOpenPnl,
+  resolveOpenTradesHeadlineCount,
   sumOpenPnlByBroker,
   unwrapFxsocketPositionsPayload,
   type FxsocketAccountStreamSnapshot,
@@ -374,8 +376,9 @@ function sumConnectedOpenTrades(
 }
 
 /**
- * Open-trade headline count: FxSocket-linked accounts use live broker feeds only
- * (WebSocket positions or REST bootstrap). Never stale UniCopier DB leg rows.
+ * Open-trade headline count: linked accounts use live broker feeds (market +
+ * pending opens, same definition as Account Trades). Never stale UniCopier DB
+ * leg rows when a linked broker feed is present.
  */
 function resolveDashboardOpenTradesCount(
   accounts: BrokerAccount[],
@@ -2238,8 +2241,11 @@ export function DashboardPage() {
         bookSnap.openPnl ??
         snapshot.openPnl ??
         (snapshot.openTrades > 0 ? sumOpenPnlByBroker(mtTradesRef.current ?? [])[brokerId] : undefined)
+      // Position books are market-only; top up with pending opens so OPEN TRADES
+      // matches Account Trades (status === 'open', including limit/stop).
+      const marketOpen = bookSnap.openTrades || snapshot.openTrades
       applyBrokerLiveSnapshot(brokerId, {
-        open_trades: bookSnap.openTrades || snapshot.openTrades,
+        open_trades: resolveOpenTradesHeadlineCount(marketOpen, mtTradesRef.current, brokerId),
         ...(openPnl != null ? { open_pnl: openPnl } : {}),
       })
     },
@@ -2251,7 +2257,7 @@ export function DashboardPage() {
       positionBooksRef.current[brokerId] = book
       const snap = snapshotFromPositionBook(book)
       applyBrokerLiveSnapshot(brokerId, {
-        open_trades: snap.openTrades,
+        open_trades: resolveOpenTradesHeadlineCount(snap.openTrades, mtTradesRef.current, brokerId),
         open_pnl: snap.openPnl,
       })
     },
@@ -2333,7 +2339,15 @@ export function DashboardPage() {
             const summaryOpenTrades = typeof summary.open_trades === 'number' && Number.isFinite(summary.open_trades)
               ? summary.open_trades
               : undefined
-            const openTrades = summaryOpenTrades ?? linkedBalancesRef.current[account.id]?.open_trades ?? 0
+            // AccountSummary open_trades is usually positions-only. Prefer the
+            // trade-list headline (market + pending) when we already have one.
+            const listOpen = countOpenTradesByBroker(mtTradesRef.current ?? [])[account.id]
+            const openTrades = listOpen
+              ?? resolveOpenTradesHeadlineCount(
+                summaryOpenTrades ?? linkedBalancesRef.current[account.id]?.open_trades ?? 0,
+                mtTradesRef.current,
+                account.id,
+              )
             let openPnl = resolveFxsocketFloatingOpenPnl(snap, openTrades)
             if (rawProvider === 'ctrader' && (openPnl == null || openPnl === 0) && openTrades > 0) {
               const fromBook = snapshotFromPositionBook(positionBooksRef.current[account.id] ?? new Map()).openPnl
@@ -2345,18 +2359,22 @@ export function DashboardPage() {
               linkedBalancesRef.current,
             )
             linkedBalancesRef.current = nextBalances
-            if (summaryOpenTrades != null || openPnl != null) {
+            if (listOpen != null || summaryOpenTrades != null || openPnl != null) {
               const current = linkedBalancesRef.current[account.id] ?? {}
+              const nextOpenTrades = listOpen
+                ?? (summaryOpenTrades != null
+                  ? resolveOpenTradesHeadlineCount(summaryOpenTrades, mtTradesRef.current, account.id)
+                  : undefined)
               linkedBalancesRef.current = {
                 ...linkedBalancesRef.current,
                 [account.id]: {
                   ...current,
-                  ...(summaryOpenTrades != null ? { open_trades: summaryOpenTrades } : {}),
+                  ...(nextOpenTrades != null ? { open_trades: nextOpenTrades } : {}),
                 },
               }
               liveBrokerStateRef.current[account.id] = {
                 ...liveBrokerStateRef.current[account.id],
-                ...(summaryOpenTrades != null ? { open_trades: summaryOpenTrades } : {}),
+                ...(nextOpenTrades != null ? { open_trades: nextOpenTrades } : {}),
                 ...(openPnl != null ? { open_pnl: openPnl } : {}),
               }
             }
@@ -2535,17 +2553,18 @@ export function DashboardPage() {
     }
     if (resolvedTrades.length === 0) return
 
-    const openByBroker = countOpenMarketPositionsByBroker(resolvedTrades)
+    // Headline OPEN TRADES = all status=open (incl. pending), same as Account Trades.
+    const openByBroker = countOpenTradesByBroker(resolvedTrades)
     const openPnlByBroker = sumOpenPnlByBroker(resolvedTrades)
     const nextBalances = { ...linkedBalancesRef.current }
     let openCountsChanged = false
     for (const account of sourceAccounts) {
       if (!hasLinkedBrokerForUi(account)) continue
-      const count = openByBroker[account.id] ?? 0
+      const openTrades = openByBroker[account.id] ?? 0
       const liveBook = positionBooksRef.current[account.id]
       if (!liveBook || liveBook.size === 0) {
         positionBooksRef.current[account.id] = rebuildPositionBookFromMtTrades(
-          resolvedTrades,
+          resolvedTrades.filter(t => !isMtTradePendingEntry(t)),
           account.id,
         )
       }
@@ -2554,7 +2573,6 @@ export function DashboardPage() {
           ? snapshotFromPositionBook(positionBooksRef.current[account.id]!)
           : null
       const openPnl = bookSnap?.openPnl ?? openPnlByBroker[account.id]
-      const openTrades = bookSnap?.openTrades ?? count
       const prev = nextBalances[account.id]
       if (prev?.open_trades === openTrades && prev?.open_pnl === openPnl) continue
       const nextOpenPnl = openPnl != null ? openPnl : openTrades === 0 ? 0 : prev?.open_pnl

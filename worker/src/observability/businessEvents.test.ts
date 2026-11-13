@@ -247,3 +247,10 @@ test('classifyBrokerFailureReason separates trading-disabled from missing symbol
     'BROKER_SYMBOL_NOT_FOUND',
   )
 })
+
+test('classifyBrokerFailureReason maps OrderSendSafe broker busy', () => {
+  assert.equal(
+    classifyBrokerFailureReason('MTAPI OrderSendSafe broker busy'),
+    'BROKER_BUSY',
+  )
+})
