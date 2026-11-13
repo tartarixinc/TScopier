@@ -8,13 +8,18 @@ import { filterMtTradesSinceConnect } from '../lib/tradesSinceConnect'
 import type { BrokerAccount } from '../types/database'
 import { BROKER_FULL_HISTORY_FROM } from '../lib/tradesConstants'
 import { enrichMtTradesTimestamps, hydrateMtTradesTimesFromBrokers, mtTradeMissingDisplayTime } from '../lib/mtTradeTimestamps'
-import { readSessionCache, writeSessionCache } from '../lib/sessionDataCache'
+import { peekSessionCache, writeSessionCache } from '../lib/sessionDataCache'
 import {
   TRADES_CACHE_TTL_MS,
   tradesCacheKey,
   tradesListFingerprint,
   type TradesCachePayload,
 } from '../lib/tradesSessionCache'
+import {
+  TRADES_FULL_HISTORY_REFRESH_MS,
+  incrementalHistoryFrom,
+  mergeIncrementalTrades,
+} from '../lib/tradesIncrementalHistory'
 import { useDashboardRealtime } from './useDashboardRealtime'
 import {
   fetchTradesFromDatabase,
@@ -30,6 +35,8 @@ import {
 
 const AUTO_REFRESH_MS = 15_000
 const VISIBILITY_STALE_MS = 30_000
+/** Retry broker timestamp hydration at most this often; it must not follow the 15s poll. */
+const HYDRATION_BACKOFF_MS = 5 * 60 * 1000
 /** Cap live MT history on first enrichment so cold load cannot wait on unbounded OrderHistory. */
 const TRADES_LIVE_FETCH_LIMIT = 5000
 
@@ -39,7 +46,10 @@ type LiveTradesFetch = {
   needsTimeHydration: boolean
 }
 
-async function fetchTradesFromMt(userId: string): Promise<LiveTradesFetch> {
+async function fetchTradesFromMt(
+  userId: string,
+  historyFrom: string = BROKER_FULL_HISTORY_FROM,
+): Promise<LiveTradesFetch> {
   const { tomorrowStart: historyTo } = getLocalCalendarDayBounds()
   const brokerRes = await selectBrokerAccountColumns(columns =>
     supabase
@@ -53,14 +63,15 @@ async function fetchTradesFromMt(userId: string): Promise<LiveTradesFetch> {
   const tradesRes = await fetchTradesAcrossProviders({
     scope: 'all',
     historyProfile: 'trades',
-    historyFrom: BROKER_FULL_HISTORY_FROM,
+    historyFrom,
     historyTo: formatBrokerHistoryDate(historyTo),
     accounts,
     limit: TRADES_LIVE_FETCH_LIMIT,
   })
 
   const normalized = enrichMtTradesTimestamps(tradesRes.trades ?? [])
-  const needsTimeHydration = normalized.some(mtTradeMissingDisplayTime)
+  const trades = filterMtTradesSinceConnect(normalized, accounts)
+  const needsTimeHydration = trades.some(mtTradeMissingDisplayTime)
   if (import.meta.env.DEV) {
     const missingFromEdge = normalized.filter(mtTradeMissingDisplayTime).length
     if (missingFromEdge > 0) {
@@ -71,11 +82,7 @@ async function fetchTradesFromMt(userId: string): Promise<LiveTradesFetch> {
       })
     }
   }
-  return {
-    trades: filterMtTradesSinceConnect(normalized, accounts),
-    accounts,
-    needsTimeHydration,
-  }
+  return { trades, accounts, needsTimeHydration }
 }
 
 export function useTradesData(userId: string | undefined) {
@@ -93,6 +100,8 @@ export function useTradesData(userId: string | undefined) {
   // stored rows. Not keyed on this call's cache read: a forced refresh or an
   // expired TTL still has live rows on screen.
   const hasLiveRowsRef = useRef(false)
+  const lastHydrationAtRef = useRef(0)
+  const loadSeqRef = useRef(0)
 
   const applyPayload = useCallback((payload: TradesCachePayload, fetchedAt: number) => {
     fingerprintRef.current = payload.fingerprint
@@ -109,10 +118,19 @@ export function useTradesData(userId: string | undefined) {
       if (!userId || inflightRef.current) return
 
       const key = tradesCacheKey(userId)
+      const now = Date.now()
+      // Peek at the long-lived entry first. A short-TTL read would evict it,
+      // which used to turn every post-TTL refresh into a full history read.
+      const historyCache = peekSessionCache<TradesCachePayload>(
+        key,
+        TRADES_FULL_HISTORY_REFRESH_MS,
+      )
       const cached =
-        !opts?.force ? readSessionCache<TradesCachePayload>(key, TRADES_CACHE_TTL_MS) : null
+        !opts?.force && historyCache && now - historyCache.fetchedAt < TRADES_CACHE_TTL_MS
+          ? historyCache
+          : null
 
-      if (cached && !opts?.force) {
+      if (cached) {
         // Deferred a microtask: when `load()` is called directly from an
         // effect, the effect body must not perform setState synchronously.
         // Relative order is preserved (this queues before the spinner write
@@ -121,18 +139,34 @@ export function useTradesData(userId: string | undefined) {
           applyPayload(cached.data, cached.fetchedAt)
           if (!opts?.background) setLoading(false)
         })
-        const staleMissingTimes = cached.data.trades.some(mtTradeMissingDisplayTime)
         // While the feed is degraded, skip the cache short-circuit so the
         // next real attempt can clear the banner as soon as the feed is back.
         if (
-          !staleMissingTimes &&
-          Date.now() - cached.fetchedAt < TRADES_CACHE_TTL_MS &&
+          now - cached.fetchedAt < TRADES_CACHE_TTL_MS &&
           !getLiveFeedStatus().degraded
         ) {
           return
         }
       }
 
+      // Normal refreshes request only the recent window; the full history is
+      // re-read once a day to drop deleted or corrected old rows.
+      const fullHistoryAt = historyCache?.data.fullHistoryAt ?? historyCache?.fetchedAt ?? 0
+      let historyFrom = BROKER_FULL_HISTORY_FROM
+      let incrementalCache: TradesCachePayload | null = null
+      if (
+        historyCache &&
+        now - fullHistoryAt < TRADES_FULL_HISTORY_REFRESH_MS &&
+        !getLiveFeedStatus().degraded
+      ) {
+        incrementalCache = historyCache.data
+        historyFrom = incrementalHistoryFrom(historyCache.data.trades, now)
+      }
+
+      // Only a load that actually fetches may invalidate an in-flight
+      // hydration; a cache-hit poll must not cancel it (hydration would then
+      // lose its 5-minute backoff slot and never land).
+      const loadSeq = ++loadSeqRef.current
       inflightRef.current = true
       void Promise.resolve().then(() => {
         if (opts?.force || cached) setRefreshing(true)
@@ -161,27 +195,56 @@ export function useTradesData(userId: string | undefined) {
           }
         }
 
-        const live = await fetchTradesFromMt(userId)
+        const live = await fetchTradesFromMt(userId, historyFrom)
         if (hydratedUserRef.current !== startedForUser) return
-        const fingerprint = tradesListFingerprint(live.trades)
+        // The edges only serve active accounts; cached rows from a disabled
+        // account must not survive the merge.
+        const accountIds = new Set(
+          live.accounts.filter(account => account.is_active !== false).map(account => account.id),
+        )
+        const merged = filterMtTradesSinceConnect(
+          incrementalCache
+            ? mergeIncrementalTrades(live.trades, incrementalCache.trades, accountIds)
+            : live.trades,
+          live.accounts,
+        )
+        const fingerprint = tradesListFingerprint(merged)
         const fetchedAt = Date.now()
 
-        const payload: TradesCachePayload = { trades: live.trades, fingerprint }
+        const payload: TradesCachePayload = {
+          trades: merged,
+          fingerprint,
+          fullHistoryAt: incrementalCache ? fullHistoryAt : fetchedAt,
+        }
         writeSessionCache(key, payload)
         applyPayload(payload, fetchedAt)
         reportLiveFeedSuccess(feedGeneration)
 
-        // Time hydration can re-hit full OrderHistory — never block first paint on it.
-        if (live.needsTimeHydration) {
-          void hydrateMtTradesTimesFromBrokers(live.trades, live.accounts).then(({ trades: hydrated, stats }) => {
+        // Time hydration is bounded to the same window as the live read and
+        // backs off, so it cannot turn the 15s poll back into full-history
+        // reads. Older cached rows that still lack a time stay "—" until the
+        // next daily full refresh.
+        if (
+          live.needsTimeHydration &&
+          now - lastHydrationAtRef.current >= HYDRATION_BACKOFF_MS
+        ) {
+          lastHydrationAtRef.current = now
+          void hydrateMtTradesTimesFromBrokers(live.trades, live.accounts, { historyFrom }).then(({ trades: hydrated, stats }) => {
             if (hydratedUserRef.current !== startedForUser) return
+            if (loadSeqRef.current !== loadSeq) return
             if (import.meta.env.DEV && (stats.missingBefore > 0 || stats.historyErrors.length > 0)) {
               console.debug('[trades] time hydration fallback', stats)
             }
-            const next = filterMtTradesSinceConnect(hydrated, live.accounts)
+            const next = filterMtTradesSinceConnect(
+              incrementalCache
+                ? mergeIncrementalTrades(hydrated, incrementalCache.trades, accountIds)
+                : hydrated,
+              live.accounts,
+            )
             const nextPayload: TradesCachePayload = {
               trades: next,
               fingerprint: tradesListFingerprint(next),
+              fullHistoryAt: payload.fullHistoryAt,
             }
             writeSessionCache(key, nextPayload)
             applyPayload(nextPayload, Date.now())
@@ -228,6 +291,7 @@ export function useTradesData(userId: string | undefined) {
     if (!userId) {
       hydratedUserRef.current = null
       hasLiveRowsRef.current = false
+      lastHydrationAtRef.current = 0
       // No setLoading(false) here: ProtectedRoute only renders this hook
       // while a user exists, so userId only turns undefined on the way to
       // unmounting — a loading flag flip would never be observed.
@@ -238,8 +302,9 @@ export function useTradesData(userId: string | undefined) {
       hydratedUserRef.current = userId
       // Any live rows on screen belong to the previous user.
       hasLiveRowsRef.current = false
+      lastHydrationAtRef.current = 0
       const key = tradesCacheKey(userId)
-      const cached = readSessionCache<TradesCachePayload>(key, TRADES_CACHE_TTL_MS)
+      const cached = peekSessionCache<TradesCachePayload>(key, TRADES_CACHE_TTL_MS)
       if (cached) {
         // Hydration writes are deferred a microtask so the effect body
         // itself performs no setState; the decision below only reads the
@@ -248,9 +313,7 @@ export function useTradesData(userId: string | undefined) {
           applyPayload(cached.data, cached.fetchedAt)
           setLoading(false)
         })
-        const staleMissingTimes = cached.data.trades.some(mtTradeMissingDisplayTime)
         if (
-          !staleMissingTimes &&
           Date.now() - cached.fetchedAt < TRADES_CACHE_TTL_MS &&
           !getLiveFeedStatus().degraded
         ) {

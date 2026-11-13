@@ -1,12 +1,14 @@
-import { clearSessionCacheKey, readSessionCache } from './sessionDataCache'
+import { clearSessionCacheKey, peekSessionCache } from './sessionDataCache'
 import type { MtTrade } from './fxsocketBroker'
 
 /** Serve Trades page from cache; background refetch when older than this. */
-export const TRADES_CACHE_TTL_MS = 90 * 1000
+export const TRADES_CACHE_TTL_MS = 60 * 1000
 
 export type TradesCachePayload = {
   trades: MtTrade[]
   fingerprint: string
+  /** When the full broker history was last read (ms); incremental refreshes preserve it. */
+  fullHistoryAt?: number
 }
 
 export function tradesCacheKey(userId: string): string {
@@ -29,7 +31,7 @@ export function tradesListFingerprint(trades: MtTrade[]): string {
 
 /** Open-leg count from cached Trades page data; null if no fresh cache. */
 export function openTradeCountInCache(userId: string): number | null {
-  const cached = readSessionCache<TradesCachePayload>(tradesCacheKey(userId), TRADES_CACHE_TTL_MS)
+  const cached = peekSessionCache<TradesCachePayload>(tradesCacheKey(userId), TRADES_CACHE_TTL_MS)
   if (!cached) return null
   return cached.data.trades.filter(t => t.status === 'open').length
 }

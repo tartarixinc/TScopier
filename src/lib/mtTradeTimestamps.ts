@@ -200,10 +200,10 @@ export function applyCloseTimesToTrades(
   return applyTimesToTrades(trades, lookupsByBroker)
 }
 
-function tradesHistoryRange(): { from: string; to: string } {
+function tradesHistoryRange(historyFrom?: string): { from: string; to: string } {
   const { tomorrowStart: historyTo } = getLocalCalendarDayBounds()
   return {
-    from: BROKER_FULL_HISTORY_FROM,
+    from: historyFrom ?? BROKER_FULL_HISTORY_FROM,
     to: formatBrokerHistoryDate(historyTo),
   }
 }
@@ -212,6 +212,7 @@ function tradesHistoryRange(): { from: string; to: string } {
 export async function hydrateMtTradesTimesFromBrokers(
   trades: MtTrade[],
   accounts?: Array<{ id?: string; provider?: string | null }>,
+  opts?: { historyFrom?: string },
 ): Promise<{ trades: MtTrade[]; stats: MtTradeTimeHydrationStats }> {
   const closed = trades.filter(t => t.status === 'closed')
   const open = trades.filter(t => t.status === 'open')
@@ -242,7 +243,7 @@ export async function hydrateMtTradesTimesFromBrokers(
     providerByBrokerId.set(account.id, resolveProvider(account))
   }
 
-  const { from, to } = tradesHistoryRange()
+  const { from, to } = tradesHistoryRange(opts?.historyFrom)
   const lookupsByBroker: Record<string, TicketTimeLookup> = {}
 
   await Promise.all(

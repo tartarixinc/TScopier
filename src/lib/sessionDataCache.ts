@@ -36,6 +36,27 @@ export function readSessionCache<T>(key: string, ttlMs: number): { data: T; fetc
   }
 }
 
+/** Read without evicting an expired entry, so a longer-lived reader can still use it. */
+export function peekSessionCache<T>(key: string, ttlMs: number): { data: T; fetchedAt: number } | null {
+  const now = Date.now()
+  const mem = memory.get(key) as CacheEnvelope<T> | undefined
+  if (mem && now - mem.fetchedAt < ttlMs) {
+    return { data: mem.data, fetchedAt: mem.fetchedAt }
+  }
+
+  try {
+    const raw = sessionStorage.getItem(storageKey(key))
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as CacheEnvelope<T>
+    if (!parsed?.data || typeof parsed.fetchedAt !== 'number') return null
+    if (now - parsed.fetchedAt >= ttlMs) return null
+    memory.set(key, parsed)
+    return { data: parsed.data, fetchedAt: parsed.fetchedAt }
+  } catch {
+    return null
+  }
+}
+
 export function clearSessionCacheKey(key: string): void {
   memory.delete(key)
   try {
