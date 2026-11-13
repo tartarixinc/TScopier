@@ -4,6 +4,8 @@ import { en } from '../i18n/locales/en'
 import {
   copierLogDestinationIcons,
   copierLogDestinationLabel,
+  copierLogDestinationSummary,
+  copierLogDestinationsFromAccountLabel,
   copierLogSourceIcon,
   copierLogSourceLabel,
   copierLogToastFingerprint,
@@ -150,4 +152,37 @@ test('copier log route names the channel and the linked broker', () => {
   assert.equal(copierLogDestinationLabel(brokers, 'ch-1'), 'cTrader Demo')
   assert.deepEqual(copierLogDestinationIcons(brokers, 'ch-1'), ['/cTrader.png'])
   assert.equal(copierLogDestinationLabel(brokers, null), '')
+})
+
+test('copierLogDestinationsFromAccountLabel matches linked broker or guesses platform logo', () => {
+  const brokers = [{
+    id: 'b1',
+    label: 'MT5 • 477608729',
+    platform: 'MT5',
+    provider: 'fxsocket',
+    is_active: true,
+    signal_channel_ids: [],
+  }] as BrokerAccount[]
+  assert.deepEqual(
+    copierLogDestinationsFromAccountLabel('MT5 • 477608729', brokers),
+    [{ label: 'MT5 • 477608729', iconSrc: '/MT5.png' }],
+  )
+  assert.deepEqual(
+    copierLogDestinationsFromAccountLabel('cTrader • 99', []),
+    [{ label: 'cTrader • 99', iconSrc: '/cTrader.png' }],
+  )
+  assert.deepEqual(copierLogDestinationsFromAccountLabel(null), [])
+  assert.deepEqual(
+    copierLogDestinationSummary([{ label: 'A', iconSrc: '/a.png' }, { label: 'B', iconSrc: '/a.png' }]),
+    { label: 'A, B', icons: ['/a.png'] },
+  )
+  assert.deepEqual(
+    copierLogDestinationSummary([
+      { label: 'A', iconSrc: '/a.png' },
+      { label: 'B', iconSrc: '/b.png' },
+      { label: 'C', iconSrc: '/c.png' },
+      { label: 'D', iconSrc: '/d.png' },
+    ]),
+    { label: 'A, B, C, D', icons: ['/a.png', '/b.png', '/c.png'] },
+  )
 })

@@ -69,10 +69,25 @@ import {
   buildCopierLogSymbolLabels,
   buildSignalSymbolLookup,
 } from '../../lib/copierLogDisplay'
-import { buildDisplayableTradeActivities, buildChannelDisplayNames, dedupePipelineParseAttempts, TRADE_ACTIVITY_FETCH_LIMIT, type TradeActivityLogRow } from '../../lib/tradeActivities'
 import {
-  buildManualSourceTradeActivities,
-  buildSocialCopyTradeActivities,
+  buildClosedCopierLogDraft,
+  copierLifecycleLabelsFromCopierLogs,
+  resolveCopierDisplayReason,
+  resolveCopierDisplayStatus,
+  signalStubFromClosedDraft,
+  type CopierClosedLogDraft,
+} from '../../lib/copierLogLifecycle'
+import {
+  copierLogDestinationSummary,
+  copierLogDestinations,
+  copierLogDestinationsFromAccountLabel,
+  type CopierLogDestination,
+} from '../../lib/copierLogToast'
+import { CopierDestinationLogos } from '../../components/dashboard/CopierDestinationLogos'
+import { buildOpenSignalIdSet } from '../../lib/signalOverride'
+import { Badge } from '../../components/ui/Badge'
+import { buildChannelDisplayNames, dedupePipelineParseAttempts, TRADE_ACTIVITY_FETCH_LIMIT, type TradeActivityLogRow } from '../../lib/tradeActivities'
+import {
   countSocialCopyOpensInRange,
   fetchManualSourceTradeLogs,
   fetchSocialCopyLogs,
@@ -80,7 +95,13 @@ import {
 } from '../../lib/socialCopyLogs'
 import { buildChannelSourceKinds, resolveSignalSourceKind, resolveSignalSourceName, SIGNAL_SOURCE_MARKS, type SignalSourceKind } from '../../lib/signalSourceMark'
 import { SignalSourceLogo } from '../../components/dashboard/SignalSourceLogo'
-import { TradeActivityCard } from '../../components/dashboard/TradeActivityCard'
+import { CopierLogDetailModal } from '../../components/dashboard/CopierLogDetailModal'
+import { MirrorLogDetailModal } from '../../components/dashboard/MirrorLogDetailModal'
+import { retrySignalApi } from '../../lib/retrySignalApi'
+import {
+  formatRetrySignalFailureReason,
+  isCopierSignalRetryEligible,
+} from '../../lib/retrySignalDisplay'
 import {
   DASHBOARD_ACTIVE_USER_KEY,
   DASHBOARD_CACHE_LEGACY_KEYS,
@@ -135,6 +156,7 @@ import { useLocale, useT } from '../../context/LocaleContext'
 import { useFormatMoney } from '../../hooks/useFormatMoney'
 import { lossTextClass, pnlSignTextClass } from '../../lib/pnlDisplay'
 import { formatMoneyWithCode } from '../../lib/currency'
+import { platformIconSrc } from '../../lib/activityRoute'
 import { interpolate } from '../../i18n/interpolate'
 import { ListenerLeaseOfflineBanner } from '../../components/dashboard/ListenerLeaseOfflineBanner'
 import {
@@ -158,9 +180,12 @@ const DASHBOARD_ATTRIBUTIONS_FETCH_LIMIT = 2000
 /** Dismiss metrics skeleton right after critical setState (was 5s and dominated cold load). */
 const DASHBOARD_METRICS_LOADER_DISMISS_MS = 150
 
-/** Shared column template for dashboard Copier Logs header + rows. */
+/**
+ * Shared Copier strip tracks (header + every row). Status is a fixed width so
+ * badges stay compact while Reason/Source/… stay vertically aligned across rows.
+ */
 const DASHBOARD_COPIER_LOG_GRID =
-  'grid grid-cols-[5.75rem_minmax(0,1fr)_minmax(4rem,0.85fr)_minmax(4.75rem,auto)_minmax(6.75rem,auto)] gap-x-3 items-center'
+  'grid grid-cols-[7.25rem_minmax(0,1.5fr)_minmax(0,1.1fr)_minmax(0,1fr)_minmax(5rem,0.75fr)_minmax(0,1.2fr)_minmax(5rem,0.7fr)_8rem] gap-x-3 items-center min-w-4xl'
 
 const DASHBOARD_CARD = APP_CARD
 
@@ -1046,6 +1071,12 @@ export function DashboardPage() {
   const tabSessionWarmRef = useRef(tabSessionWarmAtMount)
   const [stats, setStats] = useState<DashboardStats>(() => statsFromDashboardCache(bootCache))
   const [copierLogs, setCopierLogs] = useState<Signal[]>(() => bootCache?.copierLogs ?? [])
+  const [openCopierLogSignalIds, setOpenCopierLogSignalIds] = useState<Set<string>>(() => new Set())
+  const [recentClosedCopierDraft, setRecentClosedCopierDraft] = useState<ReturnType<typeof buildClosedCopierLogDraft> | null>(null)
+  const [copierLogDetail, setCopierLogDetail] = useState<DashboardCopierLogRow | null>(null)
+  const [closedCopierDetailSignal, setClosedCopierDetailSignal] = useState<Signal | null>(null)
+  const [copierLogRetryingId, setCopierLogRetryingId] = useState<string | null>(null)
+  const [copierLogToast, setCopierLogToast] = useState<string | null>(null)
   const [copierLogSymbols, setCopierLogSymbols] = useState<Record<string, string>>(
     () => bootCache?.copierLogSymbols ?? {},
   )
@@ -1344,57 +1375,60 @@ export function DashboardPage() {
     return out
   }, [linkedAccounts, linkedAccountBalances])
 
-  const visibleTradeActivities = useMemo(() => {
-    const channelActivities = buildDisplayableTradeActivities(
-      aiExpertLogs,
-      t.channelWorker,
-      t.management,
-      channelDisplayNames,
-      channelSourceKinds,
-    )
-    const socialActivities = buildSocialCopyTradeActivities(socialCopyLogs, t.management, {
-      source: t.copierLogs.socialSource ?? 'Social trading',
-      openMessage: t.copierLogs.socialOpenMessage ?? 'Copied {detail} from provider #{ticket}',
-      closeMessage: t.copierLogs.socialCloseMessage ?? 'Social copy of #{ticket} closed',
-      modifyMessage: t.copierLogs.socialModifyMessage ?? 'Social copy of #{ticket} updated',
-      otherMessage: t.copierLogs.socialOtherMessage ?? '{action} · social copy of #{ticket}',
-    })
-    const manualActivities = buildManualSourceTradeActivities(manualSourceLogs, t.management, {
-      source: t.copierLogs.manualExecutionSource ?? 'Manual Execution',
-      openMessage: t.copierLogs.manualOpenMessage ?? 'Opened {detail} #{ticket}',
-      closeMessage: t.copierLogs.manualCloseMessage ?? 'Closed #{ticket}',
-      modifyMessage: t.copierLogs.manualModifyMessage ?? 'Updated #{ticket}',
-      otherMessage: t.copierLogs.manualOtherMessage ?? '{action} · #{ticket}',
-    })
-    return [...channelActivities, ...socialActivities, ...manualActivities]
-      .sort((a, b) => (a.row.created_at < b.row.created_at ? 1 : a.row.created_at > b.row.created_at ? -1 : 0))
-      .slice(0, 20)
-  }, [aiExpertLogs, socialCopyLogs, manualSourceLogs, channelDisplayNames, channelSourceKinds, t.channelWorker, t.management, t.copierLogs])
-
-  /** Dashboard Copier Logs strip: channel signals + follower social copies + manual source trades. */
+  /** Dashboard Copier Logs strip: channel signals + follower social copies + manual source trades + newest Closed. */
   const visibleCopierLogRows = useMemo(() => {
     const socialLabel = t.copierLogs.socialSource ?? 'Social trading'
     const manualLabel = t.copierLogs.manualExecutionSource ?? 'Manual Execution'
+    const lifecycle = copierLifecycleLabelsFromCopierLogs(t.copierLogs)
     const signalRows: DashboardCopierLogRow[] = copierLogs.map(signal => {
       const parsed = signal.parsed_data as Record<string, unknown> | null
       const action = typeof parsed?.action === 'string' ? parsed.action : null
       const sourceKind = resolveSignalSourceKind(signal, channelSourceKinds)
       const channelName = resolveSignalSourceName(signal, channelDisplayNames, channelSourceKinds)
+      const displayStatus = resolveCopierDisplayStatus(
+        signal.status,
+        openCopierLogSignalIds,
+        signal,
+        { batchSignals: copierLogs },
+      )
+      const reason = resolveCopierDisplayReason(
+        displayStatus,
+        signal.skip_reason,
+        lifecycle,
+        t.copierLogs,
+      )
+      const raw = signal.raw_message?.trim()
+      const messagePreview = raw
+        ? (raw.length > 60 ? `${raw.slice(0, 60)}…` : raw)
+        : '(image)'
       return {
         key: signal.id,
         at: signal.created_at,
-        status: signal.status,
+        status: displayStatus,
         channelName,
         channelTitle: `${SIGNAL_SOURCE_MARKS[sourceKind].label} · ${channelName}`,
         symbol: copierLogSymbols[signal.id] ?? '—',
         action,
+        reasonShort: reason.length > 80 ? `${reason.slice(0, 80)}…` : reason,
+        reasonFull: reason,
+        messagePreview,
+        messageFull: raw ?? messagePreview,
         sourceKind,
         isSocial: false,
         isManual: false,
+        destinations: copierLogDestinations(linkedAccounts, signal.channel_id),
+        signal,
       }
     })
     const socialRows: DashboardCopierLogRow[] = socialCopyLogs.map(row => {
       const channelName = `${socialLabel} · ${row.channelName}`
+      const detail = [row.side, row.symbol, row.lot != null ? `${row.lot}` : null]
+        .filter(Boolean)
+        .join(' ')
+      const messagePreview = detail || row.action || '—'
+      const reasonShort = row.reason
+        ? (row.reason.length > 80 ? `${row.reason.slice(0, 80)}…` : row.reason)
+        : '—'
       return {
         key: `social:${row.id}`,
         at: row.createdAt,
@@ -1403,13 +1437,25 @@ export function DashboardPage() {
         channelTitle: channelName,
         symbol: row.symbol,
         action: row.action === 'open' ? (row.side ?? row.action) : row.action,
+        reasonShort,
+        messagePreview,
+        messageFull: row.reason ?? messagePreview,
         sourceKind: null,
         isSocial: true,
         isManual: false,
+        destinations: copierLogDestinationsFromAccountLabel(row.destinationAccount, linkedAccounts),
+        social: row,
       }
     })
     const manualRows: DashboardCopierLogRow[] = manualSourceLogs.map(row => {
       const channelName = `${manualLabel} · ${row.channelName}`
+      const detail = [row.side, row.symbol, row.lot != null ? `${row.lot}` : null]
+        .filter(Boolean)
+        .join(' ')
+      const messagePreview = detail || row.action || '—'
+      const reasonShort = row.reason
+        ? (row.reason.length > 80 ? `${row.reason.slice(0, 80)}…` : row.reason)
+        : '—'
       return {
         key: `manual:${row.id}`,
         at: row.createdAt,
@@ -1418,15 +1464,96 @@ export function DashboardPage() {
         channelTitle: channelName,
         symbol: row.symbol,
         action: row.action === 'open' ? (row.side ?? row.action) : row.action,
+        reasonShort,
+        messagePreview,
+        messageFull: row.reason ?? messagePreview,
         sourceKind: null,
         isSocial: false,
         isManual: true,
+        destinations: copierLogDestinationsFromAccountLabel(row.destinationAccount ?? row.channelName, linkedAccounts),
+        manual: row,
       }
     })
-    return [...signalRows, ...socialRows, ...manualRows]
+    const closedRows: DashboardCopierLogRow[] = recentClosedCopierDraft
+      ? [{
+          key: recentClosedCopierDraft.key,
+          at: recentClosedCopierDraft.at,
+          status: 'closed',
+          channelName: recentClosedCopierDraft.channelId
+            ? (channelDisplayNames[recentClosedCopierDraft.channelId] ?? 'Channel')
+            : 'Channel',
+          channelTitle: recentClosedCopierDraft.channelId
+            ? (channelDisplayNames[recentClosedCopierDraft.channelId] ?? 'Channel')
+            : 'Channel',
+          symbol: recentClosedCopierDraft.symbol,
+          action: recentClosedCopierDraft.action,
+          reasonShort: recentClosedCopierDraft.reason.length > 80
+            ? `${recentClosedCopierDraft.reason.slice(0, 80)}…`
+            : recentClosedCopierDraft.reason,
+          reasonFull: recentClosedCopierDraft.reason,
+          messagePreview: recentClosedCopierDraft.messagePreview,
+          messageFull: recentClosedCopierDraft.messageFull,
+          sourceKind: recentClosedCopierDraft.channelId
+            ? (channelSourceKinds[recentClosedCopierDraft.channelId] ?? null)
+            : null,
+          isSocial: false,
+          isManual: false,
+          destinations: copierLogDestinations(linkedAccounts, recentClosedCopierDraft.channelId),
+          closed: recentClosedCopierDraft,
+        }]
+      : []
+    return [...signalRows, ...socialRows, ...manualRows, ...closedRows]
       .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
-      .slice(0, 10)
-  }, [copierLogs, socialCopyLogs, manualSourceLogs, channelDisplayNames, channelSourceKinds, copierLogSymbols, t.copierLogs.socialSource, t.copierLogs.manualExecutionSource])
+      .slice(0, 1)
+  }, [
+    copierLogs,
+    socialCopyLogs,
+    manualSourceLogs,
+    openCopierLogSignalIds,
+    recentClosedCopierDraft,
+    channelDisplayNames,
+    channelSourceKinds,
+    copierLogSymbols,
+    linkedAccounts,
+    t.copierLogs,
+  ])
+
+  useEffect(() => {
+    const closed = copierLogDetail?.closed
+    if (!closed?.signalId || !user?.id) {
+      setClosedCopierDetailSignal(null)
+      return
+    }
+    let cancelled = false
+    setClosedCopierDetailSignal(null)
+    void supabase
+      .from('signals')
+      .select('*')
+      .eq('id', closed.signalId)
+      .eq('user_id', user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setClosedCopierDetailSignal((data as Signal | null) ?? null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [copierLogDetail?.closed?.signalId, copierLogDetail?.closed?.key, user?.id])
+
+  const closedCopierDetailDisplay = useMemo(() => {
+    const closed = copierLogDetail?.closed
+    if (!closed || !user?.id) return null
+    const stub = signalStubFromClosedDraft(closed, user.id)
+    return {
+      signal: closedCopierDetailSignal ?? stub,
+      channelName: copierLogDetail.channelName,
+      sourceKind: copierLogDetail.sourceKind,
+      symbol: closed.symbol,
+      reason: closed.reason,
+      destinations: copierLogDetail.destinations,
+      closedAt: closed.at,
+    }
+  }, [copierLogDetail, closedCopierDetailSignal, user?.id])
 
   const [linkedAccountSortKey, setLinkedAccountSortKey] = useState<LinkedAccountSortKey | null>(null)
   const [linkedAccountSortDir, setLinkedAccountSortDir] = useState<SortDirection>('asc')
@@ -1523,11 +1650,11 @@ export function DashboardPage() {
     // First paint waits only on lightweight Supabase reads. MT history, execution
     // logs, social/manual logs, attributions, and symbol lookup run after the
     // metrics skeleton can dismiss (see enrichDashboard below).
-    const [channelsRes, tradesRes, todaySignalsRes, yesterdaySignalsRes, logsRes, channelsMetaRes] = await Promise.all([
+    const [channelsRes, tradesRes, todaySignalsRes, yesterdaySignalsRes, logsRes, channelsMetaRes, openTradesForLogRes, newestClosedRes] = await Promise.all([
       supabase.from('telegram_channels').select('id').eq('user_id', user!.id).eq('is_active', true),
       supabase
         .from('trades')
-        .select('id,symbol,direction,profit,lot_size,status,opened_at,closed_at,broker_account_id,signal_id,metaapi_order_id,telegram_channel_id')
+        .select('id,symbol,direction,profit,lot_size,status,opened_at,closed_at,close_reason,sl,tp,close_price,broker_account_id,signal_id,metaapi_order_id,telegram_channel_id')
         .eq('user_id', user!.id)
         .order('opened_at', { ascending: false })
         .limit(DASHBOARD_TRADES_FETCH_LIMIT),
@@ -1541,11 +1668,48 @@ export function DashboardPage() {
         .order('created_at', { ascending: false })
         .limit(10),
       supabase.from('telegram_channels').select('id,display_name,channel_username,source_kind').eq('user_id', user!.id),
+      supabase
+        .from('trades')
+        .select('signal_id')
+        .eq('user_id', user!.id)
+        .in('status', ['open', 'pending']),
+      supabase
+        .from('trades')
+        .select('id,signal_id,telegram_channel_id,symbol,direction,closed_at,close_reason,sl,tp,close_price')
+        .eq('user_id', user!.id)
+        .eq('status', 'closed')
+        .not('closed_at', 'is', null)
+        .order('closed_at', { ascending: false })
+        .limit(1),
     ])
 
     const logs = ((logsRes.data ?? []) as Signal[]).filter(s => !isNonTradeSkipReason(s.skip_reason))
 
     const allTrades = (tradesRes.data ?? []) as Trade[]
+    setOpenCopierLogSignalIds(
+      buildOpenSignalIdSet((openTradesForLogRes.data ?? []) as { signal_id?: string | null }[]),
+    )
+    const lifecycle = copierLifecycleLabelsFromCopierLogs(t.copierLogs)
+    const newestClosed = ((newestClosedRes.data ?? []) as Trade[])[0]
+    setRecentClosedCopierDraft(
+      newestClosed?.closed_at
+        ? buildClosedCopierLogDraft(
+          {
+            id: newestClosed.id,
+            signal_id: newestClosed.signal_id,
+            telegram_channel_id: newestClosed.telegram_channel_id,
+            symbol: newestClosed.symbol,
+            direction: newestClosed.direction,
+            closed_at: newestClosed.closed_at,
+            close_reason: newestClosed.close_reason,
+            sl: newestClosed.sl,
+            tp: newestClosed.tp,
+            close_price: newestClosed.close_price ?? null,
+          },
+          lifecycle,
+        )
+        : null,
+    )
     const tradeSignalIds = [...new Set(
       allTrades
         .map(t => t.signal_id)
@@ -2810,6 +2974,7 @@ export function DashboardPage() {
       <PageHeader
         title={dashboardGreeting}
         titleClassName="text-2xl"
+        actions={<CopierStatusCard accounts={linkedAccounts} />}
       />
       {showDashboardLoader ? (
         <DashboardMetricsSkeleton message={t.dashboard.loadingMetrics} />
@@ -2899,6 +3064,8 @@ export function DashboardPage() {
           <OverviewStat
             label={t.dashboard.openTrades}
             value={String(stats.openTrades)}
+            addTo="/manage-signals"
+            addLabel={t.dashboard.manageTrades}
           />
           <OverviewStat
             label={t.dashboard.tradingAccountsConnected}
@@ -2912,8 +3079,6 @@ export function DashboardPage() {
           />
       </div>
 
-      <CopierStatusCard accounts={linkedAccounts} />
-
       {/*
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-5">
         <TradeVolumeChart data={displayAnalytics.tradeVolume7Day} loading={chartsLoading} />
@@ -2924,97 +3089,84 @@ export function DashboardPage() {
       </div>
       */}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-5">
-          <div className={`${DASHBOARD_CARD} min-w-0 overflow-hidden`}>
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100/90 px-5 py-4 dark:border-white/8">
-            <div className="flex items-center gap-2">
-              <h2 className="text-[15px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">{t.dashboard.tradeActivities}</h2>
-              <InfoTooltip text={t.dashboard.tradeActivitiesHint} />
-            </div>
-            <button
-              type="button"
-              onClick={() => navigate('/activities')}
-              className={DASHBOARD_SECTION_LINK}
-            >
-              {t.dashboard.management}
-              <ChevronRight className="h-3.5 w-3.5" />
-            </button>
+      {/* Copier — full-width, latest rows like /copier-logs */}
+      <div className={`${DASHBOARD_CARD} min-w-0 overflow-hidden`}>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100/90 px-5 py-4 dark:border-white/8">
+          <div className="flex items-center gap-2">
+            <h2 className="text-[15px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">{t.dashboard.copierLogs}</h2>
+            <InfoTooltip text={t.copierLogs.subtitle} />
           </div>
-
-          {visibleTradeActivities.length === 0 && chartsEmpty && aiExpertLogs.length === 0 && socialCopyLogs.length === 0 && manualSourceLogs.length === 0 ? (
-            <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="px-5 py-3">
-                  <div className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse w-3/4 mb-1.5" />
-                  <div className="h-3 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse w-1/3" />
-                </div>
-              ))}
-            </div>
-          ) : visibleTradeActivities.length === 0 ? (
-            <div className="m-4 rounded-2xl bg-neutral-50 px-4 py-10 text-center text-sm text-neutral-500 dark:bg-white/3 dark:text-neutral-400">
-              {t.dashboard.noTradeActivities}
-            </div>
-          ) : (
-            <div className="divide-y divide-neutral-100 dark:divide-neutral-800 max-h-96 overflow-y-auto">
-              {visibleTradeActivities.map(activity => (
-                <TradeActivityCard key={activity.row.id} activity={activity} variant="compact" />
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Copier Logs */}
-        <div className={`${DASHBOARD_CARD} min-w-0 overflow-hidden`}>
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100/90 px-5 py-4 dark:border-white/8">
-            <div className="flex items-center gap-2">
-              <h2 className="text-[15px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">{t.dashboard.copierLogs}</h2>
-              <InfoTooltip text={t.copierLogs.subtitle} />
-            </div>
-            <button
-              type="button"
-              onClick={() => navigate('/copier-logs')}
-              className={DASHBOARD_SECTION_LINK}
-            >
-              {t.dashboard.viewAll}
-              <ChevronRight className="h-3.5 w-3.5" />
-            </button>
-          </div>
-
-          <div className="overflow-x-auto">
-          {/* Table header */}
-          <div
-            className={`${DASHBOARD_COPIER_LOG_GRID} min-w-md border-b border-neutral-100/90 px-5 py-2.5 ${APP_SECTION_LABEL} dark:border-white/8`}
+          <button
+            type="button"
+            onClick={() => navigate('/copier-logs')}
+            className={DASHBOARD_SECTION_LINK}
           >
-            <span>{t.copierLogs.colStatus}</span>
-            <span className="min-w-0">{t.copierLogs.colChannel}</span>
-            <span>{t.copierLogs.colSymbol}</span>
-            <span>{t.copierLogs.colType}</span>
-            <span className="text-right">{t.copierLogs.colTime}</span>
-          </div>
-
-          {visibleCopierLogRows.length === 0 && chartsEmpty ? (
-            <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
-              {[...Array(4)].map((_, i) => (
-                <div key={i} className={`${DASHBOARD_COPIER_LOG_GRID} px-5 py-3`}>
-                  {[...Array(5)].map((_, j) => (
-                    <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse min-w-0" />
-                  ))}
-                </div>
-              ))}
-            </div>
-          ) : visibleCopierLogRows.length === 0 ? (
-            <div className="m-4 flex flex-col items-center justify-center rounded-2xl bg-neutral-50 px-4 py-16 text-center dark:bg-white/3">
-              <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400">{t.dashboard.noData}</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-neutral-100 dark:divide-neutral-800 max-h-80 overflow-y-auto min-w-md">
-              {visibleCopierLogRows.map(row => (
-                <LogRow key={row.key} row={row} />
-              ))}
-            </div>
-          )}
-          </div>
+            {t.dashboard.viewAll}
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
         </div>
+
+        {visibleCopierLogRows.length === 0 && chartsEmpty ? (
+          <>
+            <div className="md:hidden space-y-3 px-4 py-4">
+              <div className="h-5 w-24 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
+              <div className="h-4 w-full bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
+              <div className="h-4 w-2/3 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
+            </div>
+            <div className={`hidden md:grid ${DASHBOARD_COPIER_LOG_GRID} px-4 sm:px-5 py-3.5`}>
+              {[...Array(8)].map((_, j) => (
+                <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse min-w-0" />
+              ))}
+            </div>
+          </>
+        ) : visibleCopierLogRows.length === 0 ? (
+          <div className="m-4 flex flex-col items-center justify-center rounded-2xl bg-neutral-50 px-4 py-16 text-center dark:bg-white/3">
+            <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400">{t.dashboard.noData}</p>
+          </div>
+        ) : (
+          <>
+            <div className="md:hidden divide-y divide-neutral-100 dark:divide-neutral-800">
+              {visibleCopierLogRows.map(row => (
+                <LogCard
+                  key={`m-${row.key}`}
+                  row={row}
+                  onOpenDetail={
+                    row.signal || row.social || row.manual || row.closed
+                      ? () => setCopierLogDetail(row)
+                      : undefined
+                  }
+                />
+              ))}
+            </div>
+            <div className="hidden md:block overflow-x-auto">
+              <div
+                className={`${DASHBOARD_COPIER_LOG_GRID} border-b border-neutral-100/90 px-4 sm:px-5 py-2.5 text-xs font-medium uppercase tracking-[0.06em] text-neutral-500 dark:text-neutral-400 dark:border-white/8`}
+              >
+                <span className="min-w-0">{t.copierLogs.colStatus}</span>
+                <span className="min-w-0">{t.copierLogs.colReason}</span>
+                <span className="min-w-0">{t.copierLogs.colChannel}</span>
+                <span className="min-w-0">{t.copierLogs.colDestination}</span>
+                <span className="min-w-0">{t.copierLogs.colSymbol}</span>
+                <span className="min-w-0">{t.copierLogs.colMessage}</span>
+                <span className="min-w-0">{t.copierLogs.colType}</span>
+                <span className="min-w-0 text-right">{t.copierLogs.colTime}</span>
+              </div>
+              <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                {visibleCopierLogRows.map(row => (
+                  <LogRow
+                    key={row.key}
+                    row={row}
+                    onOpenDetail={
+                      row.signal || row.social || row.manual || row.closed
+                        ? () => setCopierLogDetail(row)
+                        : undefined
+                    }
+                  />
+                ))}
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Linked Accounts */}
@@ -3048,81 +3200,20 @@ export function DashboardPage() {
           </div>
         ) : null}
 
-        <div className="overflow-x-auto">
-        <div className="min-w-208 lg:min-w-0">
-        <div className="hidden lg:grid grid-cols-9 gap-2 border-b border-neutral-100 px-5 py-2.5 text-[11px] font-medium uppercase tracking-[0.06em] text-neutral-900 dark:text-neutral-50 dark:border-neutral-800/80">
-          <LinkedAccountSortHeader
-            label={la.colAccount}
-            sortKey="account"
-            activeKey={linkedAccountSortKey}
-            direction={linkedAccountSortDir}
-            onSort={onLinkedAccountSort}
-          />
-          <LinkedAccountSortHeader
-            label={la.colBroker}
-            sortKey="broker"
-            activeKey={linkedAccountSortKey}
-            direction={linkedAccountSortDir}
-            onSort={onLinkedAccountSort}
-          />
-          <LinkedAccountSortHeader
-            label={la.colAccountType}
-            sortKey="accountType"
-            activeKey={linkedAccountSortKey}
-            direction={linkedAccountSortDir}
-            onSort={onLinkedAccountSort}
-          />
-          <LinkedAccountSortHeader
-            label={la.colBalance}
-            sortKey="balance"
-            activeKey={linkedAccountSortKey}
-            direction={linkedAccountSortDir}
-            onSort={onLinkedAccountSort}
-          />
-          <LinkedAccountSortHeader
-            label={la.colPnl}
-            sortKey="pnl"
-            activeKey={linkedAccountSortKey}
-            direction={linkedAccountSortDir}
-            onSort={onLinkedAccountSort}
-            title={la.colPnlHint}
-          />
-          <LinkedAccountSortHeader
-            label={la.colOpenPnl}
-            sortKey="openPnl"
-            activeKey={linkedAccountSortKey}
-            direction={linkedAccountSortDir}
-            onSort={onLinkedAccountSort}
-            title={la.colOpenPnlHint}
-          />
-          <LinkedAccountSortHeader
-            label={la.colWinRate}
-            sortKey="winRate"
-            activeKey={linkedAccountSortKey}
-            direction={linkedAccountSortDir}
-            onSort={onLinkedAccountSort}
-          />
-          <LinkedAccountSortHeader
-            label={la.colDd}
-            sortKey="dd"
-            activeKey={linkedAccountSortKey}
-            direction={linkedAccountSortDir}
-            onSort={onLinkedAccountSort}
-          />
-          <LinkedAccountSortHeader
-            label={la.colStatus}
-            sortKey="status"
-            activeKey={linkedAccountSortKey}
-            direction={linkedAccountSortDir}
-            onSort={onLinkedAccountSort}
-            align="right"
-          />
-        </div>
-
         {linkedAccounts.length === 0 && chartsEmpty ? (
           <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
             {[...Array(3)].map((_, i) => (
-              <div key={i} className="hidden lg:flex px-4 sm:px-5 py-3 gap-4">
+              <div key={i} className="px-4 sm:px-5 py-4 space-y-3 lg:hidden">
+                <div className="h-5 w-32 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
+                <div className="grid grid-cols-2 gap-3">
+                  {[...Array(4)].map((_, j) => (
+                    <div key={j} className="h-8 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
+                  ))}
+                </div>
+              </div>
+            ))}
+            {[...Array(3)].map((_, i) => (
+              <div key={`d-${i}`} className="hidden lg:flex px-4 sm:px-5 py-3 gap-4">
                 {[...Array(9)].map((_, j) => (
                   <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse flex-1" />
                 ))}
@@ -3132,30 +3223,123 @@ export function DashboardPage() {
         ) : linkedAccounts.length === 0 ? (
           <div className="px-5 py-8 text-sm text-neutral-900 dark:text-neutral-50">{la.empty}</div>
         ) : (
-          <div className="divide-y divide-neutral-100 dark:divide-neutral-800"> 
-            {displayedLinkedAccounts.map(account => (
-              <LinkedAccountRow
-                key={account.id}
-                account={account}
-                accountSummary={linkedAccountBalances[account.id]}
-                performance={linkedAccountPerformance[account.id]}
-                connectPnl={connectPnlByAccountId[account.id] ?? null}
-                onToggleActive={is_active => { void toggleBrokerActive(account.id, is_active) }}
-                toggleDisabled={togglingBrokerId === account.id}
-                showReconnect={brokerCanReconnect(account)}
-                isReconnecting={isBrokerReconnecting(account.id)}
-                onReconnect={() => { void _reconnectBroker(account.id) }}
-                onOpenStats={() =>
-                  navigate(`/dashboard/broker/${account.id}`, {
-                    state: { accountPreview: brokerStatsPreviewFromAccount(account) },
-                  })
-                }
-              />
-            ))}
-          </div>
+          <>
+            <div className="lg:hidden divide-y divide-neutral-100 dark:divide-neutral-800">
+              {displayedLinkedAccounts.map(account => (
+                <LinkedAccountCard
+                  key={`m-${account.id}`}
+                  account={account}
+                  accountSummary={linkedAccountBalances[account.id]}
+                  performance={linkedAccountPerformance[account.id]}
+                  connectPnl={connectPnlByAccountId[account.id] ?? null}
+                  onToggleActive={is_active => { void toggleBrokerActive(account.id, is_active) }}
+                  toggleDisabled={togglingBrokerId === account.id}
+                  showReconnect={brokerCanReconnect(account)}
+                  isReconnecting={isBrokerReconnecting(account.id)}
+                  onReconnect={() => { void _reconnectBroker(account.id) }}
+                  onOpenStats={() =>
+                    navigate(`/dashboard/broker/${account.id}`, {
+                      state: { accountPreview: brokerStatsPreviewFromAccount(account) },
+                    })
+                  }
+                />
+              ))}
+            </div>
+            <div className="hidden lg:block overflow-x-auto">
+              <div className="min-w-208 xl:min-w-0">
+                <div className="grid grid-cols-9 gap-2 border-b border-neutral-100 px-5 py-2.5 text-[11px] font-medium uppercase tracking-[0.06em] text-neutral-900 dark:text-neutral-50 dark:border-neutral-800/80">
+                  <LinkedAccountSortHeader
+                    label={la.colAccount}
+                    sortKey="account"
+                    activeKey={linkedAccountSortKey}
+                    direction={linkedAccountSortDir}
+                    onSort={onLinkedAccountSort}
+                  />
+                  <LinkedAccountSortHeader
+                    label={la.colBroker}
+                    sortKey="broker"
+                    activeKey={linkedAccountSortKey}
+                    direction={linkedAccountSortDir}
+                    onSort={onLinkedAccountSort}
+                  />
+                  <LinkedAccountSortHeader
+                    label={la.colAccountType}
+                    sortKey="accountType"
+                    activeKey={linkedAccountSortKey}
+                    direction={linkedAccountSortDir}
+                    onSort={onLinkedAccountSort}
+                  />
+                  <LinkedAccountSortHeader
+                    label={la.colBalance}
+                    sortKey="balance"
+                    activeKey={linkedAccountSortKey}
+                    direction={linkedAccountSortDir}
+                    onSort={onLinkedAccountSort}
+                  />
+                  <LinkedAccountSortHeader
+                    label={la.colPnl}
+                    sortKey="pnl"
+                    activeKey={linkedAccountSortKey}
+                    direction={linkedAccountSortDir}
+                    onSort={onLinkedAccountSort}
+                    title={la.colPnlHint}
+                  />
+                  <LinkedAccountSortHeader
+                    label={la.colOpenPnl}
+                    sortKey="openPnl"
+                    activeKey={linkedAccountSortKey}
+                    direction={linkedAccountSortDir}
+                    onSort={onLinkedAccountSort}
+                    title={la.colOpenPnlHint}
+                  />
+                  <LinkedAccountSortHeader
+                    label={la.colWinRate}
+                    sortKey="winRate"
+                    activeKey={linkedAccountSortKey}
+                    direction={linkedAccountSortDir}
+                    onSort={onLinkedAccountSort}
+                  />
+                  <LinkedAccountSortHeader
+                    label={la.colDd}
+                    sortKey="dd"
+                    activeKey={linkedAccountSortKey}
+                    direction={linkedAccountSortDir}
+                    onSort={onLinkedAccountSort}
+                  />
+                  <LinkedAccountSortHeader
+                    label={la.colStatus}
+                    sortKey="status"
+                    activeKey={linkedAccountSortKey}
+                    direction={linkedAccountSortDir}
+                    onSort={onLinkedAccountSort}
+                    align="right"
+                  />
+                </div>
+                <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                  {displayedLinkedAccounts.map(account => (
+                    <LinkedAccountRow
+                      key={account.id}
+                      account={account}
+                      accountSummary={linkedAccountBalances[account.id]}
+                      performance={linkedAccountPerformance[account.id]}
+                      connectPnl={connectPnlByAccountId[account.id] ?? null}
+                      onToggleActive={is_active => { void toggleBrokerActive(account.id, is_active) }}
+                      toggleDisabled={togglingBrokerId === account.id}
+                      showReconnect={brokerCanReconnect(account)}
+                      isReconnecting={isBrokerReconnecting(account.id)}
+                      onReconnect={() => { void _reconnectBroker(account.id) }}
+                      onOpenStats={() =>
+                        navigate(`/dashboard/broker/${account.id}`, {
+                          state: { accountPreview: brokerStatsPreviewFromAccount(account) },
+                        })
+                      }
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </>
         )}
-        </div>
-        </div>
       </div>
 
         </>
@@ -3171,6 +3355,117 @@ export function DashboardPage() {
         onClose={() => setOpenPnlModalOpen(false)}
         onRefresh={() => loadDashboardLiveRef.current()}
       />
+
+      {copierLogToast ? (
+        <div className="fixed bottom-4 right-4 z-50 max-w-sm rounded-lg bg-neutral-900 text-white text-sm px-4 py-3 shadow-lg">
+          {copierLogToast}
+        </div>
+      ) : null}
+
+      {copierLogDetail?.signal && !copierLogDetail.closed ? (
+        <CopierLogDetailModal
+          signal={copierLogDetail.signal}
+          channelName={copierLogDetail.channelName}
+          sourceKind={copierLogDetail.sourceKind}
+          symbol={copierLogDetail.symbol}
+          destinations={copierLogDetail.destinations}
+          status={{
+            variant: (
+              {
+                executed: 'success',
+                open: 'success',
+                closed: 'neutral',
+                skipped: 'warning',
+                failed: 'error',
+                pending: 'neutral',
+                parsed: 'primary',
+              } as Record<string, 'success' | 'warning' | 'error' | 'neutral' | 'primary'>
+            )[copierLogDetail.status] ?? 'neutral',
+            label: (
+              {
+                executed: t.copierLogs.statusExecuted,
+                open: t.copierLogs.statusOpen,
+                closed: t.copierLogs.statusClosed,
+                skipped: t.copierLogs.statusSkipped,
+                failed: t.copierLogs.statusFailed,
+                pending: t.copierLogs.statusPending,
+                parsed: t.copierLogs.statusParsed,
+              } as Record<string, string>
+            )[copierLogDetail.status] ?? copierLogDetail.status,
+            className: copierLogDetail.status === 'open'
+              ? 'bg-teal-100 text-teal-900 dark:bg-teal-900/50 dark:text-teal-200'
+              : undefined,
+          }}
+          displayReason={copierLogDetail.reasonFull ?? copierLogDetail.reasonShort}
+          onClose={() => setCopierLogDetail(null)}
+          retryEligible={isCopierSignalRetryEligible(copierLogDetail.signal)}
+          isRetrying={copierLogRetryingId === copierLogDetail.signal.id}
+          onRetry={isCopierSignalRetryEligible(copierLogDetail.signal)
+            ? () => {
+                const signalId = copierLogDetail.signal!.id
+                void (async () => {
+                  setCopierLogRetryingId(signalId)
+                  try {
+                    const result = await retrySignalApi.retry(signalId)
+                    if (!result.ok) {
+                      setCopierLogToast(formatRetrySignalFailureReason(result.reason, t.copierLogs))
+                    } else {
+                      setCopierLogToast(t.copierLogs.retrySuccess)
+                    }
+                    window.setTimeout(() => setCopierLogToast(null), 5000)
+                  } catch (err) {
+                    setCopierLogToast(err instanceof Error ? err.message : t.copierLogs.retryFailedGeneric)
+                    window.setTimeout(() => setCopierLogToast(null), 5000)
+                  } finally {
+                    setCopierLogRetryingId(null)
+                  }
+                })()
+              }
+            : undefined}
+        />
+      ) : null}
+
+      {closedCopierDetailDisplay ? (
+        <CopierLogDetailModal
+          signal={closedCopierDetailDisplay.signal}
+          channelName={closedCopierDetailDisplay.channelName}
+          sourceKind={closedCopierDetailDisplay.sourceKind}
+          symbol={closedCopierDetailDisplay.symbol}
+          status={{
+            variant: 'neutral',
+            label: t.copierLogs.statusClosed,
+          }}
+          displayReason={closedCopierDetailDisplay.reason}
+          destinations={closedCopierDetailDisplay.destinations}
+          closedAt={closedCopierDetailDisplay.closedAt}
+          onClose={() => setCopierLogDetail(null)}
+          retryEligible={false}
+        />
+      ) : null}
+
+      {copierLogDetail?.social ? (
+        <MirrorLogDetailModal
+          row={copierLogDetail.social}
+          status={{
+            variant: 'success',
+            label: t.copierLogs.statusExecuted,
+          }}
+          onClose={() => setCopierLogDetail(null)}
+          variant="social"
+        />
+      ) : null}
+
+      {copierLogDetail?.manual ? (
+        <MirrorLogDetailModal
+          row={copierLogDetail.manual}
+          status={{
+            variant: 'success',
+            label: t.copierLogs.statusExecuted,
+          }}
+          onClose={() => setCopierLogDetail(null)}
+          variant="manual"
+        />
+      ) : null}
     </PageShell>
   )
 }
@@ -3247,61 +3542,233 @@ type DashboardCopierLogRow = {
   channelTitle: string
   symbol: string
   action: string | null
+  reasonShort: string
+  reasonFull?: string
+  messagePreview: string
+  messageFull: string
   sourceKind: SignalSourceKind | null
   isSocial: boolean
   isManual: boolean
+  destinations: CopierLogDestination[]
+  signal?: Signal
+  social?: SocialCopyLogRow
+  manual?: SocialCopyLogRow
+  closed?: CopierClosedLogDraft
 }
 
-function LogRow({ row }: { row: DashboardCopierLogRow }) {
+type DashboardLogStatusVariant = 'success' | 'warning' | 'error' | 'neutral' | 'primary'
+
+function DashboardDestinationCell({ destinations }: { destinations: readonly CopierLogDestination[] }) {
+  const summary = copierLogDestinationSummary(destinations)
+  if (!summary.label || summary.label === '—') {
+    return <span className="min-w-0 text-sm text-neutral-500 dark:text-neutral-400">—</span>
+  }
+  return (
+    <span
+      className="flex min-w-0 items-center gap-1.5 text-sm text-neutral-900 dark:text-neutral-50"
+      title={summary.label}
+    >
+      <CopierDestinationLogos icons={summary.icons} />
+      <span className="min-w-0 truncate">{summary.label}</span>
+    </span>
+  )
+}
+
+function copierLogStatusConfig(t: ReturnType<typeof useT>) {
+  return {
+    executed: { variant: 'success' as const, label: t.copierLogs.statusExecuted },
+    open: {
+      variant: 'success' as const,
+      label: t.copierLogs.statusOpen,
+      className: 'bg-teal-100 text-teal-900 dark:bg-teal-900/50 dark:text-teal-200',
+    },
+    closed: { variant: 'neutral' as const, label: t.copierLogs.statusClosed },
+    skipped: { variant: 'warning' as const, label: t.copierLogs.statusSkipped },
+    failed: { variant: 'error' as const, label: t.copierLogs.statusFailed },
+    pending: { variant: 'neutral' as const, label: t.copierLogs.statusPending },
+    parsed: { variant: 'primary' as const, label: t.copierLogs.statusParsed },
+  } satisfies Record<string, { variant: DashboardLogStatusVariant; label: string; className?: string }>
+}
+
+function formatCopierLogTime(iso: string): string {
+  return new Date(iso).toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function CopierSourceMark({ row }: { row: DashboardCopierLogRow }) {
+  if (row.isSocial) {
+    return <Users className="h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50" aria-hidden />
+  }
+  if (row.isManual) {
+    return <Hand className="h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50" aria-hidden />
+  }
+  if (row.sourceKind) {
+    return <SignalSourceLogo kind={row.sourceKind} className="h-4 w-4" />
+  }
+  return null
+}
+
+/** Mobile Copier strip card — stacked fields instead of the wide desktop grid. */
+function LogCard({
+  row,
+  onOpenDetail,
+}: {
+  row: DashboardCopierLogRow
+  onOpenDetail?: () => void
+}) {
   const t = useT()
   const action = row.action
+  const viewDetailsLabel = t.copierLogs.detailModal?.viewDetails ?? 'View details'
+  const status = copierLogStatusConfig(t)[row.status]
+    ?? { variant: 'neutral' as const, label: row.status }
+  const typeLabel = action ? action.replace(/_/g, ' ') : null
+  const timeLabel = row.at ? formatCopierLogTime(row.at) : '—'
 
-  const statusConfig: Record<string, { color: string; label: string }> = {
-    executed: { color: 'bg-green-100 text-neutral-950 dark:bg-green-100 dark:text-neutral-950', label: t.copierLogs.statusExecuted },
-    skipped:  { color: 'text-warning-800 bg-warning-50 dark:text-amber-100! dark:bg-amber-900!', label: t.copierLogs.statusSkipped },
-    failed:   { color: 'text-error-800 bg-error-50 dark:text-error-300 dark:bg-error-950/70', label: t.copierLogs.statusFailed },
-    pending:  { color: 'text-neutral-900 bg-neutral-100 dark:text-neutral-50 dark:bg-neutral-800', label: t.copierLogs.statusPending },
-    parsed:   { color: 'text-green-500 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60', label: t.copierLogs.statusParsed },
-  }
+  return (
+    <article
+      className={clsx(
+        'group px-4 py-4 transition-colors',
+        APP_ROW_HOVER,
+        onOpenDetail && 'cursor-pointer',
+      )}
+      onClick={onOpenDetail}
+      onKeyDown={onOpenDetail ? (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onOpenDetail()
+        }
+      } : undefined}
+      role={onOpenDetail ? 'button' : undefined}
+      tabIndex={onOpenDetail ? 0 : undefined}
+      aria-label={onOpenDetail ? viewDetailsLabel : undefined}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-base font-semibold text-neutral-900 dark:text-neutral-50 truncate">{row.symbol}</p>
+          <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-neutral-900 dark:text-neutral-50" title={row.channelTitle}>
+            <CopierSourceMark row={row} />
+            <span className="truncate">{row.channelName}</span>
+          </p>
+          <div className="mt-1.5">
+            <DashboardDestinationCell destinations={row.destinations} />
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <Badge variant={status.variant} size="sm" className={clsx('w-fit', status.className)}>{status.label}</Badge>
+          <span className="text-xs tabular-nums text-neutral-900 dark:text-neutral-50 whitespace-nowrap">{timeLabel}</span>
+        </div>
+      </div>
 
-  const s = statusConfig[row.status] ?? { color: 'text-neutral-900 dark:text-neutral-50 bg-neutral-100 dark:bg-neutral-800', label: row.status }
-  const isBuy = action === 'buy'
+      {typeLabel ? (
+        <p className={clsx(
+          'mt-3 text-sm font-medium uppercase',
+          action === 'buy' ? 'text-green-400' : action === 'sell' ? 'text-error-600' : 'text-neutral-900 dark:text-neutral-50',
+        )}>
+          {typeLabel}
+        </p>
+      ) : null}
 
+      {row.messagePreview && row.messagePreview !== '—' ? (
+        <p className="mt-2 line-clamp-2 text-sm text-neutral-900 dark:text-neutral-50" title={row.messageFull}>
+          {row.messagePreview}
+        </p>
+      ) : null}
+
+      {row.reasonShort && row.reasonShort !== '—' ? (
+        <p className="mt-2 text-xs text-neutral-900 dark:text-neutral-50">
+          <span className="font-medium">{t.copierLogs.colReason}: </span>
+          <span className="underline decoration-dotted underline-offset-2">{row.reasonShort}</span>
+        </p>
+      ) : null}
+
+      {onOpenDetail ? (
+        <p className="mt-3 flex items-center justify-end gap-1 text-xs font-medium text-neutral-500 dark:text-neutral-400">
+          {viewDetailsLabel}
+          <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+        </p>
+      ) : null}
+    </article>
+  )
+}
+
+function LogRow({
+  row,
+  onOpenDetail,
+}: {
+  row: DashboardCopierLogRow
+  onOpenDetail?: () => void
+}) {
+  const t = useT()
+  const action = row.action
+  const viewDetailsLabel = t.copierLogs.detailModal?.viewDetails ?? 'View details'
+  const status = copierLogStatusConfig(t)[row.status]
+    ?? { variant: 'neutral' as const, label: row.status }
   const typeLabel = action ? action.replace(/_/g, ' ') : '—'
 
   return (
-    <div className={clsx(DASHBOARD_COPIER_LOG_GRID, 'px-5 py-3 transition-colors', APP_ROW_HOVER)}>
-      <span className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-sm font-regular ${s.color}`}>
-        {s.label}
-      </span>
-      <span className="flex min-w-0 items-center gap-2 text-sm font-regular text-neutral-900 dark:text-neutral-50" title={row.channelTitle}>
-        {row.isSocial ? (
-          <Users className="h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50" aria-hidden />
-        ) : row.isManual ? (
-          <Hand className="h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50" aria-hidden />
-        ) : row.sourceKind ? (
-          <SignalSourceLogo kind={row.sourceKind} />
-        ) : null}
-        <span className="truncate">{row.channelName}</span>
-      </span>
-      <span className="min-w-0 text-base font-regular text-neutral-900 dark:text-neutral-50 truncate" title={row.symbol}>{row.symbol}</span>
+    <div
+      className={clsx(
+        DASHBOARD_COPIER_LOG_GRID,
+        'group px-4 sm:px-5 py-3.5 transition-colors',
+        APP_ROW_HOVER,
+        onOpenDetail && 'cursor-pointer',
+      )}
+      onClick={onOpenDetail}
+      onKeyDown={onOpenDetail ? (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onOpenDetail()
+        }
+      } : undefined}
+      role={onOpenDetail ? 'button' : undefined}
+      tabIndex={onOpenDetail ? 0 : undefined}
+      aria-label={onOpenDetail ? viewDetailsLabel : undefined}
+    >
+      <div className="min-w-0 justify-self-start">
+        <Badge variant={status.variant} size="md" className={clsx('w-fit', status.className)}>{status.label}</Badge>
+      </div>
       <span
-        className={`min-w-0 text-sm font-regular uppercase truncate ${
-          isBuy ? 'text-green-500 dark:text-green-400' : action === 'sell' ? 'text-error-600' : 'text-neutral-900 dark:text-neutral-50'
-        }`}
+        className="min-w-0 text-sm text-neutral-900 dark:text-neutral-50 truncate underline decoration-dotted underline-offset-2"
+        title={row.reasonShort}
+      >
+        {row.reasonShort}
+      </span>
+      <span className="flex min-w-0 items-center gap-1.5 text-sm text-neutral-900 dark:text-neutral-50" title={row.channelTitle}>
+        <CopierSourceMark row={row} />
+        <span className="min-w-0 truncate">{row.channelName}</span>
+      </span>
+      <DashboardDestinationCell destinations={row.destinations} />
+      <span className="min-w-0 text-base font-medium text-neutral-900 dark:text-neutral-50 truncate" title={row.symbol}>
+        {row.symbol}
+      </span>
+      <span className="min-w-0 text-sm text-neutral-900 dark:text-neutral-50 truncate" title={row.messageFull}>
+        {row.messagePreview}
+      </span>
+      <span
+        className={clsx(
+          'min-w-0 text-sm font-medium uppercase truncate',
+          action === 'buy'
+            ? 'text-green-400'
+            : action === 'sell'
+              ? 'text-error-600'
+              : 'text-neutral-900 dark:text-neutral-50',
+        )}
         title={typeLabel}
       >
         {typeLabel}
       </span>
-      <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50 text-right whitespace-nowrap">
-        {row.at
-          ? new Date(row.at).toLocaleString([], {
-              month: 'short',
-              day: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-            })
-          : '—'}
+      <span className="min-w-0 flex items-center justify-end gap-1 text-sm text-neutral-900 dark:text-neutral-50 whitespace-nowrap tabular-nums">
+        {row.at ? formatCopierLogTime(row.at) : '—'}
+        {onOpenDetail ? (
+          <ChevronRight
+            className="h-3.5 w-3.5 shrink-0 text-neutral-900 opacity-0 transition-opacity group-hover:opacity-100 dark:text-neutral-50"
+            aria-hidden
+          />
+        ) : null}
       </span>
     </div>
   )
@@ -3354,20 +3821,19 @@ function LinkedAccountSortHeader({
   )
 }
 
-function LinkedAccountRow({
-  account,
-  accountSummary,
-  performance,
-  connectPnl,
-  onToggleActive,
-  toggleDisabled,
-  showReconnect,
-  isReconnecting,
-  onReconnect,
-  onOpenStats,
-}: {
+type LinkedAccountSummary = {
+  balance?: number
+  equity?: number
+  currency?: string
+  broker?: string
+  mt_server_hint?: string
+  account_type?: LinkedAccountType
+  open_pnl?: number
+}
+
+type LinkedAccountListProps = {
   account: BrokerAccount
-  accountSummary?: { balance?: number; equity?: number; currency?: string; broker?: string; mt_server_hint?: string; account_type?: LinkedAccountType; open_pnl?: number }
+  accountSummary?: LinkedAccountSummary
   performance?: LinkedAccountPerformance
   /** Balance P/L since first connect; null when baseline or balance is unavailable. */
   connectPnl?: number | null
@@ -3377,7 +3843,14 @@ function LinkedAccountRow({
   isReconnecting?: boolean
   onReconnect?: () => void
   onOpenStats: () => void
-}) {
+}
+
+function useLinkedAccountDisplay(
+  account: BrokerAccount,
+  accountSummary: LinkedAccountSummary | undefined,
+  performance: LinkedAccountPerformance | undefined,
+  connectPnl: number | null | undefined,
+) {
   const t = useT()
   const la = t.dashboard.linkedAccounts
   const { locale } = useLocale()
@@ -3389,7 +3862,6 @@ function LinkedAccountRow({
       ? 'text-green-500 border-teal-200 bg-teal-50 dark:text-teal-300 dark:border-teal-800 dark:bg-teal-950/50'
       : 'text-neutral-900 border-neutral-200 bg-neutral-100 dark:text-neutral-50 dark:border-neutral-700 dark:bg-neutral-800/80'
   const cashBalance = accountSummary?.balance ?? account.last_balance ?? null
-  // Cash balance stays put while positions tick. Show cash + live floating P/L.
   const balance = equityWithFloatingPnl(
     cashBalance,
     accountSummary?.open_pnl,
@@ -3398,7 +3870,6 @@ function LinkedAccountRow({
   const accountCurrency = (accountSummary?.currency ?? account.last_currency ?? '').trim() || undefined
   const balanceText = formatMoneyWithCode(balance, accountCurrency, { locale: intlLocale })
   const pnl = connectPnl ?? 0
-  const pnlColor = pnlSignTextClass
   const pnlFormatted = formatMoneyWithCode(Math.abs(pnl), accountCurrency, { locale: intlLocale, nullAsDash: false })
   const openPnl = resolveAccountOpenPnl(account, accountSummary)
   const openPnlColor =
@@ -3420,9 +3891,9 @@ function LinkedAccountRow({
     ?? accountSummary?.account_type
     ?? '—'
   const accountTypeClass = linkedAccountTypeValueClass(accountType === '—' ? undefined : accountType)
-
   const accountLabel = account.label || la.unnamedAccount
   const platformLabel = (account.platform ?? '').trim().toUpperCase() || '—'
+  const platformIcon = platformIconSrc(account.platform ?? '')
   const accountLogin = resolveAccountLogin(account)
   const platformLine = accountLogin ? `${platformLabel} • ${accountLogin}` : platformLabel
   const accountTypeLabel =
@@ -3436,9 +3907,190 @@ function LinkedAccountRow({
   const winRate = performance?.winRate ?? null
   const maxDd = performance?.maxDrawdownPct ?? null
   const winRateColor =
-    winRate == null ? 'text-neutral-900 dark:text-neutral-50' : winRate >= 50 ? 'text-green-500 dark:text-green-400' : 'text-neutral-900 dark:text-neutral-50'
-  const ddColor =
-    maxDd == null ? 'text-neutral-900 dark:text-neutral-50' : lossTextClass
+    winRate == null
+      ? 'text-neutral-900 dark:text-neutral-50'
+      : winRate >= 50
+        ? 'text-green-500 dark:text-green-400'
+        : 'text-neutral-900 dark:text-neutral-50'
+  const ddColor = maxDd == null ? 'text-neutral-900 dark:text-neutral-50' : lossTextClass
+  const statusLabel = brokerConnectionStatusLabel(account, la)
+
+  return {
+    la,
+    statusClass,
+    statusLabel,
+    balanceText,
+    connectPnl,
+    pnl,
+    pnlFormatted,
+    openPnl,
+    openPnlColor,
+    openPnlFormatted,
+    brokerText,
+    accountTypeClass,
+    accountLabel,
+    platformIcon,
+    platformLine,
+    accountTypeLabel,
+    winRate,
+    maxDd,
+    winRateColor,
+    ddColor,
+  }
+}
+
+function LinkedAccountMetric({
+  label,
+  value,
+  valueClassName,
+}: {
+  label: string
+  value: ReactNode
+  valueClassName?: string
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400">{label}</p>
+      <p className={clsx('mt-0.5 text-sm font-semibold tabular-nums truncate', valueClassName)}>
+        {value}
+      </p>
+    </div>
+  )
+}
+
+/** Mobile Linked Accounts card — key metrics without the 9-column scroll grid. */
+function LinkedAccountCard({
+  account,
+  accountSummary,
+  performance,
+  connectPnl,
+  onToggleActive,
+  toggleDisabled,
+  showReconnect,
+  isReconnecting,
+  onReconnect,
+  onOpenStats,
+}: LinkedAccountListProps) {
+  const d = useLinkedAccountDisplay(account, accountSummary, performance, connectPnl)
+
+  return (
+    <article
+      role="button"
+      tabIndex={0}
+      onClick={onOpenStats}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onOpenStats()
+        }
+      }}
+      className={clsx('group cursor-pointer px-4 py-4 transition-colors', APP_ROW_HOVER)}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-base font-semibold text-neutral-900 dark:text-neutral-50 truncate" title={d.accountLabel}>
+            {d.accountLabel}
+          </p>
+          <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-neutral-900 dark:text-neutral-50" title={d.platformLine}>
+            {d.platformIcon ? (
+              <img src={d.platformIcon} alt="" aria-hidden className="h-4 w-4 shrink-0 object-contain" />
+            ) : null}
+            <span className="truncate">{d.platformLine}</span>
+          </p>
+          <p className="mt-0.5 truncate text-xs text-neutral-500 dark:text-neutral-400">
+            {d.brokerText}
+            {d.accountTypeLabel !== '—' ? ` · ${d.accountTypeLabel}` : ''}
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${d.statusClass}`}>
+            {d.statusLabel}
+          </span>
+          <ChevronRight className="h-4 w-4 text-neutral-400 dark:text-neutral-500" aria-hidden />
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3">
+        <LinkedAccountMetric label={d.la.colBalance} value={d.balanceText} valueClassName="text-neutral-900 dark:text-neutral-50" />
+        <LinkedAccountMetric
+          label={d.la.colOpenPnl}
+          value={
+            d.openPnl == null ? '—' : (
+              <>
+                {d.openPnl >= 0 ? '+' : '-'}
+                {d.openPnlFormatted}
+              </>
+            )
+          }
+          valueClassName={d.openPnlColor}
+        />
+        <LinkedAccountMetric
+          label={d.la.colPnl}
+          value={
+            d.connectPnl == null ? '—' : (
+              <>
+                {d.pnl >= 0 ? '+' : '-'}
+                {d.pnlFormatted}
+              </>
+            )
+          }
+          valueClassName={pnlSignTextClass(d.pnl)}
+        />
+        <LinkedAccountMetric
+          label={d.la.colWinRate}
+          value={formatPerformancePct(d.winRate, 0)}
+          valueClassName={d.winRateColor}
+        />
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <span
+          className="inline-flex items-center gap-2"
+          onClick={e => e.stopPropagation()}
+          onKeyDown={e => e.stopPropagation()}
+        >
+          <Toggle
+            checked={account.is_active}
+            onChange={onToggleActive}
+            disabled={toggleDisabled}
+          />
+          <span className="text-xs text-neutral-500 dark:text-neutral-400">
+            {account.is_active ? d.la.statusActive : d.la.statusPaused}
+          </span>
+        </span>
+        {showReconnect ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            loading={isReconnecting}
+            onClick={e => {
+              e.stopPropagation()
+              onReconnect?.()
+            }}
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            {d.la.reconnect}
+          </Button>
+        ) : null}
+      </div>
+    </article>
+  )
+}
+
+function LinkedAccountRow({
+  account,
+  accountSummary,
+  performance,
+  connectPnl,
+  onToggleActive,
+  toggleDisabled,
+  showReconnect,
+  isReconnecting,
+  onReconnect,
+  onOpenStats,
+}: LinkedAccountListProps) {
+  const d = useLinkedAccountDisplay(account, accountSummary, performance, connectPnl)
 
   return (
     <div
@@ -3451,48 +4103,48 @@ function LinkedAccountRow({
           onOpenStats()
         }
       }}
-      className={clsx('grid cursor-pointer grid-cols-9 items-center gap-2 px-5 py-3.5 transition-colors', APP_ROW_HOVER)}
+      className={clsx('group grid cursor-pointer grid-cols-9 items-center gap-2 px-5 py-3.5 transition-colors', APP_ROW_HOVER)}
     >
       <div className="flex flex-col min-w-0">
         <span
           className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 truncate"
-          title={accountLabel}
+          title={d.accountLabel}
         >
-          {accountLabel}
+          {d.accountLabel}
         </span>
         <span
           className="truncate text-[11px] font-medium tracking-wide text-neutral-900 dark:text-neutral-50"
-          title={platformLine}
+          title={d.platformLine}
         >
-          {platformLine}
+          {d.platformLine}
         </span>
       </div>
       <span
         className="min-w-0 text-sm font-medium text-neutral-900 dark:text-neutral-50 truncate"
-        title={brokerText}
+        title={d.brokerText}
       >
-        {brokerText}
+        {d.brokerText}
       </span>
-      <span className={`text-sm font-semibold ${accountTypeClass}`}>{accountTypeLabel}</span>
-      <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{balanceText}</span>
-      <span className={`text-sm font-semibold ${pnlColor}`}>
-        {connectPnl == null ? '—' : (
+      <span className={`text-sm font-semibold ${d.accountTypeClass}`}>{d.accountTypeLabel}</span>
+      <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{d.balanceText}</span>
+      <span className={`text-sm font-semibold ${pnlSignTextClass(d.pnl)}`}>
+        {d.connectPnl == null ? '—' : (
           <>
-            {pnl >= 0 ? '+' : '-'}
-            {pnlFormatted}
+            {d.pnl >= 0 ? '+' : '-'}
+            {d.pnlFormatted}
           </>
         )}
       </span>
-      <span className={`text-sm font-semibold  ${openPnlColor}`}>
-        {openPnl == null ? '—' : (
+      <span className={`text-sm font-semibold ${d.openPnlColor}`}>
+        {d.openPnl == null ? '—' : (
           <>
-            {openPnl >= 0 ? '+' : '-'}
-            {openPnlFormatted}
+            {d.openPnl >= 0 ? '+' : '-'}
+            {d.openPnlFormatted}
           </>
         )}
       </span>
-      <span className={`text-sm font-semibold  ${winRateColor}`}>{formatPerformancePct(winRate, 0)}</span>
-      <span className={`text-sm font-semibold  ${ddColor}`}>{formatPerformancePct(maxDd)}</span>
+      <span className={`text-sm font-semibold ${d.winRateColor}`}>{formatPerformancePct(d.winRate, 0)}</span>
+      <span className={`text-sm font-semibold ${d.ddColor}`}>{formatPerformancePct(d.maxDd)}</span>
       <div className="flex justify-end items-center gap-2">
         {showReconnect ? (
           <Button
@@ -3506,7 +4158,7 @@ function LinkedAccountRow({
             }}
           >
             <RefreshCw className="w-3.5 h-3.5" />
-            {la.reconnect}
+            {d.la.reconnect}
           </Button>
         ) : null}
         <span onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
@@ -3516,9 +4168,13 @@ function LinkedAccountRow({
             disabled={toggleDisabled}
           />
         </span>
-        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusClass}`}>
-          {brokerConnectionStatusLabel(account, la)}
+        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${d.statusClass}`}>
+          {d.statusLabel}
         </span>
+        <ChevronRight
+          className="h-3.5 w-3.5 shrink-0 text-neutral-900 opacity-0 transition-opacity group-hover:opacity-100 dark:text-neutral-50"
+          aria-hidden
+        />
       </div>
     </div>
   )

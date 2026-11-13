@@ -11,7 +11,15 @@ import { PageShell } from '../../components/layout/PageShell'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
-import type { Signal } from '../../types/database'
+import type { BrokerAccount, Signal } from '../../types/database'
+import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
+import {
+  copierLogDestinationSummary,
+  copierLogDestinations,
+  copierLogDestinationsFromAccountLabel,
+  type CopierLogDestination,
+} from '../../lib/copierLogToast'
+import { CopierDestinationLogos } from '../../components/dashboard/CopierDestinationLogos'
 import {
   buildSignalSymbolLookup,
   symbolForCopierLog,
@@ -22,7 +30,16 @@ import {
   formatRetrySignalFailureReason,
   isCopierSignalRetryEligible,
 } from '../../lib/retrySignalDisplay'
-import { formatCopierSkipReasonShort } from '../../lib/copierLogDetail'
+import {
+  buildClosedCopierLogDrafts,
+  copierLifecycleLabelsFromCopierLogs,
+  resolveCopierDisplayReason,
+  resolveCopierDisplayStatus,
+  signalStubFromClosedDraft,
+  type ClosedTradeForCopierLog,
+  type CopierClosedLogDraft,
+} from '../../lib/copierLogLifecycle'
+import { buildOpenSignalIdSet } from '../../lib/signalOverride'
 import { fetchMirrorCopyLogs, pageMirrorSlice, type MirrorCopyLogRow } from '../../lib/mirrorCopyLogs'
 import { fetchManualSourceTradeLogs, fetchSocialCopyLogs, type SocialCopyLogRow } from '../../lib/socialCopyLogs'
 import { CopierLogDetailModal } from '../../components/dashboard/CopierLogDetailModal'
@@ -32,10 +49,18 @@ import { buildChannelSourceKinds, resolveSignalSourceKind, resolveSignalSourceNa
 
 const DEFAULT_DETAIL_MODAL = en.copierLogs.detailModal!
 
-type Filter = 'all' | 'executed' | 'skipped' | 'failed' | 'pending'
+type Filter = 'all' | 'parsed' | 'executed' | 'open' | 'closed' | 'skipped' | 'failed' | 'pending'
+
+const CLOSED_TRADES_FETCH_LIMIT = 200
+const CLOSED_TRADE_SELECT =
+  'id,signal_id,telegram_channel_id,symbol,direction,closed_at,close_reason,sl,tp,close_price'
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50] as const
 type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number]
+
+/** Table column tracks — Destination after Source. */
+const COPIER_LOG_GRID =
+  'grid grid-cols-[6.75rem_minmax(0,1.5fr)_minmax(0,1.1fr)_minmax(0,1fr)_minmax(4.75rem,0.75fr)_minmax(0,1.2fr)_minmax(4.5rem,0.7fr)_7.5rem_2.5rem] gap-3 min-w-4xl'
 
 type ChannelNameRow = { id: string; display_name: string; channel_username?: string | null; source_kind?: string | null }
 
@@ -75,14 +100,16 @@ type CopierLogView = {
   reason: string | null
   reasonShort: string
   timeLabel: string
+  destinations: CopierLogDestination[]
 }
 
-/** One row on the list — a signal, mirror, social, or manual trade, never more than one. */
+/** One row on the list — a signal, mirror, social, manual, or synthetic Closed trade. */
 type LogViewEntry = { key: string; view: CopierLogView; at: string } & (
-  | { signal: Signal; mirror?: never; social?: never; manual?: never }
-  | { mirror: MirrorCopyLogRow; signal?: never; social?: never; manual?: never }
-  | { social: SocialCopyLogRow; signal?: never; mirror?: never; manual?: never }
-  | { manual: SocialCopyLogRow; signal?: never; mirror?: never; social?: never }
+  | { signal: Signal; mirror?: never; social?: never; manual?: never; closed?: never }
+  | { mirror: MirrorCopyLogRow; signal?: never; social?: never; manual?: never; closed?: never }
+  | { social: SocialCopyLogRow; signal?: never; mirror?: never; manual?: never; closed?: never }
+  | { manual: SocialCopyLogRow; signal?: never; mirror?: never; social?: never; closed?: never }
+  | { closed: CopierClosedLogDraft; signal?: never; mirror?: never; social?: never; manual?: never }
 )
 
 /** Where the loaded signal page sits in time, so mirror rows can be spliced in. */
@@ -115,17 +142,26 @@ function buildSignalLogView(
   channelSourceKinds: Record<string, SignalSourceKind>,
   symbolContext: CopierSymbolContext,
   batchSignals: Signal[],
+  openSignalIds: ReadonlySet<string>,
   statusConfig: Record<string, { variant: StatusVariant; label: string; className?: string }>,
   copierLogs: ReturnType<typeof useT>['copierLogs'],
+  brokers: readonly BrokerAccount[] | null | undefined,
 ): CopierLogView {
   const parsed = signal.parsed_data as Record<string, unknown> | null
   const action = parsed?.action as string | undefined
   const symbol = symbolForCopierLog(signal, symbolContext, batchSignals)
-  const status = statusConfig[signal.status] ?? { variant: 'neutral' as const, label: signal.status }
+  const displayStatus = resolveCopierDisplayStatus(
+    signal.status,
+    openSignalIds,
+    signal,
+    { batchSignals },
+  )
+  const status = statusConfig[displayStatus] ?? { variant: 'neutral' as const, label: displayStatus }
   const channelName = resolveSignalSourceName(signal, channelDisplayNames, channelSourceKinds)
   const sourceKind = resolveSignalSourceKind(signal, channelSourceKinds)
   const channelTitle = `${SIGNAL_SOURCE_MARKS[sourceKind].label} · ${channelName}`
-  const reason = formatCopierSkipReasonShort(signal.skip_reason, copierLogs)
+  const lifecycle = copierLifecycleLabelsFromCopierLogs(copierLogs)
+  const reason = resolveCopierDisplayReason(displayStatus, signal.skip_reason, lifecycle, copierLogs)
   const messagePreview = signal.raw_message
     ? (signal.raw_message.length > 60 ? `${signal.raw_message.slice(0, 60)}…` : signal.raw_message)
     : '(image)'
@@ -145,6 +181,41 @@ function buildSignalLogView(
     reason,
     reasonShort: shortenReason(reason) ?? '—',
     timeLabel: formatLogTime(signal.created_at),
+    destinations: copierLogDestinations(brokers, signal.channel_id),
+  }
+}
+
+function buildClosedLogView(
+  draft: CopierClosedLogDraft,
+  channelDisplayNames: Record<string, string>,
+  channelSourceKinds: Record<string, SignalSourceKind>,
+  statusConfig: Record<string, { variant: StatusVariant; label: string; className?: string }>,
+  brokers: readonly BrokerAccount[] | null | undefined,
+): CopierLogView {
+  const channelId = draft.channelId
+  const channelName = channelId
+    ? (channelDisplayNames[channelId] ?? 'Channel')
+    : 'Channel'
+  const sourceKind = channelId ? (channelSourceKinds[channelId] ?? null) : null
+  const channelTitle = sourceKind
+    ? `${SIGNAL_SOURCE_MARKS[sourceKind].label} · ${channelName}`
+    : channelName
+  return {
+    symbol: draft.symbol,
+    status: statusConfig.closed ?? { variant: 'neutral' as const, label: 'Closed' },
+    channelName,
+    channelTitle,
+    sourceKind,
+    isMirror: false,
+    isSocial: false,
+    isManual: false,
+    action: draft.action,
+    messageFull: draft.messageFull,
+    messagePreview: draft.messagePreview,
+    reason: draft.reason,
+    reasonShort: shortenReason(draft.reason) ?? '—',
+    timeLabel: formatLogTime(draft.at),
+    destinations: copierLogDestinations(brokers, draft.channelId),
   }
 }
 
@@ -181,6 +252,7 @@ function buildMirrorLogView(
   row: MirrorCopyLogRow,
   statusConfig: Record<string, { variant: StatusVariant; label: string; className?: string }>,
   copierLogs: ReturnType<typeof useT>['copierLogs'],
+  brokers: readonly BrokerAccount[] | null | undefined,
 ): CopierLogView {
   const sourceLabel = copierLogs.mirrorSource
   const message = mirrorLogMessage(row, copierLogs)
@@ -199,6 +271,7 @@ function buildMirrorLogView(
     reason: row.reason,
     reasonShort: shortenReason(row.reason) ?? '—',
     timeLabel: formatLogTime(row.createdAt),
+    destinations: copierLogDestinationsFromAccountLabel(row.destinationAccount, brokers),
   }
 }
 
@@ -230,6 +303,7 @@ function buildSocialLogView(
   row: SocialCopyLogRow,
   statusConfig: Record<string, { variant: StatusVariant; label: string; className?: string }>,
   copierLogs: ReturnType<typeof useT>['copierLogs'],
+  brokers: readonly BrokerAccount[] | null | undefined,
 ): CopierLogView {
   const sourceLabel = copierLogs.socialSource
   const message = socialLogMessage(row, copierLogs)
@@ -248,6 +322,7 @@ function buildSocialLogView(
     reason: row.reason,
     reasonShort: shortenReason(row.reason) ?? '—',
     timeLabel: formatLogTime(row.createdAt),
+    destinations: copierLogDestinationsFromAccountLabel(row.destinationAccount, brokers),
   }
 }
 
@@ -279,6 +354,7 @@ function buildManualLogView(
   row: SocialCopyLogRow,
   statusConfig: Record<string, { variant: StatusVariant; label: string; className?: string }>,
   copierLogs: ReturnType<typeof useT>['copierLogs'],
+  brokers: readonly BrokerAccount[] | null | undefined,
 ): CopierLogView {
   const sourceLabel = copierLogs.manualExecutionSource
   const message = manualLogMessage(row, copierLogs)
@@ -297,7 +373,32 @@ function buildManualLogView(
     reason: row.reason,
     reasonShort: shortenReason(row.reason) ?? '—',
     timeLabel: formatLogTime(row.createdAt),
+    destinations: copierLogDestinationsFromAccountLabel(row.destinationAccount ?? row.channelName, brokers),
   }
+}
+
+function DestinationCell({
+  destinations,
+  className,
+}: {
+  destinations: readonly CopierLogDestination[]
+  className?: string
+}) {
+  const summary = copierLogDestinationSummary(destinations)
+  if (!summary.label || summary.label === '—') {
+    return (
+      <span className={clsx('min-w-0 text-xs text-neutral-500 dark:text-neutral-400', className)}>—</span>
+    )
+  }
+  return (
+    <span
+      className={clsx('flex min-w-0 items-center gap-1.5 text-xs text-neutral-900 dark:text-neutral-50', className)}
+      title={summary.label}
+    >
+      <CopierDestinationLogos icons={summary.icons} />
+      <span className="min-w-0 truncate">{summary.label}</span>
+    </span>
+  )
 }
 
 function SourceMark({ view, className }: { view: CopierLogView; className?: string }) {
@@ -343,7 +444,7 @@ function CopierLogCard({
   onRetry?: () => void
   onOpenDetail?: () => void
 }) {
-  const { action, symbol, status, channelName, channelTitle, reason, messagePreview, messageFull, timeLabel } = view
+  const { action, symbol, status, channelName, channelTitle, reason, messagePreview, messageFull, timeLabel, destinations } = view
 
   return (
     <article
@@ -369,9 +470,10 @@ function CopierLogCard({
             <SourceMark view={view} />
             <span className="truncate">{channelName}</span>
           </p>
+          <DestinationCell destinations={destinations} className="mt-1" />
         </div>
         <div className="flex flex-col items-end gap-1.5 shrink-0">
-          <Badge variant={status.variant} size="sm" className={status.className}>{status.label}</Badge>
+          <Badge variant={status.variant} size="sm" className={clsx('w-fit', status.className)}>{status.label}</Badge>
           <span className="text-xs text-neutral-900 dark:text-neutral-50 whitespace-nowrap">{timeLabel}</span>
         </div>
       </div>
@@ -434,12 +536,13 @@ function CopierLogRow({
   onOpenDetail?: () => void
   viewDetailsLabel: string
 }) {
-  const { action, symbol, status, channelName, channelTitle, reasonShort, messagePreview, messageFull, timeLabel } = view
+  const { action, symbol, status, channelName, channelTitle, reasonShort, messagePreview, messageFull, timeLabel, destinations } = view
 
   return (
     <div
       className={clsx(
-        'grid grid-cols-[1.5fr_1.2fr_1fr_1.2fr_1fr_1fr_auto_auto] gap-3 min-w-3xl px-4 sm:px-5 py-3.5 items-center transition-colors',
+        COPIER_LOG_GRID,
+        'px-4 sm:px-5 py-3.5 items-center transition-colors',
         onOpenDetail && 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50 cursor-pointer',
       )}
       onClick={onOpenDetail}
@@ -453,25 +556,28 @@ function CopierLogRow({
       tabIndex={onOpenDetail ? 0 : undefined}
       aria-label={onOpenDetail ? viewDetailsLabel : undefined}
     >
-      <Badge variant={status.variant} size="sm" className={status.className}>{status.label}</Badge>
-      <span className="text-xs text-neutral-900 dark:text-neutral-50 truncate underline decoration-dotted underline-offset-2" title={reasonShort}>
+      <div className="min-w-0 justify-self-start">
+        <Badge variant={status.variant} size="sm" className={clsx('w-fit', status.className)}>{status.label}</Badge>
+      </div>
+      <span className="min-w-0 text-xs text-neutral-900 dark:text-neutral-50 truncate underline decoration-dotted underline-offset-2" title={reasonShort}>
         {reasonShort}
       </span>
       <span className="flex min-w-0 items-center gap-1.5 text-xs text-neutral-900 dark:text-neutral-50" title={channelTitle}>
         <SourceMark view={view} />
-        <span className="truncate">{channelName}</span>
+        <span className="min-w-0 truncate">{channelName}</span>
       </span>
-      <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{symbol}</span>
-      <span className="text-xs text-neutral-900 dark:text-neutral-50 truncate" title={messageFull}>
+      <DestinationCell destinations={destinations} />
+      <span className="min-w-0 text-sm font-medium text-neutral-900 dark:text-neutral-50 truncate" title={symbol}>{symbol}</span>
+      <span className="min-w-0 text-xs text-neutral-900 dark:text-neutral-50 truncate" title={messageFull}>
         {messagePreview}
       </span>
       <span className={clsx(
-        'text-xs font-medium uppercase',
+        'min-w-0 text-xs font-medium uppercase truncate',
         action === 'buy' ? 'text-green-400' : action === 'sell' ? 'text-error-600' : 'text-neutral-900 dark:text-neutral-50',
-      )}>
+      )} title={action ?? '—'}>
         {action ?? '—'}
       </span>
-      <span className="text-xs text-neutral-900 dark:text-neutral-50 text-right whitespace-nowrap">{timeLabel}</span>
+      <span className="min-w-0 text-xs text-neutral-900 dark:text-neutral-50 text-right whitespace-nowrap tabular-nums">{timeLabel}</span>
       <div className="flex justify-end">
         {onRetry ? (
           <Button
@@ -500,10 +606,13 @@ function CopierLogRow({
 export function CopierLogsPage() {
   const t = useT()
   const { user } = useAuth()
+  const { brokers } = useBrokerAccounts()
   const [signals, setSignals] = useState<Signal[]>([])
   const [mirrorLogs, setMirrorLogs] = useState<MirrorCopyLogRow[]>([])
   const [socialLogs, setSocialLogs] = useState<SocialCopyLogRow[]>([])
   const [manualLogs, setManualLogs] = useState<SocialCopyLogRow[]>([])
+  const [closedTradeDrafts, setClosedTradeDrafts] = useState<CopierClosedLogDraft[]>([])
+  const [openSignalIds, setOpenSignalIds] = useState<Set<string>>(() => new Set())
   const [channelDisplayNames, setChannelDisplayNames] = useState<Record<string, string>>({})
   const [channelSourceKinds, setChannelSourceKinds] = useState<Record<string, SignalSourceKind>>({})
   const [symbolContext, setSymbolContext] = useState<CopierSymbolContext>(() => ({
@@ -525,15 +634,38 @@ export function CopierLogsPage() {
   const [pageSize, setPageSize] = useState<PageSizeOption>(25)
   const [retryingSignalIds, setRetryingSignalIds] = useState<Set<string>>(() => new Set())
   const [toast, setToast] = useState<string | null>(null)
-  // One slot for the open detail view. A row is a signal, mirror, social, or manual trade.
+  // One slot for the open detail view. A row is a signal, mirror, social, manual, or Closed trade.
   const [detail, setDetail] = useState<LogViewEntry | null>(null)
   const detailSignal = detail?.signal ?? null
   const detailMirror = detail?.mirror ?? null
   const detailSocial = detail?.social ?? null
   const detailManual = detail?.manual ?? null
+  const detailClosed = detail?.closed ?? null
+  const [closedDetailSignal, setClosedDetailSignal] = useState<Signal | null>(null)
   // Stable identity: MirrorLogDetailModal re-runs its scroll-lock/focus effect
   // whenever this changes, which would yank focus back to the panel.
   const closeDetail = useCallback(() => setDetail(null), [])
+
+  useEffect(() => {
+    if (!detailClosed?.signalId || !user?.id) {
+      setClosedDetailSignal(null)
+      return
+    }
+    let cancelled = false
+    setClosedDetailSignal(null)
+    void supabase
+      .from('signals')
+      .select('*')
+      .eq('id', detailClosed.signalId)
+      .eq('user_id', user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setClosedDetailSignal((data as Signal | null) ?? null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [detailClosed?.signalId, detailClosed?.key, user?.id])
 
   const showToast = useCallback((message: string) => {
     setToast(message)
@@ -558,6 +690,7 @@ export function CopierLogsPage() {
     if (!user) return
     setLoading(true)
     const seq = ++loadSeqRef.current
+    const lifecycle = copierLifecycleLabelsFromCopierLogs(t.copierLogs)
 
     try {
       // Mirror/social/manual rows carry no signal, so they are read from their own
@@ -566,63 +699,140 @@ export function CopierLogsPage() {
         .from('telegram_channels')
         .select('id,display_name,channel_username,source_kind')
         .eq('user_id', user.id)
-      const [mirror, social, manual, channelsRes] = await Promise.all([
+      const openTradesQuery = supabase
+        .from('trades')
+        .select('signal_id')
+        .eq('user_id', user.id)
+        .in('status', ['open', 'pending'])
+      const closedTradesQuery = supabase
+        .from('trades')
+        .select(CLOSED_TRADE_SELECT)
+        .eq('user_id', user.id)
+        .eq('status', 'closed')
+        .not('closed_at', 'is', null)
+        .order('closed_at', { ascending: false })
+        .limit(CLOSED_TRADES_FETCH_LIMIT)
+
+      const [mirror, social, manual, channelsRes, openTradesRes, closedTradesRes] = await Promise.all([
         fetchMirrorCopyLogs(supabase, user.id),
         fetchSocialCopyLogs(supabase, user.id),
         fetchManualSourceTradeLogs(supabase, user.id).catch(() => [] as SocialCopyLogRow[]),
         channelsQuery,
+        openTradesQuery,
+        closedTradesQuery,
       ])
-      const visibleMirror = filter === 'all' ? mirror : mirror.filter(row => row.status === filter)
-      const visibleSocial = filter === 'all' ? social : social.filter(row => row.status === filter)
-      const visibleManual = filter === 'all' ? manual : manual.filter(row => row.status === filter)
+      const nextOpenIds = buildOpenSignalIdSet(
+        (openTradesRes.data ?? []) as { signal_id?: string | null }[],
+      )
+      const closedTrades = (closedTradesRes.data ?? []) as ClosedTradeForCopierLog[]
+      const closedDrafts = buildClosedCopierLogDrafts(closedTrades, lifecycle)
+
+      const ledgerFilter = filter === 'open' || filter === 'closed' ? null : filter
+      const visibleMirror = ledgerFilter === null || ledgerFilter === 'all'
+        ? (filter === 'all' ? mirror : [])
+        : mirror.filter(row => row.status === ledgerFilter)
+      const visibleSocial = ledgerFilter === null || ledgerFilter === 'all'
+        ? (filter === 'all' ? social : [])
+        : social.filter(row => row.status === ledgerFilter)
+      const visibleManual = ledgerFilter === null || ledgerFilter === 'all'
+        ? (filter === 'all' ? manual : [])
+        : manual.filter(row => row.status === ledgerFilter)
 
       const from = (page - 1) * pageSize
       const to = from + pageSize - 1
 
-      let query = supabase
-        .from('signals')
-        .select('*', { count: 'exact' })
-        .eq('user_id', user.id)
-        .or('skip_reason.is.null,skip_reason.neq.non_trade_message')
-        .order('created_at', { ascending: false })
+      let loaded: Signal[] = []
+      let signalTotal = 0
 
-      if (filter !== 'all') query = query.eq('status', filter)
-      query = query.range(from, to)
+      if (filter === 'closed') {
+        // Closed filter is trade-lifecycle only — paginate synthetic Closed rows.
+        const pageDrafts = closedDrafts.slice(from, to + 1)
+        signalTotal = closedDrafts.length
+        if (seq !== loadSeqRef.current) return
+        setSignalWindow({ page, oldest: pageDrafts[pageDrafts.length - 1]?.at ?? null, previousOldest: null })
+        setSignalRowCount(signalTotal)
+        setMirrorLogs([])
+        setSocialLogs([])
+        setManualLogs([])
+        setClosedTradeDrafts(pageDrafts)
+        setOpenSignalIds(nextOpenIds)
+        setTotalCount(signalTotal)
+        setChannelDisplayNames(buildChannelDisplayNames((channelsRes.data ?? []) as ChannelNameRow[]))
+        setChannelSourceKinds(buildChannelSourceKinds((channelsRes.data ?? []) as ChannelNameRow[]))
+        setSymbolContext({ lookup: new Map(), replyParentBySignalId: new Map() })
+        setSignals([])
+        return
+      }
 
-      const signalsRes = await query
-      // The count and the rows come from one request, so a failure here must not
-      // be committed as "this page has no signals" — keep the previous view.
-      if (signalsRes.error) throw signalsRes.error
+      if (filter === 'open') {
+        const openIdList = [...nextOpenIds]
+        if (openIdList.length === 0) {
+          loaded = []
+          signalTotal = 0
+        } else {
+          const openSignalsRes = await supabase
+            .from('signals')
+            .select('*', { count: 'exact' })
+            .eq('user_id', user.id)
+            .in('id', openIdList)
+            .order('created_at', { ascending: false })
+            .range(from, to)
+          if (openSignalsRes.error) throw openSignalsRes.error
+          loaded = ((openSignalsRes.data ?? []) as Signal[]).filter(s => !isNonTradeSkipReason(s.skip_reason))
+          signalTotal = openSignalsRes.count ?? loaded.length
+        }
+      } else {
+        let query = supabase
+          .from('signals')
+          .select('*', { count: 'exact' })
+          .eq('user_id', user.id)
+          .or('skip_reason.is.null,skip_reason.neq.non_trade_message')
+          .order('created_at', { ascending: false })
 
-      const loaded = ((signalsRes.data ?? []) as Signal[]).filter(s => !isNonTradeSkipReason(s.skip_reason))
+        if (filter === 'executed') {
+          query = query.eq('status', 'executed')
+        } else if (filter !== 'all') {
+          query = query.eq('status', filter)
+        }
+        query = query.range(from, to)
+
+        const signalsRes = await query
+        if (signalsRes.error) throw signalsRes.error
+
+        loaded = ((signalsRes.data ?? []) as Signal[]).filter(s => !isNonTradeSkipReason(s.skip_reason))
+        if (filter === 'executed') {
+          // Open overlay owns those rows under the Open filter.
+          loaded = loaded.filter(
+            s => resolveCopierDisplayStatus(s.status, nextOpenIds, s, { batchSignals: loaded }) !== 'open',
+          )
+        }
+        const signalsTotal = signalsRes.count ?? loaded.length
+        signalTotal = Number.isFinite(signalsTotal) ? signalsTotal : loaded.length
+      }
+
       const nextSymbolContext = await buildSignalSymbolLookup(supabase, user.id, loaded)
       const channelRows = (channelsRes.data ?? []) as ChannelNameRow[]
 
-      // Commit everything together after the last await: the extra ledgers and
-      // the signal window must never be written a request apart, or a slower older
-      // load could pair its rows with a newer load's signal page.
       if (seq !== loadSeqRef.current) return
-      // Record where this page ended in time. The bound is handed on only when
-      // the reader moved to the very next page — after a jump there is no
-      // continuous window to inherit, so the next page falls back to its own span.
       const oldestSignal = loaded[loaded.length - 1]?.created_at ?? null
       setSignalWindow(prev => ({
         page,
-        // Keep the chain alive when a page returns no signals at all: without a
-        // bound the next page could not place its window and would show nothing.
-        // A middle page coming back empty would widen the window instead and
-        // repeat rows — impossible in practice, because the count and the rows
-        // come from the same request and `totalPages` is derived from that count.
         oldest: oldestSignal ?? prev?.oldest ?? null,
         previousOldest: prev && prev.page === page - 1 ? prev.oldest : null,
       }))
-      const signalsTotal = signalsRes.count ?? loaded.length
-      const signalTotal = Number.isFinite(signalsTotal) ? signalsTotal : loaded.length
       setSignalRowCount(signalTotal)
       setMirrorLogs(visibleMirror)
       setSocialLogs(visibleSocial)
       setManualLogs(visibleManual)
-      setTotalCount(signalTotal + visibleMirror.length + visibleSocial.length + visibleManual.length)
+      setClosedTradeDrafts(filter === 'all' ? closedDrafts : [])
+      setOpenSignalIds(nextOpenIds)
+      setTotalCount(
+        signalTotal
+        + visibleMirror.length
+        + visibleSocial.length
+        + visibleManual.length
+        + (filter === 'all' ? closedDrafts.length : 0),
+      )
       setChannelDisplayNames(buildChannelDisplayNames(channelRows))
       setChannelSourceKinds(buildChannelSourceKinds(channelRows))
       setSymbolContext(nextSymbolContext)
@@ -635,7 +845,7 @@ export function CopierLogsPage() {
       // superseded request cannot switch off a newer one's loading state.
       if (seq === loadSeqRef.current) setLoading(false)
     }
-  }, [user, filter, page, pageSize])
+  }, [user, filter, page, pageSize, t.copierLogs])
 
   const retrySignalEntry = useCallback(async (signalId: string) => {
     setRetryingSignalIds(prev => new Set(prev).add(signalId))
@@ -666,10 +876,12 @@ export function CopierLogsPage() {
   const filters: { value: Filter; label: string }[] = useMemo(
     () => [
       { value: 'all', label: t.copierLogs.filterAll },
+      { value: 'parsed', label: t.copierLogs.statusParsed },
       { value: 'executed', label: t.copierLogs.filterExecuted },
+      { value: 'open', label: t.copierLogs.filterOpen },
       { value: 'skipped', label: t.copierLogs.filterSkipped },
       { value: 'failed', label: t.copierLogs.filterFailed },
-      { value: 'pending', label: t.copierLogs.filterPending },
+      { value: 'closed', label: t.copierLogs.filterClosed },
     ],
     [t],
   )
@@ -677,6 +889,8 @@ export function CopierLogsPage() {
   const statusConfig: Record<string, { variant: StatusVariant; label: string; className?: string }> = useMemo(
     () => ({
       executed: { variant: 'success', label: t.copierLogs.statusExecuted, className: 'bg-green-100 text-neutral-950 dark:bg-green-100 dark:text-neutral-950' },
+      open: { variant: 'success', label: t.copierLogs.statusOpen, className: 'bg-teal-100 text-teal-900 dark:bg-teal-900/50 dark:text-teal-200' },
+      closed: { variant: 'neutral', label: t.copierLogs.statusClosed },
       skipped: { variant: 'warning', label: t.copierLogs.statusSkipped },
       failed: { variant: 'error', label: t.copierLogs.statusFailed },
       pending: { variant: 'neutral', label: t.copierLogs.statusPending },
@@ -701,28 +915,51 @@ export function CopierLogsPage() {
    * front of every signal — they appear in the page that owns their moment.
    */
   const logViews = useMemo(() => {
+    if (filter === 'closed') {
+      return closedTradeDrafts.map(draft => ({
+        key: draft.key,
+        at: draft.at,
+        view: buildClosedLogView(draft, channelDisplayNames, channelSourceKinds, statusConfig, brokers),
+        closed: draft,
+      }))
+    }
     const bound = signalWindow && signalWindow.page === page ? signalWindow.previousOldest : null
     const mirrorRows = pageMirrorSlice(mirrorLogs, signals, page, bound, isLastSignalPage)
     const socialRows = pageMirrorSlice(socialLogs, signals, page, bound, isLastSignalPage)
     const manualRows = pageMirrorSlice(manualLogs, signals, page, bound, isLastSignalPage)
+    const closedForPage = filter === 'all'
+      ? pageMirrorSlice(
+        closedTradeDrafts.map(d => ({ ...d, createdAt: d.at })),
+        signals,
+        page,
+        bound,
+        isLastSignalPage,
+      )
+      : []
     const entries: LogViewEntry[] = [
       ...mirrorRows.map(row => ({
         key: row.id,
         at: row.createdAt,
-        view: buildMirrorLogView(row, statusConfig, t.copierLogs),
+        view: buildMirrorLogView(row, statusConfig, t.copierLogs, brokers),
         mirror: row,
       })),
       ...socialRows.map(row => ({
         key: row.id,
         at: row.createdAt,
-        view: buildSocialLogView(row, statusConfig, t.copierLogs),
+        view: buildSocialLogView(row, statusConfig, t.copierLogs, brokers),
         social: row,
       })),
       ...manualRows.map(row => ({
         key: row.id,
         at: row.createdAt,
-        view: buildManualLogView(row, statusConfig, t.copierLogs),
+        view: buildManualLogView(row, statusConfig, t.copierLogs, brokers),
         manual: row,
+      })),
+      ...closedForPage.map(draft => ({
+        key: draft.key,
+        at: draft.at,
+        view: buildClosedLogView(draft, channelDisplayNames, channelSourceKinds, statusConfig, brokers),
+        closed: draft,
       })),
       ...signals.map(signal => ({
         key: signal.id,
@@ -733,14 +970,33 @@ export function CopierLogsPage() {
           channelSourceKinds,
           symbolContext,
           signals,
+          openSignalIds,
           statusConfig,
           t.copierLogs,
+          brokers,
         ),
         signal,
       })),
     ]
     return entries.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
-  }, [mirrorLogs, socialLogs, manualLogs, signals, page, signalWindow, isLastSignalPage, statusConfig, channelDisplayNames, channelSourceKinds, symbolContext, t])
+  }, [
+    filter,
+    closedTradeDrafts,
+    mirrorLogs,
+    socialLogs,
+    manualLogs,
+    signals,
+    openSignalIds,
+    page,
+    signalWindow,
+    isLastSignalPage,
+    statusConfig,
+    channelDisplayNames,
+    channelSourceKinds,
+    symbolContext,
+    brokers,
+    t,
+  ])
 
   // Positions are counted in signal rows, but a page can carry more rows than
   // the page size once mirror events splice in, so the end of the range comes
@@ -754,15 +1010,63 @@ export function CopierLogsPage() {
 
   const detailDisplay = useMemo(() => {
     if (!detailSignal) return null
-    const status = statusConfig[detailSignal.status] ?? { variant: 'neutral' as const, label: detailSignal.status }
+    const displayStatus = resolveCopierDisplayStatus(
+      detailSignal.status,
+      openSignalIds,
+      detailSignal,
+      { batchSignals: signals },
+    )
+    const status = statusConfig[displayStatus] ?? { variant: 'neutral' as const, label: displayStatus }
     return {
       signal: detailSignal,
       channelName: resolveSignalSourceName(detailSignal, channelDisplayNames, channelSourceKinds),
       sourceKind: resolveSignalSourceKind(detailSignal, channelSourceKinds),
       symbol: symbolForCopierLog(detailSignal, symbolContext, signals),
       status,
+      displayStatus,
+      reason: resolveCopierDisplayReason(
+        displayStatus,
+        detailSignal.skip_reason,
+        copierLifecycleLabelsFromCopierLogs(t.copierLogs),
+        t.copierLogs,
+      ),
+      destinations: detail?.view.destinations ?? copierLogDestinations(brokers, detailSignal.channel_id),
     }
-  }, [detailSignal, statusConfig, channelDisplayNames, channelSourceKinds, symbolContext, signals])
+  }, [detailSignal, detail?.view.destinations, openSignalIds, statusConfig, channelDisplayNames, channelSourceKinds, symbolContext, signals, brokers, t.copierLogs])
+
+  const closedDetailDisplay = useMemo(() => {
+    if (!detailClosed || !user?.id) return null
+    const stub = signalStubFromClosedDraft(detailClosed, user.id)
+    const signal = closedDetailSignal ?? stub
+    const channelName = detailClosed.channelId
+      ? (channelDisplayNames[detailClosed.channelId] ?? detail?.view.channelName ?? 'Channel')
+      : (detail?.view.channelName ?? 'Channel')
+    const sourceKind = detailClosed.channelId
+      ? (channelSourceKinds[detailClosed.channelId] ?? detail?.view.sourceKind ?? null)
+      : (detail?.view.sourceKind ?? null)
+    return {
+      signal,
+      channelName,
+      sourceKind,
+      symbol: detailClosed.symbol,
+      status: statusConfig.closed ?? { variant: 'neutral' as const, label: t.copierLogs.statusClosed },
+      reason: detailClosed.reason,
+      destinations: detail?.view.destinations ?? copierLogDestinations(brokers, detailClosed.channelId),
+      closedAt: detailClosed.at,
+    }
+  }, [
+    detailClosed,
+    closedDetailSignal,
+    user?.id,
+    channelDisplayNames,
+    channelSourceKinds,
+    detail?.view.channelName,
+    detail?.view.sourceKind,
+    detail?.view.destinations,
+    statusConfig,
+    brokers,
+    t.copierLogs.statusClosed,
+  ])
 
   return (
     <PageShell maxWidth="lg" spacing="none" className="space-y-6">
@@ -810,8 +1114,8 @@ export function CopierLogsPage() {
             </div>
             <div className="hidden md:block divide-y divide-neutral-100 dark:divide-neutral-800">
               {[...Array(pageSize > 6 ? 6 : pageSize)].map((_, i) => (
-                <div key={i} className="px-5 py-3.5 grid grid-cols-7 gap-3">
-                  {[...Array(7)].map((_, j) => (
+                <div key={i} className={`px-5 py-3.5 ${COPIER_LOG_GRID}`}>
+                  {[...Array(9)].map((_, j) => (
                     <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
                   ))}
                 </div>
@@ -849,14 +1153,15 @@ export function CopierLogsPage() {
               })}
             </div>
             <div className="hidden md:block overflow-x-auto">
-              <div className="grid grid-cols-[1.5fr_1.2fr_1fr_1.2fr_1fr_1fr_auto_auto] gap-3 min-w-3xl px-4 sm:px-5 py-3 border-b border-neutral-100 dark:border-neutral-800 text-xs font-semibold text-neutral-900 dark:text-neutral-50 uppercase tracking-wide">
-                <span>{t.copierLogs.colStatus}</span>
-                <span>{t.copierLogs.colReason}</span>
-                <span>{t.copierLogs.colChannel}</span>
-                <span>{t.copierLogs.colSymbol}</span>
-                <span>{t.copierLogs.colMessage}</span>
-                <span>{t.copierLogs.colType}</span>
-                <span className="text-right">{t.copierLogs.colTime}</span>
+              <div className={`${COPIER_LOG_GRID} px-4 sm:px-5 py-3 border-b border-neutral-100 dark:border-neutral-800 text-xs font-semibold text-neutral-900 dark:text-neutral-50 uppercase tracking-wide`}>
+                <span className="min-w-0">{t.copierLogs.colStatus}</span>
+                <span className="min-w-0">{t.copierLogs.colReason}</span>
+                <span className="min-w-0">{t.copierLogs.colChannel}</span>
+                <span className="min-w-0">{t.copierLogs.colDestination}</span>
+                <span className="min-w-0">{t.copierLogs.colSymbol}</span>
+                <span className="min-w-0">{t.copierLogs.colMessage}</span>
+                <span className="min-w-0">{t.copierLogs.colType}</span>
+                <span className="min-w-0 text-right">{t.copierLogs.colTime}</span>
                 <span />
               </div>
               <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
@@ -909,19 +1214,36 @@ export function CopierLogsPage() {
         ) : null}
       </Card>
 
-      {detailDisplay ? (
+      {detailDisplay && !detailClosed ? (
         <CopierLogDetailModal
           signal={detailDisplay.signal}
           channelName={detailDisplay.channelName}
           sourceKind={detailDisplay.sourceKind}
           symbol={detailDisplay.symbol}
           status={detailDisplay.status}
+          displayReason={detailDisplay.reason}
+          destinations={detailDisplay.destinations}
           onClose={closeDetail}
           retryEligible={isCopierSignalRetryEligible(detailDisplay.signal)}
           isRetrying={retryingSignalIds.has(detailDisplay.signal.id)}
           onRetry={isCopierSignalRetryEligible(detailDisplay.signal)
             ? () => { void retrySignalEntry(detailDisplay.signal.id) }
             : undefined}
+        />
+      ) : null}
+
+      {closedDetailDisplay ? (
+        <CopierLogDetailModal
+          signal={closedDetailDisplay.signal}
+          channelName={closedDetailDisplay.channelName}
+          sourceKind={closedDetailDisplay.sourceKind}
+          symbol={closedDetailDisplay.symbol}
+          status={closedDetailDisplay.status}
+          displayReason={closedDetailDisplay.reason}
+          destinations={closedDetailDisplay.destinations}
+          closedAt={closedDetailDisplay.closedAt}
+          onClose={closeDetail}
+          retryEligible={false}
         />
       ) : null}
 

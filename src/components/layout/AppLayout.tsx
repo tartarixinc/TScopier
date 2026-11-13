@@ -24,6 +24,7 @@ import { interpolate } from '../../i18n/interpolate'
 import { useHasHighImpactNewsToday } from '../../hooks/useHasHighImpactNewsToday'
 import { useNeedsWelcome } from '../../hooks/useNeedsWelcome'
 import { CopierLogToasts } from '../dashboard/CopierLogToasts'
+import { CopierProcessToasts } from '../dashboard/CopierProcessToasts'
 import { SignalSourceLogo } from '../dashboard/SignalSourceLogo'
 import { consumePostAuthRedirect } from '../../lib/postAuthRedirect'
 import { buildFlags } from '../../lib/featureFlags'
@@ -645,7 +646,15 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
           {!deferAppBootstrap && !onDashboardRoute && <Outlet />}
         </main>
       </div>
-      {!deferAppBootstrap ? <CopierLogToasts userId={user?.id} /> : null}
+      {!deferAppBootstrap ? (
+        <div
+          className="pointer-events-none fixed bottom-4 inset-e-4 z-70 flex w-[min(100vw-2rem,22rem)] flex-col gap-2"
+          aria-live="polite"
+        >
+          <CopierProcessToasts userId={user?.id} embedded />
+          <CopierLogToasts userId={user?.id} embedded />
+        </div>
+      ) : null}
     </div>
   )
 }

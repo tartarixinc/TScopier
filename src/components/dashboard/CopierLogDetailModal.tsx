@@ -14,6 +14,11 @@ import {
   summarizeExecutionLogRow,
   type CopierExecutionLogRow,
 } from '../../lib/copierLogDetail'
+import {
+  copierLogDestinationSummary,
+  type CopierLogDestination,
+} from '../../lib/copierLogToast'
+import { CopierDestinationLogos } from './CopierDestinationLogos'
 import { resolveTradeFailureDisplay } from '../../lib/tradeFailureDisplay'
 import { tradeSignalActionLabel, type TradeSignalSummaryLabels } from '../../lib/copierLogDisplay'
 import type { Signal } from '../../types/database'
@@ -32,6 +37,9 @@ export function CopierLogDetailModal({
   sourceKind = null,
   symbol,
   status,
+  displayReason,
+  destinations = [],
+  closedAt = null,
   onClose,
   onRetry,
   isRetrying,
@@ -42,6 +50,12 @@ export function CopierLogDetailModal({
   sourceKind?: SignalSourceKind | null
   symbol: string
   status: { variant: StatusVariant; label: string; className?: string }
+  /** Composed Copier Log reason (Open/Executed/Parsed lifecycle or skip text). */
+  displayReason?: string | null
+  /** Brokers that received this copy — logo + name, same as the Destination column. */
+  destinations?: readonly CopierLogDestination[]
+  /** When set, this modal is for a Closed log row (shows Closed timestamp). */
+  closedAt?: string | null
   onClose: () => void
   onRetry?: () => void
   isRetrying?: boolean
@@ -76,7 +90,9 @@ export function CopierLogDetailModal({
     [t],
   )
 
-  const reasonShort = formatCopierSkipReasonShort(signal?.skip_reason, copierLogs)
+  const reasonShort = (displayReason && displayReason !== '—')
+    ? displayReason
+    : formatCopierSkipReasonShort(signal?.skip_reason, copierLogs)
   const reasonDetail = formatCopierSkipReasonDetail(signal?.skip_reason, copierLogs)
   const structuredFailure = useMemo(() => {
     const fromTimeline = timeline
@@ -145,9 +161,16 @@ export function CopierLogDetailModal({
   if (!signal) return null
 
   const receivedAt = new Date(signal.created_at).toLocaleString()
+  const hideReceivedRow = Boolean(closedAt && closedAt === signal.created_at)
+  const closedAtLabel = closedAt ? new Date(closedAt).toLocaleString() : null
+  const destination = copierLogDestinationSummary(destinations)
   const technicalCode = signal.skip_reason?.trim() || '—'
-  const showReason = signal.status === 'skipped' || signal.status === 'failed' || Boolean(signal.skip_reason)
-  const effectiveRetryEligible = retryEligible && structuredFailure?.retryable !== false
+  const showReason = Boolean(reasonShort && reasonShort !== '—')
+    || signal.status === 'skipped'
+    || signal.status === 'failed'
+    || Boolean(signal.skip_reason)
+    || Boolean(closedAt)
+  const effectiveRetryEligible = retryEligible && structuredFailure?.retryable !== false && !closedAt
 
   return (
     <div
@@ -196,23 +219,40 @@ export function CopierLogDetailModal({
                 </span>
               ) : null}
             </div>
-            <DetailRow label={dm.receivedAt} value={receivedAt} />
+            {!hideReceivedRow ? (
+              <DetailRow label={dm.receivedAt} value={receivedAt} />
+            ) : null}
+            {closedAtLabel ? (
+              <DetailRow label={dm.closedAt ?? 'Closed'} value={closedAtLabel} />
+            ) : null}
+            <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-3 sm:items-start">
+              <span className="text-xs font-medium text-neutral-900 dark:text-neutral-50 shrink-0 sm:w-28">
+                {dm.destination ?? 'Destination'}
+              </span>
+              <span
+                className="flex min-w-0 items-center gap-1.5 text-sm text-neutral-900 dark:text-neutral-100"
+                title={destination.label}
+              >
+                <CopierDestinationLogos icons={destination.icons} />
+                <span className="min-w-0 wrap-break-word">{destination.label}</span>
+              </span>
+            </div>
             {showReason ? (
               <>
                 <DetailRow label={dm.reason} value={structuredFailure?.title ?? reasonShort} emphasize />
-                {structuredFailure ? (
+                {structuredFailure && !closedAt ? (
                   <p className="text-sm text-neutral-900 dark:text-neutral-50 leading-relaxed">
                     <span className="font-medium text-neutral-900 dark:text-neutral-50">{dm.whatHappened}: </span>
                     {structuredFailure.explanation}
                     {structuredFailure.recommendedAction ? ` ${structuredFailure.recommendedAction}` : ''}
                   </p>
-                ) : reasonDetail ? (
+                ) : reasonDetail && !closedAt ? (
                   <p className="text-sm text-neutral-900 dark:text-neutral-50 leading-relaxed">
                     <span className="font-medium text-neutral-900 dark:text-neutral-50">{dm.whatHappened}: </span>
                     {reasonDetail}
                   </p>
                 ) : null}
-                {technicalCode !== '—' && technicalCode !== reasonShort ? (
+                {technicalCode !== '—' && technicalCode !== reasonShort && !closedAt ? (
                   <DetailRow label={dm.technicalCode} value={technicalCode} mono />
                 ) : null}
               </>

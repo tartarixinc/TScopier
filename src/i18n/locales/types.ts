@@ -381,6 +381,7 @@ export interface DashboardTranslations {
   activeSignalChannels: string
   connectedTelegramChannels: string
   manageChannels: string
+  manageTrades: string
   openTrades: string
   activeBrokerPositions: string
   tradingAccountsConnected: string
@@ -583,12 +584,15 @@ export interface CopierLogsTranslations {
   subtitle: string
   filterAll: string
   filterExecuted: string
+  filterOpen: string
+  filterClosed: string
   filterSkipped: string
   filterFailed: string
   filterPending: string
   colStatus: string
   colReason: string
   colChannel: string
+  colDestination: string
   colSymbol: string
   colMessage: string
   colType: string
@@ -596,10 +600,33 @@ export interface CopierLogsTranslations {
   emptyTitle: string
   emptySubtitle: string
   statusExecuted: string
+  statusOpen: string
+  statusClosed: string
   statusSkipped: string
   statusFailed: string
   statusPending: string
   statusParsed: string
+  reasonParsed: string
+  reasonExecuted: string
+  reasonOpen: string
+  reasonFallback: string
+  closeReasons: {
+    news_pre_close: string
+    signal_close: string
+    signal_revision: string
+    opposite_signal: string
+    partial_tp: string
+    auto_management: string
+    close_worse_entries: string
+    copy_limit_flatten: string
+    user_force_close: string
+    position_gone: string
+    mirror_source_closed: string
+    mirror_copy_closed: string
+    stop_loss: string
+    take_profit: string
+    unknown: string
+  }
   retry: string
   retrySuccess: string
   retryFailedGeneric: string
@@ -649,6 +676,7 @@ export interface CopierLogsTranslations {
     reason: string
     whatHappened: string
     channel: string
+    destination: string
     symbol: string
     action: string
     levels: string
@@ -662,6 +690,7 @@ export interface CopierLogsTranslations {
     noTimeline: string
     viewDetails: string
     receivedAt: string
+    closedAt: string
     explainWithAi: string
   }
 }
