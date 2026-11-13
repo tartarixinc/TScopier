@@ -2,6 +2,16 @@
 
 ## Changelog
 
+### 2026-11-13 — Dashboard Open PnL / open trades realtime (clear when flat)
+
+- **Context:** Dashboard showed stale Open PnL (+$406) and wrong Open Trades (4) while MT5 had many XAUUSDm legs (~$268 floating); after closing everything, Open PnL still stuck.
+- **Plain English:** The dashboard was not reading live open positions from MTAPI often enough, and it refused to show Open PnL as zero once it had a non-zero value.
+- **Root cause (technical):** (1) `mergeDashboardStats` used `keepBalance` for `openPnl`, which never accepts `0` when previous ≠ 0. (2) MTAPI `normalizeMtapiAccountSummary` has no `open_trades`, so counts relied on a stale trade list. (3) REST poll updated only one account per 45s tick and preferred sticky list counts.
+- **Fix (files):** [`dashboardLiveOpenMetrics.ts`](src/lib/dashboardLiveOpenMetrics.ts); [`DashboardPage.tsx`](src/pages/dashboard/DashboardPage.tsx) — allow Open PnL → 0; zero PnL when open count is 0; MTAPI poll fetches `trades(scope=open)` + summary every ~20s for all accounts; first tick at 2s.
+- **Tests/verification:** `dashboardLiveOpenMetrics.test.ts`; after deploy, open/close on MT5 — Open Trades and Open PnL should track within ~20s and clear when flat.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** UniCopier DB “recording” of timed-out OrderSends is separate (capacity/worker path); this fix is live broker display.
+
 ### 2026-11-13 — Fix UserImpact 'deferred' → 'delayed' (worker image build)
 
 - **Context:** Railway/Docker image build failed on `npm run build` after capacity work.
