@@ -8,9 +8,9 @@
 - **Plain English:** Orders were waiting only 8 seconds for a free send slot, then failing as “broker busy,” and the dashboard was also polling open trades every tick on the same MTAPI session. We now wait longer, retry busy once, stop throttling send concurrency just because the queue is busy, and poll open trades less often when the account is flat.
 - **Root cause (technical):** `MTAPI_GLOBAL_ORDER_WAIT_MS` default 8s fail-fast; saturation forced `MT_SEND_OP_CONCURRENCY → 1`; no in-basket busy retry; Dashboard `refresh_summary` + `trades(scope=open)` every ~35s × N accounts contended with OrderSend.
 - **Fix (files):** [`mtapiProvider.ts`](worker/src/mtapiProvider.ts) — wait default **45s** (cap **60s**); remove saturation→send concurrency 1. [`orderLegExecution.ts`](worker/src/tradeExecutor/orderLegExecution.ts) — retry `BROKER_BUSY` once (~400ms); serialize-on-sat opt-in via `MT_SEND_SERIALIZE_WHEN_SATURATED`. [`DashboardPage.tsx`](src/pages/dashboard/DashboardPage.tsx) — summary every ~45s; OpenedOrders only when not flat or ~4 min reconcile. [`worker/.env.example`](worker/.env.example) comments updated.
-- **Tests/verification:** Worker build/tests for busy classification; after trade-worker + frontend deploy, Gold-lab on New Con should fill/queue instead of mass busy fails.
+- **Tests/verification:** Worker `tsc --noEmit` clean; broker busy classification tests pass (36). Source checklist: wait 45s/cap 60s, busy retry on `attempt===0`, no sat→send=1, serialize opt-in, dashboard summary-only + 4‑min open reconcile. Prod New Con `974cd34d-…` since 07:00Z still **42 busy / 12 timeout / 54 ok** (pre-redeploy baseline — expected until trade-worker ships this commit).
 - **Deploy state:** Local / code ready — needs trade-worker redeploy + Netlify for dashboard poll.
-- **Follow-ups:** Confirm `order_send` busy count drops on New Con after worker deploy.
+- **Follow-ups:** After trade-worker redeploy, re-check New Con Gold-lab `order_send` busy count (should drop sharply vs 42).
 
 ### 2026-11-13 — Dashboard Open Trades = market only (fix 104 / $0 PnL)
 
