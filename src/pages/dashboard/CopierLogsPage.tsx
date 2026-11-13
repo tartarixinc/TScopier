@@ -914,9 +914,9 @@ export function CopierLogsPage() {
    * share their time span spliced in, newest first. Extra events never sit in
    * front of every signal — they appear in the page that owns their moment.
    */
-  const logViews = useMemo(() => {
+  const logViews = useMemo((): LogViewEntry[] => {
     if (filter === 'closed') {
-      return closedTradeDrafts.map(draft => ({
+      return closedTradeDrafts.map((draft): LogViewEntry => ({
         key: draft.key,
         at: draft.at,
         view: buildClosedLogView(draft, channelDisplayNames, channelSourceKinds, statusConfig, brokers),
@@ -1136,7 +1136,7 @@ export function CopierLogsPage() {
           <>
             <div className="md:hidden divide-y divide-neutral-100 dark:divide-neutral-800">
               {logViews.map(entry => {
-                const signal = entry.signal
+                const signal = 'signal' in entry ? entry.signal : undefined
                 return (
                   <CopierLogCard
                     key={entry.key}
@@ -1166,7 +1166,7 @@ export function CopierLogsPage() {
               </div>
               <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
                 {logViews.map(entry => {
-                  const signal = entry.signal
+                  const signal = 'signal' in entry ? entry.signal : undefined
                   return (
                     <CopierLogRow
                       key={entry.key}

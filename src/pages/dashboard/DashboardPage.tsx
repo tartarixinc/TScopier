@@ -3574,20 +3574,22 @@ function DashboardDestinationCell({ destinations }: { destinations: readonly Cop
   )
 }
 
-function copierLogStatusConfig(t: ReturnType<typeof useT>) {
+function copierLogStatusConfig(
+  t: ReturnType<typeof useT>,
+): Record<string, { variant: DashboardLogStatusVariant; label: string; className?: string }> {
   return {
-    executed: { variant: 'success' as const, label: t.copierLogs.statusExecuted },
+    executed: { variant: 'success', label: t.copierLogs.statusExecuted },
     open: {
-      variant: 'success' as const,
+      variant: 'success',
       label: t.copierLogs.statusOpen,
       className: 'bg-teal-100 text-teal-900 dark:bg-teal-900/50 dark:text-teal-200',
     },
-    closed: { variant: 'neutral' as const, label: t.copierLogs.statusClosed },
-    skipped: { variant: 'warning' as const, label: t.copierLogs.statusSkipped },
-    failed: { variant: 'error' as const, label: t.copierLogs.statusFailed },
-    pending: { variant: 'neutral' as const, label: t.copierLogs.statusPending },
-    parsed: { variant: 'primary' as const, label: t.copierLogs.statusParsed },
-  } satisfies Record<string, { variant: DashboardLogStatusVariant; label: string; className?: string }>
+    closed: { variant: 'neutral', label: t.copierLogs.statusClosed },
+    skipped: { variant: 'warning', label: t.copierLogs.statusSkipped },
+    failed: { variant: 'error', label: t.copierLogs.statusFailed },
+    pending: { variant: 'neutral', label: t.copierLogs.statusPending },
+    parsed: { variant: 'primary', label: t.copierLogs.statusParsed },
+  }
 }
 
 function formatCopierLogTime(iso: string): string {
