@@ -2,6 +2,8 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   findSignalsNeedingReconcile,
+  revisionBlockedForManagement,
+  telegramMessageText,
   findSignalsWithParsedDrift,
   normalizedSlTpTargets,
   parsedTargetsDrift,
@@ -11,6 +13,37 @@ import {
 } from './signalTelegramReconcile'
 
 describe('signalTelegramReconcile', () => {
+  it('telegramMessageText reads text, message, rawText and caption shapes', () => {
+    assert.equal(telegramMessageText({ text: 'CLOSE TP2' }), 'CLOSE TP2')
+    assert.equal(telegramMessageText({ message: 'CLOSE TP2' }), 'CLOSE TP2')
+    assert.equal(telegramMessageText({ rawText: 'CLOSE TP2' }), 'CLOSE TP2')
+    assert.equal(telegramMessageText({ caption: 'CLOSE TP2' }), 'CLOSE TP2')
+    assert.equal(telegramMessageText(null), '')
+    assert.equal(telegramMessageText({ text: '' }), '')
+    // Empty text falls through to the populated field; first non-empty wins.
+    assert.equal(telegramMessageText({ text: '', caption: 'CLOSE TP2' }), 'CLOSE TP2')
+    assert.equal(telegramMessageText({ text: 'A', caption: 'B' }), 'A')
+  })
+
+  it('revisionBlockedForManagement blocks point-in-time management actions only', () => {
+    // Management commands must never be re-parsed by the reconcile sweep:
+    // a revision drops close_tp_index and widens the instruction (2026-11-13).
+    assert.equal(revisionBlockedForManagement({ action: 'close' }), true)
+    assert.equal(revisionBlockedForManagement({ action: 'partial_profit' }), true)
+    assert.equal(revisionBlockedForManagement({ action: 'breakeven' }), true)
+    assert.equal(revisionBlockedForManagement({ action: 'partial_breakeven' }), true)
+    assert.equal(revisionBlockedForManagement({ action: 'close_worse_entries' }), true)
+    assert.equal(revisionBlockedForManagement({ action: 'modify' }), true)
+    assert.equal(revisionBlockedForManagement({ action: 'delete_pendings' }), true)
+    assert.equal(revisionBlockedForManagement({ action: 'CLOSE' }), true)
+    assert.equal(revisionBlockedForManagement({ action: '  Close  ' }), true)
+    // Entries keep the revision refresh (edited price/stops still update).
+    assert.equal(revisionBlockedForManagement({ action: 'buy' }), false)
+    assert.equal(revisionBlockedForManagement({ action: 'sell' }), false)
+    assert.equal(revisionBlockedForManagement({ action: '' }), false)
+    assert.equal(revisionBlockedForManagement(null), false)
+  })
+
   it('shouldReconcileSignal skips when edit_date unchanged and text matches', () => {
     assert.equal(
       shouldReconcileSignal(

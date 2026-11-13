@@ -93,6 +93,30 @@ Parked repairs in `stash@{1}` (per instruction: his code stands alone for now):
 Worker full suite at round-2 pull time: **3207/3218 pass, 11 fail** (round-3 re-run pending) (exactly the above; no unexplained failures).
 Frontend after round 3: node:test **590/590**; vitest **536/544** (2 pre-existing `TraderReviews` + 6 upstream-red `brokerCopyLink`).
 
+## 8b. LIVE TEST FINDING 2026-11-13 — `CLOSE TP2` closes the whole bundled basket (HIGH)
+
+Reproduced twice on staging (baskets opened via `TP_BUNDLE_ENABLED=true`):
+- The reply-scoped `CLOSE TP2` correctly resolved and close-targeted **only the 2nd leg**
+  (`mgmt_partial_profit success ticket=…528 / …423`) — bundle targeting itself is correct.
+- But the **reconcile-sweep re-dispatch re-parses the same message without
+  `close_tp_index`**, so a second action runs as a **full basket `close`** and kills the
+  remaining legs (`mgmt_close success` on all other tickets; close prices at market, not TP).
+- Evidence: trade_execution_logs for the CLOSE signals — one `mgmt_partial_profit` +
+  N× `mgmt_close` under a single reply; e.g. `c5d0d36a…` (1 partial + 3 closes) and
+  `3a255a3f…` (1 partial + 1 close).
+- Root area: Martins's message-revision / sweep re-dispatch path (parse of the revision
+  loses `close_tp_index`). **Do not patch his code without owner sign-off** — report to him.
+- Mitigation until fixed: for bundled baskets, avoid reply-scoped `CLOSE TPn` on staging;
+  close individual legs by ticket or wait for a fix.
+- **FIX IMPLEMENTED 2026-11-13 (owner-approved Fixes 1+4):**
+  `signalTelegramReconcile.ts` — `revisionBlockedForManagement()` (delegates to the shared
+  `isManagementAction`) + first-non-empty `telegramMessageText` extraction;
+  `userListener.ts` — `tryApplyMessageRevisionInner` refuses to revise management actions
+  (event `message_revision_management_skipped`) and refuses empty-text revisions; the
+  reconcile sweep silently settles blocked candidates instead of re-flagging them every
+  cycle; `listenerEvents.ts` — new event type. Tests added. **Pending:** deploy + 3-round
+  acceptance re-run (pass = only the TP2 leg closes, others stay open).
+
 ## 8. Review findings to watch (do not silently drop)
 
 - **H1** `monitorWorkWake.ts` resubscribe can loop after `CLOSED` (stale-channel callback). Symptom + check in 4.4.

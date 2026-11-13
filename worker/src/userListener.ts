@@ -88,6 +88,7 @@ import {
   snapshotsFromTelegramMessages,
   telegramEditDateSec,
   telegramMessageText,
+  revisionBlockedForManagement,
 } from './signalTelegramReconcile'
 import { evaluateParsedSignalExecutionEligibility, deterministicEntryNeedsAiRepair } from './signalExecutionEligibility'
 import { getUniversalParseMode } from './signalIntent/parseConfig'
@@ -2116,6 +2117,25 @@ export class UserListener {
       telegramMessageId: messageId,
     })
     if (!existing) return false
+    // Management commands are point-in-time: a reconcile revision re-parses the
+    // text and can only lose specificity (a re-parsed "CLOSE TP2" becomes a
+    // full "close" and wipes the basket). Never revise them — and never run a
+    // revision from an empty fetched text.
+    if (revisionBlockedForManagement(existing.parsed_data)) {
+      void persistListenerEvent(this.supabase, {
+        userId: this.userId,
+        eventType: 'message_revision_management_skipped',
+        channelRowId: channelRow.id,
+        telegramMessageId: messageId,
+        detail: {
+          signal_id: existing.id,
+          source,
+          action: String((existing.parsed_data as { action?: unknown } | null)?.action ?? ''),
+        },
+      })
+      return false
+    }
+    if (!rawMessage.trim()) return false
     if (isIncomingRevisionStale(existing.telegram_edit_date_seen, args.telegramEditDateSeen)) {
       void persistListenerEvent(this.supabase, {
         userId: this.userId,
@@ -3766,8 +3786,41 @@ export class UserListener {
       return stats
     }
 
-    stats.mismatches = mismatches.length
+    // Blocked revisions (management actions, empty fetched text) are not real
+    // mismatches: settle them silently so the sweep neither re-flags them every
+    // cycle nor re-parses them. Management commands are point-in-time.
+    const actionableMismatches: typeof mismatches = []
+    const blockedRevisionIds: string[] = []
     for (const candidate of mismatches) {
+      if (
+        revisionBlockedForManagement(candidate.signal.parsed_data)
+        || !candidate.rawMessage.trim()
+      ) {
+        blockedRevisionIds.push(candidate.signal.id)
+      } else {
+        actionableMismatches.push(candidate)
+      }
+    }
+    if (blockedRevisionIds.length) {
+      await markSignalsReconciled(this.supabase, {
+        signalIds: blockedRevisionIds,
+        editDateBySignalId,
+      })
+    }
+    stats.mismatches = actionableMismatches.length
+    if (!actionableMismatches.length) {
+      if (stats.checked > 0) {
+        void persistListenerEvent(this.supabase, {
+          userId: this.userId,
+          eventType: 'signal_reconcile_checked',
+          channelRowId: channelRow.id,
+          detail: { source, checked: stats.checked, mismatches: 0, blocked: blockedRevisionIds.length },
+        })
+      }
+      return stats
+    }
+
+    for (const candidate of actionableMismatches) {
       void persistListenerEvent(this.supabase, {
         userId: this.userId,
         eventType: 'signal_reconcile_mismatch',

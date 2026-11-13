@@ -5,6 +5,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { isIncomingRevisionStale, messageTextChanged } from './signalRevision'
 import { normalizeTelegramMessageText } from './normalizeTelegramMessageText'
+import { isManagementAction } from './tradeSignalActions'
 
 export const RECONCILE_SWEEP_WINDOW_MS = Math.max(
   60_000,
@@ -79,8 +80,23 @@ export function telegramEditDateSec(message: unknown): number | null {
 
 export function telegramMessageText(message: unknown): string {
   if (message == null || typeof message !== 'object') return ''
-  const m = message as { text?: unknown; message?: unknown }
-  return normalizeTelegramMessageText(String(m.text ?? m.message ?? ''))
+  const m = message as { text?: unknown; message?: unknown; rawText?: unknown; caption?: unknown }
+  // First non-empty shape wins: gramjs may expose an empty `text` while the
+  // real content lives in `message`/`caption` (media/reply shapes).
+  const raw = [m.text, m.message, m.rawText, m.caption]
+    .find(v => typeof v === 'string' && v.trim() !== '')
+  return normalizeTelegramMessageText(String(raw ?? ''))
+}
+
+/**
+ * Management instructions are point-in-time commands (close TP2, breakeven,
+ * cancel pendings, …). A reconcile revision re-parses them and can only lose
+ * specificity — a "CLOSE TP2" re-parsed as "close" wiped whole bundled
+ * baskets on staging (2026-11-13). Never revise management actions.
+ */
+export function revisionBlockedForManagement(parsed: unknown): boolean {
+  const action = String((parsed as { action?: unknown } | null)?.action ?? '').toLowerCase().trim()
+  return action !== '' && isManagementAction(action)
 }
 
 export function shouldReconcileSignal(
