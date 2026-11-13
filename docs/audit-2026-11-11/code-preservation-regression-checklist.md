@@ -114,8 +114,12 @@ Reproduced twice on staging (baskets opened via `TP_BUNDLE_ENABLED=true`):
   `userListener.ts` — `tryApplyMessageRevisionInner` refuses to revise management actions
   (event `message_revision_management_skipped`) and refuses empty-text revisions; the
   reconcile sweep silently settles blocked candidates instead of re-flagging them every
-  cycle; `listenerEvents.ts` — new event type. Tests added. **Pending:** deploy + 3-round
-  acceptance re-run (pass = only the TP2 leg closes, others stay open).
+  cycle; `listenerEvents.ts` — new event type. Tests added. **DEPLOYED + VALIDATED 2026-11-13 19:2x–19:4x (3/3 rounds):** entry
+  bundling intact (0.25/0.15/0.10); `CLOSE TP2` closed **only** the TP2 leg in every round
+  while the other legs stayed open (pre-fix: 3/3 whole-basket wipe). Guard confirmed firing
+  (`message_revision_management_skipped` from the catch-up path, 259 events/40 min); entry
+  revisions still apply normally (3 × `message_revision_applied` = the 3 test entries).
+  Follow-up: that catch-up skip volume is log noise — consider emitting it once per signal.
 
 ## 8. Review findings to watch (do not silently drop)
 
