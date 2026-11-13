@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { Activity, ChevronDown, RefreshCw } from 'lucide-react'
+import { Activity, RefreshCw, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
@@ -27,10 +27,9 @@ import { getCachedTgSession, setCachedTgSession } from '../../lib/telegramSessio
 import { subscribeTradingViewWebhooksChanged } from '../../lib/tradingViewWebhook'
 import { subscribeWhatsAppSourcesChanged } from '../../lib/whatsappSource'
 import type { BrokerAccount } from '../../types/database'
-import { APP_CARD, APP_SECTION_LABEL, APP_WORKSPACE } from '../../lib/appSurface'
+import { APP_SECTION_LABEL, APP_WORKSPACE } from '../../lib/appSurface'
 import { SignalSourceLogo } from './SignalSourceLogo'
 
-const EXPANDED_STORAGE_KEY = 'tscopier.dashboard.copierStatusExpanded'
 const SOURCE_ORDER: SignalSourceKind[] = ['telegram', 'discord', 'whatsapp', 'tradingview']
 
 type Tone = 'ok' | 'warn' | 'bad' | 'muted'
@@ -49,17 +48,6 @@ const EMPTY_SOURCES: SourcePresence = {
   whatsappStatus: null,
   whatsappChannels: 0,
   tradingViewConnected: false,
-}
-
-function readExpandedPreference(defaultValue: boolean): boolean {
-  try {
-    const raw = localStorage.getItem(EXPANDED_STORAGE_KEY)
-    if (raw === '1') return true
-    if (raw === '0') return false
-  } catch {
-    /* ignore */
-  }
-  return defaultValue
 }
 
 function toneText(tone: Tone): string {
@@ -122,26 +110,24 @@ function MetricCell({
   )
 }
 
+/**
+ * Compact Connection Status control for the dashboard greeting row.
+ * Click opens a modal with the full connection / source status panel.
+ */
 export function CopierStatusCard({
   accounts,
   className,
-  /** When true, omit outer card chrome (for embedding in the balance section). */
-  embedded = false,
-  defaultExpanded = true,
 }: {
   accounts: BrokerAccount[]
   className?: string
-  embedded?: boolean
-  defaultExpanded?: boolean
 }) {
   const { user } = useAuth()
   const { hasActiveSubscription } = useSubscription()
   const userId = user?.id ?? null
   const t = useT()
   const cs = t.dashboard.copierStatus
-  const ce = t.copierEnginePage
 
-  const [expanded, setExpanded] = useState(() => readExpandedPreference(defaultExpanded))
+  const [open, setOpen] = useState(false)
   const [hasTgSession, setHasTgSession] = useState(() => {
     if (!userId) return false
     return Boolean(getCachedTgSession(userId))
@@ -159,18 +145,6 @@ export function CopierStatusCard({
   // Number of completed server snapshots. Distinguishes an initial "checking"
   // pass from a persistent "no data" state (reporter never wrote a health row).
   const [healthSnapshots, setHealthSnapshots] = useState(0)
-
-  const toggleExpanded = useCallback(() => {
-    setExpanded(prev => {
-      const next = !prev
-      try {
-        localStorage.setItem(EXPANDED_STORAGE_KEY, next ? '1' : '0')
-      } catch {
-        /* ignore */
-      }
-      return next
-    })
-  }, [])
 
   const refreshCopierHealth = useCallback(async () => {
     if (!userId) return
@@ -259,6 +233,20 @@ export function CopierStatusCard({
       clearInterval(interval)
     }
   }, [userId, refreshCopierHealth, refreshSources])
+
+  useEffect(() => {
+    if (!open) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
 
   const hasConnectedBroker = useMemo(
     () => accounts.some(account => account.is_active !== false && isBrokerSessionConnected(account)),
@@ -376,13 +364,13 @@ export function CopierStatusCard({
       : cs.notAvailable)
     : null
 
-  const collapsedSummaryTone: Tone = headline === 'issues'
+  const summaryTone: Tone = headline === 'issues'
     ? 'bad'
     : headline === 'ready'
       ? 'ok'
       : 'muted'
 
-  const collapsedSummary = headline === 'subscription'
+  const summary = headline === 'subscription'
     ? t.pricing.billing.noActiveSubscription
     : headline === 'issues'
       ? cs.checksFailed
@@ -408,156 +396,168 @@ export function CopierStatusCard({
         : 'muted'
 
   return (
-    <div
-      className={clsx(
-        !embedded && ['overflow-hidden', APP_CARD],
-        className,
-      )}
-    >
+    <>
       <button
         type="button"
-        onClick={toggleExpanded}
-        aria-expanded={expanded}
+        onClick={() => setOpen(true)}
         className={clsx(
-          'flex w-full items-center gap-2.5 px-5 py-4 text-left',
-          'transition-colors hover:bg-neutral-50 dark:hover:bg-white/3',
-          expanded && 'border-b border-neutral-100/90 dark:border-white/8',
+          'inline-flex max-w-full items-center gap-2 rounded-full px-2.5 py-1.5 text-left text-sm transition-colors',
+          'hover:bg-neutral-50 dark:hover:bg-white/5',
+          className,
         )}
+        aria-haspopup="dialog"
+        aria-expanded={open}
       >
         <span
           className={clsx(
-            'flex h-8 w-8 shrink-0 items-center justify-center rounded-xl',
-            expanded ? 'bg-neutral-100 dark:bg-white/6' : toneWash(collapsedSummaryTone),
+            'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg',
+            toneWash(summaryTone),
           )}
         >
-          <Activity
-            className={clsx(
-              'h-4 w-4',
-              expanded ? 'text-neutral-700 dark:text-neutral-200' : toneText(collapsedSummaryTone),
-            )}
-          />
+          <Activity className={clsx('h-3.5 w-3.5', toneText(summaryTone))} aria-hidden />
         </span>
-        {!expanded ? (
-          <span className="min-w-0 flex-1 truncate text-sm">
-            <span className="font-semibold text-neutral-900 dark:text-neutral-50">
-              {cs.title}
-            </span>
-            <span className="mx-2 text-neutral-300 dark:text-neutral-700" aria-hidden>·</span>
-            <StatusValue tone={collapsedSummaryTone}>{collapsedSummary}</StatusValue>
+        <span className="min-w-0 truncate">
+          <span className="font-semibold text-neutral-900 dark:text-neutral-50">
+            {cs.title}
           </span>
-        ) : (
-          <>
-            <span className="shrink-0 text-[15px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
-              {cs.title}
-            </span>
-            <span className="flex-1" />
-          </>
-        )}
-        <ChevronDown
-          className={clsx(
-            'h-4 w-4 shrink-0 text-neutral-400 transition-transform dark:text-neutral-500',
-            expanded && 'rotate-180',
-          )}
-          aria-hidden
-        />
-        <span className="sr-only">{expanded ? ce.collapse : ce.expand}</span>
+          <span className="mx-1.5 text-neutral-300 dark:text-neutral-700" aria-hidden>·</span>
+          <StatusValue tone={summaryTone}>{summary}</StatusValue>
+        </span>
       </button>
 
-      {expanded ? (
-        <div className="space-y-4 px-5 py-4">
-          {statusMessage || lastHealthy ? (
-            <div className={clsx('rounded-xl border px-3.5 py-3', toneWash(bannerTone))}>
-              {statusMessage ? (
-                <p className={clsx('text-sm font-medium leading-snug', toneText(bannerTone))}>
-                  {statusMessage}
-                </p>
-              ) : null}
-              {lastHealthy ? (
-                <p className={clsx(
-                  'text-xs text-neutral-500 dark:text-neutral-400',
-                  statusMessage && 'mt-1',
-                )}
+      {open ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="copier-status-modal-title"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 bg-neutral-950/55"
+            aria-label={t.copierLogs.detailModal?.close ?? 'Close'}
+            onClick={() => setOpen(false)}
+          />
+          <div className="relative w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 shadow-2xl">
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-5 py-4 border-b border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+              <div className="min-w-0">
+                <h2
+                  id="copier-status-modal-title"
+                  className="text-lg font-semibold text-neutral-900 dark:text-neutral-50 truncate"
                 >
-                  {cs.lastHealthy}: {lastHealthy}
+                  {cs.title}
+                </h2>
+                <p className="mt-0.5 truncate text-xs">
+                  <StatusValue tone={summaryTone}>{summary}</StatusValue>
                 </p>
+              </div>
+              <button
+                type="button"
+                className="p-2 rounded-lg text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                aria-label={t.copierLogs.detailModal?.close ?? 'Close'}
+                onClick={() => setOpen(false)}
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 px-5 py-4">
+              {statusMessage || lastHealthy ? (
+                <div className={clsx('rounded-xl border px-3.5 py-3', toneWash(bannerTone))}>
+                  {statusMessage ? (
+                    <p className={clsx('text-sm font-medium leading-snug', toneText(bannerTone))}>
+                      {statusMessage}
+                    </p>
+                  ) : null}
+                  {lastHealthy ? (
+                    <p className={clsx(
+                      'text-xs text-neutral-500 dark:text-neutral-400',
+                      statusMessage && 'mt-1',
+                    )}
+                    >
+                      {cs.lastHealthy}: {lastHealthy}
+                    </p>
+                  ) : null}
+                </div>
               ) : null}
-            </div>
-          ) : null}
 
-          <div>
-            <p className={clsx(APP_SECTION_LABEL, 'mb-2.5')}>{cs.signalSources}</p>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {SOURCE_ORDER.map(kind => {
-                const link = links[kind]
-                const tone = sourceTone(link)
-                const showConnect = link === 'not_connected' && !isSignalSourceLocked(kind)
-                return (
-                  <div
-                    key={kind}
-                    className="flex items-center gap-3 rounded-xl border border-neutral-200/65 bg-white px-3 py-2.5 dark:border-neutral-800/55 dark:bg-neutral-950"
-                  >
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-neutral-50 ring-1 ring-neutral-200/70 dark:bg-white/4 dark:ring-white/8">
-                      <SignalSourceLogo kind={kind} className="h-5 w-5" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-50">
-                        {SIGNAL_SOURCE_MARKS[kind].label}
-                      </p>
-                      {!showConnect ? (
-                        <p className={clsx('mt-0.5 flex items-center gap-1.5 text-xs font-medium', toneText(tone))}>
-                          <span className={clsx('h-1.5 w-1.5 shrink-0 rounded-full', toneDot(tone))} aria-hidden />
-                          {sourceLabel(link)}
-                        </p>
-                      ) : (
-                        <p className="mt-0.5 text-xs text-neutral-400 dark:text-neutral-500">
-                          {cs.notConnected}
-                        </p>
-                      )}
-                    </div>
-                    {showConnect ? (
-                      <Link
-                        to={`/channels?source=${kind}`}
-                        className="inline-flex shrink-0 items-center rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-xs font-medium text-neutral-900 transition-colors hover:border-green-400 hover:bg-green-50 hover:text-neutral-950 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50 dark:hover:border-green-500/60 dark:hover:bg-green-950/40"
+              <div>
+                <p className={clsx(APP_SECTION_LABEL, 'mb-2.5')}>{cs.signalSources}</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {SOURCE_ORDER.map(kind => {
+                    const link = links[kind]
+                    const tone = sourceTone(link)
+                    const showConnect = link === 'not_connected' && !isSignalSourceLocked(kind)
+                    return (
+                      <div
+                        key={kind}
+                        className="flex items-center gap-3 rounded-xl border border-neutral-200/65 bg-white px-3 py-2.5 dark:border-neutral-800/55 dark:bg-neutral-950"
                       >
-                        {cs.connectSource}
-                      </Link>
-                    ) : null}
-                  </div>
-                )
-              })}
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-neutral-50 ring-1 ring-neutral-200/70 dark:bg-white/4 dark:ring-white/8">
+                          <SignalSourceLogo kind={kind} className="h-5 w-5" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                            {SIGNAL_SOURCE_MARKS[kind].label}
+                          </p>
+                          {!showConnect ? (
+                            <p className={clsx('mt-0.5 flex items-center gap-1.5 text-xs font-medium', toneText(tone))}>
+                              <span className={clsx('h-1.5 w-1.5 shrink-0 rounded-full', toneDot(tone))} aria-hidden />
+                              {sourceLabel(link)}
+                            </p>
+                          ) : (
+                            <p className="mt-0.5 text-xs text-neutral-400 dark:text-neutral-500">
+                              {cs.notConnected}
+                            </p>
+                          )}
+                        </div>
+                        {showConnect ? (
+                          <Link
+                            to={`/channels?source=${kind}`}
+                            className="inline-flex shrink-0 items-center rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-xs font-medium text-neutral-900 transition-colors hover:border-green-400 hover:bg-green-50 hover:text-neutral-950 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50 dark:hover:border-green-500/60 dark:hover:bg-green-950/40"
+                            onClick={() => setOpen(false)}
+                          >
+                            {cs.connectSource}
+                          </Link>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-3">
+                <MetricCell
+                  label={cs.allBrokerConnections}
+                  value={brokerConnectionsLabel}
+                  tone={brokerConnectionsTone}
+                />
+                <MetricCell
+                  label={cs.copierEngine}
+                  value={processLabel(processState)}
+                  tone={!hasActiveSubscription ? 'muted' : processTone(processState)}
+                />
+                <MetricCell
+                  label={cs.brokerErrors}
+                  value={String(brokerErrorCount)}
+                  tone={brokerErrorCount > 0 ? 'bad' : 'ok'}
+                />
+              </div>
+
+              <div className="flex justify-end border-t border-neutral-100 pt-3 dark:border-neutral-800/80">
+                <button
+                  type="button"
+                  onClick={refreshAll}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-neutral-500 transition-colors hover:text-green-600 dark:text-neutral-400 dark:hover:text-green-400"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+                  {cs.refreshStatus}
+                </button>
+              </div>
             </div>
-          </div>
-
-          <div className="grid gap-2 sm:grid-cols-3">
-            <MetricCell
-              label={cs.allBrokerConnections}
-              value={brokerConnectionsLabel}
-              tone={brokerConnectionsTone}
-            />
-            <MetricCell
-              label={cs.copierEngine}
-              value={processLabel(processState)}
-              tone={!hasActiveSubscription ? 'muted' : processTone(processState)}
-            />
-            <MetricCell
-              label={cs.brokerErrors}
-              value={String(brokerErrorCount)}
-              tone={brokerErrorCount > 0 ? 'bad' : 'ok'}
-            />
-          </div>
-
-          <div className="flex justify-end border-t border-neutral-100 pt-3 dark:border-neutral-800/80">
-            <button
-              type="button"
-              onClick={refreshAll}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-neutral-500 transition-colors hover:text-green-600 dark:text-neutral-400 dark:hover:text-green-400"
-            >
-              <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-              {cs.refreshStatus}
-            </button>
           </div>
         </div>
       ) : null}
-    </div>
+    </>
   )
 }

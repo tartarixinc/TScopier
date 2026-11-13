@@ -24,8 +24,8 @@ export function PageHeader({
       className={clsx(
         'flex flex-col gap-4',
         rowAtLg
-          ? 'lg:flex-row lg:items-start lg:justify-between'
-          : 'sm:flex-row sm:items-start sm:justify-between',
+          ? 'lg:flex-row lg:items-center lg:justify-between'
+          : 'sm:flex-row sm:items-center sm:justify-between',
         className,
       )}
     >

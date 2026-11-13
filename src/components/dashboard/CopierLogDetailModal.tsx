@@ -32,6 +32,7 @@ export function CopierLogDetailModal({
   sourceKind = null,
   symbol,
   status,
+  displayReason,
   onClose,
   onRetry,
   isRetrying,
@@ -42,6 +43,8 @@ export function CopierLogDetailModal({
   sourceKind?: SignalSourceKind | null
   symbol: string
   status: { variant: StatusVariant; label: string; className?: string }
+  /** Composed Copier Log reason (Open/Executed/Parsed lifecycle or skip text). */
+  displayReason?: string | null
   onClose: () => void
   onRetry?: () => void
   isRetrying?: boolean
@@ -76,7 +79,9 @@ export function CopierLogDetailModal({
     [t],
   )
 
-  const reasonShort = formatCopierSkipReasonShort(signal?.skip_reason, copierLogs)
+  const reasonShort = (displayReason && displayReason !== '—')
+    ? displayReason
+    : formatCopierSkipReasonShort(signal?.skip_reason, copierLogs)
   const reasonDetail = formatCopierSkipReasonDetail(signal?.skip_reason, copierLogs)
   const structuredFailure = useMemo(() => {
     const fromTimeline = timeline
@@ -146,7 +151,10 @@ export function CopierLogDetailModal({
 
   const receivedAt = new Date(signal.created_at).toLocaleString()
   const technicalCode = signal.skip_reason?.trim() || '—'
-  const showReason = signal.status === 'skipped' || signal.status === 'failed' || Boolean(signal.skip_reason)
+  const showReason = Boolean(reasonShort && reasonShort !== '—')
+    || signal.status === 'skipped'
+    || signal.status === 'failed'
+    || Boolean(signal.skip_reason)
   const effectiveRetryEligible = retryEligible && structuredFailure?.retryable !== false
 
   return (

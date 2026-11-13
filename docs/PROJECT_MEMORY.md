@@ -2,6 +2,42 @@
 
 ## Changelog
 
+### 2026-11-13 — Connection Status moved into greeting
+
+- **Context:** Dashboard Connection Status card took a full section.
+- **Plain English:** Connection Status now sits on the right of the greeting; click it to open the status modal.
+- **Fix (files):** [`CopierStatusCard.tsx`](src/components/dashboard/CopierStatusCard.tsx) — header trigger + modal; [`DashboardPage.tsx`](src/pages/dashboard/DashboardPage.tsx) — `PageHeader` actions.
+- **Tests/verification:** Local — greeting row shows status; click opens modal; section card gone.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** None.
+
+### 2026-11-13 — Copier Log Open / Closed statuses + reasons
+
+- **Context:** Copier Log only showed dispatch statuses; Executed had no Reason, and trade open/close was invisible.
+- **Plain English:** Copier Log now shows **Parsed / Executed / Open / Skipped / Failed / Closed**, each with a Reason. Open means a live position from a Telegram signal; Closed is a separate log line when a trade ends (e.g. Full TP hit / Due to stop loss).
+- **Fix (files):** [`copierLogLifecycle.ts`](src/lib/copierLogLifecycle.ts); [`CopierLogsPage.tsx`](src/pages/dashboard/CopierLogsPage.tsx); [`DashboardPage.tsx`](src/pages/dashboard/DashboardPage.tsx) strip; i18n `closeReasons` / lifecycle reasons; detail modal `displayReason`.
+- **Tests/verification:** `copierLogLifecycle.test.ts`; `tsc --noEmit` clean.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** Optional Closed toasts on `trades` realtime.
+
+### 2026-11-13 — Dashboard Your Trades + Open Trades link
+
+- **Context:** Surface Manage Trades from the dashboard overview.
+- **Plain English:** Open Trades stat now has a **Manage Trades** text link to `/manage-signals`. Your Trades strip (open-only, above Copier Log) was added in the same workstream.
+- **Fix (files):** [`DashboardPage.tsx`](src/pages/dashboard/DashboardPage.tsx) — Open Trades `OverviewStat` `addTo="/manage-signals"`; Your Trades card + i18n `yourTrades` / `manageTrades`.
+- **Tests/verification:** Local — Open Trades link navigates; strip only when open.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** None.
+
+### 2026-11-13 — Copier Process as toast (dashboard strip removed)
+
+- **Context:** Dashboard “Most Recent Copier Process” strip duplicated Management; user wanted process events as toasts instead.
+- **Plain English:** Copier Process updates now pop as toasts (click opens Copier Process / `/activities`). The dashboard only keeps Most Recent Copier Log.
+- **Fix (files):** [`CopierProcessToasts.tsx`](src/components/dashboard/CopierProcessToasts.tsx) + [`copierProcessToast.ts`](src/lib/copierProcessToast.ts); stacked with Copier Log toasts in [`AppLayout.tsx`](src/components/layout/AppLayout.tsx); process section removed from [`DashboardPage.tsx`](src/pages/dashboard/DashboardPage.tsx).
+- **Tests/verification:** `copierProcessToast.test.ts`.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** None.
+
 ### 2026-11-13 — Restore OrderSend reliability after capacity regression
 
 - **Context:** Production (Martins / New Con) after the global OrderSend capacity gate: **42** `BROKER_BUSY` and **12** OrderSend timeouts since 07:00Z; Gold-lab multi-leg baskets failed while the bridge was still alive.

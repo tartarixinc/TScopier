@@ -69,10 +69,16 @@ import {
   buildCopierLogSymbolLabels,
   buildSignalSymbolLookup,
 } from '../../lib/copierLogDisplay'
-import { buildDisplayableTradeActivities, buildChannelDisplayNames, dedupePipelineParseAttempts, TRADE_ACTIVITY_FETCH_LIMIT, type TradeActivityLogRow } from '../../lib/tradeActivities'
 import {
-  buildManualSourceTradeActivities,
-  buildSocialCopyTradeActivities,
+  buildClosedCopierLogDraft,
+  copierLifecycleLabelsFromCopierLogs,
+  resolveCopierDisplayReason,
+  resolveCopierDisplayStatus,
+} from '../../lib/copierLogLifecycle'
+import { buildOpenSignalIdSet } from '../../lib/signalOverride'
+import { Badge } from '../../components/ui/Badge'
+import { buildChannelDisplayNames, dedupePipelineParseAttempts, TRADE_ACTIVITY_FETCH_LIMIT, type TradeActivityLogRow } from '../../lib/tradeActivities'
+import {
   countSocialCopyOpensInRange,
   fetchManualSourceTradeLogs,
   fetchSocialCopyLogs,
@@ -80,7 +86,13 @@ import {
 } from '../../lib/socialCopyLogs'
 import { buildChannelSourceKinds, resolveSignalSourceKind, resolveSignalSourceName, SIGNAL_SOURCE_MARKS, type SignalSourceKind } from '../../lib/signalSourceMark'
 import { SignalSourceLogo } from '../../components/dashboard/SignalSourceLogo'
-import { TradeActivityCard } from '../../components/dashboard/TradeActivityCard'
+import { CopierLogDetailModal } from '../../components/dashboard/CopierLogDetailModal'
+import { MirrorLogDetailModal } from '../../components/dashboard/MirrorLogDetailModal'
+import { retrySignalApi } from '../../lib/retrySignalApi'
+import {
+  formatRetrySignalFailureReason,
+  isCopierSignalRetryEligible,
+} from '../../lib/retrySignalDisplay'
 import {
   DASHBOARD_ACTIVE_USER_KEY,
   DASHBOARD_CACHE_LEGACY_KEYS,
@@ -158,9 +170,12 @@ const DASHBOARD_ATTRIBUTIONS_FETCH_LIMIT = 2000
 /** Dismiss metrics skeleton right after critical setState (was 5s and dominated cold load). */
 const DASHBOARD_METRICS_LOADER_DISMISS_MS = 150
 
-/** Shared column template for dashboard Copier Logs header + rows. */
+/**
+ * Shared Copier strip tracks (header + every row). Status is a fixed width so
+ * badges stay compact while Reason/Source/… stay vertically aligned across rows.
+ */
 const DASHBOARD_COPIER_LOG_GRID =
-  'grid grid-cols-[5.75rem_minmax(0,1fr)_minmax(4rem,0.85fr)_minmax(4.75rem,auto)_minmax(6.75rem,auto)] gap-x-3 items-center'
+  'grid grid-cols-[7.25rem_minmax(0,1.5fr)_minmax(0,1.1fr)_minmax(5rem,0.75fr)_minmax(0,1.2fr)_minmax(5rem,0.7fr)_8rem] gap-x-3 items-center min-w-3xl'
 
 const DASHBOARD_CARD = APP_CARD
 
@@ -1046,6 +1061,11 @@ export function DashboardPage() {
   const tabSessionWarmRef = useRef(tabSessionWarmAtMount)
   const [stats, setStats] = useState<DashboardStats>(() => statsFromDashboardCache(bootCache))
   const [copierLogs, setCopierLogs] = useState<Signal[]>(() => bootCache?.copierLogs ?? [])
+  const [openCopierLogSignalIds, setOpenCopierLogSignalIds] = useState<Set<string>>(() => new Set())
+  const [recentClosedCopierDraft, setRecentClosedCopierDraft] = useState<ReturnType<typeof buildClosedCopierLogDraft> | null>(null)
+  const [copierLogDetail, setCopierLogDetail] = useState<DashboardCopierLogRow | null>(null)
+  const [copierLogRetryingId, setCopierLogRetryingId] = useState<string | null>(null)
+  const [copierLogToast, setCopierLogToast] = useState<string | null>(null)
   const [copierLogSymbols, setCopierLogSymbols] = useState<Record<string, string>>(
     () => bootCache?.copierLogSymbols ?? {},
   )
@@ -1344,57 +1364,59 @@ export function DashboardPage() {
     return out
   }, [linkedAccounts, linkedAccountBalances])
 
-  const visibleTradeActivities = useMemo(() => {
-    const channelActivities = buildDisplayableTradeActivities(
-      aiExpertLogs,
-      t.channelWorker,
-      t.management,
-      channelDisplayNames,
-      channelSourceKinds,
-    )
-    const socialActivities = buildSocialCopyTradeActivities(socialCopyLogs, t.management, {
-      source: t.copierLogs.socialSource ?? 'Social trading',
-      openMessage: t.copierLogs.socialOpenMessage ?? 'Copied {detail} from provider #{ticket}',
-      closeMessage: t.copierLogs.socialCloseMessage ?? 'Social copy of #{ticket} closed',
-      modifyMessage: t.copierLogs.socialModifyMessage ?? 'Social copy of #{ticket} updated',
-      otherMessage: t.copierLogs.socialOtherMessage ?? '{action} · social copy of #{ticket}',
-    })
-    const manualActivities = buildManualSourceTradeActivities(manualSourceLogs, t.management, {
-      source: t.copierLogs.manualExecutionSource ?? 'Manual Execution',
-      openMessage: t.copierLogs.manualOpenMessage ?? 'Opened {detail} #{ticket}',
-      closeMessage: t.copierLogs.manualCloseMessage ?? 'Closed #{ticket}',
-      modifyMessage: t.copierLogs.manualModifyMessage ?? 'Updated #{ticket}',
-      otherMessage: t.copierLogs.manualOtherMessage ?? '{action} · #{ticket}',
-    })
-    return [...channelActivities, ...socialActivities, ...manualActivities]
-      .sort((a, b) => (a.row.created_at < b.row.created_at ? 1 : a.row.created_at > b.row.created_at ? -1 : 0))
-      .slice(0, 20)
-  }, [aiExpertLogs, socialCopyLogs, manualSourceLogs, channelDisplayNames, channelSourceKinds, t.channelWorker, t.management, t.copierLogs])
-
-  /** Dashboard Copier Logs strip: channel signals + follower social copies + manual source trades. */
+  /** Dashboard Copier Logs strip: channel signals + follower social copies + manual source trades + newest Closed. */
   const visibleCopierLogRows = useMemo(() => {
     const socialLabel = t.copierLogs.socialSource ?? 'Social trading'
     const manualLabel = t.copierLogs.manualExecutionSource ?? 'Manual Execution'
+    const lifecycle = copierLifecycleLabelsFromCopierLogs(t.copierLogs)
     const signalRows: DashboardCopierLogRow[] = copierLogs.map(signal => {
       const parsed = signal.parsed_data as Record<string, unknown> | null
       const action = typeof parsed?.action === 'string' ? parsed.action : null
       const sourceKind = resolveSignalSourceKind(signal, channelSourceKinds)
       const channelName = resolveSignalSourceName(signal, channelDisplayNames, channelSourceKinds)
+      const displayStatus = resolveCopierDisplayStatus(
+        signal.status,
+        openCopierLogSignalIds,
+        signal,
+        { batchSignals: copierLogs },
+      )
+      const reason = resolveCopierDisplayReason(
+        displayStatus,
+        signal.skip_reason,
+        lifecycle,
+        t.copierLogs,
+      )
+      const raw = signal.raw_message?.trim()
+      const messagePreview = raw
+        ? (raw.length > 60 ? `${raw.slice(0, 60)}…` : raw)
+        : '(image)'
       return {
         key: signal.id,
         at: signal.created_at,
-        status: signal.status,
+        status: displayStatus,
         channelName,
         channelTitle: `${SIGNAL_SOURCE_MARKS[sourceKind].label} · ${channelName}`,
         symbol: copierLogSymbols[signal.id] ?? '—',
         action,
+        reasonShort: reason.length > 80 ? `${reason.slice(0, 80)}…` : reason,
+        reasonFull: reason,
+        messagePreview,
+        messageFull: raw ?? messagePreview,
         sourceKind,
         isSocial: false,
         isManual: false,
+        signal,
       }
     })
     const socialRows: DashboardCopierLogRow[] = socialCopyLogs.map(row => {
       const channelName = `${socialLabel} · ${row.channelName}`
+      const detail = [row.side, row.symbol, row.lot != null ? `${row.lot}` : null]
+        .filter(Boolean)
+        .join(' ')
+      const messagePreview = detail || row.action || '—'
+      const reasonShort = row.reason
+        ? (row.reason.length > 80 ? `${row.reason.slice(0, 80)}…` : row.reason)
+        : '—'
       return {
         key: `social:${row.id}`,
         at: row.createdAt,
@@ -1403,13 +1425,24 @@ export function DashboardPage() {
         channelTitle: channelName,
         symbol: row.symbol,
         action: row.action === 'open' ? (row.side ?? row.action) : row.action,
+        reasonShort,
+        messagePreview,
+        messageFull: row.reason ?? messagePreview,
         sourceKind: null,
         isSocial: true,
         isManual: false,
+        social: row,
       }
     })
     const manualRows: DashboardCopierLogRow[] = manualSourceLogs.map(row => {
       const channelName = `${manualLabel} · ${row.channelName}`
+      const detail = [row.side, row.symbol, row.lot != null ? `${row.lot}` : null]
+        .filter(Boolean)
+        .join(' ')
+      const messagePreview = detail || row.action || '—'
+      const reasonShort = row.reason
+        ? (row.reason.length > 80 ? `${row.reason.slice(0, 80)}…` : row.reason)
+        : '—'
       return {
         key: `manual:${row.id}`,
         at: row.createdAt,
@@ -1418,15 +1451,54 @@ export function DashboardPage() {
         channelTitle: channelName,
         symbol: row.symbol,
         action: row.action === 'open' ? (row.side ?? row.action) : row.action,
+        reasonShort,
+        messagePreview,
+        messageFull: row.reason ?? messagePreview,
         sourceKind: null,
         isSocial: false,
         isManual: true,
+        manual: row,
       }
     })
-    return [...signalRows, ...socialRows, ...manualRows]
+    const closedRows: DashboardCopierLogRow[] = recentClosedCopierDraft
+      ? [{
+          key: recentClosedCopierDraft.key,
+          at: recentClosedCopierDraft.at,
+          status: 'closed',
+          channelName: recentClosedCopierDraft.channelId
+            ? (channelDisplayNames[recentClosedCopierDraft.channelId] ?? 'Channel')
+            : 'Channel',
+          channelTitle: recentClosedCopierDraft.channelId
+            ? (channelDisplayNames[recentClosedCopierDraft.channelId] ?? 'Channel')
+            : 'Channel',
+          symbol: recentClosedCopierDraft.symbol,
+          action: recentClosedCopierDraft.action,
+          reasonShort: recentClosedCopierDraft.reason.length > 80
+            ? `${recentClosedCopierDraft.reason.slice(0, 80)}…`
+            : recentClosedCopierDraft.reason,
+          messagePreview: recentClosedCopierDraft.messagePreview,
+          messageFull: recentClosedCopierDraft.messageFull,
+          sourceKind: recentClosedCopierDraft.channelId
+            ? (channelSourceKinds[recentClosedCopierDraft.channelId] ?? null)
+            : null,
+          isSocial: false,
+          isManual: false,
+        }]
+      : []
+    return [...signalRows, ...socialRows, ...manualRows, ...closedRows]
       .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
-      .slice(0, 10)
-  }, [copierLogs, socialCopyLogs, manualSourceLogs, channelDisplayNames, channelSourceKinds, copierLogSymbols, t.copierLogs.socialSource, t.copierLogs.manualExecutionSource])
+      .slice(0, 1)
+  }, [
+    copierLogs,
+    socialCopyLogs,
+    manualSourceLogs,
+    openCopierLogSignalIds,
+    recentClosedCopierDraft,
+    channelDisplayNames,
+    channelSourceKinds,
+    copierLogSymbols,
+    t.copierLogs,
+  ])
 
   const [linkedAccountSortKey, setLinkedAccountSortKey] = useState<LinkedAccountSortKey | null>(null)
   const [linkedAccountSortDir, setLinkedAccountSortDir] = useState<SortDirection>('asc')
@@ -1523,11 +1595,11 @@ export function DashboardPage() {
     // First paint waits only on lightweight Supabase reads. MT history, execution
     // logs, social/manual logs, attributions, and symbol lookup run after the
     // metrics skeleton can dismiss (see enrichDashboard below).
-    const [channelsRes, tradesRes, todaySignalsRes, yesterdaySignalsRes, logsRes, channelsMetaRes] = await Promise.all([
+    const [channelsRes, tradesRes, todaySignalsRes, yesterdaySignalsRes, logsRes, channelsMetaRes, openTradesForLogRes, newestClosedRes] = await Promise.all([
       supabase.from('telegram_channels').select('id').eq('user_id', user!.id).eq('is_active', true),
       supabase
         .from('trades')
-        .select('id,symbol,direction,profit,lot_size,status,opened_at,closed_at,broker_account_id,signal_id,metaapi_order_id,telegram_channel_id')
+        .select('id,symbol,direction,profit,lot_size,status,opened_at,closed_at,close_reason,sl,tp,close_price,broker_account_id,signal_id,metaapi_order_id,telegram_channel_id')
         .eq('user_id', user!.id)
         .order('opened_at', { ascending: false })
         .limit(DASHBOARD_TRADES_FETCH_LIMIT),
@@ -1541,11 +1613,48 @@ export function DashboardPage() {
         .order('created_at', { ascending: false })
         .limit(10),
       supabase.from('telegram_channels').select('id,display_name,channel_username,source_kind').eq('user_id', user!.id),
+      supabase
+        .from('trades')
+        .select('signal_id')
+        .eq('user_id', user!.id)
+        .in('status', ['open', 'pending']),
+      supabase
+        .from('trades')
+        .select('id,signal_id,telegram_channel_id,symbol,direction,closed_at,close_reason,sl,tp,close_price')
+        .eq('user_id', user!.id)
+        .eq('status', 'closed')
+        .not('closed_at', 'is', null)
+        .order('closed_at', { ascending: false })
+        .limit(1),
     ])
 
     const logs = ((logsRes.data ?? []) as Signal[]).filter(s => !isNonTradeSkipReason(s.skip_reason))
 
     const allTrades = (tradesRes.data ?? []) as Trade[]
+    setOpenCopierLogSignalIds(
+      buildOpenSignalIdSet((openTradesForLogRes.data ?? []) as { signal_id?: string | null }[]),
+    )
+    const lifecycle = copierLifecycleLabelsFromCopierLogs(t.copierLogs)
+    const newestClosed = ((newestClosedRes.data ?? []) as Trade[])[0]
+    setRecentClosedCopierDraft(
+      newestClosed?.closed_at
+        ? buildClosedCopierLogDraft(
+          {
+            id: newestClosed.id,
+            signal_id: newestClosed.signal_id,
+            telegram_channel_id: newestClosed.telegram_channel_id,
+            symbol: newestClosed.symbol,
+            direction: newestClosed.direction,
+            closed_at: newestClosed.closed_at,
+            close_reason: newestClosed.close_reason,
+            sl: newestClosed.sl,
+            tp: newestClosed.tp,
+            close_price: newestClosed.close_price ?? null,
+          },
+          lifecycle,
+        )
+        : null,
+    )
     const tradeSignalIds = [...new Set(
       allTrades
         .map(t => t.signal_id)
@@ -2810,6 +2919,7 @@ export function DashboardPage() {
       <PageHeader
         title={dashboardGreeting}
         titleClassName="text-2xl"
+        actions={<CopierStatusCard accounts={linkedAccounts} />}
       />
       {showDashboardLoader ? (
         <DashboardMetricsSkeleton message={t.dashboard.loadingMetrics} />
@@ -2899,6 +3009,8 @@ export function DashboardPage() {
           <OverviewStat
             label={t.dashboard.openTrades}
             value={String(stats.openTrades)}
+            addTo="/manage-signals"
+            addLabel={t.dashboard.manageTrades}
           />
           <OverviewStat
             label={t.dashboard.tradingAccountsConnected}
@@ -2912,8 +3024,6 @@ export function DashboardPage() {
           />
       </div>
 
-      <CopierStatusCard accounts={linkedAccounts} />
-
       {/*
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-5">
         <TradeVolumeChart data={displayAnalytics.tradeVolume7Day} loading={chartsLoading} />
@@ -2924,96 +3034,61 @@ export function DashboardPage() {
       </div>
       */}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-5">
-          <div className={`${DASHBOARD_CARD} min-w-0 overflow-hidden`}>
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100/90 px-5 py-4 dark:border-white/8">
-            <div className="flex items-center gap-2">
-              <h2 className="text-[15px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">{t.dashboard.tradeActivities}</h2>
-              <InfoTooltip text={t.dashboard.tradeActivitiesHint} />
-            </div>
-            <button
-              type="button"
-              onClick={() => navigate('/activities')}
-              className={DASHBOARD_SECTION_LINK}
-            >
-              {t.dashboard.management}
-              <ChevronRight className="h-3.5 w-3.5" />
-            </button>
+      {/* Copier — full-width, latest rows like /copier-logs */}
+      <div className={`${DASHBOARD_CARD} min-w-0 overflow-hidden`}>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100/90 px-5 py-4 dark:border-white/8">
+          <div className="flex items-center gap-2">
+            <h2 className="text-[15px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">{t.dashboard.copierLogs}</h2>
+            <InfoTooltip text={t.copierLogs.subtitle} />
           </div>
-
-          {visibleTradeActivities.length === 0 && chartsEmpty && aiExpertLogs.length === 0 && socialCopyLogs.length === 0 && manualSourceLogs.length === 0 ? (
-            <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="px-5 py-3">
-                  <div className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse w-3/4 mb-1.5" />
-                  <div className="h-3 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse w-1/3" />
-                </div>
-              ))}
-            </div>
-          ) : visibleTradeActivities.length === 0 ? (
-            <div className="m-4 rounded-2xl bg-neutral-50 px-4 py-10 text-center text-sm text-neutral-500 dark:bg-white/3 dark:text-neutral-400">
-              {t.dashboard.noTradeActivities}
-            </div>
-          ) : (
-            <div className="divide-y divide-neutral-100 dark:divide-neutral-800 max-h-96 overflow-y-auto">
-              {visibleTradeActivities.map(activity => (
-                <TradeActivityCard key={activity.row.id} activity={activity} variant="compact" />
-              ))}
-            </div>
-          )}
+          <button
+            type="button"
+            onClick={() => navigate('/copier-logs')}
+            className={DASHBOARD_SECTION_LINK}
+          >
+            {t.dashboard.viewAll}
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
         </div>
 
-        {/* Copier Logs */}
-        <div className={`${DASHBOARD_CARD} min-w-0 overflow-hidden`}>
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100/90 px-5 py-4 dark:border-white/8">
-            <div className="flex items-center gap-2">
-              <h2 className="text-[15px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">{t.dashboard.copierLogs}</h2>
-              <InfoTooltip text={t.copierLogs.subtitle} />
-            </div>
-            <button
-              type="button"
-              onClick={() => navigate('/copier-logs')}
-              className={DASHBOARD_SECTION_LINK}
-            >
-              {t.dashboard.viewAll}
-              <ChevronRight className="h-3.5 w-3.5" />
-            </button>
-          </div>
+        <div className="overflow-x-auto">
+        <div
+          className={`${DASHBOARD_COPIER_LOG_GRID} border-b border-neutral-100/90 px-4 sm:px-5 py-2.5 text-xs font-medium uppercase tracking-[0.06em] text-neutral-500 dark:text-neutral-400 dark:border-white/8`}
+        >
+          <span className="min-w-0">{t.copierLogs.colStatus}</span>
+          <span className="min-w-0">{t.copierLogs.colReason}</span>
+          <span className="min-w-0">{t.copierLogs.colChannel}</span>
+          <span className="min-w-0">{t.copierLogs.colSymbol}</span>
+          <span className="min-w-0">{t.copierLogs.colMessage}</span>
+          <span className="min-w-0">{t.copierLogs.colType}</span>
+          <span className="min-w-0 text-right">{t.copierLogs.colTime}</span>
+        </div>
 
-          <div className="overflow-x-auto">
-          {/* Table header */}
-          <div
-            className={`${DASHBOARD_COPIER_LOG_GRID} min-w-md border-b border-neutral-100/90 px-5 py-2.5 ${APP_SECTION_LABEL} dark:border-white/8`}
-          >
-            <span>{t.copierLogs.colStatus}</span>
-            <span className="min-w-0">{t.copierLogs.colChannel}</span>
-            <span>{t.copierLogs.colSymbol}</span>
-            <span>{t.copierLogs.colType}</span>
-            <span className="text-right">{t.copierLogs.colTime}</span>
+        {visibleCopierLogRows.length === 0 && chartsEmpty ? (
+          <div className={`${DASHBOARD_COPIER_LOG_GRID} px-4 sm:px-5 py-3.5`}>
+            {[...Array(7)].map((_, j) => (
+              <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse min-w-0" />
+            ))}
           </div>
-
-          {visibleCopierLogRows.length === 0 && chartsEmpty ? (
-            <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
-              {[...Array(4)].map((_, i) => (
-                <div key={i} className={`${DASHBOARD_COPIER_LOG_GRID} px-5 py-3`}>
-                  {[...Array(5)].map((_, j) => (
-                    <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse min-w-0" />
-                  ))}
-                </div>
-              ))}
-            </div>
-          ) : visibleCopierLogRows.length === 0 ? (
-            <div className="m-4 flex flex-col items-center justify-center rounded-2xl bg-neutral-50 px-4 py-16 text-center dark:bg-white/3">
-              <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400">{t.dashboard.noData}</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-neutral-100 dark:divide-neutral-800 max-h-80 overflow-y-auto min-w-md">
-              {visibleCopierLogRows.map(row => (
-                <LogRow key={row.key} row={row} />
-              ))}
-            </div>
-          )}
+        ) : visibleCopierLogRows.length === 0 ? (
+          <div className="m-4 flex flex-col items-center justify-center rounded-2xl bg-neutral-50 px-4 py-16 text-center dark:bg-white/3">
+            <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400">{t.dashboard.noData}</p>
           </div>
+        ) : (
+          <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
+            {visibleCopierLogRows.map(row => (
+              <LogRow
+                key={row.key}
+                row={row}
+                onOpenDetail={
+                  row.signal || row.social || row.manual
+                    ? () => setCopierLogDetail(row)
+                    : undefined
+                }
+              />
+            ))}
+          </div>
+        )}
         </div>
       </div>
 
@@ -3171,6 +3246,98 @@ export function DashboardPage() {
         onClose={() => setOpenPnlModalOpen(false)}
         onRefresh={() => loadDashboardLiveRef.current()}
       />
+
+      {copierLogToast ? (
+        <div className="fixed bottom-4 right-4 z-50 max-w-sm rounded-lg bg-neutral-900 text-white text-sm px-4 py-3 shadow-lg">
+          {copierLogToast}
+        </div>
+      ) : null}
+
+      {copierLogDetail?.signal ? (
+        <CopierLogDetailModal
+          signal={copierLogDetail.signal}
+          channelName={copierLogDetail.channelName}
+          sourceKind={copierLogDetail.sourceKind}
+          symbol={copierLogDetail.symbol}
+          status={{
+            variant: (
+              {
+                executed: 'success',
+                open: 'success',
+                closed: 'neutral',
+                skipped: 'warning',
+                failed: 'error',
+                pending: 'neutral',
+                parsed: 'primary',
+              } as Record<string, 'success' | 'warning' | 'error' | 'neutral' | 'primary'>
+            )[copierLogDetail.status] ?? 'neutral',
+            label: (
+              {
+                executed: t.copierLogs.statusExecuted,
+                open: t.copierLogs.statusOpen,
+                closed: t.copierLogs.statusClosed,
+                skipped: t.copierLogs.statusSkipped,
+                failed: t.copierLogs.statusFailed,
+                pending: t.copierLogs.statusPending,
+                parsed: t.copierLogs.statusParsed,
+              } as Record<string, string>
+            )[copierLogDetail.status] ?? copierLogDetail.status,
+            className: copierLogDetail.status === 'open'
+              ? 'bg-teal-100 text-teal-900 dark:bg-teal-900/50 dark:text-teal-200'
+              : undefined,
+          }}
+          displayReason={copierLogDetail.reasonFull ?? copierLogDetail.reasonShort}
+          onClose={() => setCopierLogDetail(null)}
+          retryEligible={isCopierSignalRetryEligible(copierLogDetail.signal)}
+          isRetrying={copierLogRetryingId === copierLogDetail.signal.id}
+          onRetry={isCopierSignalRetryEligible(copierLogDetail.signal)
+            ? () => {
+                const signalId = copierLogDetail.signal!.id
+                void (async () => {
+                  setCopierLogRetryingId(signalId)
+                  try {
+                    const result = await retrySignalApi.retry(signalId)
+                    if (!result.ok) {
+                      setCopierLogToast(formatRetrySignalFailureReason(result.reason, t.copierLogs))
+                    } else {
+                      setCopierLogToast(t.copierLogs.retrySuccess)
+                    }
+                    window.setTimeout(() => setCopierLogToast(null), 5000)
+                  } catch (err) {
+                    setCopierLogToast(err instanceof Error ? err.message : t.copierLogs.retryFailedGeneric)
+                    window.setTimeout(() => setCopierLogToast(null), 5000)
+                  } finally {
+                    setCopierLogRetryingId(null)
+                  }
+                })()
+              }
+            : undefined}
+        />
+      ) : null}
+
+      {copierLogDetail?.social ? (
+        <MirrorLogDetailModal
+          row={copierLogDetail.social}
+          status={{
+            variant: 'success',
+            label: t.copierLogs.statusExecuted,
+          }}
+          onClose={() => setCopierLogDetail(null)}
+          variant="social"
+        />
+      ) : null}
+
+      {copierLogDetail?.manual ? (
+        <MirrorLogDetailModal
+          row={copierLogDetail.manual}
+          status={{
+            variant: 'success',
+            label: t.copierLogs.statusExecuted,
+          }}
+          onClose={() => setCopierLogDetail(null)}
+          variant="manual"
+        />
+      ) : null}
     </PageShell>
   )
 }
@@ -3247,53 +3414,102 @@ type DashboardCopierLogRow = {
   channelTitle: string
   symbol: string
   action: string | null
+  reasonShort: string
+  reasonFull?: string
+  messagePreview: string
+  messageFull: string
   sourceKind: SignalSourceKind | null
   isSocial: boolean
   isManual: boolean
+  signal?: Signal
+  social?: SocialCopyLogRow
+  manual?: SocialCopyLogRow
 }
 
-function LogRow({ row }: { row: DashboardCopierLogRow }) {
+type DashboardLogStatusVariant = 'success' | 'warning' | 'error' | 'neutral' | 'primary'
+
+function LogRow({
+  row,
+  onOpenDetail,
+}: {
+  row: DashboardCopierLogRow
+  onOpenDetail?: () => void
+}) {
   const t = useT()
   const action = row.action
+  const viewDetailsLabel = t.copierLogs.detailModal?.viewDetails ?? 'View details'
 
-  const statusConfig: Record<string, { color: string; label: string }> = {
-    executed: { color: 'bg-green-100 text-neutral-950 dark:bg-green-100 dark:text-neutral-950', label: t.copierLogs.statusExecuted },
-    skipped:  { color: 'text-warning-800 bg-warning-50 dark:text-amber-100! dark:bg-amber-900!', label: t.copierLogs.statusSkipped },
-    failed:   { color: 'text-error-800 bg-error-50 dark:text-error-300 dark:bg-error-950/70', label: t.copierLogs.statusFailed },
-    pending:  { color: 'text-neutral-900 bg-neutral-100 dark:text-neutral-50 dark:bg-neutral-800', label: t.copierLogs.statusPending },
-    parsed:   { color: 'text-green-500 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60', label: t.copierLogs.statusParsed },
+  const statusConfig: Record<string, { variant: DashboardLogStatusVariant; label: string; className?: string }> = {
+    executed: { variant: 'success', label: t.copierLogs.statusExecuted },
+    open: { variant: 'success', label: t.copierLogs.statusOpen, className: 'bg-teal-100 text-teal-900 dark:bg-teal-900/50 dark:text-teal-200' },
+    closed: { variant: 'neutral', label: t.copierLogs.statusClosed },
+    skipped: { variant: 'warning', label: t.copierLogs.statusSkipped },
+    failed: { variant: 'error', label: t.copierLogs.statusFailed },
+    pending: { variant: 'neutral', label: t.copierLogs.statusPending },
+    parsed: { variant: 'primary', label: t.copierLogs.statusParsed },
   }
 
-  const s = statusConfig[row.status] ?? { color: 'text-neutral-900 dark:text-neutral-50 bg-neutral-100 dark:bg-neutral-800', label: row.status }
-  const isBuy = action === 'buy'
-
+  const status = statusConfig[row.status] ?? { variant: 'neutral' as const, label: row.status }
   const typeLabel = action ? action.replace(/_/g, ' ') : '—'
 
   return (
-    <div className={clsx(DASHBOARD_COPIER_LOG_GRID, 'px-5 py-3 transition-colors', APP_ROW_HOVER)}>
-      <span className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-sm font-regular ${s.color}`}>
-        {s.label}
+    <div
+      className={clsx(
+        DASHBOARD_COPIER_LOG_GRID,
+        'px-4 sm:px-5 py-3.5 transition-colors',
+        APP_ROW_HOVER,
+        onOpenDetail && 'cursor-pointer',
+      )}
+      onClick={onOpenDetail}
+      onKeyDown={onOpenDetail ? (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onOpenDetail()
+        }
+      } : undefined}
+      role={onOpenDetail ? 'button' : undefined}
+      tabIndex={onOpenDetail ? 0 : undefined}
+      aria-label={onOpenDetail ? viewDetailsLabel : undefined}
+    >
+      <div className="min-w-0 justify-self-start">
+        <Badge variant={status.variant} size="md" className={clsx('w-fit', status.className)}>{status.label}</Badge>
+      </div>
+      <span
+        className="min-w-0 text-sm text-neutral-900 dark:text-neutral-50 truncate underline decoration-dotted underline-offset-2"
+        title={row.reasonShort}
+      >
+        {row.reasonShort}
       </span>
-      <span className="flex min-w-0 items-center gap-2 text-sm font-regular text-neutral-900 dark:text-neutral-50" title={row.channelTitle}>
+      <span className="flex min-w-0 items-center gap-1.5 text-sm text-neutral-900 dark:text-neutral-50" title={row.channelTitle}>
         {row.isSocial ? (
           <Users className="h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50" aria-hidden />
         ) : row.isManual ? (
           <Hand className="h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50" aria-hidden />
         ) : row.sourceKind ? (
-          <SignalSourceLogo kind={row.sourceKind} />
+          <SignalSourceLogo kind={row.sourceKind} className="h-4 w-4" />
         ) : null}
-        <span className="truncate">{row.channelName}</span>
+        <span className="min-w-0 truncate">{row.channelName}</span>
       </span>
-      <span className="min-w-0 text-base font-regular text-neutral-900 dark:text-neutral-50 truncate" title={row.symbol}>{row.symbol}</span>
+      <span className="min-w-0 text-base font-medium text-neutral-900 dark:text-neutral-50 truncate" title={row.symbol}>
+        {row.symbol}
+      </span>
+      <span className="min-w-0 text-sm text-neutral-900 dark:text-neutral-50 truncate" title={row.messageFull}>
+        {row.messagePreview}
+      </span>
       <span
-        className={`min-w-0 text-sm font-regular uppercase truncate ${
-          isBuy ? 'text-green-500 dark:text-green-400' : action === 'sell' ? 'text-error-600' : 'text-neutral-900 dark:text-neutral-50'
-        }`}
+        className={clsx(
+          'min-w-0 text-sm font-medium uppercase truncate',
+          action === 'buy'
+            ? 'text-green-400'
+            : action === 'sell'
+              ? 'text-error-600'
+              : 'text-neutral-900 dark:text-neutral-50',
+        )}
         title={typeLabel}
       >
         {typeLabel}
       </span>
-      <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50 text-right whitespace-nowrap">
+      <span className="min-w-0 text-sm text-neutral-900 dark:text-neutral-50 text-right whitespace-nowrap tabular-nums">
         {row.at
           ? new Date(row.at).toLocaleString([], {
               month: 'short',
