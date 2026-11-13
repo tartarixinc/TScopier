@@ -2,6 +2,15 @@
 
 ## Changelog
 
+### 2026-11-13 — Fix Netlify TS build (Copier Log / Dashboard)
+
+- **Context:** Netlify `npm run build` failed with 4 TypeScript errors.
+- **Plain English:** Closed-filter Copier Log rows and dashboard status badges typed cleanly again so the site builds.
+- **Fix (files):** [`CopierLogsPage.tsx`](src/pages/dashboard/CopierLogsPage.tsx) — `LogViewEntry[]` + `'signal' in entry`; [`DashboardPage.tsx`](src/pages/dashboard/DashboardPage.tsx) — `Record<string, …>` status config.
+- **Tests/verification:** `tsc --noEmit` clean.
+- **Deploy state:** Frontend only until Netlify redeploy.
+- **Follow-ups:** None.
+
 ### 2026-11-13 — Mobile list views for Copier + Linked Accounts
 
 - **Context:** Dashboard Copier and Linked Accounts used wide grids that forced horizontal scroll on phones.
