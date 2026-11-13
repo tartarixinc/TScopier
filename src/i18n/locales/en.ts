@@ -1068,6 +1068,7 @@ broker: {
       detailBalance: 'Balance',
       detailEquity: 'Equity',
       channelsNoneSelected: 'None selected',
+      channelsLinkedCount: '{count} sources',
       channelsEmptySaveWarning:
         'No signal channels selected — this broker will not copy any Telegram signals. Save anyway?',
       channelsSaveChannelListNotReady:

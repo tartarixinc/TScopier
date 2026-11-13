@@ -2,6 +2,15 @@
 
 ## Changelog
 
+### 2026-11-13 — Brokers Accounts list layout fix
+
+- **Context:** Linked signal sources under Name listed every channel with icon+full name and blew out the Brokers table.
+- **Plain English:** Sources now show up to 3 overlapping logos plus a short summary (or “N sources”). Connection badges stack cleanly; phones get card rows instead of a sideways-scroll table.
+- **Fix (files):** [`AccountConfigPage.tsx`](src/pages/dashboard/AccountConfigPage.tsx) — `BrokerLinkedSources`, fixed-column desktop table, mobile cards; i18n `channelsLinkedCount`.
+- **Tests/verification:** `tsc --noEmit` clean.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** None.
+
 ### 2026-11-13 — Fix Netlify TS build (Copier Log / Dashboard)
 
 - **Context:** Netlify `npm run build` failed with 4 TypeScript errors.

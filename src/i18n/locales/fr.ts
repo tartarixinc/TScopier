@@ -1051,6 +1051,7 @@ export const fr: Translations = {
       detailBalance: 'Solde',
       detailEquity: 'Équité',
       channelsNoneSelected: 'Aucune sélection',
+      channelsLinkedCount: '{count} sources',
       channelsEmptySaveWarning:
         'Aucun canal de signaux sélectionné — ce courtier ne copiera aucun signal Telegram. Enregistrer quand même ?',
       channelsSaveChannelListNotReady:

@@ -231,6 +231,7 @@ export const accountConfigRu: AccountConfigBundleTranslations = {
       detailBalance: 'Баланс',
       detailEquity: 'Средства',
       channelsNoneSelected: 'Ничего не выбрано',
+      channelsLinkedCount: '{count} источников',
       channelsEmptySaveWarning:
         'Не выбрано ни одного сигнального канала — этот брокер не будет копировать сигналы Telegram. Все равно сохранить?',
       channelsSaveChannelListNotReady:

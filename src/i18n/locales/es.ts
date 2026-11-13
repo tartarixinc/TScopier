@@ -1051,6 +1051,7 @@ export const es: Translations = {
       detailBalance: 'Balance',
       detailEquity: 'Equidad',
       channelsNoneSelected: 'Ninguno seleccionado',
+      channelsLinkedCount: '{count} fuentes',
       channelsEmptySaveWarning:
         'No hay canales de señales seleccionados — este broker no copiará señales de Telegram. ¿Guardar de todos modos?',
       channelsSaveChannelListNotReady:

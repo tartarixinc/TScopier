@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useMemo, useRef, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -162,14 +162,23 @@ interface ChannelOption {
   source_kind?: 'telegram' | 'tradingview' | 'discord' | 'whatsapp' | null
 }
 
-function SourceKindLogo({ sourceKind }: { sourceKind?: ChannelOption['source_kind'] }) {
+const BROKER_LINKED_SOURCE_LOGO_MAX = 3
+
+function SourceKindLogo({
+  sourceKind,
+  className,
+}: {
+  sourceKind?: ChannelOption['source_kind']
+  className?: string
+}) {
+  const base = clsx('h-4 w-4 shrink-0', className)
   if (sourceKind === 'tradingview') {
     return (
       <img
         src="/tradingview-logo.png"
         alt=""
         aria-hidden
-        className="h-4 w-4 shrink-0 rounded-full object-cover"
+        className={clsx(base, 'rounded-full object-cover')}
       />
     )
   }
@@ -179,7 +188,7 @@ function SourceKindLogo({ sourceKind }: { sourceKind?: ChannelOption['source_kin
         src="/discord-logo.png"
         alt=""
         aria-hidden
-        className="h-4 w-4 shrink-0 rounded-full object-cover"
+        className={clsx(base, 'rounded-full object-cover')}
       />
     )
   }
@@ -189,7 +198,7 @@ function SourceKindLogo({ sourceKind }: { sourceKind?: ChannelOption['source_kin
         src="/whatsapp-icon.png"
         alt=""
         aria-hidden
-        className="h-4 w-4 shrink-0 rounded-full object-cover"
+        className={clsx(base, 'rounded-full object-cover')}
       />
     )
   }
@@ -198,8 +207,48 @@ function SourceKindLogo({ sourceKind }: { sourceKind?: ChannelOption['source_kin
       src="/Telegram.svg"
       alt=""
       aria-hidden
-      className="h-4 w-4 shrink-0 object-contain"
+      className={clsx(base, 'rounded-full object-contain bg-white dark:bg-neutral-900')}
     />
+  )
+}
+
+/** Compact linked-sources row: up to 3 overlapping logos + truncated summary. */
+function BrokerLinkedSources({
+  channels,
+  noneLabel,
+  countLabel,
+}: {
+  channels: ChannelOption[]
+  noneLabel: string
+  countLabel: (count: number) => string
+}) {
+  if (channels.length === 0) {
+    return <span className="text-xs text-neutral-500 dark:text-neutral-400">{noneLabel}</span>
+  }
+  const shown = channels.slice(0, BROKER_LINKED_SOURCE_LOGO_MAX)
+  const title = channels.map(ch => ch.display_name?.trim() || noneLabel).join(', ')
+  const summary = channels.length === 1
+    ? (channels[0]?.display_name?.trim() || noneLabel)
+    : countLabel(channels.length)
+
+  return (
+    <span className="mt-1 flex min-w-0 max-w-[13.5rem] items-center gap-1.5" title={title}>
+      <span className="inline-flex shrink-0 items-center" aria-hidden>
+        {shown.map((channel, index) => (
+          <span
+            key={channel.id}
+            className={clsx(
+              'relative inline-flex rounded-full ring-1 ring-white dark:ring-neutral-950',
+              index > 0 && '-ms-1.5',
+            )}
+            style={{ zIndex: shown.length - index }}
+          >
+            <SourceKindLogo sourceKind={channel.source_kind} />
+          </span>
+        ))}
+      </span>
+      <span className="min-w-0 truncate text-xs text-neutral-900 dark:text-neutral-50">{summary}</span>
+    </span>
   )
 }
 
@@ -2700,24 +2749,21 @@ export function AccountConfigPage() {
 
   // ── Channel summary helper for cards ───────────────────────────────────
 
-  const getBrokerSignalChannelsLabel = (brokerId: string): ReactNode => {
-    if (channelOptions.length === 0) return bl.channelsNoneSelected
+  const getBrokerLinkedChannels = (brokerId: string): ChannelOption[] => {
+    if (channelOptions.length === 0) return []
     const brokerRow = brokers.find(b => b.id === brokerId)
     const persistedIds = normalizeSignalChannelIds(brokerRow)
-    if (persistedIds.length === 0) return bl.channelsNoneSelected
-    const selected = channelOptions.filter(ch => persistedIds.includes(ch.id))
-    if (selected.length === 0) return bl.channelsNoneSelected
-    return (
-      <span className="inline-flex max-w-full items-center gap-2 align-middle">
-        {selected.map(channel => (
-          <span key={channel.id} className="inline-flex min-w-0 items-center gap-1">
-            <SourceKindLogo sourceKind={channel.source_kind} />
-            <span className="truncate">{channel.display_name || bl.channelsNoneSelected}</span>
-          </span>
-        ))}
-      </span>
-    )
+    if (persistedIds.length === 0) return []
+    return channelOptions.filter(ch => persistedIds.includes(ch.id))
   }
+
+  const renderBrokerLinkedSources = (brokerId: string) => (
+    <BrokerLinkedSources
+      channels={getBrokerLinkedChannels(brokerId)}
+      noneLabel={bl.channelsNoneSelected}
+      countLabel={count => interpolate(bl.channelsLinkedCount, { count: String(count) })}
+    />
+  )
 
   // ── Delete broker ──────────────────────────────────────────────────────
 
@@ -2904,67 +2950,105 @@ export function AccountConfigPage() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[920px] text-sm">
-            <thead>
-              <tr className="border-y border-neutral-100 text-left text-neutral-900 dark:border-neutral-800 dark:text-neutral-50">
-                <th className="px-4 py-3 font-medium">{bl.colName}</th>
-                <th className="px-3 py-3 font-medium">{bl.colAccount}</th>
-                <th className="px-3 py-3 font-medium">{bl.colPlatform}</th>
-                <th className="px-3 py-3 font-medium">{bl.colBalance}</th>
-                <th className="px-3 py-3 font-medium">{bl.colConnection}</th>
-                <th className="px-3 py-3 font-medium">{bl.colStatus}</th>
-                <th className="px-4 py-3 text-end font-medium">{bl.colActions}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {brokers.length === 0 || filteredBrokers.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-16 text-center">
-                    {brokers.length === 0 ? <AccountsEmptyState label={bl.noData} /> : (
-                      <p className="text-sm text-neutral-900 dark:text-neutral-50">
-                        {brokerSearchQuery.trim() ? bl.accountSearchNoMatch : bl.brokerFilterNoMatch}
+        {brokers.length === 0 || filteredBrokers.length === 0 ? (
+          <div className="px-4 py-16 text-center">
+            {brokers.length === 0 ? <AccountsEmptyState label={bl.noData} /> : (
+              <p className="text-sm text-neutral-900 dark:text-neutral-50">
+                {brokerSearchQuery.trim() ? bl.accountSearchNoMatch : bl.brokerFilterNoMatch}
+              </p>
+            )}
+          </div>
+        ) : (
+          <>
+            {/* Mobile cards */}
+            <div className="md:hidden divide-y divide-neutral-100 dark:divide-neutral-800">
+              {paginatedBrokers.map(broker => {
+                const statusVariant = brokerConnectionBadgeVariant(broker)
+                const isReconnecting = isBrokerReconnecting(broker.id)
+                const statusLabel = brokerConnectionStatusLabel(broker, bl)
+                const healthVariant = brokerTerminalHealthBadgeVariant(broker)
+                const healthLabel = brokerTerminalHealthLabel(broker, bl)
+                const brokerLabel = broker.broker_name
+                  || inferBrokerLabelFromServer(broker.broker_server ?? null)
+                  || broker.broker_server
+                  || ''
+                const accountType = resolveLinkedAccountTypeForBroker(broker)
+                return (
+                  <article
+                    key={`m-${broker.id}`}
+                    role="link"
+                    tabIndex={0}
+                    aria-label={`${t.configurationsPage.title} ${broker.label}`}
+                    onClick={() => { void openBrokerConfigurations(broker) }}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        void openBrokerConfigurations(broker)
+                      }
+                    }}
+                    className="cursor-pointer px-4 py-4 hover:bg-neutral-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-green-400 dark:hover:bg-neutral-900"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-neutral-900 dark:text-neutral-50 truncate">{broker.label}</p>
+                        {brokerLabel ? (
+                          <p className="mt-0.5 truncate text-xs text-neutral-500 dark:text-neutral-400">{brokerLabel}</p>
+                        ) : null}
+                        {renderBrokerLinkedSources(broker.id)}
+                      </div>
+                      <div className="flex shrink-0 flex-col items-end gap-1.5">
+                        <Badge variant={statusVariant} size="sm">{statusLabel}</Badge>
+                        {healthVariant && healthLabel ? (
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation()
+                              setStatusModalBroker(broker)
+                            }}
+                            className="inline-flex rounded-full focus:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400"
+                            aria-label={bl.statusHealthView}
+                          >
+                            <Badge variant={healthVariant} size="sm">{healthLabel}</Badge>
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex items-center gap-2 text-sm text-neutral-900 dark:text-neutral-50">
+                      <PlatformIcon platform={broker.platform} />
+                      <span>{broker.platform}</span>
+                      <span className="text-neutral-300 dark:text-neutral-600">·</span>
+                      <span className="tabular-nums">{broker.account_login || '—'}</span>
+                      <span className={clsx('text-xs', linkedAccountTypeValueClass(accountType))}>
+                        {formatLinkedAccountTypeLabel(accountType, accountTypeLabelsFromBrokerList(bl))}
+                      </span>
+                    </div>
+
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold tabular-nums text-neutral-900 dark:text-neutral-50">
+                        {formatBrokerMoney(resolveBrokerTotalBalance(broker), broker.last_currency)}
                       </p>
-                    )}
-                  </td>
-                </tr>
-              ) : paginatedBrokers.map(broker => {
-              const statusVariant = brokerConnectionBadgeVariant(broker)
-              const isReconnecting = isBrokerReconnecting(broker.id)
-              const statusLabel = brokerConnectionStatusLabel(broker, bl)
-              const healthVariant = brokerTerminalHealthBadgeVariant(broker)
-              const healthLabel = brokerTerminalHealthLabel(broker, bl)
-              const brokerLabel = broker.broker_name
-                || inferBrokerLabelFromServer(broker.broker_server ?? null)
-                || broker.broker_server
-                || ''
-              const channelsLabel = getBrokerSignalChannelsLabel(broker.id)
-              const accountType = resolveLinkedAccountTypeForBroker(broker)
-              return (
-                <tr
-                  key={broker.id}
-                  role="link"
-                  tabIndex={0}
-                  aria-label={`${t.configurationsPage.title} ${broker.label}`}
-                  onClick={() => { void openBrokerConfigurations(broker) }}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault()
-                      void openBrokerConfigurations(broker)
-                    }
-                  }}
-                  className="cursor-pointer border-t border-neutral-100 hover:bg-neutral-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-green-400 dark:border-neutral-800 dark:hover:bg-neutral-900"
-                >
-                  <td className="px-4 py-3">
-                    <p className="font-medium text-neutral-900 dark:text-neutral-50">{broker.label}</p>
-                    {brokerLabel ? (
-                      <p className="mt-0.5 truncate text-xs text-neutral-900 dark:text-neutral-50">{brokerLabel}</p>
-                    ) : null}
-                    {channelsLabel ? (
-                      <p className="mt-0.5 truncate text-xs text-neutral-900 dark:text-neutral-50">{channelsLabel}</p>
-                    ) : null}
+                      <span
+                        className="inline-flex items-center gap-2"
+                        onClick={e => e.stopPropagation()}
+                        onKeyDown={e => e.stopPropagation()}
+                      >
+                        <span className={clsx(
+                          'text-xs font-medium',
+                          broker.is_active ? 'text-emerald-600 dark:text-emerald-400' : 'text-neutral-500 dark:text-neutral-400',
+                        )}>
+                          {broker.is_active ? bl.statusActive : bl.statusInactive}
+                        </span>
+                        <Toggle
+                          checked={broker.is_active}
+                          onChange={is_active => { void toggleBrokerActive(broker.id, is_active) }}
+                          disabled={togglingBrokerId === broker.id}
+                        />
+                      </span>
+                    </div>
+
                     {broker.connection_error ? (
-                      <p className="mt-1 text-xs leading-relaxed text-error-600 dark:text-error-400">
+                      <p className="mt-2 text-xs leading-relaxed text-error-600 dark:text-error-400">
                         {brokerConnectErrorText(
                           classifyBrokerConnectError(broker.connection_error),
                           broker.connection_error,
@@ -2972,59 +3056,12 @@ export function AccountConfigPage() {
                         )}
                       </p>
                     ) : null}
-                  </td>
-                  <td className="px-3 py-3">
-                    <p className="text-neutral-900 dark:text-neutral-100">{broker.account_login || '—'}</p>
-                    <p className={clsx('mt-0.5 text-xs', linkedAccountTypeValueClass(accountType))}>
-                      {formatLinkedAccountTypeLabel(accountType, accountTypeLabelsFromBrokerList(bl))}
-                    </p>
-                  </td>
-                  <td className="px-3 py-3">
-                    <div className="flex items-center gap-2">
-                      <span className="flex h-7 w-7 items-center justify-center">
-                        <PlatformIcon platform={broker.platform} />
-                      </span>
-                      <span className="text-neutral-900 dark:text-neutral-100">{broker.platform}</span>
-                    </div>
-                  </td>
-                  <td className="px-3 py-3 text-neutral-900 dark:text-neutral-100">
-                    {formatBrokerMoney(resolveBrokerTotalBalance(broker), broker.last_currency)}
-                  </td>
-                  <td className="px-3 py-3">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <Badge variant={statusVariant} size="sm">{statusLabel}</Badge>
-                      {healthVariant && healthLabel ? (
-                        <button
-                          type="button"
-                          onClick={e => {
-                            e.stopPropagation()
-                            setStatusModalBroker(broker)
-                          }}
-                          className="inline-flex rounded-full focus:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400"
-                          aria-label={bl.statusHealthView}
-                        >
-                          <Badge variant={healthVariant} size="sm">{healthLabel}</Badge>
-                        </button>
-                      ) : null}
-                    </div>
-                  </td>
-                  <td className="px-3 py-3" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
-                    <div className="flex items-center gap-2">
-                      <span className={clsx(
-                        'text-xs font-medium',
-                        broker.is_active ? 'text-emerald-600 dark:text-emerald-400' : 'text-neutral-900 dark:text-neutral-50',
-                      )}>
-                        {broker.is_active ? bl.statusActive : bl.statusInactive}
-                      </span>
-                      <Toggle
-                        checked={broker.is_active}
-                        onChange={is_active => { void toggleBrokerActive(broker.id, is_active) }}
-                        disabled={togglingBrokerId === broker.id}
-                      />
-                    </div>
-                  </td>
-                  <td className="px-4 py-3" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-1.5">
+
+                    <div
+                      className="mt-3 flex flex-wrap items-center justify-end gap-1.5"
+                      onClick={e => e.stopPropagation()}
+                      onKeyDown={e => e.stopPropagation()}
+                    >
                       {brokerCanReconnect(broker) ? (
                         <Button
                           type="button"
@@ -3053,13 +3090,168 @@ export function AccountConfigPage() {
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
-                  </td>
-                </tr>
-              )
-            })}
-            </tbody>
-          </table>
-        </div>
+                  </article>
+                )
+              })}
+            </div>
+
+            {/* Desktop table */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full min-w-[880px] table-fixed text-sm">
+                <colgroup>
+                  <col className="w-[22%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[14%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[16%]" />
+                </colgroup>
+                <thead>
+                  <tr className="border-y border-neutral-100 text-left text-neutral-900 dark:border-neutral-800 dark:text-neutral-50">
+                    <th className="px-4 py-3 font-medium">{bl.colName}</th>
+                    <th className="px-3 py-3 font-medium">{bl.colAccount}</th>
+                    <th className="px-3 py-3 font-medium">{bl.colPlatform}</th>
+                    <th className="px-3 py-3 font-medium">{bl.colBalance}</th>
+                    <th className="px-3 py-3 font-medium">{bl.colConnection}</th>
+                    <th className="px-3 py-3 font-medium">{bl.colStatus}</th>
+                    <th className="px-4 py-3 text-end font-medium">{bl.colActions}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedBrokers.map(broker => {
+                    const statusVariant = brokerConnectionBadgeVariant(broker)
+                    const isReconnecting = isBrokerReconnecting(broker.id)
+                    const statusLabel = brokerConnectionStatusLabel(broker, bl)
+                    const healthVariant = brokerTerminalHealthBadgeVariant(broker)
+                    const healthLabel = brokerTerminalHealthLabel(broker, bl)
+                    const brokerLabel = broker.broker_name
+                      || inferBrokerLabelFromServer(broker.broker_server ?? null)
+                      || broker.broker_server
+                      || ''
+                    const accountType = resolveLinkedAccountTypeForBroker(broker)
+                    return (
+                      <tr
+                        key={broker.id}
+                        role="link"
+                        tabIndex={0}
+                        aria-label={`${t.configurationsPage.title} ${broker.label}`}
+                        onClick={() => { void openBrokerConfigurations(broker) }}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            void openBrokerConfigurations(broker)
+                          }
+                        }}
+                        className="cursor-pointer border-t border-neutral-100 hover:bg-neutral-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-green-400 dark:border-neutral-800 dark:hover:bg-neutral-900"
+                      >
+                        <td className="px-4 py-3 align-top">
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-neutral-900 dark:text-neutral-50">{broker.label}</p>
+                            {brokerLabel ? (
+                              <p className="mt-0.5 truncate text-xs text-neutral-500 dark:text-neutral-400">{brokerLabel}</p>
+                            ) : null}
+                            {renderBrokerLinkedSources(broker.id)}
+                            {broker.connection_error ? (
+                              <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-error-600 dark:text-error-400">
+                                {brokerConnectErrorText(
+                                  classifyBrokerConnectError(broker.connection_error),
+                                  broker.connection_error,
+                                  connectErrorLabels,
+                                )}
+                              </p>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 align-top">
+                          <p className="truncate text-neutral-900 dark:text-neutral-100">{broker.account_login || '—'}</p>
+                          <p className={clsx('mt-0.5 text-xs', linkedAccountTypeValueClass(accountType))}>
+                            {formatLinkedAccountTypeLabel(accountType, accountTypeLabelsFromBrokerList(bl))}
+                          </p>
+                        </td>
+                        <td className="px-3 py-3 align-top">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="flex h-7 w-7 shrink-0 items-center justify-center">
+                              <PlatformIcon platform={broker.platform} />
+                            </span>
+                            <span className="truncate text-neutral-900 dark:text-neutral-100">{broker.platform}</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 align-top tabular-nums text-neutral-900 dark:text-neutral-100">
+                          {formatBrokerMoney(resolveBrokerTotalBalance(broker), broker.last_currency)}
+                        </td>
+                        <td className="px-3 py-3 align-top">
+                          <div className="flex flex-col items-start gap-1">
+                            <Badge variant={statusVariant} size="sm">{statusLabel}</Badge>
+                            {healthVariant && healthLabel ? (
+                              <button
+                                type="button"
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  setStatusModalBroker(broker)
+                                }}
+                                className="inline-flex rounded-full focus:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400"
+                                aria-label={bl.statusHealthView}
+                              >
+                                <Badge variant={healthVariant} size="sm">{healthLabel}</Badge>
+                              </button>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 align-top" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
+                          <div className="flex items-center gap-2">
+                            <span className={clsx(
+                              'text-xs font-medium',
+                              broker.is_active ? 'text-emerald-600 dark:text-emerald-400' : 'text-neutral-900 dark:text-neutral-50',
+                            )}>
+                              {broker.is_active ? bl.statusActive : bl.statusInactive}
+                            </span>
+                            <Toggle
+                              checked={broker.is_active}
+                              onChange={is_active => { void toggleBrokerActive(broker.id, is_active) }}
+                              disabled={togglingBrokerId === broker.id}
+                            />
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 align-top" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
+                          <div className="flex flex-wrap items-center justify-end gap-1.5">
+                            {brokerCanReconnect(broker) ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="secondary"
+                                loading={isReconnecting}
+                                onClick={() => void reconnectBroker(broker.id)}
+                              >
+                                <RefreshCw className="w-3.5 h-3.5" />
+                                {bl.reconnect}
+                              </Button>
+                            ) : null}
+                            <button
+                              type="button"
+                              onClick={() => { void openConfigureModal(broker) }}
+                              className="rounded-lg border border-green-400 bg-green-400 px-3 py-1.5 text-xs font-medium text-neutral-950 transition-colors hover:bg-green-500 dark:border-green-400 dark:bg-green-400 dark:text-neutral-950 dark:hover:bg-green-500"
+                            >
+                              {bl.configure}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setError(''); setBrokerPendingDelete(broker) }}
+                              className="rounded-lg p-1.5 text-neutral-900 transition-colors hover:bg-error-50 hover:text-error-600 dark:text-neutral-50 dark:hover:bg-error-950/40 dark:hover:text-error-400"
+                              aria-label={interpolate(bl.removeAria, { label: broker.label })}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
 
         {filteredBrokers.length > 0 && (
           <div className="border-t border-neutral-100 px-4 py-3 dark:border-neutral-800">

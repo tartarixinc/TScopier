@@ -231,6 +231,7 @@ export const accountConfigSv: AccountConfigBundleTranslations = {
       detailBalance: 'Saldo',
       detailEquity: 'Eget kapital',
       channelsNoneSelected: 'Inga valda',
+      channelsLinkedCount: '{count} källor',
       channelsEmptySaveWarning:
         'Inga signalkanaler valda — den här mäklaren kommer inte att kopiera några Telegram-signaler. Spara ändå?',
       channelsSaveChannelListNotReady:

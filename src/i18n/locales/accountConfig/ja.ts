@@ -231,6 +231,7 @@ export const accountConfigJa: AccountConfigBundleTranslations = {
       detailBalance: '残高',
       detailEquity: '有効証拠金',
       channelsNoneSelected: '未選択',
+      channelsLinkedCount: '{count} 件のソース',
       channelsEmptySaveWarning:
         'シグナルチャンネルが選択されていません — このブローカーは Telegram シグナルをコピーしません。それでも保存しますか？',
       channelsSaveChannelListNotReady:
