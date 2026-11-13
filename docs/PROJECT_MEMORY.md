@@ -2,6 +2,33 @@
 
 ## Changelog
 
+### 2026-11-13 — Stacked Destination logos (max 3)
+
+- **Context:** Multiple destination logos sat side-by-side and crowded the Copier Log Destination column.
+- **Plain English:** Destination logos now overlap halfway (avatar stack) and show at most three platforms; the label still lists every broker.
+- **Fix (files):** [`CopierDestinationLogos.tsx`](src/components/dashboard/CopierDestinationLogos.tsx); cap in [`copierLogToast.ts`](src/lib/copierLogToast.ts); wired in Copier Logs, dashboard strip, detail modal, toasts.
+- **Tests/verification:** `copierLogToast.test.ts` summary cap.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** None.
+
+### 2026-11-13 — Hover chevron on Copier + Linked Accounts
+
+- **Context:** Dashboard list rows looked static on hover.
+- **Plain English:** Copier Log and Linked Accounts rows show a chevron on the right when you hover, same cue as Trades.
+- **Fix (files):** [`DashboardPage.tsx`](src/pages/dashboard/DashboardPage.tsx) — `group` + `ChevronRight` on `LogRow` and `LinkedAccountRow`.
+- **Tests/verification:** Local hover check.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** None.
+
+### 2026-11-13 — Destination in modal + Closed signal details
+
+- **Context:** Copier Log / dashboard strip lost the Destination column; Closed rows could not open the detail modal and closed-detail wiring referenced brokers without loading them.
+- **Plain English:** Copier Log and the dashboard strip show **Destination** again (broker logos + account labels). Closed log lines open the same detail modal with close reason, destination accounts, and closed time; when only a trade stub exists, the duplicate “Received” timestamp is hidden.
+- **Fix (files):** [`CopierLogsPage.tsx`](src/pages/dashboard/CopierLogsPage.tsx), [`DashboardPage.tsx`](src/pages/dashboard/DashboardPage.tsx), [`CopierLogDetailModal.tsx`](src/components/dashboard/CopierLogDetailModal.tsx), [`copierLogToast.ts`](src/lib/copierLogToast.ts) helpers wired; i18n `colDestination` (en/es/fr + logs bundles pl/ja/sv/ru/ar/nl).
+- **Tests/verification:** `npx tsx --test src/lib/copierLogToast.test.ts`.
+- **Deploy state:** Local only until Netlify deploy.
+- **Follow-ups:** None.
+
 ### 2026-11-13 — Connection Status moved into greeting
 
 - **Context:** Dashboard Connection Status card took a full section.

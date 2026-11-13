@@ -14,6 +14,7 @@ export const logsJa: LogsBundleTranslations = {
     colStatus: 'ステータス',
     colReason: '理由',
     colChannel: 'ソース',
+    colDestination: 'コピー先',
     colSymbol: 'シンボル',
     colMessage: 'メッセージ',
     colType: '種別',

@@ -1417,6 +1417,7 @@ export const fr: Translations = {
     colStatus: 'Statut',
     colReason: 'Raison',
     colChannel: 'Source',
+    colDestination: 'Destination',
     colSymbol: 'Symbole',
     colMessage: 'Message',
     colType: 'Type',

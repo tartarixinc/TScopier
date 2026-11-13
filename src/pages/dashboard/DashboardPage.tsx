@@ -74,7 +74,16 @@ import {
   copierLifecycleLabelsFromCopierLogs,
   resolveCopierDisplayReason,
   resolveCopierDisplayStatus,
+  signalStubFromClosedDraft,
+  type CopierClosedLogDraft,
 } from '../../lib/copierLogLifecycle'
+import {
+  copierLogDestinationSummary,
+  copierLogDestinations,
+  copierLogDestinationsFromAccountLabel,
+  type CopierLogDestination,
+} from '../../lib/copierLogToast'
+import { CopierDestinationLogos } from '../../components/dashboard/CopierDestinationLogos'
 import { buildOpenSignalIdSet } from '../../lib/signalOverride'
 import { Badge } from '../../components/ui/Badge'
 import { buildChannelDisplayNames, dedupePipelineParseAttempts, TRADE_ACTIVITY_FETCH_LIMIT, type TradeActivityLogRow } from '../../lib/tradeActivities'
@@ -175,7 +184,7 @@ const DASHBOARD_METRICS_LOADER_DISMISS_MS = 150
  * badges stay compact while Reason/Source/… stay vertically aligned across rows.
  */
 const DASHBOARD_COPIER_LOG_GRID =
-  'grid grid-cols-[7.25rem_minmax(0,1.5fr)_minmax(0,1.1fr)_minmax(5rem,0.75fr)_minmax(0,1.2fr)_minmax(5rem,0.7fr)_8rem] gap-x-3 items-center min-w-3xl'
+  'grid grid-cols-[7.25rem_minmax(0,1.5fr)_minmax(0,1.1fr)_minmax(0,1fr)_minmax(5rem,0.75fr)_minmax(0,1.2fr)_minmax(5rem,0.7fr)_8rem] gap-x-3 items-center min-w-4xl'
 
 const DASHBOARD_CARD = APP_CARD
 
@@ -1064,6 +1073,7 @@ export function DashboardPage() {
   const [openCopierLogSignalIds, setOpenCopierLogSignalIds] = useState<Set<string>>(() => new Set())
   const [recentClosedCopierDraft, setRecentClosedCopierDraft] = useState<ReturnType<typeof buildClosedCopierLogDraft> | null>(null)
   const [copierLogDetail, setCopierLogDetail] = useState<DashboardCopierLogRow | null>(null)
+  const [closedCopierDetailSignal, setClosedCopierDetailSignal] = useState<Signal | null>(null)
   const [copierLogRetryingId, setCopierLogRetryingId] = useState<string | null>(null)
   const [copierLogToast, setCopierLogToast] = useState<string | null>(null)
   const [copierLogSymbols, setCopierLogSymbols] = useState<Record<string, string>>(
@@ -1405,6 +1415,7 @@ export function DashboardPage() {
         sourceKind,
         isSocial: false,
         isManual: false,
+        destinations: copierLogDestinations(linkedAccounts, signal.channel_id),
         signal,
       }
     })
@@ -1431,6 +1442,7 @@ export function DashboardPage() {
         sourceKind: null,
         isSocial: true,
         isManual: false,
+        destinations: copierLogDestinationsFromAccountLabel(row.destinationAccount, linkedAccounts),
         social: row,
       }
     })
@@ -1457,6 +1469,7 @@ export function DashboardPage() {
         sourceKind: null,
         isSocial: false,
         isManual: true,
+        destinations: copierLogDestinationsFromAccountLabel(row.destinationAccount ?? row.channelName, linkedAccounts),
         manual: row,
       }
     })
@@ -1476,6 +1489,7 @@ export function DashboardPage() {
           reasonShort: recentClosedCopierDraft.reason.length > 80
             ? `${recentClosedCopierDraft.reason.slice(0, 80)}…`
             : recentClosedCopierDraft.reason,
+          reasonFull: recentClosedCopierDraft.reason,
           messagePreview: recentClosedCopierDraft.messagePreview,
           messageFull: recentClosedCopierDraft.messageFull,
           sourceKind: recentClosedCopierDraft.channelId
@@ -1483,6 +1497,8 @@ export function DashboardPage() {
             : null,
           isSocial: false,
           isManual: false,
+          destinations: copierLogDestinations(linkedAccounts, recentClosedCopierDraft.channelId),
+          closed: recentClosedCopierDraft,
         }]
       : []
     return [...signalRows, ...socialRows, ...manualRows, ...closedRows]
@@ -1497,8 +1513,46 @@ export function DashboardPage() {
     channelDisplayNames,
     channelSourceKinds,
     copierLogSymbols,
+    linkedAccounts,
     t.copierLogs,
   ])
+
+  useEffect(() => {
+    const closed = copierLogDetail?.closed
+    if (!closed?.signalId || !user?.id) {
+      setClosedCopierDetailSignal(null)
+      return
+    }
+    let cancelled = false
+    setClosedCopierDetailSignal(null)
+    void supabase
+      .from('signals')
+      .select('*')
+      .eq('id', closed.signalId)
+      .eq('user_id', user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setClosedCopierDetailSignal((data as Signal | null) ?? null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [copierLogDetail?.closed?.signalId, copierLogDetail?.closed?.key, user?.id])
+
+  const closedCopierDetailDisplay = useMemo(() => {
+    const closed = copierLogDetail?.closed
+    if (!closed || !user?.id) return null
+    const stub = signalStubFromClosedDraft(closed, user.id)
+    return {
+      signal: closedCopierDetailSignal ?? stub,
+      channelName: copierLogDetail.channelName,
+      sourceKind: copierLogDetail.sourceKind,
+      symbol: closed.symbol,
+      reason: closed.reason,
+      destinations: copierLogDetail.destinations,
+      closedAt: closed.at,
+    }
+  }, [copierLogDetail, closedCopierDetailSignal, user?.id])
 
   const [linkedAccountSortKey, setLinkedAccountSortKey] = useState<LinkedAccountSortKey | null>(null)
   const [linkedAccountSortDir, setLinkedAccountSortDir] = useState<SortDirection>('asc')
@@ -3058,6 +3112,7 @@ export function DashboardPage() {
           <span className="min-w-0">{t.copierLogs.colStatus}</span>
           <span className="min-w-0">{t.copierLogs.colReason}</span>
           <span className="min-w-0">{t.copierLogs.colChannel}</span>
+          <span className="min-w-0">{t.copierLogs.colDestination}</span>
           <span className="min-w-0">{t.copierLogs.colSymbol}</span>
           <span className="min-w-0">{t.copierLogs.colMessage}</span>
           <span className="min-w-0">{t.copierLogs.colType}</span>
@@ -3066,7 +3121,7 @@ export function DashboardPage() {
 
         {visibleCopierLogRows.length === 0 && chartsEmpty ? (
           <div className={`${DASHBOARD_COPIER_LOG_GRID} px-4 sm:px-5 py-3.5`}>
-            {[...Array(7)].map((_, j) => (
+            {[...Array(8)].map((_, j) => (
               <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse min-w-0" />
             ))}
           </div>
@@ -3081,7 +3136,7 @@ export function DashboardPage() {
                 key={row.key}
                 row={row}
                 onOpenDetail={
-                  row.signal || row.social || row.manual
+                  row.signal || row.social || row.manual || row.closed
                     ? () => setCopierLogDetail(row)
                     : undefined
                 }
@@ -3253,12 +3308,13 @@ export function DashboardPage() {
         </div>
       ) : null}
 
-      {copierLogDetail?.signal ? (
+      {copierLogDetail?.signal && !copierLogDetail.closed ? (
         <CopierLogDetailModal
           signal={copierLogDetail.signal}
           channelName={copierLogDetail.channelName}
           sourceKind={copierLogDetail.sourceKind}
           symbol={copierLogDetail.symbol}
+          destinations={copierLogDetail.destinations}
           status={{
             variant: (
               {
@@ -3312,6 +3368,24 @@ export function DashboardPage() {
                 })()
               }
             : undefined}
+        />
+      ) : null}
+
+      {closedCopierDetailDisplay ? (
+        <CopierLogDetailModal
+          signal={closedCopierDetailDisplay.signal}
+          channelName={closedCopierDetailDisplay.channelName}
+          sourceKind={closedCopierDetailDisplay.sourceKind}
+          symbol={closedCopierDetailDisplay.symbol}
+          status={{
+            variant: 'neutral',
+            label: t.copierLogs.statusClosed,
+          }}
+          displayReason={closedCopierDetailDisplay.reason}
+          destinations={closedCopierDetailDisplay.destinations}
+          closedAt={closedCopierDetailDisplay.closedAt}
+          onClose={() => setCopierLogDetail(null)}
+          retryEligible={false}
         />
       ) : null}
 
@@ -3421,12 +3495,30 @@ type DashboardCopierLogRow = {
   sourceKind: SignalSourceKind | null
   isSocial: boolean
   isManual: boolean
+  destinations: CopierLogDestination[]
   signal?: Signal
   social?: SocialCopyLogRow
   manual?: SocialCopyLogRow
+  closed?: CopierClosedLogDraft
 }
 
 type DashboardLogStatusVariant = 'success' | 'warning' | 'error' | 'neutral' | 'primary'
+
+function DashboardDestinationCell({ destinations }: { destinations: readonly CopierLogDestination[] }) {
+  const summary = copierLogDestinationSummary(destinations)
+  if (!summary.label || summary.label === '—') {
+    return <span className="min-w-0 text-sm text-neutral-500 dark:text-neutral-400">—</span>
+  }
+  return (
+    <span
+      className="flex min-w-0 items-center gap-1.5 text-sm text-neutral-900 dark:text-neutral-50"
+      title={summary.label}
+    >
+      <CopierDestinationLogos icons={summary.icons} />
+      <span className="min-w-0 truncate">{summary.label}</span>
+    </span>
+  )
+}
 
 function LogRow({
   row,
@@ -3456,7 +3548,7 @@ function LogRow({
     <div
       className={clsx(
         DASHBOARD_COPIER_LOG_GRID,
-        'px-4 sm:px-5 py-3.5 transition-colors',
+        'group px-4 sm:px-5 py-3.5 transition-colors',
         APP_ROW_HOVER,
         onOpenDetail && 'cursor-pointer',
       )}
@@ -3490,6 +3582,7 @@ function LogRow({
         ) : null}
         <span className="min-w-0 truncate">{row.channelName}</span>
       </span>
+      <DashboardDestinationCell destinations={row.destinations} />
       <span className="min-w-0 text-base font-medium text-neutral-900 dark:text-neutral-50 truncate" title={row.symbol}>
         {row.symbol}
       </span>
@@ -3509,7 +3602,7 @@ function LogRow({
       >
         {typeLabel}
       </span>
-      <span className="min-w-0 text-sm text-neutral-900 dark:text-neutral-50 text-right whitespace-nowrap tabular-nums">
+      <span className="min-w-0 flex items-center justify-end gap-1 text-sm text-neutral-900 dark:text-neutral-50 whitespace-nowrap tabular-nums">
         {row.at
           ? new Date(row.at).toLocaleString([], {
               month: 'short',
@@ -3518,6 +3611,12 @@ function LogRow({
               minute: '2-digit',
             })
           : '—'}
+        {onOpenDetail ? (
+          <ChevronRight
+            className="h-3.5 w-3.5 shrink-0 text-neutral-900 opacity-0 transition-opacity group-hover:opacity-100 dark:text-neutral-50"
+            aria-hidden
+          />
+        ) : null}
       </span>
     </div>
   )
@@ -3667,7 +3766,7 @@ function LinkedAccountRow({
           onOpenStats()
         }
       }}
-      className={clsx('grid cursor-pointer grid-cols-9 items-center gap-2 px-5 py-3.5 transition-colors', APP_ROW_HOVER)}
+      className={clsx('group grid cursor-pointer grid-cols-9 items-center gap-2 px-5 py-3.5 transition-colors', APP_ROW_HOVER)}
     >
       <div className="flex flex-col min-w-0">
         <span
@@ -3735,6 +3834,10 @@ function LinkedAccountRow({
         <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusClass}`}>
           {brokerConnectionStatusLabel(account, la)}
         </span>
+        <ChevronRight
+          className="h-3.5 w-3.5 shrink-0 text-neutral-900 opacity-0 transition-opacity group-hover:opacity-100 dark:text-neutral-50"
+          aria-hidden
+        />
       </div>
     </div>
   )

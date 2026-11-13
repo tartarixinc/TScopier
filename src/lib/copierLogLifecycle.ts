@@ -173,6 +173,30 @@ export function buildClosedCopierLogDrafts(
     .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
 }
 
+/** Placeholder Signal so Closed rows can open Signal details before/without a fetch. */
+export function signalStubFromClosedDraft(
+  draft: CopierClosedLogDraft,
+  userId: string,
+): Signal {
+  return {
+    id: draft.signalId ?? draft.key,
+    user_id: userId,
+    channel_id: draft.channelId,
+    raw_message: draft.messageFull,
+    raw_image_url: null,
+    parsed_data: {
+      action: draft.action,
+      symbol: draft.symbol,
+    },
+    status: 'executed',
+    skip_reason: null,
+    telegram_message_id: null,
+    is_modification: false,
+    parent_signal_id: null,
+    created_at: draft.at,
+  }
+}
+
 export function copierLifecycleLabelsFromCopierLogs(copierLogs: {
   reasonParsed: string
   reasonExecuted: string

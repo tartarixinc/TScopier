@@ -14,6 +14,7 @@ export const logsAr: LogsBundleTranslations = {
     colStatus: 'الحالة',
     colReason: 'السبب',
     colChannel: 'المصدر',
+    colDestination: 'الوجهة',
     colSymbol: 'الرمز',
     colMessage: 'الرسالة',
     colType: 'النوع',

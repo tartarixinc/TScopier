@@ -1417,6 +1417,7 @@ export const es: Translations = {
     colStatus: 'Estado',
     colReason: 'Motivo',
     colChannel: 'Fuente',
+    colDestination: 'Destino',
     colSymbol: 'Símbolo',
     colMessage: 'Mensaje',
     colType: 'Tipo',

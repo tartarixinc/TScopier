@@ -14,6 +14,7 @@ export const logsSv: LogsBundleTranslations = {
     colStatus: 'Status',
     colReason: 'Orsak',
     colChannel: 'Källa',
+    colDestination: 'Destination',
     colSymbol: 'Symbol',
     colMessage: 'Meddelande',
     colType: 'Typ',

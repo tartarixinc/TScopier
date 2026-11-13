@@ -19,6 +19,7 @@ import {
   writeCopierLogToastSeen,
   type CopierLogToast,
 } from '../../lib/copierLogToast'
+import { CopierDestinationLogos } from './CopierDestinationLogos'
 import {
   buildChannelSourceKinds,
   resolveSignalSourceKind,
@@ -217,9 +218,7 @@ export function CopierLogToasts({
           <span className="truncate">{t.configurationsPage.copyFrom} {toast.source}</span>
         </p>
         <p className="flex items-center gap-1.5 text-xs text-neutral-900 dark:text-neutral-50">
-          {toast.destinationIcons.map(icon => (
-            <img key={icon} src={icon} alt="" aria-hidden className="h-4 w-4 shrink-0 object-contain" />
-          ))}
+          <CopierDestinationLogos icons={toast.destinationIcons} />
           <span className="truncate">{t.configurationsPage.copyTo} {toast.destination}</span>
         </p>
       </button>

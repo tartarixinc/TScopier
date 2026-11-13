@@ -14,6 +14,7 @@ export const logsRu: LogsBundleTranslations = {
     colStatus: 'Статус',
     colReason: 'Причина',
     colChannel: 'Источник',
+    colDestination: 'Назначение',
     colSymbol: 'Символ',
     colMessage: 'Сообщение',
     colType: 'Тип',

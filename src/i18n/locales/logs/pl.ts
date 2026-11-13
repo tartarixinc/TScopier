@@ -14,6 +14,7 @@ export const logsPl: LogsBundleTranslations = {
     colStatus: 'Status',
     colReason: 'Powód',
     colChannel: 'Źródło',
+    colDestination: 'Cel',
     colSymbol: 'Symbol',
     colMessage: 'Wiadomość',
     colType: 'Typ',

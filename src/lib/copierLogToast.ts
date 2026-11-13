@@ -51,33 +51,85 @@ export function copierLogSourceIcon(
   return SIGNAL_SOURCE_MARKS[kind].iconSrc
 }
 
+export type CopierLogDestination = {
+  label: string
+  iconSrc: string | null
+}
+
+/** Max logos shown in stacked Destination UI (label may still list every broker). */
+export const COPIER_DESTINATION_LOGO_MAX = 3
+
+function asBrokerList(brokers: readonly BrokerAccount[] | null | undefined): BrokerAccount[] {
+  return Array.isArray(brokers) ? [...brokers] : []
+}
+
+/** Brokers linked to copy this channel — used by Copier Log Destination column + toasts. */
+export function copierLogDestinations(
+  brokers: readonly BrokerAccount[] | null | undefined,
+  channelId: string | null | undefined,
+): CopierLogDestination[] {
+  if (!channelId) return []
+  return brokersMatchingChannel(asBrokerList(brokers), channelId.toLowerCase()).map(broker => ({
+    label: getBrokerDisplayLabel(broker),
+    iconSrc: platformIconSrc(broker.platform ?? ''),
+  }))
+}
+
 export function copierLogDestinationLabel(
-  brokers: readonly BrokerAccount[],
+  brokers: readonly BrokerAccount[] | null | undefined,
   channelId: string | null | undefined,
 ): string {
   return copierLogDestinations(brokers, channelId).map(item => item.label).join(', ')
 }
 
 export function copierLogDestinationIcons(
-  brokers: readonly BrokerAccount[],
+  brokers: readonly BrokerAccount[] | null | undefined,
   channelId: string | null | undefined,
 ): string[] {
   const icons: string[] = []
   for (const item of copierLogDestinations(brokers, channelId)) {
     if (item.iconSrc && !icons.includes(item.iconSrc)) icons.push(item.iconSrc)
+    if (icons.length >= COPIER_DESTINATION_LOGO_MAX) break
   }
   return icons
 }
 
-function copierLogDestinations(
-  brokers: readonly BrokerAccount[],
-  channelId: string | null | undefined,
-): Array<{ label: string; iconSrc: string | null }> {
-  if (!channelId) return []
-  return brokersMatchingChannel([...brokers], channelId.toLowerCase()).map(broker => ({
-    label: getBrokerDisplayLabel(broker),
-    iconSrc: platformIconSrc(broker.platform ?? ''),
-  }))
+/**
+ * Destination for mirror/social rows that already carry an account label
+ * (e.g. `MT5 • 477608729`). Match a linked broker when possible for the logo.
+ */
+export function copierLogDestinationsFromAccountLabel(
+  label: string | null | undefined,
+  brokers: readonly BrokerAccount[] | null | undefined = [],
+): CopierLogDestination[] {
+  const trimmed = label?.trim()
+  if (!trimmed) return []
+  const match = asBrokerList(brokers).find(broker => getBrokerDisplayLabel(broker) === trimmed)
+  if (match) {
+    return [{
+      label: trimmed,
+      iconSrc: platformIconSrc(match.platform ?? ''),
+    }]
+  }
+  const platformGuess = trimmed.split(/[•·|]/)[0]?.trim() ?? ''
+  return [{
+    label: trimmed,
+    iconSrc: platformGuess ? platformIconSrc(platformGuess) : null,
+  }]
+}
+
+export function copierLogDestinationSummary(
+  destinations: readonly CopierLogDestination[],
+): { label: string; icons: string[] } {
+  const icons: string[] = []
+  for (const item of destinations) {
+    if (item.iconSrc && !icons.includes(item.iconSrc)) icons.push(item.iconSrc)
+    if (icons.length >= COPIER_DESTINATION_LOGO_MAX) break
+  }
+  return {
+    label: destinations.map(item => item.label).join(', ') || '—',
+    icons,
+  }
 }
 
 const EMPTY_SYMBOL_CONTEXT = {

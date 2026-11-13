@@ -11,7 +11,15 @@ import { PageShell } from '../../components/layout/PageShell'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
-import type { Signal } from '../../types/database'
+import type { BrokerAccount, Signal } from '../../types/database'
+import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
+import {
+  copierLogDestinationSummary,
+  copierLogDestinations,
+  copierLogDestinationsFromAccountLabel,
+  type CopierLogDestination,
+} from '../../lib/copierLogToast'
+import { CopierDestinationLogos } from '../../components/dashboard/CopierDestinationLogos'
 import {
   buildSignalSymbolLookup,
   symbolForCopierLog,
@@ -27,6 +35,7 @@ import {
   copierLifecycleLabelsFromCopierLogs,
   resolveCopierDisplayReason,
   resolveCopierDisplayStatus,
+  signalStubFromClosedDraft,
   type ClosedTradeForCopierLog,
   type CopierClosedLogDraft,
 } from '../../lib/copierLogLifecycle'
@@ -48,6 +57,10 @@ const CLOSED_TRADE_SELECT =
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50] as const
 type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number]
+
+/** Table column tracks — Destination after Source. */
+const COPIER_LOG_GRID =
+  'grid grid-cols-[6.75rem_minmax(0,1.5fr)_minmax(0,1.1fr)_minmax(0,1fr)_minmax(4.75rem,0.75fr)_minmax(0,1.2fr)_minmax(4.5rem,0.7fr)_7.5rem_2.5rem] gap-3 min-w-4xl'
 
 type ChannelNameRow = { id: string; display_name: string; channel_username?: string | null; source_kind?: string | null }
 
@@ -87,6 +100,7 @@ type CopierLogView = {
   reason: string | null
   reasonShort: string
   timeLabel: string
+  destinations: CopierLogDestination[]
 }
 
 /** One row on the list — a signal, mirror, social, manual, or synthetic Closed trade. */
@@ -131,6 +145,7 @@ function buildSignalLogView(
   openSignalIds: ReadonlySet<string>,
   statusConfig: Record<string, { variant: StatusVariant; label: string; className?: string }>,
   copierLogs: ReturnType<typeof useT>['copierLogs'],
+  brokers: readonly BrokerAccount[] | null | undefined,
 ): CopierLogView {
   const parsed = signal.parsed_data as Record<string, unknown> | null
   const action = parsed?.action as string | undefined
@@ -166,6 +181,7 @@ function buildSignalLogView(
     reason,
     reasonShort: shortenReason(reason) ?? '—',
     timeLabel: formatLogTime(signal.created_at),
+    destinations: copierLogDestinations(brokers, signal.channel_id),
   }
 }
 
@@ -174,6 +190,7 @@ function buildClosedLogView(
   channelDisplayNames: Record<string, string>,
   channelSourceKinds: Record<string, SignalSourceKind>,
   statusConfig: Record<string, { variant: StatusVariant; label: string; className?: string }>,
+  brokers: readonly BrokerAccount[] | null | undefined,
 ): CopierLogView {
   const channelId = draft.channelId
   const channelName = channelId
@@ -198,6 +215,7 @@ function buildClosedLogView(
     reason: draft.reason,
     reasonShort: shortenReason(draft.reason) ?? '—',
     timeLabel: formatLogTime(draft.at),
+    destinations: copierLogDestinations(brokers, draft.channelId),
   }
 }
 
@@ -234,6 +252,7 @@ function buildMirrorLogView(
   row: MirrorCopyLogRow,
   statusConfig: Record<string, { variant: StatusVariant; label: string; className?: string }>,
   copierLogs: ReturnType<typeof useT>['copierLogs'],
+  brokers: readonly BrokerAccount[] | null | undefined,
 ): CopierLogView {
   const sourceLabel = copierLogs.mirrorSource
   const message = mirrorLogMessage(row, copierLogs)
@@ -252,6 +271,7 @@ function buildMirrorLogView(
     reason: row.reason,
     reasonShort: shortenReason(row.reason) ?? '—',
     timeLabel: formatLogTime(row.createdAt),
+    destinations: copierLogDestinationsFromAccountLabel(row.destinationAccount, brokers),
   }
 }
 
@@ -283,6 +303,7 @@ function buildSocialLogView(
   row: SocialCopyLogRow,
   statusConfig: Record<string, { variant: StatusVariant; label: string; className?: string }>,
   copierLogs: ReturnType<typeof useT>['copierLogs'],
+  brokers: readonly BrokerAccount[] | null | undefined,
 ): CopierLogView {
   const sourceLabel = copierLogs.socialSource
   const message = socialLogMessage(row, copierLogs)
@@ -301,6 +322,7 @@ function buildSocialLogView(
     reason: row.reason,
     reasonShort: shortenReason(row.reason) ?? '—',
     timeLabel: formatLogTime(row.createdAt),
+    destinations: copierLogDestinationsFromAccountLabel(row.destinationAccount, brokers),
   }
 }
 
@@ -332,6 +354,7 @@ function buildManualLogView(
   row: SocialCopyLogRow,
   statusConfig: Record<string, { variant: StatusVariant; label: string; className?: string }>,
   copierLogs: ReturnType<typeof useT>['copierLogs'],
+  brokers: readonly BrokerAccount[] | null | undefined,
 ): CopierLogView {
   const sourceLabel = copierLogs.manualExecutionSource
   const message = manualLogMessage(row, copierLogs)
@@ -350,7 +373,32 @@ function buildManualLogView(
     reason: row.reason,
     reasonShort: shortenReason(row.reason) ?? '—',
     timeLabel: formatLogTime(row.createdAt),
+    destinations: copierLogDestinationsFromAccountLabel(row.destinationAccount ?? row.channelName, brokers),
   }
+}
+
+function DestinationCell({
+  destinations,
+  className,
+}: {
+  destinations: readonly CopierLogDestination[]
+  className?: string
+}) {
+  const summary = copierLogDestinationSummary(destinations)
+  if (!summary.label || summary.label === '—') {
+    return (
+      <span className={clsx('min-w-0 text-xs text-neutral-500 dark:text-neutral-400', className)}>—</span>
+    )
+  }
+  return (
+    <span
+      className={clsx('flex min-w-0 items-center gap-1.5 text-xs text-neutral-900 dark:text-neutral-50', className)}
+      title={summary.label}
+    >
+      <CopierDestinationLogos icons={summary.icons} />
+      <span className="min-w-0 truncate">{summary.label}</span>
+    </span>
+  )
 }
 
 function SourceMark({ view, className }: { view: CopierLogView; className?: string }) {
@@ -396,7 +444,7 @@ function CopierLogCard({
   onRetry?: () => void
   onOpenDetail?: () => void
 }) {
-  const { action, symbol, status, channelName, channelTitle, reason, messagePreview, messageFull, timeLabel } = view
+  const { action, symbol, status, channelName, channelTitle, reason, messagePreview, messageFull, timeLabel, destinations } = view
 
   return (
     <article
@@ -422,6 +470,7 @@ function CopierLogCard({
             <SourceMark view={view} />
             <span className="truncate">{channelName}</span>
           </p>
+          <DestinationCell destinations={destinations} className="mt-1" />
         </div>
         <div className="flex flex-col items-end gap-1.5 shrink-0">
           <Badge variant={status.variant} size="sm" className={clsx('w-fit', status.className)}>{status.label}</Badge>
@@ -487,12 +536,13 @@ function CopierLogRow({
   onOpenDetail?: () => void
   viewDetailsLabel: string
 }) {
-  const { action, symbol, status, channelName, channelTitle, reasonShort, messagePreview, messageFull, timeLabel } = view
+  const { action, symbol, status, channelName, channelTitle, reasonShort, messagePreview, messageFull, timeLabel, destinations } = view
 
   return (
     <div
       className={clsx(
-        'grid grid-cols-[6.75rem_minmax(0,1.5fr)_minmax(0,1.1fr)_minmax(4.75rem,0.75fr)_minmax(0,1.2fr)_minmax(4.5rem,0.7fr)_7.5rem_2.5rem] gap-3 min-w-3xl px-4 sm:px-5 py-3.5 items-center transition-colors',
+        COPIER_LOG_GRID,
+        'px-4 sm:px-5 py-3.5 items-center transition-colors',
         onOpenDetail && 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50 cursor-pointer',
       )}
       onClick={onOpenDetail}
@@ -516,6 +566,7 @@ function CopierLogRow({
         <SourceMark view={view} />
         <span className="min-w-0 truncate">{channelName}</span>
       </span>
+      <DestinationCell destinations={destinations} />
       <span className="min-w-0 text-sm font-medium text-neutral-900 dark:text-neutral-50 truncate" title={symbol}>{symbol}</span>
       <span className="min-w-0 text-xs text-neutral-900 dark:text-neutral-50 truncate" title={messageFull}>
         {messagePreview}
@@ -555,6 +606,7 @@ function CopierLogRow({
 export function CopierLogsPage() {
   const t = useT()
   const { user } = useAuth()
+  const { brokers } = useBrokerAccounts()
   const [signals, setSignals] = useState<Signal[]>([])
   const [mirrorLogs, setMirrorLogs] = useState<MirrorCopyLogRow[]>([])
   const [socialLogs, setSocialLogs] = useState<SocialCopyLogRow[]>([])
@@ -582,15 +634,38 @@ export function CopierLogsPage() {
   const [pageSize, setPageSize] = useState<PageSizeOption>(25)
   const [retryingSignalIds, setRetryingSignalIds] = useState<Set<string>>(() => new Set())
   const [toast, setToast] = useState<string | null>(null)
-  // One slot for the open detail view. A row is a signal, mirror, social, or manual trade.
+  // One slot for the open detail view. A row is a signal, mirror, social, manual, or Closed trade.
   const [detail, setDetail] = useState<LogViewEntry | null>(null)
   const detailSignal = detail?.signal ?? null
   const detailMirror = detail?.mirror ?? null
   const detailSocial = detail?.social ?? null
   const detailManual = detail?.manual ?? null
+  const detailClosed = detail?.closed ?? null
+  const [closedDetailSignal, setClosedDetailSignal] = useState<Signal | null>(null)
   // Stable identity: MirrorLogDetailModal re-runs its scroll-lock/focus effect
   // whenever this changes, which would yank focus back to the panel.
   const closeDetail = useCallback(() => setDetail(null), [])
+
+  useEffect(() => {
+    if (!detailClosed?.signalId || !user?.id) {
+      setClosedDetailSignal(null)
+      return
+    }
+    let cancelled = false
+    setClosedDetailSignal(null)
+    void supabase
+      .from('signals')
+      .select('*')
+      .eq('id', detailClosed.signalId)
+      .eq('user_id', user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setClosedDetailSignal((data as Signal | null) ?? null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [detailClosed?.signalId, detailClosed?.key, user?.id])
 
   const showToast = useCallback((message: string) => {
     setToast(message)
@@ -844,7 +919,7 @@ export function CopierLogsPage() {
       return closedTradeDrafts.map(draft => ({
         key: draft.key,
         at: draft.at,
-        view: buildClosedLogView(draft, channelDisplayNames, channelSourceKinds, statusConfig),
+        view: buildClosedLogView(draft, channelDisplayNames, channelSourceKinds, statusConfig, brokers),
         closed: draft,
       }))
     }
@@ -865,25 +940,25 @@ export function CopierLogsPage() {
       ...mirrorRows.map(row => ({
         key: row.id,
         at: row.createdAt,
-        view: buildMirrorLogView(row, statusConfig, t.copierLogs),
+        view: buildMirrorLogView(row, statusConfig, t.copierLogs, brokers),
         mirror: row,
       })),
       ...socialRows.map(row => ({
         key: row.id,
         at: row.createdAt,
-        view: buildSocialLogView(row, statusConfig, t.copierLogs),
+        view: buildSocialLogView(row, statusConfig, t.copierLogs, brokers),
         social: row,
       })),
       ...manualRows.map(row => ({
         key: row.id,
         at: row.createdAt,
-        view: buildManualLogView(row, statusConfig, t.copierLogs),
+        view: buildManualLogView(row, statusConfig, t.copierLogs, brokers),
         manual: row,
       })),
       ...closedForPage.map(draft => ({
         key: draft.key,
         at: draft.at,
-        view: buildClosedLogView(draft, channelDisplayNames, channelSourceKinds, statusConfig),
+        view: buildClosedLogView(draft, channelDisplayNames, channelSourceKinds, statusConfig, brokers),
         closed: draft,
       })),
       ...signals.map(signal => ({
@@ -898,6 +973,7 @@ export function CopierLogsPage() {
           openSignalIds,
           statusConfig,
           t.copierLogs,
+          brokers,
         ),
         signal,
       })),
@@ -918,6 +994,7 @@ export function CopierLogsPage() {
     channelDisplayNames,
     channelSourceKinds,
     symbolContext,
+    brokers,
     t,
   ])
 
@@ -953,8 +1030,43 @@ export function CopierLogsPage() {
         copierLifecycleLabelsFromCopierLogs(t.copierLogs),
         t.copierLogs,
       ),
+      destinations: detail?.view.destinations ?? copierLogDestinations(brokers, detailSignal.channel_id),
     }
-  }, [detailSignal, openSignalIds, statusConfig, channelDisplayNames, channelSourceKinds, symbolContext, signals, t.copierLogs])
+  }, [detailSignal, detail?.view.destinations, openSignalIds, statusConfig, channelDisplayNames, channelSourceKinds, symbolContext, signals, brokers, t.copierLogs])
+
+  const closedDetailDisplay = useMemo(() => {
+    if (!detailClosed || !user?.id) return null
+    const stub = signalStubFromClosedDraft(detailClosed, user.id)
+    const signal = closedDetailSignal ?? stub
+    const channelName = detailClosed.channelId
+      ? (channelDisplayNames[detailClosed.channelId] ?? detail?.view.channelName ?? 'Channel')
+      : (detail?.view.channelName ?? 'Channel')
+    const sourceKind = detailClosed.channelId
+      ? (channelSourceKinds[detailClosed.channelId] ?? detail?.view.sourceKind ?? null)
+      : (detail?.view.sourceKind ?? null)
+    return {
+      signal,
+      channelName,
+      sourceKind,
+      symbol: detailClosed.symbol,
+      status: statusConfig.closed ?? { variant: 'neutral' as const, label: t.copierLogs.statusClosed },
+      reason: detailClosed.reason,
+      destinations: detail?.view.destinations ?? copierLogDestinations(brokers, detailClosed.channelId),
+      closedAt: detailClosed.at,
+    }
+  }, [
+    detailClosed,
+    closedDetailSignal,
+    user?.id,
+    channelDisplayNames,
+    channelSourceKinds,
+    detail?.view.channelName,
+    detail?.view.sourceKind,
+    detail?.view.destinations,
+    statusConfig,
+    brokers,
+    t.copierLogs.statusClosed,
+  ])
 
   return (
     <PageShell maxWidth="lg" spacing="none" className="space-y-6">
@@ -1002,8 +1114,8 @@ export function CopierLogsPage() {
             </div>
             <div className="hidden md:block divide-y divide-neutral-100 dark:divide-neutral-800">
               {[...Array(pageSize > 6 ? 6 : pageSize)].map((_, i) => (
-                <div key={i} className="px-5 py-3.5 grid grid-cols-7 gap-3">
-                  {[...Array(7)].map((_, j) => (
+                <div key={i} className={`px-5 py-3.5 ${COPIER_LOG_GRID}`}>
+                  {[...Array(9)].map((_, j) => (
                     <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded-sm animate-pulse" />
                   ))}
                 </div>
@@ -1025,7 +1137,6 @@ export function CopierLogsPage() {
             <div className="md:hidden divide-y divide-neutral-100 dark:divide-neutral-800">
               {logViews.map(entry => {
                 const signal = entry.signal
-                const canOpenDetail = !entry.closed
                 return (
                   <CopierLogCard
                     key={entry.key}
@@ -1036,16 +1147,17 @@ export function CopierLogsPage() {
                     onRetry={signal && isCopierSignalRetryEligible(signal)
                       ? () => { void retrySignalEntry(signal.id) }
                       : undefined}
-                    onOpenDetail={canOpenDetail ? () => setDetail(entry) : undefined}
+                    onOpenDetail={() => setDetail(entry)}
                   />
                 )
               })}
             </div>
             <div className="hidden md:block overflow-x-auto">
-              <div className="grid grid-cols-[6.75rem_minmax(0,1.5fr)_minmax(0,1.1fr)_minmax(4.75rem,0.75fr)_minmax(0,1.2fr)_minmax(4.5rem,0.7fr)_7.5rem_2.5rem] gap-3 min-w-3xl px-4 sm:px-5 py-3 border-b border-neutral-100 dark:border-neutral-800 text-xs font-semibold text-neutral-900 dark:text-neutral-50 uppercase tracking-wide">
+              <div className={`${COPIER_LOG_GRID} px-4 sm:px-5 py-3 border-b border-neutral-100 dark:border-neutral-800 text-xs font-semibold text-neutral-900 dark:text-neutral-50 uppercase tracking-wide`}>
                 <span className="min-w-0">{t.copierLogs.colStatus}</span>
                 <span className="min-w-0">{t.copierLogs.colReason}</span>
                 <span className="min-w-0">{t.copierLogs.colChannel}</span>
+                <span className="min-w-0">{t.copierLogs.colDestination}</span>
                 <span className="min-w-0">{t.copierLogs.colSymbol}</span>
                 <span className="min-w-0">{t.copierLogs.colMessage}</span>
                 <span className="min-w-0">{t.copierLogs.colType}</span>
@@ -1055,7 +1167,6 @@ export function CopierLogsPage() {
               <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
                 {logViews.map(entry => {
                   const signal = entry.signal
-                  const canOpenDetail = !entry.closed
                   return (
                     <CopierLogRow
                       key={entry.key}
@@ -1065,7 +1176,7 @@ export function CopierLogsPage() {
                       onRetry={signal && isCopierSignalRetryEligible(signal)
                         ? () => { void retrySignalEntry(signal.id) }
                         : undefined}
-                      onOpenDetail={canOpenDetail ? () => setDetail(entry) : undefined}
+                      onOpenDetail={() => setDetail(entry)}
                       viewDetailsLabel={viewDetailsLabel}
                     />
                   )
@@ -1103,7 +1214,7 @@ export function CopierLogsPage() {
         ) : null}
       </Card>
 
-      {detailDisplay ? (
+      {detailDisplay && !detailClosed ? (
         <CopierLogDetailModal
           signal={detailDisplay.signal}
           channelName={detailDisplay.channelName}
@@ -1111,12 +1222,28 @@ export function CopierLogsPage() {
           symbol={detailDisplay.symbol}
           status={detailDisplay.status}
           displayReason={detailDisplay.reason}
+          destinations={detailDisplay.destinations}
           onClose={closeDetail}
           retryEligible={isCopierSignalRetryEligible(detailDisplay.signal)}
           isRetrying={retryingSignalIds.has(detailDisplay.signal.id)}
           onRetry={isCopierSignalRetryEligible(detailDisplay.signal)
             ? () => { void retrySignalEntry(detailDisplay.signal.id) }
             : undefined}
+        />
+      ) : null}
+
+      {closedDetailDisplay ? (
+        <CopierLogDetailModal
+          signal={closedDetailDisplay.signal}
+          channelName={closedDetailDisplay.channelName}
+          sourceKind={closedDetailDisplay.sourceKind}
+          symbol={closedDetailDisplay.symbol}
+          status={closedDetailDisplay.status}
+          displayReason={closedDetailDisplay.reason}
+          destinations={closedDetailDisplay.destinations}
+          closedAt={closedDetailDisplay.closedAt}
+          onClose={closeDetail}
+          retryEligible={false}
         />
       ) : null}
 

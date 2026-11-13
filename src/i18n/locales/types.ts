@@ -592,6 +592,7 @@ export interface CopierLogsTranslations {
   colStatus: string
   colReason: string
   colChannel: string
+  colDestination: string
   colSymbol: string
   colMessage: string
   colType: string
@@ -675,6 +676,7 @@ export interface CopierLogsTranslations {
     reason: string
     whatHappened: string
     channel: string
+    destination: string
     symbol: string
     action: string
     levels: string
@@ -688,6 +690,7 @@ export interface CopierLogsTranslations {
     noTimeline: string
     viewDetails: string
     receivedAt: string
+    closedAt: string
     explainWithAi: string
   }
 }
