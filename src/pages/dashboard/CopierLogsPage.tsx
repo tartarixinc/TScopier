@@ -17,13 +17,17 @@ import {
   copierLogDestinationSummary,
   copierLogDestinations,
   copierLogDestinationsFromAccountLabel,
+  signalHistoryToastLabels,
   type CopierLogDestination,
 } from '../../lib/copierLogToast'
 import { CopierDestinationLogos } from '../../components/dashboard/CopierDestinationLogos'
 import {
   buildSignalSymbolLookup,
   symbolForCopierLog,
+  tradeSignalActionLabel,
+  tradeSignalActionToneClass,
   type CopierSymbolContext,
+  type TradeSignalSummaryLabels,
 } from '../../lib/copierLogDisplay'
 import { retrySignalApi } from '../../lib/retrySignalApi'
 import {
@@ -432,6 +436,7 @@ function SourceMark({ view, className }: { view: CopierLogView; className?: stri
 function CopierLogCard({
   view,
   labels,
+  actionLabels,
   copierLogs,
   isRetrying,
   onRetry,
@@ -439,12 +444,14 @@ function CopierLogCard({
 }: {
   view: CopierLogView
   labels: { colReason: string; viewDetails: string }
+  actionLabels: TradeSignalSummaryLabels
   copierLogs: ReturnType<typeof useT>['copierLogs']
   isRetrying: boolean
   onRetry?: () => void
   onOpenDetail?: () => void
 }) {
   const { action, symbol, status, channelName, channelTitle, reason, messagePreview, messageFull, timeLabel, destinations } = view
+  const actionLabel = action ? tradeSignalActionLabel(action, actionLabels) : null
 
   return (
     <article
@@ -478,12 +485,12 @@ function CopierLogCard({
         </div>
       </div>
 
-      {action ? (
+      {actionLabel ? (
         <p className={clsx(
-          'text-sm font-medium uppercase mb-3',
-          action === 'buy' ? 'text-green-400' : action === 'sell' ? 'text-error-600' : 'text-neutral-900 dark:text-neutral-50',
+          'text-sm font-medium mb-3',
+          tradeSignalActionToneClass(action),
         )}>
-          {action}
+          {actionLabel}
         </p>
       ) : null}
 
@@ -523,6 +530,7 @@ function CopierLogCard({
 
 function CopierLogRow({
   view,
+  actionLabels,
   copierLogs,
   isRetrying,
   onRetry,
@@ -530,6 +538,7 @@ function CopierLogRow({
   viewDetailsLabel,
 }: {
   view: CopierLogView
+  actionLabels: TradeSignalSummaryLabels
   copierLogs: ReturnType<typeof useT>['copierLogs']
   isRetrying: boolean
   onRetry?: () => void
@@ -537,6 +546,7 @@ function CopierLogRow({
   viewDetailsLabel: string
 }) {
   const { action, symbol, status, channelName, channelTitle, reasonShort, messagePreview, messageFull, timeLabel, destinations } = view
+  const actionLabel = action ? tradeSignalActionLabel(action, actionLabels) : '—'
 
   return (
     <div
@@ -572,10 +582,10 @@ function CopierLogRow({
         {messagePreview}
       </span>
       <span className={clsx(
-        'min-w-0 text-xs font-medium uppercase truncate',
-        action === 'buy' ? 'text-green-400' : action === 'sell' ? 'text-error-600' : 'text-neutral-900 dark:text-neutral-50',
-      )} title={action ?? '—'}>
-        {action ?? '—'}
+        'min-w-0 text-xs font-medium truncate',
+        tradeSignalActionToneClass(action),
+      )} title={actionLabel}>
+        {actionLabel}
       </span>
       <span className="min-w-0 text-xs text-neutral-900 dark:text-neutral-50 text-right whitespace-nowrap tabular-nums">{timeLabel}</span>
       <div className="flex justify-end">
@@ -907,6 +917,11 @@ export function CopierLogsPage() {
     [t],
   )
 
+  const actionLabels = useMemo(
+    () => signalHistoryToastLabels(t.signalHistoryPage),
+    [t.signalHistoryPage],
+  )
+
   const viewDetailsLabel = t.copierLogs.detailModal?.viewDetails ?? DEFAULT_DETAIL_MODAL.viewDetails
 
   /**
@@ -1142,6 +1157,7 @@ export function CopierLogsPage() {
                     key={entry.key}
                     view={entry.view}
                     labels={cardLabels}
+                    actionLabels={actionLabels}
                     copierLogs={t.copierLogs}
                     isRetrying={signal ? retryingSignalIds.has(signal.id) : false}
                     onRetry={signal && isCopierSignalRetryEligible(signal)
@@ -1171,6 +1187,7 @@ export function CopierLogsPage() {
                     <CopierLogRow
                       key={entry.key}
                       view={entry.view}
+                      actionLabels={actionLabels}
                       copierLogs={t.copierLogs}
                       isRetrying={signal ? retryingSignalIds.has(signal.id) : false}
                       onRetry={signal && isCopierSignalRetryEligible(signal)

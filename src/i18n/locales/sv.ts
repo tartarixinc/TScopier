@@ -14,6 +14,7 @@ import { landingSv } from './landing/sv'
 import { legalSv } from './legalBundle/sv'
 import { logsSv } from './logs/sv'
 import { mergeLocaleBundle } from './merge'
+import { signalActionsSv } from './signalHistory/actionLabels'
 import { pricingSv } from './pricing/sv'
 import { settingsSv } from './settings/sv'
 import { socialTradingSv } from './socialTrading/sv'
@@ -25,6 +26,10 @@ export const sv: Translations = mergeLocaleBundle(en, {
   ...chromeSv,
   ...dashboardSv,
   ...logsSv,
+  signalHistoryPage: {
+    ...en.signalHistoryPage,
+    ...signalActionsSv,
+  },
   ...settingsSv,
   ...accountConfigSv,
   ...backtestSv,

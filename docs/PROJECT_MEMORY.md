@@ -2,6 +2,25 @@
 
 ## Changelog
 
+### 2026-11-13 — Copier Signal details + BUY/SELL i18n
+
+- **Context:** Signal details modal chrome stayed English; Copier Log Type column showed raw `buy`/`sell`.
+- **Plain English:** Modal labels (title, reason, timeline, …) are translated per locale. Buy/Sell/Close etc. use the same Signal History action strings as toasts.
+- **Fix (files):** [`copierLogs/detailModal.ts`](src/i18n/locales/copierLogs/detailModal.ts) + wired into en/es/fr and `logs/*`; [`CopierLogsPage.tsx`](src/pages/dashboard/CopierLogsPage.tsx), [`DashboardPage.tsx`](src/pages/dashboard/DashboardPage.tsx), [`MirrorLogDetailModal.tsx`](src/components/dashboard/MirrorLogDetailModal.tsx), [`copierLogDisplay.ts`](src/lib/copierLogDisplay.ts) action helpers.
+- **Tests/verification:** `merge.test.ts` detailModal Polish; existing display tests.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** Timeline/`tradeFailureDisplay` English strings still need locale maps.
+
+### 2026-11-13 — Copier Log reasons not translated
+
+- **Context:** Copier Logs Reason column stayed English in non-English locales.
+- **Plain English:** Skip/fail reasons now pick up the same translated Channel Worker strings, and partial locale bundles no longer wipe the rest of the Copier Logs dictionary.
+- **Root cause (technical):** `mergeLocaleBundle` shallow-replaced `copierLogs`, so `logs/*` kept only ~4 `skipReasons`. Lookup then fell through to English `COPIER_SKIP_REASON_LABELS`. Human-review free text also failed key normalization (`;`).
+- **Fix (files):** [`merge.ts`](src/i18n/locales/merge.ts) deep-merge + CW fold; [`copierSkipReasons.ts`](src/i18n/locales/copierSkipReasons.ts); en/es/fr `skipReasons` via `buildCopierLogsSkipReasons`; [`copierSkipReasonLabels.ts`](src/lib/copierSkipReasonLabels.ts) free-text aliases.
+- **Tests/verification:** `copierLogDetail.test.ts`, `merge.test.ts`, `copierLogLifecycle.test.ts` pass.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** Translate remaining copy-risk-only codes beyond Channel Worker maps if they appear in production logs.
+
 ### 2026-11-13 — TradingView ingest host → tl.unicopier.com
 
 - **Context:** Dashboard was showing the raw Railway listener URL for TradingView webhooks.

@@ -7,8 +7,24 @@ export function resolveCopierSkipReasonKey(reason: string | null | undefined): s
   if (!raw) return ''
   if (/invalid\s+stops/i.test(raw)) return 'invalid_stops'
   if (/invalid\s+s\/l/i.test(raw)) return 'invalid_stops'
+
+  const lower = raw.toLowerCase()
+  // Free-text reasons stored by the parser/worker (not stable snake_case codes).
+  if (
+    lower === 'ai classified as uncertain; human review required'
+    || lower.startsWith('ai classified as uncertain')
+  ) {
+    return 'ai_classified_as_uncertain_human_review_required'
+  }
+  if (lower === 'ai classified as non-actionable') return 'ai_classified_as_non_actionable'
+  if (lower === 'ai classified as non-entry') return 'ai_classified_as_non_entry'
+  if (lower === 'non-trade message' || lower === 'non_trade_message') return 'non_trade_message'
+
   const normalized = normalizeCopierSkipReasonKey(raw)
-  return normalized.replace(/[\s-]+/g, '_')
+  return normalized
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
 }
 
 export const COPIER_SKIP_REASON_LABELS: Record<string, string> = {

@@ -12,6 +12,8 @@ import type { Translations } from './types'
 import { configureModalFr } from './configureModal/fr'
 import { statusModalEn } from './accountConfig/statusModal'
 import { copyRiskFr } from './copyRiskLabels'
+import { buildCopierLogsSkipReasons } from './copierSkipReasons'
+import { detailModalFr } from './copierLogs/detailModal'
 
 export const fr: Translations = {
   auth: authFr,
@@ -1459,13 +1461,15 @@ export const fr: Translations = {
     retryFailedDetail: 'Impossible de réessayer : {reason}',
     retryReasonNotRetryable: 'Ce signal ne peut pas être relancé.',
     retryReasonDispatchRejected: 'Le copieur n\'a pas accepté la nouvelle tentative.',
-    skipReasons: {
+    skipReasons: buildCopierLogsSkipReasons(channelWorkerFr.skipReasons, {
       entry_not_opened: 'Le courtier n\'a ouvert aucune position pour ce signal',
       entry_zone_far_from_market: 'Zone d\'entrée trop éloignée du prix actuel',
       broker_session_not_connected: 'Courtier non connecté',
       broker_bridge_unavailable:
         'Pont courtier indisponible — ouvrez Configuration du compte → santé du courtier, activez Algo Trading sur MT5 et attendez que Trade EA soit vert',
-    },
+      ai_classified_as_uncertain_human_review_required: 'L\'IA était incertaine — vérifiez avant de trader',
+    }),
+    detailModal: detailModalFr,
   },
   signalHistoryPage: {
     allChannels: 'Tous les canaux',

@@ -7,15 +7,35 @@ import {
 } from './copierLogDetail'
 import { resolveCopierSkipReasonKey } from './copierSkipReasonLabels'
 import { en } from '../i18n/locales/en'
+import { es } from '../i18n/locales/es'
+import { pl } from '../i18n/locales/pl'
 
 test('resolveCopierSkipReasonKey maps broker Invalid stops message', () => {
   assert.equal(resolveCopierSkipReasonKey('Invalid stops'), 'invalid_stops')
   assert.equal(resolveCopierSkipReasonKey('channel_max_risk_hit'), 'channel_max_risk_hit')
 })
 
+test('resolveCopierSkipReasonKey maps human-review free text', () => {
+  assert.equal(
+    resolveCopierSkipReasonKey('ai classified as uncertain; human review required'),
+    'ai_classified_as_uncertain_human_review_required',
+  )
+})
+
 test('formatCopierSkipReasonShort uses friendly label', () => {
   const label = formatCopierSkipReasonShort('channel_max_risk_hit', en.copierLogs)
   assert.equal(label, 'Daily risk limit reached')
+})
+
+test('formatCopierSkipReasonShort translates via locale skipReasons', () => {
+  const esLabel = formatCopierSkipReasonShort('copier_paused', es.copierLogs)
+  assert.match(esLabel, /pausa/i)
+  const plLabel = formatCopierSkipReasonShort('entry_not_opened', pl.copierLogs)
+  assert.match(plLabel, /pozycj/i)
+  // Deep-merge keeps English keys that logs/pl did not override, while CW fills others.
+  const plPaused = formatCopierSkipReasonShort('telegram_listener_not_live', pl.copierLogs)
+  assert.match(plPaused, /Telegram/i)
+  assert.notEqual(plPaused, 'telegram_listener_not_live')
 })
 
 test('formatCopierSkipReasonShort maps missing-SL skips to predefined SL hint', () => {

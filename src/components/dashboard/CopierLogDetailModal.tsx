@@ -212,8 +212,12 @@ export function CopierLogDetailModal({
               <Badge variant={status.variant} size="sm" className={status.className}>{status.label}</Badge>
               {action ? (
                 <span className={clsx(
-                  'text-xs font-semibold uppercase',
-                  action === 'buy' ? 'text-green-400' : action === 'sell' ? 'text-error-600' : 'text-neutral-900 dark:text-neutral-50',
+                  'text-xs font-semibold',
+                  action === 'buy' || action === 'long'
+                    ? 'text-green-400'
+                    : action === 'sell' || action === 'short'
+                      ? 'text-error-600'
+                      : 'text-neutral-900 dark:text-neutral-50',
                 )}>
                   {actionLabel}
                 </span>

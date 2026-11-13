@@ -14,6 +14,7 @@ import { landingPl } from './landing/pl'
 import { legalPl } from './legalBundle/pl'
 import { logsPl } from './logs/pl'
 import { mergeLocaleBundle } from './merge'
+import { signalActionsPl } from './signalHistory/actionLabels'
 import { pricingPl } from './pricing/pl'
 import { settingsPl } from './settings/pl'
 import { socialTradingPl } from './socialTrading/pl'
@@ -25,6 +26,10 @@ export const pl: Translations = mergeLocaleBundle(en, {
   ...chromePl,
   ...dashboardPl,
   ...logsPl,
+  signalHistoryPage: {
+    ...en.signalHistoryPage,
+    ...signalActionsPl,
+  },
   ...settingsPl,
   ...accountConfigPl,
   ...backtestPl,

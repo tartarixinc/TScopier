@@ -14,6 +14,7 @@ import { legalJa } from './legalBundle/ja'
 import { landingJa } from './landing/ja'
 import { logsJa } from './logs/ja'
 import { mergeLocaleBundle } from './merge'
+import { signalActionsJa } from './signalHistory/actionLabels'
 import { pricingJa } from './pricing/ja'
 import { settingsJa } from './settings/ja'
 import { socialTradingJa } from './socialTrading/ja'
@@ -25,6 +26,10 @@ export const ja: Translations = mergeLocaleBundle(en, {
   ...chromeJa,
   ...dashboardJa,
   ...logsJa,
+  signalHistoryPage: {
+    ...en.signalHistoryPage,
+    ...signalActionsJa,
+  },
   ...settingsJa,
   ...accountConfigJa,
   ...backtestJa,

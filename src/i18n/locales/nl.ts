@@ -14,6 +14,7 @@ import { legalNl } from './legalBundle/nl'
 import { landingNl } from './landing/nl'
 import { logsNl } from './logs/nl'
 import { mergeLocaleBundle } from './merge'
+import { signalActionsNl } from './signalHistory/actionLabels'
 import { pricingNl } from './pricing/nl'
 import { settingsNl } from './settings/nl'
 import { socialTradingNl } from './socialTrading/nl'
@@ -25,6 +26,10 @@ export const nl: Translations = mergeLocaleBundle(en, {
   ...chromeNl,
   ...dashboardNl,
   ...logsNl,
+  signalHistoryPage: {
+    ...en.signalHistoryPage,
+    ...signalActionsNl,
+  },
   ...settingsNl,
   ...accountConfigNl,
   ...backtestNl,
