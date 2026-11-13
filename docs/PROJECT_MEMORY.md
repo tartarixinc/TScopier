@@ -2,6 +2,36 @@
 
 ## Changelog
 
+### 2026-11-13 — Restore OrderSend reliability after capacity regression
+
+- **Context:** Production (Martins / New Con) after the global OrderSend capacity gate: **42** `BROKER_BUSY` and **12** OrderSend timeouts since 07:00Z; Gold-lab multi-leg baskets failed while the bridge was still alive.
+- **Plain English:** Orders were waiting only 8 seconds for a free send slot, then failing as “broker busy,” and the dashboard was also polling open trades every tick on the same MTAPI session. We now wait longer, retry busy once, stop throttling send concurrency just because the queue is busy, and poll open trades less often when the account is flat.
+- **Root cause (technical):** `MTAPI_GLOBAL_ORDER_WAIT_MS` default 8s fail-fast; saturation forced `MT_SEND_OP_CONCURRENCY → 1`; no in-basket busy retry; Dashboard `refresh_summary` + `trades(scope=open)` every ~35s × N accounts contended with OrderSend.
+- **Fix (files):** [`mtapiProvider.ts`](worker/src/mtapiProvider.ts) — wait default **45s** (cap **60s**); remove saturation→send concurrency 1. [`orderLegExecution.ts`](worker/src/tradeExecutor/orderLegExecution.ts) — retry `BROKER_BUSY` once (~400ms); serialize-on-sat opt-in via `MT_SEND_SERIALIZE_WHEN_SATURATED`. [`DashboardPage.tsx`](src/pages/dashboard/DashboardPage.tsx) — summary every ~45s; OpenedOrders only when not flat or ~4 min reconcile. [`worker/.env.example`](worker/.env.example) comments updated.
+- **Tests/verification:** Worker `tsc --noEmit` clean; broker busy classification tests pass (36). Source checklist: wait 45s/cap 60s, busy retry on `attempt===0`, no sat→send=1, serialize opt-in, dashboard summary-only + 4‑min open reconcile. Prod New Con `974cd34d-…` since 07:00Z still **42 busy / 12 timeout / 54 ok** (pre-redeploy baseline — expected until trade-worker ships this commit).
+- **Deploy state:** Local / code ready — needs trade-worker redeploy + Netlify for dashboard poll.
+- **Follow-ups:** After trade-worker redeploy, re-check New Con Gold-lab `order_send` busy count (should drop sharply vs 42).
+
+### 2026-11-13 — Dashboard Open Trades = market only (fix 104 / $0 PnL)
+
+- **Context:** Martins (`martins.osodi@gmail.com`) on production showed **Open Trades 104** with **Open PnL $0** while New Con `477486720` was flat (`last_equity = last_balance`) and DB had **0 open** / **100 pending**.
+- **Plain English:** The dashboard was counting waiting limit/stop orders as “open trades” next to floating P/L, so it looked like 104 opens with no profit. Open Trades now means filled market positions only (same idea as Open PnL).
+- **Root cause (technical):** Pending top-up + `OpenedOrders` all `status=open`; `normalizeLiveOpenMetrics` forced `open_pnl: 0` when mark was unknown; sticky counts survived flat AccountSummary.
+- **Fix (files):** [`dashboardLiveOpenMetrics.ts`](src/lib/dashboardLiveOpenMetrics.ts) — `resolveFlatBookOpenMetrics` / unknown PnL stays null; [`DashboardPage.tsx`](src/pages/dashboard/DashboardPage.tsx) — market-only headline, flat summary clears sticky opens, MTAPI poll ~35s via `mtapi-broker`.
+- **Tests/verification:** `dashboardLiveOpenMetrics.test.ts`; after deploy, flat New Con → Open Trades 0 / PnL $0.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** 100 DB `pending` on New Con may still need reconcile; they must not drive the Open Trades card.
+
+### 2026-11-13 — Dashboard Open PnL / open trades realtime (clear when flat)
+
+- **Context:** Dashboard showed stale Open PnL (+$406) and wrong Open Trades (4) while MT5 had many XAUUSDm legs (~$268 floating); after closing everything, Open PnL still stuck.
+- **Plain English:** The dashboard was not reading live open positions from MTAPI often enough, and it refused to show Open PnL as zero once it had a non-zero value.
+- **Root cause (technical):** (1) `mergeDashboardStats` used `keepBalance` for `openPnl`, which never accepts `0` when previous ≠ 0. (2) MTAPI `normalizeMtapiAccountSummary` has no `open_trades`, so counts relied on a stale trade list. (3) REST poll updated only one account per 45s tick and preferred sticky list counts.
+- **Fix (files):** [`dashboardLiveOpenMetrics.ts`](src/lib/dashboardLiveOpenMetrics.ts); [`DashboardPage.tsx`](src/pages/dashboard/DashboardPage.tsx) — allow Open PnL → 0; zero PnL when open count is 0; MTAPI poll fetches `trades(scope=open)` + summary every ~20s for all accounts; first tick at 2s.
+- **Tests/verification:** `dashboardLiveOpenMetrics.test.ts`; after deploy, open/close on MT5 — Open Trades and Open PnL should track within ~20s and clear when flat.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** UniCopier DB “recording” of timed-out OrderSends is separate (capacity/worker path); this fix is live broker display.
+
 ### 2026-11-13 — Fix UserImpact 'deferred' → 'delayed' (worker image build)
 
 - **Context:** Railway/Docker image build failed on `npm run build` after capacity work.

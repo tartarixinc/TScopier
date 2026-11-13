@@ -11,6 +11,12 @@ import { parseRawChannelMessage } from './parseSignal'
 import { pushParsedSignalToTradeWorker } from './tradeSignalPush'
 import { userBelongsToShard } from './workerConfig'
 import { installRelayFetch } from './relayFetch'
+import {
+  isWhatsAppAuthCryptoConfigured,
+  openWhatsAppAuthColumn,
+  sealWhatsAppAuthColumn,
+  whatsappAuthKeyFingerprints,
+} from './whatsappAuthCrypto'
 import WebSocket from 'ws'
 
 installRelayFetch()
@@ -100,11 +106,14 @@ async function useSupabaseAuthState(supabase: SupabaseClient, userId: string) {
     .eq('user_id', userId)
     .maybeSingle()
   const stored = data as { creds?: unknown; keys?: unknown } | null
+  // Dual-format read: plaintext rows (legacy/rollout) and sealed `v1:` envelopes
+  // both resolve to JSON text; an unopenable envelope throws here so a session
+  // never starts from ciphertext and the row is never overwritten.
   const creds = stored?.creds
-    ? JSON.parse(JSON.stringify(stored.creds), baileys.BufferJSON.reviver)
+    ? JSON.parse(openWhatsAppAuthColumn(stored.creds), baileys.BufferJSON.reviver)
     : baileys.initAuthCreds()
   const keys: AuthBucket = stored?.keys
-    ? JSON.parse(JSON.stringify(stored.keys), baileys.BufferJSON.reviver)
+    ? JSON.parse(openWhatsAppAuthColumn(stored.keys), baileys.BufferJSON.reviver)
     : {}
 
   let retired = false
@@ -116,8 +125,10 @@ async function useSupabaseAuthState(supabase: SupabaseClient, userId: string) {
     }
     await supabase.from('whatsapp_auth').upsert({
       user_id: userId,
-      creds: payload.creds,
-      keys: payload.keys,
+      // Unconfigured: the legacy object (stored type unchanged). Configured:
+      // sealed envelope; sealing failures throw instead of writing plaintext.
+      creds: sealWhatsAppAuthColumn(JSON.stringify(payload.creds), payload.creds),
+      keys: sealWhatsAppAuthColumn(JSON.stringify(payload.keys), payload.keys),
       updated_at: new Date().toISOString(),
     })
   }
@@ -525,7 +536,13 @@ async function main(): Promise<void> {
     server.on('error', reject)
   })
   const host = new URL(String(process.env.WHATSAPP_SUPABASE_URL ?? process.env.SUPABASE_URL ?? '')).host
+  const fingerprints = whatsappAuthKeyFingerprints()
   console.log(`[whatsapp] listener listening on ${PORT} (${host})`)
+  console.log(
+    `[whatsapp] auth-encryption configured=${isWhatsAppAuthCryptoConfigured()} `
+    + `primary-fingerprint=${fingerprints.primary ?? 'missing'} `
+    + `previous-fingerprints=${fingerprints.previous.join(',') || 'none'}`,
+  )
   await resumeConnected(supabase)
 }
 

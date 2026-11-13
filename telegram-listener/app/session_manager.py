@@ -10,6 +10,7 @@ from telethon import TelegramClient
 from telethon.sessions import StringSession
 
 from .config import Config, user_belongs_to_shard
+from .session_guard import session_value_or_refuse
 from .session_lease import acquire_session_lease, list_active_leases, release_session_lease, renew_session_lease
 from .trade_client import TradeClient
 from .user_listener import UserListener
@@ -38,8 +39,11 @@ class SessionManager:
         ]
         print(f"[session_manager] loading {len(sessions)} telethon sessions")
         for s in sessions:
+            session = session_value_or_refuse(str(s["user_id"]), s.get("session_string"))
+            if session is None:
+                continue
             try:
-                await self.start_listener(str(s["user_id"]), str(s["session_string"]))
+                await self.start_listener(str(s["user_id"]), session)
             except Exception as exc:
                 print(f"[session_manager] failed start {s['user_id']}: {exc}")
         self._subscribe_channels()
@@ -77,7 +81,10 @@ class SessionManager:
         for s in result.data or []:
             uid = str(s["user_id"])
             if uid in active and uid not in self.listeners:
-                await self.start_listener(uid, str(s["session_string"]))
+                session = session_value_or_refuse(uid, s.get("session_string"))
+                if session is None:
+                    continue
+                await self.start_listener(uid, session)
         for uid in list(self.listeners.keys()):
             if uid not in active:
                 await self.stop_listener(uid)
@@ -146,7 +153,10 @@ class SessionManager:
         ).data
         if not row or not row.get("session_string"):
             raise RuntimeError("No Telegram session for this user")
-        await self.start_listener(user_id, str(row["session_string"]))
+        session = session_value_or_refuse(user_id, row["session_string"])
+        if session is None:
+            raise RuntimeError("Telegram session is encrypted; this listener has no decryption key")
+        await self.start_listener(user_id, session)
         listener = self.listeners.get(user_id)
         if not listener:
             raise RuntimeError("Failed to start listener")
