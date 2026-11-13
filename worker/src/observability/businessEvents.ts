@@ -224,6 +224,7 @@ export function classifyBrokerFailureReason(message: string): string {
   ) {
     return 'BROKER_SYMBOL_NOT_FOUND'
   }
+  if (/broker busy|concurrency_busy|ordersendsafe broker busy/.test(lower)) return 'BROKER_BUSY'
   if (/timeout|timed out|operation timeout/.test(lower)) return 'BROKER_TIMEOUT'
   if (/not connected|disconnected|session|auth|unauthorized|forbidden|invalid api/.test(lower)) return 'BROKER_ACCOUNT_UNAVAILABLE'
   if (/rate limit|too many requests/.test(lower)) return 'BROKER_RATE_LIMITED'

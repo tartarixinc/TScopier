@@ -52,6 +52,7 @@ import { collapseIdenticalImmediateLegs } from './collapseIdenticalImmediateLegs
 import { authorityFromBrokerRow, withBrokerWriteAuthority } from '../brokerWriteAuthority'
 import { writeExecutionLog } from '../observability/executionLog'
 import { normalizeBrokerTradeTicket } from '../brokerTradeTicket'
+import { isMtapiGlobalOrderSaturated } from '../mtapiProvider'
 export { collapseIdenticalImmediateLegs }
 
 /** Normalized broker fill shape shared by the v1 client and the v2 fxClient. */
@@ -578,12 +579,16 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
               : reasonCode === 'BROKER_SYMBOL_NOT_FOUND'
                 ? 'trade_copy_blocked'
                 : 'broker_order_rejected',
-            severity: reasonCode === 'BROKER_RATE_LIMITED' ? 'warning' : 'error',
+            severity: reasonCode === 'BROKER_RATE_LIMITED' || reasonCode === 'BROKER_BUSY'
+              ? 'warning'
+              : 'error',
             reasonCode,
             message: reasonCode === 'BROKER_SYMBOL_NOT_FOUND'
               ? `Broker does not offer ${sendArgs.symbol} — symbol not in broker inventory`
-              : 'Broker rejected trade copy order',
-            userImpact: 'failed',
+              : reasonCode === 'BROKER_BUSY'
+                ? 'Broker busy — order deferred to avoid timeout'
+                : 'Broker rejected trade copy order',
+            userImpact: reasonCode === 'BROKER_BUSY' ? 'deferred' : 'failed',
             context: {
               user_id: signal.user_id,
               signal_id: signal.id,
@@ -1038,9 +1043,27 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
     return true
   }
 
-  // All immediates fan out in parallel. Virtual pendings are already
-  // persisted; the worker monitor + edge sweep will fire them on trigger.
-  const sendResults = await Promise.allSettled(sendLegs.map(sendLeg))
+  // Quiet path: fan out in parallel (per-account + global gates still apply).
+  // Under global MTAPI saturation, send legs sequentially so other brokers
+  // keep getting fair slots instead of one basket occupying the whole lane.
+  const saturated = isMtapiGlobalOrderSaturated()
+  const legGapMs = saturated
+    ? Math.max(0, Math.min(500, Number(process.env.MT_SEND_LEG_GAP_MS ?? 50) || 0))
+    : 0
+  let sendResults: PromiseSettledResult<boolean>[]
+  if (saturated && sendLegs.length > 1) {
+    sendResults = []
+    for (const leg of sendLegs) {
+      try {
+        sendResults.push({ status: 'fulfilled', value: await sendLeg(leg) })
+      } catch (reason) {
+        sendResults.push({ status: 'rejected', reason })
+      }
+      if (legGapMs > 0) await new Promise<void>(r => setTimeout(r, legGapMs))
+    }
+  } else {
+    sendResults = await Promise.allSettled(sendLegs.map(sendLeg))
+  }
 
   let materializedBrokerPendings = materializedVirtuals
   if (deferBrokerRangePendingMaterialize && brokerPendingMode && virtualPendings.length > 0 && api) {

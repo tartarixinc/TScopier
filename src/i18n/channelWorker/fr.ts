@@ -215,6 +215,10 @@ export const channelWorkerFr: ChannelWorkerTranslations = {
     'L’EA de trading n’est pas prêt sur votre terminal MT5 — activez Algo Trading, gardez le terminal ouvert, puis actualisez la santé du courtier',
   errorBrokerNotConnected:
     'Courtier non connecté — dans Configuration du compte, utilisez Reconnect et entrez votre mot de passe MT',
+  errorBrokerBusy:
+    'Courtier occupé — trop d’ordres en cours ; les signaux suivants s’exécuteront quand la charge baissera',
+  errorOrderSendTimedOut:
+    'OrderSend timed out — vérifiez les positions ouvertes ; l’ordre a peut‑être tout de même été exécuté',
   errorInvalidStops:
     'Le courtier a rejeté ces niveaux de stop — vérifiez que SL/TP sont du bon côté du marché et respectent la distance minimale.',
   errorBridgeGlitch:

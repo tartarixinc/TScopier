@@ -318,6 +318,14 @@ export async function drainSignalQueues(ctx: TradeExecutorContext, ): Promise<vo
     ctx.queueDraining = true
     const inFlight = new Set<Promise<void>>()
     try {
+      const backlog = ctx.highPriorityQueue.length + ctx.normalPriorityQueue.length
+      if (backlog >= EXECUTOR_MAX_CONCURRENT_SIGNALS * 2) {
+        console.warn(
+          `[tradeExecutor] signal admission backlog queued=${backlog}`
+          + ` in_flight_cap=${EXECUTOR_MAX_CONCURRENT_SIGNALS}`
+          + ` (FIFO drain; raise EXECUTOR_MAX_CONCURRENT_SIGNALS only if the MTAPI bridge keeps up)`,
+        )
+      }
       while (ctx.highPriorityQueue.length > 0 || ctx.normalPriorityQueue.length > 0 || inFlight.size > 0) {
         while (
           inFlight.size < EXECUTOR_MAX_CONCURRENT_SIGNALS

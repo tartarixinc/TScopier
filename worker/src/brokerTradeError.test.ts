@@ -232,6 +232,25 @@ describe('humanizeOrderSendError', () => {
       'Broker rejected order: invalid request. Check symbol availability and order parameters.',
     )
   })
+
+  it('maps broker busy without implying a fill ambiguity', () => {
+    const msg = humanizeOrderSendError('MTAPI OrderSendSafe broker busy')
+    assert.match(msg, /broker busy/i)
+    assert.doesNotMatch(msg, /timed out/i)
+  })
+
+  it('keeps timed out wording for reconcile matching', () => {
+    const msg = humanizeOrderSendError('MTAPI OrderSendSafe timed out')
+    assert.match(msg, /timed out/i)
+  })
+})
+
+describe('tradeFailureReasonFromBrokerMessage broker busy', () => {
+  it('classifies OrderSendSafe broker busy as BROKER_BUSY', () => {
+    const reason = tradeFailureReasonFromBrokerMessage('MTAPI OrderSendSafe broker busy')
+    assert.equal(reason?.reasonCode, 'BROKER_BUSY')
+    assert.equal(reason?.retryable, true)
+  })
 })
 
 describe('isMarketClosedMessage', () => {

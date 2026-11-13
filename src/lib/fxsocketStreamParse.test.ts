@@ -7,6 +7,8 @@ import {
   shouldApplyAccountStreamOpenPnl,
   sumOpenPnlByBroker,
   countOpenMarketPositionsByBroker,
+  countOpenTradesByBroker,
+  resolveOpenTradesHeadlineCount,
 } from './fxsocketStreamParse'
 
 describe('parseFxsocketAccountStreamData', () => {
@@ -154,6 +156,30 @@ describe('countOpenMarketPositionsByBroker', () => {
       { broker_id: 'b', status: 'closed', type: 'Sell' },
     ])
     expect(counts).toEqual({ a: 1 })
+  })
+})
+
+describe('countOpenTradesByBroker', () => {
+  it('includes pending open rows so dashboard matches Account Trades', () => {
+    const counts = countOpenTradesByBroker([
+      { broker_id: 'a', status: 'open' },
+      { broker_id: 'a', status: 'open' },
+      { broker_id: 'a', status: 'closed' },
+      { broker_id: 'b', status: 'open' },
+    ])
+    expect(counts).toEqual({ a: 2, b: 1 })
+  })
+})
+
+describe('resolveOpenTradesHeadlineCount', () => {
+  it('adds pending opens on top of the live market book', () => {
+    const trades = [
+      { broker_id: 'a', status: 'open', type: 'Buy' },
+      { broker_id: 'a', status: 'open', type: 'Buy Limit' },
+      { broker_id: 'a', status: 'open', type: 'Sell Stop' },
+    ]
+    expect(resolveOpenTradesHeadlineCount(1, trades, 'a')).toBe(3)
+    expect(resolveOpenTradesHeadlineCount(0, trades, 'a')).toBe(2)
   })
 })
 

@@ -504,6 +504,50 @@ test('channelWorkerLogMessage: HTTP 503 shows bridge unavailable guidance', () =
   assert.ok(message?.includes('Broker bridge temporarily unavailable'))
 })
 
+test('channelWorkerLogMessage: broker busy shows deferred copy', () => {
+  const message = channelWorkerLogMessage(
+    {
+      action: 'order_send',
+      status: 'failed',
+      request_payload: { symbol: 'XAUUSD', operation: 'Buy' },
+      response_payload: null,
+      error_message: 'MTAPI OrderSendSafe broker busy',
+      signals: {
+        channel_id: 'ch-1',
+        parsed_data: { action: 'buy', symbol: 'XAUUSD' },
+        status: 'failed',
+        skip_reason: 'MTAPI OrderSendSafe broker busy',
+      },
+    },
+    channelWorkerEn,
+    { 'ch-1': 'Gold Trader Mo' },
+  )
+  assert.ok(message?.toLowerCase().includes('broker busy'))
+  assert.ok(!message?.toLowerCase().includes('timed out'))
+})
+
+test('channelWorkerLogMessage: OrderSend timed out shows ambiguous-fill guidance', () => {
+  const message = channelWorkerLogMessage(
+    {
+      action: 'order_send',
+      status: 'failed',
+      request_payload: { symbol: 'XAUUSD', operation: 'Buy' },
+      response_payload: null,
+      error_message: 'OrderSend timed out — check open positions; the order may still have filled',
+      signals: {
+        channel_id: 'ch-1',
+        parsed_data: { action: 'buy', symbol: 'XAUUSD' },
+        status: 'failed',
+        skip_reason: 'OrderSend timed out',
+      },
+    },
+    channelWorkerEn,
+    { 'ch-1': 'Gold Trader Mo' },
+  )
+  assert.ok(message?.includes('OrderSend timed out'))
+  assert.ok(message?.toLowerCase().includes('open positions'))
+})
+
 test('channelWorkerLogMessage: HTTP 500 with symbol shows mapping guidance', () => {
   const message = channelWorkerLogMessage(
     {

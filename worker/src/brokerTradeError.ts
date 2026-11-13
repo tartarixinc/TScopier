@@ -189,6 +189,15 @@ function tradeFailureCopy(
         retryable: true,
         userActionRequired: false,
       }
+    case 'BROKER_BUSY':
+      return {
+        category: 'broker',
+        title: 'Trade deferred - Broker busy',
+        explanation: 'Too many orders were already in flight on the shared trading bridge. The copier skipped this send instead of waiting until the request timed out.',
+        recommendedAction: 'Later signals will run when load drops; no manual reconnect is required.',
+        retryable: true,
+        userActionRequired: false,
+      }
     case 'BROKER_ORDER_REJECTED':
       return {
         category: 'broker',
@@ -254,6 +263,9 @@ export function tradeFailureReasonFromBrokerMessage(
   }
   if (/invalid volume|lot|minimum volume|min lot/.test(lower)) {
     return tradeFailureReasonFromCode('INVALID_LOT', safeContext)
+  }
+  if (/broker busy|concurrency_busy|ordersendsafe broker busy/.test(lower)) {
+    return tradeFailureReasonFromCode('BROKER_BUSY', safeContext)
   }
   if (/timeout|timed out|operation timeout/.test(lower)) {
     return tradeFailureReasonFromCode('BROKER_TIMEOUT', safeContext)
@@ -402,6 +414,13 @@ export function humanizeOrderSendError(message: string, symbol?: string | null):
   }
   if (/^invalid\s+request$/i.test(m)) {
     return 'Broker rejected order: invalid request. Check symbol availability and order parameters.'
+  }
+  if (/broker busy|CONCURRENCY_BUSY|code=BROKER_BUSY/i.test(m) || /OrderSendSafe broker busy/i.test(m)) {
+    return 'Broker busy — too many orders in flight; will retry on the next signal or when load drops'
+  }
+  // Keep "timed out" in the string so isOrderOpTimedOutMessage / reconcile still match.
+  if (/OrderSendSafe timed out|OrderSend timed out/i.test(m)) {
+    return 'OrderSend timed out — check open positions; the order may still have filled'
   }
   return m
 }

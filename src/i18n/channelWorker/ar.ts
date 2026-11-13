@@ -214,6 +214,10 @@ export const channelWorkerAr: ChannelWorkerTranslations = {
     'Trade EA غير جاهز على طرفية MT5 — فعّل Algo Trading وحدّث صحة الوسيط',
   errorBrokerNotConnected:
     'الوسيط غير متصل — في إعدادات الحساب استخدم إعادة الاتصال وأدخل كلمة مرور MT لهذا الحساب',
+  errorBrokerBusy:
+    'الوسيط مشغول — طلبات كثيرة قيد التنفيذ؛ ستُنفَّذ الإشارات اللاحقة عند انخفاض الحمل',
+  errorOrderSendTimedOut:
+    'OrderSend timed out — تحقق من الصفقات المفتوحة؛ قد يكون الأمر قد نُفِّذ',
   errorInvalidStops:
     'رفض الوسيط هذه مستويات الوقف — تحقق أن SL/TP على الجانب الصحيح من السوق وتحقق الحد الأدنى للمسافة.',
   errorBridgeGlitch:

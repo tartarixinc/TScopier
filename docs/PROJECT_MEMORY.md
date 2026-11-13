@@ -2,6 +2,31 @@
 
 ## Changelog
 
+### 2026-11-13 — Dashboard OPEN TRADES matched Account Trades (include pending)
+
+- **Context:** Overview showed **92** open trades while Account Trades badge showed **101 Open**.
+- **Plain English:** The dashboard was counting only filled market positions. Waiting limit/stop orders still count as open on Account Trades, so the two numbers disagreed.
+- **Root cause (technical):** Dashboard `open_trades` came from position books / `AccountSummary.open_trades` / `countOpenMarketPositionsByBroker` (excludes pending). Sidebar `useOpenTradeCount` counts every broker row with `status === 'open'`.
+- **Fix (files):** [`fxsocketStreamParse.ts`](src/lib/fxsocketStreamParse.ts) — `countOpenTradesByBroker` + `resolveOpenTradesHeadlineCount`; [`DashboardPage.tsx`](src/pages/dashboard/DashboardPage.tsx) — headline/live snapshots use market + pending.
+- **Tests/verification:** `fxsocketStreamParse.test.ts` pending top-up cases; UI — both counters should match after refresh.
+- **Deploy state:** Frontend only (local until Netlify deploy).
+- **Follow-ups:** None.
+
+### 2026-11-13 — Multi-signal multi-broker MTAPI capacity (OrderSendSafe fairness)
+
+- **Context:** Gold test lab bursts (multi-leg × many brokers) produced `MTAPI OrderSendSafe timed out` storms and UI “Could not buy XAUUSD…”. Production window **2026-11-13 ~06:20–06:29Z** (Exness + ICMarkets demos): baseline ~**1.64 signals/min**, ~**11.8 legs/signal**, **2 brokers**, **81 failed / 190 ok** order_send rows in the window — stampede on one shared bridge with `MT_SEND_OP_CONCURRENCY=3` and no global fairness.
+- **Plain English:** Under load the copier now shares the bridge fairly, queues excess work, and says “broker busy” quickly instead of hanging ~50s per leg. Quiet single-signal copies still fan out legs in parallel.
+- **Root cause (technical):** N brokers × multi-leg baskets × per-account send overlap overloaded MTAPI HTTP; hung requests hit AbortError (~50s) with 0 fills and no admission control.
+- **Fix (files):**
+  - [`perAccountConcurrency.ts`](worker/src/perAccountConcurrency.ts) — `acquireWithDeadline` + `ConcurrencyBusyError`
+  - [`mtapiProvider.ts`](worker/src/mtapiProvider.ts) — `MTAPI_GLOBAL_ORDER_CONCURRENCY` (default 6) + `MTAPI_GLOBAL_ORDER_WAIT_MS` (default 8s) → `BROKER_BUSY`; saturation forces per-account send limit 1; logs `global_wait_ms` / `account_wait_ms` / `http_ms`
+  - [`orderLegExecution.ts`](worker/src/tradeExecutor/orderLegExecution.ts) — serialize + optional `MT_SEND_LEG_GAP_MS` when saturated
+  - [`dispatch.ts`](worker/src/tradeExecutor/dispatch.ts) — backlog warn at 2× `EXECUTOR_MAX_CONCURRENT_SIGNALS`
+  - [`brokerTradeError.ts`](worker/src/brokerTradeError.ts) + Channel Worker i18n — `BROKER_BUSY` / timeout UX (timeout still reconciles via OpenedOrders)
+- **Tests/verification:** `perAccountConcurrency.test.ts` deadline + multi-key burst; `brokerTradeError` / `businessEvents` busy classification. Live Gold-lab retest after trade-worker deploy: expect no multi-minute timeout storms; under overload prefer `broker busy` then recovery. Ops ceiling ≈ global concurrency ÷ (avg HTTP ms) order slots (tunable via env).
+- **Deploy state:** Local only until trade-worker image redeploy (Migration/prod Railway). Bridge health was OK (403 JSON) before this change.
+- **Follow-ups:** After deploy, re-measure Gold test lab signals/min × brokers; raise `MTAPI_GLOBAL_ORDER_CONCURRENCY` only after bridge soak.
+
 ### 2026-11-12 — Discord latency: enable trade push + pipeline stamps
 
 - **Context:** Discord→trade took ~7–11s. Prod signals had **0** `dispatch_push_attempt` logs; `created_at`→`t_dispatch_received` was 1–5s (sweep/realtime), then `broker_ready` another 3–6s.
