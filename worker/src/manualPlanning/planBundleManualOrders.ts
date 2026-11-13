@@ -107,50 +107,73 @@ export function planBundleManualOrders(args: PlanMultiManualOrdersArgs): Planner
     return directOrder(buckets[0]!.tp, `bundle_single_bucket_${buckets[0]!.label}`, buckets[0]!.label)
   }
 
-  // Lot math in integer lot-step units: floor each bucket, hand every dropped
-  // sub-min-lot bucket's share and the overall remainder to the farthest
-  // (deepest) surviving bucket so no volume falls outside a broker TP.
+  // Lot math in integer lot-step units. Distribution rule — floor, then
+  // top-up, then deepest: floor every share to a legal step; lift any level
+  // that fell below the broker minimum back up to the minimum using the
+  // leftovers (nearest level first, so the deep levels are sacrificed first
+  // when the pot cannot save everyone); give whatever is still unassigned to
+  // the deepest surviving level. Prices are never touched — only lot
+  // distribution — and the opened volume always equals the signal lot.
   const toUnits = (lots: number): number => Math.floor((lots / lotStep) + 1e-9)
   const totalUnits = toUnits(manualLot)
-  const minUnits = Math.max(1, toUnits(minLot))
+  // Ceil (not floor) so a minLot that is not a lotStep multiple still yields a
+  // legal, ≥-minLot promotion target.
+  const minUnits = Math.max(1, Math.ceil(minLot / lotStep - 1e-9))
 
   const planned = buckets.map(b => ({ ...b, units: Math.max(0, toUnits(b.rawLots)) }))
-  const kept: typeof planned = []
-  let rescuedUnits = 0
+  // Over-100 guard over ALL floors (surviving and short alike): if the
+  // configured Targets % oversubscribe the lot even after flooring, fall back
+  // to a single full-lot order rather than splitting a broken config.
+  let floorSumAll = 0
+  for (const b of planned) floorSumAll += b.units
+  if (totalUnits - floorSumAll < 0) return directOrder(ladder[0]!, 'bundle_targets_over_100')
+
+  const short: typeof planned = []
+  let openUnits = 0
   for (const b of planned) {
-    if (b.units > 0 && b.units >= minUnits) kept.push(b)
-    else rescuedUnits += b.units
+    if (b.units >= minUnits) openUnits += b.units
+    else short.push(b)
   }
-  if (kept.length === 0) {
-    // Everything floored below the broker minimum: one full-lot order.
+  // The rescue pot = unassigned percent (disabled rows, fewer TPs than rows)
+  // + flooring leftovers + the floored shares of levels that cannot open yet.
+  // The over-100 guard above guarantees pot ≥ 0 here.
+  let pot = totalUnits - openUnits
+
+  // Top-up pass: short levels are lifted to the minimum from the pot
+  // (nearest first, so the deep levels are sacrificed first when the pot
+  // cannot save everyone).
+  for (const b of short) {
+    if (pot >= minUnits) {
+      b.units = minUnits
+      pot -= minUnits
+    }
+  }
+
+  // Surviving levels in ladder order (nearest → farthest): promoted levels
+  // keep their ladder position, so the farthest level below is really the
+  // deepest trade and the order list reads TP1, TP2, …
+  const alive = planned.filter(b => b.units >= minUnits)
+
+  if (alive.length === 0) {
+    // The pot could not lift any level to the minimum: one full-lot order.
     return directOrder(ladder[0]!, 'bundle_all_buckets_below_min_lot')
   }
-  if (kept.length === 1) {
+  if (alive.length === 1) {
     // A single surviving bucket takes the whole lot; no partial schedule.
-    return directOrder(kept[0]!.tp, `bundle_single_bucket_${kept[0]!.label}`, kept[0]!.label)
+    const only = alive[0]!
+    return directOrder(only.tp, `bundle_single_bucket_${only.label}`, only.label)
   }
 
-  // Farthest bucket = last in signal ladder order (TP3 for a standard
-  // TP1<TP2<TP3 ladder in either direction, since the ladder lists levels
-  // nearest → farthest as parsed).
-  const farthest = kept[kept.length - 1]!
-  let floorSum = 0
-  for (const b of kept) floorSum += b.units
-  // `floorSum` excludes dropped buckets; `rescuedUnits` is their floored share,
-  // already part of `totalUnits - floorSum`. Subtract it so the rescued share is
-  // not counted twice, then hand any true flooring remainder to the farthest
-  // bucket. A negative remainder means the configured Targets % sum to more than
-  // 100 — fall back to a single full-lot order rather than oversizing a leg.
-  const remainderUnits = totalUnits - floorSum - rescuedUnits
-  if (remainderUnits < 0) return directOrder(ladder[0]!, 'bundle_targets_over_100')
-  const farthestUnits = farthest.units + rescuedUnits + remainderUnits
-  if (farthestUnits < minUnits) {
-    return directOrder(farthest.tp, 'bundle_total_below_min_lot', farthest.label)
-  }
+  // Whatever volume is still unassigned (floor leftovers of surviving levels,
+  // shares of levels that stayed dead, unassigned percent) goes to the deepest
+  // surviving level — the ladder lists levels nearest → farthest — so the
+  // opened total always equals the signal lot.
+  const farthest = alive[alive.length - 1]!
+  farthest.units += pot
 
   const orders: OrderSendArgs[] = []
-  for (const b of kept) {
-    const units = b === farthest ? farthestUnits : b.units
+  for (const b of alive) {
+    const units = b.units
     if (units < minUnits) continue
     const volume = Math.round(units * lotStep * 1e8) / 1e8
     if (!(volume > 0)) continue

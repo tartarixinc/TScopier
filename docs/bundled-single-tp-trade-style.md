@@ -109,19 +109,28 @@ early when the flag is on, the account is multi, and
 2. Reuse `resolveTpBucketRows` (`tpBucketDistribution.ts:15-40`) for one
    bucket per TP with its Targets %.
 3. For each bucket with `percent > 0` and a finite `finalTps[i]`:
-   `lots = floor(manualLot * percent / 100 / lotStep) * lotStep`; skip buckets
-   below `minLot`.
+   `lots = floor(manualLot * percent / 100 / lotStep) * lotStep`; buckets whose
+   floored share is below `minLot` are *short* — they are topped back up to
+   `minLot` from the rescue pot (step 5) instead of being skipped.
 4. Emit one immediate `OrderSendArgs` per remaining bucket with
    `takeprofit = finalTps[i]`, shared `stoploss = finalSl`, same `orderBase`
    (comment suffix identifies the level, e.g. `TP2`).
-5. Lot accounting:
-   - Rounding remainder goes to the **farthest** bucket so the leftover still
-     exits at a broker TP.
-   - A bucket dropped for falling below `minLot` donates its intended lots to
-     the **farthest remaining** bucket.
-   - Invariant: emitted lots sum to `manualLot` floored to `lotStep`, except
-     when every bucket would be below `minLot` (then
-     `skip_reason: 'lot_below_symbol_min'`).
+5. Lot accounting (owner-approved rule, 2026-11-13 — floor, then top-up,
+   then deepest):
+   - **Floor** every share to a legal `lotStep` multiple.
+   - **Top-up** any short bucket back to `minLot` from the rescue pot
+     (unassigned percent + flooring leftovers + the floored shares of levels
+     that cannot open), nearest level first — so the **deepest** levels are
+     sacrificed first when the pot cannot save everyone.
+   - Whatever is still unassigned goes to the **farthest surviving** bucket so
+     the leftover still exits at a broker TP.
+   - If the configured Targets % oversubscribe the lot after flooring
+     (`sum(floors) > manualLot / lotStep`), fall back to a single full-lot
+     order (`bundle_targets_over_100`) instead of splitting a broken config.
+   - Invariant: on every split path the emitted lots sum to `manualLot`
+     floored to `lotStep`; degenerate fallbacks emit the raw `manualLot` as one
+     full-lot order; the empty-plan skip `lot_below_symbol_min` applies only
+     when `manualLot < minLot`.
 6. Degenerate cases:
    - No finite TPs (teaser / `open_tp`): one full-lot order with
      `takeprofit: 0` (same rule as today's multi at
