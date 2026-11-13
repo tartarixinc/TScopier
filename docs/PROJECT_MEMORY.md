@@ -2,6 +2,16 @@
 
 ## Changelog
 
+### 2026-11-13 — Fix UserImpact 'deferred' → 'delayed' (worker image build)
+
+- **Context:** Railway/Docker image build failed on `npm run build` after capacity work.
+- **Plain English:** A busy-broker log used a status label the TypeScript types do not allow, so the worker image would not build.
+- **Root cause (technical):** `userImpact: 'deferred'` in [`orderLegExecution.ts`](worker/src/tradeExecutor/orderLegExecution.ts); `UserImpact` only allows `'delayed'` (and siblings), not `'deferred'`.
+- **Fix (files):** `orderLegExecution.ts` — `BROKER_BUSY` → `userImpact: 'delayed'`.
+- **Tests/verification:** `npm run build` in worker (image rebuild).
+- **Deploy state:** Local fix; redeploy trade-worker image.
+- **Follow-ups:** None.
+
 ### 2026-11-13 — Dashboard OPEN TRADES matched Account Trades (include pending)
 
 - **Context:** Overview showed **92** open trades while Account Trades badge showed **101 Open**.

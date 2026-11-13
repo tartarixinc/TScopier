@@ -588,7 +588,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
               : reasonCode === 'BROKER_BUSY'
                 ? 'Broker busy — order deferred to avoid timeout'
                 : 'Broker rejected trade copy order',
-            userImpact: reasonCode === 'BROKER_BUSY' ? 'deferred' : 'failed',
+            userImpact: reasonCode === 'BROKER_BUSY' ? 'delayed' : 'failed',
             context: {
               user_id: signal.user_id,
               signal_id: signal.id,
