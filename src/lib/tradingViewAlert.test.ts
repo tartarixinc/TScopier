@@ -91,3 +91,93 @@ test('parseTradingViewAlert ignores unresolved id placeholders', () => {
   assert.equal(result.ok, true)
   if (result.ok) assert.equal(result.alert.idempotencyId, null)
 })
+
+test('parseTradingViewAlert accepts side+event entry and tp1–tp3', () => {
+  const result = parseTradingViewAlert(JSON.stringify({
+    event: 'entry',
+    side: 'BUY',
+    order: 'MARKET',
+    symbol: 'XAUUSD',
+    entry: 2650,
+    sl: 2640,
+    tp1: 2660,
+    tp2: 2670,
+    tp3: 2680,
+    price: 2650.2,
+    id: 'plot-1',
+  }))
+  assert.equal(result.ok, true)
+  if (!result.ok) return
+  assert.equal(result.alert.action, 'buy')
+  assert.equal(result.alert.symbol, 'XAUUSD')
+  assert.equal(result.alert.sl, 2640)
+  assert.deepEqual(result.alert.tp, [2660, 2670, 2680])
+  assert.equal(result.alert.parsed.entry_order_type, 'market')
+  assert.equal(result.alert.parsed.entry_price, null)
+  assert.equal(result.alert.idempotencyId, 'plot-1')
+})
+
+test('parseTradingViewAlert accepts SELL side and LIMIT entry', () => {
+  const result = parseTradingViewAlert(JSON.stringify({
+    event: 'entry',
+    side: 'SELL',
+    order: 'LIMIT',
+    symbol: 'EURUSD',
+    entry: 1.085,
+    sl: 1.09,
+    tp1: 1.08,
+  }))
+  assert.equal(result.ok, true)
+  if (!result.ok) return
+  assert.equal(result.alert.action, 'sell')
+  assert.equal(result.alert.parsed.entry_order_type, 'limit')
+  assert.equal(result.alert.parsed.entry_price, 1.085)
+  assert.deepEqual(result.alert.tp, [1.08])
+})
+
+test('parseTradingViewAlert maps event close to close action', () => {
+  const result = parseTradingViewAlert(JSON.stringify({
+    event: 'close',
+    side: 'BUY',
+    symbol: 'XAUUSD',
+  }))
+  assert.equal(result.ok, true)
+  if (result.ok) assert.equal(result.alert.action, 'close')
+})
+
+test('parseTradingViewAlert prefers tp array over split tpN when both present', () => {
+  const result = parseTradingViewAlert(JSON.stringify({
+    action: 'buy',
+    symbol: 'XAUUSD',
+    tp: [10, 20],
+    tp1: 99,
+    tp2: 98,
+  }))
+  assert.equal(result.ok, true)
+  if (result.ok) assert.deepEqual(result.alert.tp, [10, 20])
+})
+
+test('parseTradingViewAlert coerces unquoted plot placeholders', () => {
+  const result = parseTradingViewAlert(`{
+  "event": "entry",
+  "side": "BUY",
+  "symbol": "XAUUSD",
+  "sl": {{plot("SL")}},
+  "tp1": {{plot("TP1")}},
+  "price": {{close}}
+}`)
+  assert.equal(result.ok, true)
+  if (!result.ok) return
+  assert.equal(result.alert.action, 'buy')
+  assert.equal(result.alert.sl, null)
+  assert.equal(result.alert.tp, null)
+})
+
+test('parseTradingViewAlert rejects missing direction', () => {
+  const result = parseTradingViewAlert(JSON.stringify({
+    symbol: 'XAUUSD',
+    price: 1,
+  }))
+  assert.equal(result.ok, false)
+  if (!result.ok) assert.equal(result.reason, 'unknown_action')
+})

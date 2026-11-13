@@ -2,6 +2,33 @@
 
 ## Changelog
 
+### 2026-11-13 — TradingView ingest host → tl.unicopier.com
+
+- **Context:** Dashboard was showing the raw Railway listener URL for TradingView webhooks.
+- **Plain English:** Webhook URLs now use `https://tl.unicopier.com/webhooks/tradingview/{token}` (custom domain pointed at the listener).
+- **Fix (files):** [`TradingViewSourcePanel.tsx`](src/components/dashboard/TradingViewSourcePanel.tsx) default ingest base; `.env` / `.env.example` / `worker/.env.example`.
+- **Tests/verification:** `POST https://tl.unicopier.com/webhooks/tradingview/probe` → 200 (domain reaches listener).
+- **Deploy state:** Local `.env` set. **Netlify:** set or update `VITE_TRADINGVIEW_INGEST_BASE_URL=https://tl.unicopier.com` and redeploy so prod builds don’t keep an old Railway value.
+- **Follow-ups:** Users with an old Railway URL pasted in TradingView should re-copy from Configure.
+
+### 2026-11-13 — TradingView plot-based alert JSON
+
+- **Context:** Configure emitted zeros/`tp[]`; plot-based `side`/`event`/`tp1`… alerts would not parse.
+- **Plain English:** Alert templates now use TradingView `{{plot("Entry")}}` / SL / TP1… fields. The webhook still accepts the old `action` + `tp` array shape. Auth stays on the webhook URL (no JSON secret).
+- **Fix (files):** [`tradingViewAlert.ts`](supabase/functions/_shared/tradingViewAlert.ts) + [`worker/src/tradingViewAlert.ts`](worker/src/tradingViewAlert.ts) — `side`/`event`, `tp1`–`tp5`, optional LIMIT `entry`; [`tradingViewAlertTemplate.ts`](src/lib/tradingViewAlertTemplate.ts) — plot templates; panel + i18n hints; tests.
+- **Tests/verification:** `node --import tsx --import ./test/preload.ts --test src/lib/tradingViewAlert.test.ts src/lib/tradingViewAlertTemplate.test.ts` — 17 pass.
+- **Deploy state:** Local only — worker + Migration-branch `tradingview-webhook` deploy when asked.
+- **Follow-ups:** Deploy worker ingest and edge shared parser when ready.
+
+### 2026-11-13 — Brokers Accounts list layout fix
+
+- **Context:** Linked signal sources under Name listed every channel with icon+full name and blew out the Brokers table.
+- **Plain English:** Sources now show up to 3 overlapping logos plus a short summary (or “N sources”). Connection badges stack cleanly; phones get card rows instead of a sideways-scroll table.
+- **Fix (files):** [`AccountConfigPage.tsx`](src/pages/dashboard/AccountConfigPage.tsx) — `BrokerLinkedSources`, fixed-column desktop table, mobile cards; i18n `channelsLinkedCount`.
+- **Tests/verification:** `tsc --noEmit` clean.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** None.
+
 ### 2026-11-13 — Fix Netlify TS build (Copier Log / Dashboard)
 
 - **Context:** Netlify `npm run build` failed with 4 TypeScript errors.

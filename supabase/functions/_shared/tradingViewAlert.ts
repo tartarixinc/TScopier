@@ -27,6 +27,8 @@ export const TRADINGVIEW_ALERT_TEMPLATE_SELL = `{
 
 export type TradingViewTradeAction = 'buy' | 'sell' | 'close'
 
+export type TradingViewEntryOrderType = 'market' | 'limit'
+
 export type TradingViewParsedAlert = {
   action: TradingViewTradeAction
   symbol: string
@@ -36,10 +38,10 @@ export type TradingViewParsedAlert = {
   parsed: {
     action: TradingViewTradeAction
     symbol: string
-    entry_price: null
+    entry_price: number | null
     entry_zone_low: null
     entry_zone_high: null
-    entry_order_type: 'market'
+    entry_order_type: TradingViewEntryOrderType
     sl: number | null
     tp: number[] | null
     lot_size: null
@@ -51,6 +53,7 @@ export type TradingViewAlertParse =
   | { ok: false; reason: string }
 
 const MAX_BODY_CHARS = 8_000
+const TP_INDEX_MAX = 5
 
 export function stripTradingViewSymbol(raw: string): string {
   const trimmed = raw.trim()
@@ -61,6 +64,8 @@ export function stripTradingViewSymbol(raw: string): string {
 function finiteNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value === 'string' && value.trim()) {
+    // Unexpanded placeholders are not levels.
+    if (/\{\{|\}\}/.test(value)) return null
     const n = Number(value)
     if (Number.isFinite(n)) return n
   }
@@ -74,6 +79,20 @@ function takeLevels(value: unknown): number[] | null {
   }
   const one = finiteNumber(value)
   return one == null ? null : [one]
+}
+
+/** Collect tp1…tp5 (any case) into a level array when `tp` is absent. */
+function takeSplitTpLevels(record: Record<string, unknown>): number[] | null {
+  const levels: number[] = []
+  for (let i = 1; i <= TP_INDEX_MAX; i++) {
+    const key = `tp${i}`
+    const upper = `TP${i}`
+    const value = record[key] ?? record[upper]
+    if (value === undefined) continue
+    const n = finiteNumber(value)
+    if (n != null) levels.push(n)
+  }
+  return levels.length ? levels : null
 }
 
 function normalizeAction(value: unknown): TradingViewTradeAction | null {
@@ -91,6 +110,63 @@ function normalizeAction(value: unknown): TradingViewTradeAction | null {
     return 'close'
   }
   return null
+}
+
+function normalizeSide(value: unknown): TradingViewTradeAction | null {
+  const side = String(value ?? '').trim().toLowerCase()
+  if (side === 'buy' || side === 'long') return 'buy'
+  if (side === 'sell' || side === 'short') return 'sell'
+  return null
+}
+
+/**
+ * Resolve trade direction from action, then side, then event+side
+ * (plot-based templates often use event/side instead of action).
+ */
+export function resolveTradingViewAction(record: Record<string, unknown>): {
+  action: TradingViewTradeAction | null
+  reason?: string
+} {
+  const actionRaw = String(record.action ?? '').trim()
+  if (actionRaw && /\{\{|\}\}/.test(actionRaw)) {
+    return { action: null, reason: 'unresolved_action_placeholder' }
+  }
+  const fromAction = normalizeAction(record.action)
+  if (fromAction) return { action: fromAction }
+
+  const sideRaw = String(record.side ?? '').trim()
+  if (sideRaw && /\{\{|\}\}/.test(sideRaw)) {
+    return { action: null, reason: 'unresolved_action_placeholder' }
+  }
+  const fromSide = normalizeSide(record.side)
+
+  const event = String(record.event ?? '').trim().toLowerCase()
+  if (
+    event === 'close'
+    || event === 'exit'
+    || event === 'flat'
+    || event === 'close_all'
+  ) {
+    return { action: 'close' }
+  }
+  if (event === 'entry' || event === 'open' || event === '') {
+    if (fromSide) return { action: fromSide }
+  }
+
+  if (fromSide) return { action: fromSide }
+  if (record.action != null && String(record.action).trim() !== '') {
+    return { action: null, reason: 'unknown_action' }
+  }
+  if (record.side != null && String(record.side).trim() !== '') {
+    return { action: null, reason: 'unknown_action' }
+  }
+  return { action: null, reason: 'unknown_action' }
+}
+
+function resolveEntryOrderType(record: Record<string, unknown>): TradingViewEntryOrderType {
+  const order = String(record.order ?? '').trim().toLowerCase()
+  if (order === 'limit' || order === 'stop_limit') return 'limit'
+  return 'market'
 }
 
 /**
@@ -113,10 +189,13 @@ export function coerceTradingViewAlertJson(raw: string): string {
     .replace(/[\u201C\u201D]/g, '"')
     .replace(/[\u2018\u2019]/g, "'")
 
-  // Quote bare TradingView placeholders so unresolved {{close}} is valid JSON.
+  // Quote bare TradingView placeholders so unresolved {{close}} / {{plot("SL")}} is valid JSON.
   body = body.replace(
     /(:\s*)\{\{([^{}]+)\}\}(\s*[,}\]])/g,
-    (_match, prefix: string, inner: string, suffix: string) => `${prefix}"{{${inner}}}"${suffix}`,
+    (_match, prefix: string, inner: string, suffix: string) => {
+      const escaped = inner.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+      return `${prefix}"{{${escaped}}}"${suffix}`
+    },
   )
 
   // Trailing commas before } or ] are common after hand-edited templates.
@@ -141,12 +220,11 @@ export function parseTradingViewAlert(raw: string): TradingViewAlertParse {
   }
   const record = payload as Record<string, unknown>
 
-  const actionRaw = String(record.action ?? '').trim()
-  if (/\{\{|\}\}/.test(actionRaw)) {
-    return { ok: false, reason: 'unresolved_action_placeholder' }
+  const resolved = resolveTradingViewAction(record)
+  if (!resolved.action) {
+    return { ok: false, reason: resolved.reason ?? 'unknown_action' }
   }
-  const action = normalizeAction(record.action)
-  if (!action) return { ok: false, reason: 'unknown_action' }
+  const action = resolved.action
 
   const symbolRaw = String(record.symbol ?? '')
   if (/\{\{|\}\}/.test(symbolRaw)) {
@@ -158,7 +236,11 @@ export function parseTradingViewAlert(raw: string): TradingViewAlertParse {
   }
 
   const sl = finiteNumber(record.sl)
-  const tp = takeLevels(record.tp)
+  const tp = takeLevels(record.tp) ?? takeSplitTpLevels(record)
+  const entryPrice = finiteNumber(record.entry)
+  // Limit only when an expanded numeric entry is present; otherwise stay market.
+  const useLimit = resolveEntryOrderType(record) === 'limit' && entryPrice != null
+
   const idRaw = record.id
   let idempotencyId = idRaw == null || idRaw === ''
     ? null
@@ -179,10 +261,10 @@ export function parseTradingViewAlert(raw: string): TradingViewAlertParse {
       parsed: {
         action,
         symbol,
-        entry_price: null,
+        entry_price: useLimit ? entryPrice : null,
         entry_zone_low: null,
         entry_zone_high: null,
-        entry_order_type: 'market',
+        entry_order_type: useLimit ? 'limit' : 'market',
         sl,
         tp,
         lot_size: null,

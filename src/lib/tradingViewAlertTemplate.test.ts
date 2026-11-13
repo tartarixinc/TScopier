@@ -27,7 +27,7 @@ describe('normalizeTradingViewAlertConfig', () => {
 })
 
 describe('buildTradingViewAlertJson', () => {
-  it('builds strategy JSON with sl and multiple tps', () => {
+  it('builds strategy JSON with plot sl and tpN', () => {
     const json = buildTradingViewAlertJson({
       kind: 'strategy',
       includeSl: true,
@@ -38,12 +38,15 @@ describe('buildTradingViewAlertJson', () => {
     assert.equal(parsed.action, '{{strategy.order.action}}')
     assert.equal(parsed.symbol, '{{ticker}}')
     assert.equal(parsed.price, '{{close}}')
-    assert.equal(parsed.sl, 0)
-    assert.deepEqual(parsed.tp, [0, 0])
+    assert.equal(parsed.entry, '{{plot("Entry")}}')
+    assert.equal(parsed.sl, '{{plot("SL")}}')
+    assert.equal(parsed.tp1, '{{plot("TP1")}}')
+    assert.equal(parsed.tp2, '{{plot("TP2")}}')
+    assert.equal('tp' in parsed, false)
     assert.equal(parsed.id, '{{timenow}}')
   })
 
-  it('omits sl/tp when toggles are off', () => {
+  it('omits level fields when toggles are off', () => {
     const json = buildTradingViewAlertJson({
       kind: 'indicator',
       includeSl: false,
@@ -52,25 +55,41 @@ describe('buildTradingViewAlertJson', () => {
       symbol: 'XAUUSD',
     }, 'buy')
     const parsed = JSON.parse(json) as Record<string, unknown>
-    assert.equal(parsed.action, 'buy')
+    assert.equal(parsed.event, 'entry')
+    assert.equal(parsed.side, 'BUY')
+    assert.equal(parsed.order, 'MARKET')
     assert.equal(parsed.symbol, 'XAUUSD')
+    assert.equal(parsed.price, '{{close}}')
     assert.equal('sl' in parsed, false)
     assert.equal('tp' in parsed, false)
+    assert.equal('tp1' in parsed, false)
+    assert.equal('entry' in parsed, false)
+    assert.equal('action' in parsed, false)
   })
 
-  it('builds buy and sell templates for indicator', () => {
+  it('builds indicator buy/sell with plot levels', () => {
     const templates = buildTradingViewAlertTemplates({
       kind: 'indicator',
       includeSl: true,
       includeTp: true,
-      tpCount: 1,
+      tpCount: 3,
       symbol: 'BTCUSD',
     })
     assert.ok(templates.buy)
     assert.ok(templates.sell)
     assert.equal(templates.strategy, undefined)
-    assert.equal(JSON.parse(templates.buy!).action, 'buy')
-    assert.equal(JSON.parse(templates.sell!).action, 'sell')
-    assert.equal(JSON.parse(templates.buy!).symbol, 'BTCUSD')
+
+    const buy = JSON.parse(templates.buy!) as Record<string, unknown>
+    const sell = JSON.parse(templates.sell!) as Record<string, unknown>
+    assert.equal(buy.side, 'BUY')
+    assert.equal(sell.side, 'SELL')
+    assert.equal(buy.event, 'entry')
+    assert.equal(buy.symbol, 'BTCUSD')
+    assert.equal(buy.entry, '{{plot("Entry")}}')
+    assert.equal(buy.sl, '{{plot("SL")}}')
+    assert.equal(buy.tp1, '{{plot("TP1")}}')
+    assert.equal(buy.tp2, '{{plot("TP2")}}')
+    assert.equal(buy.tp3, '{{plot("TP3")}}')
+    assert.equal('tp4' in buy, false)
   })
 })

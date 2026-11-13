@@ -903,6 +903,8 @@ export interface AccountConfigBrokerListTranslations {
   detailBalance: string
   detailEquity: string
   channelsNoneSelected: string
+  /** Compact broker-list summary when 2+ sources are linked, e.g. "3 sources". */
+  channelsLinkedCount: string
   channelsEmptySaveWarning: string
   channelsEmptySaveTitle?: string
   channelsSaveChannelListNotReady: string

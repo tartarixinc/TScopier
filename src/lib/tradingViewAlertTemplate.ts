@@ -21,6 +21,13 @@ export const DEFAULT_TRADINGVIEW_ALERT_CONFIG: TradingViewAlertConfig = {
 export const TRADINGVIEW_TP_COUNT_MIN = 1
 export const TRADINGVIEW_TP_COUNT_MAX = 5
 
+/** Default Pine plot titles — must match the script’s plot() titles. */
+export const TRADINGVIEW_PLOT_TITLES = {
+  entry: 'Entry',
+  sl: 'SL',
+  tp: (n: number) => `TP${n}`,
+} as const
+
 export function normalizeTradingViewAlertConfig(raw: unknown): TradingViewAlertConfig {
   const base = { ...DEFAULT_TRADINGVIEW_ALERT_CONFIG }
   if (!raw || typeof raw !== 'object') return base
@@ -37,17 +44,30 @@ export function normalizeTradingViewAlertConfig(raw: unknown): TradingViewAlertC
   return { kind, includeSl, includeTp, tpCount, symbol }
 }
 
-function tpPlaceholders(count: number): number[] {
-  const n = Math.min(TRADINGVIEW_TP_COUNT_MAX, Math.max(TRADINGVIEW_TP_COUNT_MIN, Math.round(count)))
-  return Array.from({ length: n }, () => 0)
+function plotPlaceholder(title: string): string {
+  return `{{plot("${title}")}}`
 }
 
-function applySlTp(
+function applyPlotLevels(
   payload: Record<string, unknown>,
   config: TradingViewAlertConfig,
 ): Record<string, unknown> {
-  if (config.includeSl) payload.sl = 0
-  if (config.includeTp) payload.tp = tpPlaceholders(config.tpCount)
+  const levelsOn = config.includeSl || config.includeTp
+  if (levelsOn) {
+    payload.entry = plotPlaceholder(TRADINGVIEW_PLOT_TITLES.entry)
+  }
+  if (config.includeSl) {
+    payload.sl = plotPlaceholder(TRADINGVIEW_PLOT_TITLES.sl)
+  }
+  if (config.includeTp) {
+    const n = Math.min(
+      TRADINGVIEW_TP_COUNT_MAX,
+      Math.max(TRADINGVIEW_TP_COUNT_MIN, Math.round(config.tpCount)),
+    )
+    for (let i = 1; i <= n; i++) {
+      payload[`tp${i}`] = plotPlaceholder(TRADINGVIEW_PLOT_TITLES.tp(i))
+    }
+  }
   return payload
 }
 
@@ -58,7 +78,7 @@ export function buildTradingViewAlertJson(
 ): string {
   const normalized = normalizeTradingViewAlertConfig(config)
   if (side === 'strategy' || normalized.kind === 'strategy') {
-    const payload = applySlTp(
+    const payload = applyPlotLevels(
       {
         action: '{{strategy.order.action}}',
         symbol: '{{ticker}}',
@@ -71,10 +91,13 @@ export function buildTradingViewAlertJson(
   }
 
   const symbol = (normalized.symbol ?? 'XAUUSD').trim().toUpperCase() || 'XAUUSD'
-  const payload = applySlTp(
+  const payload = applyPlotLevels(
     {
-      action: side,
+      event: 'entry',
+      side: side === 'sell' ? 'SELL' : 'BUY',
+      order: 'MARKET',
       symbol,
+      price: '{{close}}',
       id: '{{timenow}}',
     },
     normalized,

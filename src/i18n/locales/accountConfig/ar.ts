@@ -231,6 +231,7 @@ export const accountConfigAr: AccountConfigBundleTranslations = {
       detailBalance: 'الرصيد',
       detailEquity: 'Equity',
       channelsNoneSelected: 'لم يُحدد شيء',
+      channelsLinkedCount: '{count} مصادر',
       channelsEmptySaveWarning:
         'لم تُحدد قنوات إشارات — لن ينسخ حساب الوسيط هذا أي إشارات من Telegram. الحفظ على أي حال؟',
       channelsSaveChannelListNotReady:

@@ -231,6 +231,7 @@ export const accountConfigNl: AccountConfigBundleTranslations = {
       detailBalance: 'Saldo',
       detailEquity: 'Equity',
       channelsNoneSelected: 'Geen geselecteerd',
+      channelsLinkedCount: '{count} bronnen',
       channelsEmptySaveWarning:
         'Er zijn geen signaalkanalen geselecteerd — deze broker zal geen Telegram-signalen kopiëren. Toch opslaan?',
       channelsSaveChannelListNotReady:

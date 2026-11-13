@@ -231,6 +231,7 @@ export const accountConfigPl: AccountConfigBundleTranslations = {
       detailBalance: 'Saldo',
       detailEquity: 'Kapitał',
       channelsNoneSelected: 'Nic nie wybrano',
+      channelsLinkedCount: '{count} źródeł',
       channelsEmptySaveWarning:
         'Nie wybrano żadnych kanałów sygnałowych — to konto brokera nie będzie kopiować żadnych sygnałów z Telegrama. Zapisać mimo to?',
       channelsSaveChannelListNotReady:

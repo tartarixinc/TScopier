@@ -44,14 +44,19 @@ type WebhookRow = Pick<
 >
 type DeliveryRow = Pick<TradingViewWebhookDelivery, 'id' | 'webhook_id' | 'status' | 'skip_reason' | 'created_at'>
 
+/** Always-on TradingView ingest (custom domain → Railway listener). Override via VITE_TRADINGVIEW_INGEST_BASE_URL. */
+const DEFAULT_TRADINGVIEW_INGEST_BASE_URL = 'https://tl.unicopier.com'
+
 function webhookUrl(token: string): string {
-  // Prefer always-on Railway ingest when configured; fall back to Supabase Edge (legacy).
-  const ingest = String(import.meta.env.VITE_TRADINGVIEW_INGEST_BASE_URL ?? '')
+  const ingest = String(
+    import.meta.env.VITE_TRADINGVIEW_INGEST_BASE_URL || DEFAULT_TRADINGVIEW_INGEST_BASE_URL,
+  )
     .trim()
     .replace(/\/$/, '')
   if (ingest) {
     return `${ingest}/webhooks/tradingview/${token}`
   }
+  // Legacy fallback if env is explicitly cleared to empty.
   const base = String(import.meta.env.VITE_SUPABASE_URL ?? '').replace(/\/$/, '')
   return `${base}/functions/v1/tradingview-webhook/${token}`
 }
@@ -770,7 +775,8 @@ function WebhookConfigure({
                   {copy.tradingViewIncludeSl ?? 'Include stop loss (SL)'}
                 </p>
                 <p className="mt-0.5 text-xs leading-snug text-neutral-500 dark:text-neutral-400">
-                  {copy.tradingViewIncludeSlHint ?? 'Adds an "sl" field. Replace 0 with your Pine value.'}
+                  {copy.tradingViewIncludeSlHint
+                    ?? 'Adds "sl": {{plot("SL")}}. Pine plot title must be SL.'}
                 </p>
               </div>
               <Toggle
@@ -785,7 +791,8 @@ function WebhookConfigure({
                     {copy.tradingViewIncludeTp ?? 'Include take profits (TP)'}
                   </p>
                   <p className="mt-0.5 text-xs leading-snug text-neutral-500 dark:text-neutral-400">
-                    {copy.tradingViewIncludeTpHint ?? 'Adds a "tp" array. Replace each 0 with your Pine values.'}
+                    {copy.tradingViewIncludeTpHint
+                      ?? 'Adds tp1…tpN as {{plot("TP1")}}… Plot titles must match (TP1, TP2, …).'}
                   </p>
                 </div>
                 <Toggle
@@ -828,7 +835,7 @@ function WebhookConfigure({
             </p>
             <p className="mt-1 text-sm leading-snug text-neutral-500 dark:text-neutral-400">
               {copy.tradingViewJsonPlaceholderHint
-                ?? 'Paste into the TradingView alert Message field. Replace 0 placeholders with your indicator/strategy values, or omit SL/TP and use broker Override SL/TP instead.'}
+                ?? 'Paste into the TradingView alert Message field. Plot titles (Entry, SL, TP1…) must match your Pine script. The webhook URL is your secret — omit SL/TP here to use broker Override SL/TP instead.'}
             </p>
           </div>
           <div className={clsx(
