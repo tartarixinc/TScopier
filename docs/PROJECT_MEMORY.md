@@ -2,6 +2,16 @@
 
 ## Changelog
 
+### 2026-11-13 — Restore OrderSend reliability after capacity regression
+
+- **Context:** Production (Martins / New Con) after the global OrderSend capacity gate: **42** `BROKER_BUSY` and **12** OrderSend timeouts since 07:00Z; Gold-lab multi-leg baskets failed while the bridge was still alive.
+- **Plain English:** Orders were waiting only 8 seconds for a free send slot, then failing as “broker busy,” and the dashboard was also polling open trades every tick on the same MTAPI session. We now wait longer, retry busy once, stop throttling send concurrency just because the queue is busy, and poll open trades less often when the account is flat.
+- **Root cause (technical):** `MTAPI_GLOBAL_ORDER_WAIT_MS` default 8s fail-fast; saturation forced `MT_SEND_OP_CONCURRENCY → 1`; no in-basket busy retry; Dashboard `refresh_summary` + `trades(scope=open)` every ~35s × N accounts contended with OrderSend.
+- **Fix (files):** [`mtapiProvider.ts`](worker/src/mtapiProvider.ts) — wait default **45s** (cap **60s**); remove saturation→send concurrency 1. [`orderLegExecution.ts`](worker/src/tradeExecutor/orderLegExecution.ts) — retry `BROKER_BUSY` once (~400ms); serialize-on-sat opt-in via `MT_SEND_SERIALIZE_WHEN_SATURATED`. [`DashboardPage.tsx`](src/pages/dashboard/DashboardPage.tsx) — summary every ~45s; OpenedOrders only when not flat or ~4 min reconcile. [`worker/.env.example`](worker/.env.example) comments updated.
+- **Tests/verification:** Worker build/tests for busy classification; after trade-worker + frontend deploy, Gold-lab on New Con should fill/queue instead of mass busy fails.
+- **Deploy state:** Local / code ready — needs trade-worker redeploy + Netlify for dashboard poll.
+- **Follow-ups:** Confirm `order_send` busy count drops on New Con after worker deploy.
+
 ### 2026-11-13 — Dashboard Open Trades = market only (fix 104 / $0 PnL)
 
 - **Context:** Martins (`martins.osodi@gmail.com`) on production showed **Open Trades 104** with **Open PnL $0** while New Con `477486720` was flat (`last_equity = last_balance`) and DB had **0 open** / **100 pending**.

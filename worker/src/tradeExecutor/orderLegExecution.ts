@@ -455,6 +455,17 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
       } catch (err) {
         setPipelineTimestamp(signal.pipeline_ts ?? (signal.pipeline_ts = {}), 'broker_response_received_at', Date.now())
         const rawAttemptError = err instanceof Error ? err.message : String(err)
+        // Capacity gate can expire before the bridge is truly down — retry once
+        // in-basket instead of failing the leg as "Broker busy".
+        const brokerBusy = /broker busy|BROKER_BUSY|CONCURRENCY_BUSY|OrderSendSafe broker busy/i.test(rawAttemptError)
+        if (brokerBusy && attempt === 0) {
+          console.warn(
+            `[tradeExecutor] OrderSend broker busy; retrying once signal=${signal.id}`
+            + ` broker=${broker.id} leg=${leg.idx + 1}/${totalCount}`,
+          )
+          await new Promise<void>(r => setTimeout(r, 400))
+          continue
+        }
         lastAttemptError = humanizeOrderSendError(rawAttemptError, sendArgs.symbol)
         const hasStops = (Number(sendArgs.stoploss) || 0) > 0 || (Number(sendArgs.takeprofit) || 0) > 0
         if (isInvalidStopsMessage(rawAttemptError) && hasStops && !wrongSideSl) {
@@ -1043,10 +1054,11 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
     return true
   }
 
-  // Quiet path: fan out in parallel (per-account + global gates still apply).
-  // Under global MTAPI saturation, send legs sequentially so other brokers
-  // keep getting fair slots instead of one basket occupying the whole lane.
-  const saturated = isMtapiGlobalOrderSaturated()
+  // Default: fan out in parallel (per-account + global gates still apply).
+  // Opt-in serialize under saturation — off by default after Gold-lab busy storms.
+  const serializeWhenSaturated = String(process.env.MT_SEND_SERIALIZE_WHEN_SATURATED ?? '')
+    .toLowerCase() === 'true'
+  const saturated = serializeWhenSaturated && isMtapiGlobalOrderSaturated()
   const legGapMs = saturated
     ? Math.max(0, Math.min(500, Number(process.env.MT_SEND_LEG_GAP_MS ?? 50) || 0))
     : 0

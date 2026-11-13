@@ -131,10 +131,10 @@ export function globalOrderConcurrency(): number {
   return Math.max(1, Math.min(32, Number.isFinite(raw) ? raw : 6))
 }
 
-/** Max wait for a global order slot before broker_busy (default 8s). */
+/** Max wait for a global order slot before broker_busy (default 45s, max 60s). */
 export function globalOrderWaitMs(): number {
-  const raw = Number(process.env.MTAPI_GLOBAL_ORDER_WAIT_MS ?? 8_000)
-  return Math.max(500, Math.min(30_000, Number.isFinite(raw) ? raw : 8_000))
+  const raw = Number(process.env.MTAPI_GLOBAL_ORDER_WAIT_MS ?? 45_000)
+  return Math.max(500, Math.min(60_000, Number.isFinite(raw) ? raw : 45_000))
 }
 
 /** True when the global order lane is ≥75% utilized or has waiters. */
@@ -147,14 +147,13 @@ export function isMtapiGlobalOrderSaturated(): boolean {
 
 /**
  * Multi-leg range entries fan out with Promise.allSettled; without send overlap
- * 34 legs take ~12s at ~350ms RTT. Cap at 6. On throttle we step this session
- * down to 1 for SEND_THROTTLE_STEPDOWN_MS. Under global saturation, force 1 so
- * many brokers share the bridge fairly.
+ * 34 legs take ~12s at ~350ms RTT. Cap at 6. On real bridge throttle we step
+ * this session down to 1 for SEND_THROTTLE_STEPDOWN_MS. Mild global saturation
+ * must not force 1 — that queues Gold-lab baskets into BROKER_BUSY storms.
  */
 function perAccountSendConcurrency(sessionId: string): number {
   const stepDownUntil = sendThrottleStepDownUntil.get(sessionId) ?? 0
   if (stepDownUntil > Date.now()) return 1
-  if (isMtapiGlobalOrderSaturated()) return 1
   const raw = Number(process.env.MT_SEND_OP_CONCURRENCY ?? 3)
   return Math.max(1, Math.min(6, Number.isFinite(raw) ? raw : 3))
 }

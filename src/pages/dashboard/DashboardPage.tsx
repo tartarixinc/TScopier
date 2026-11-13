@@ -2307,6 +2307,7 @@ export function DashboardPage() {
 
     let cancelled = false
     const throttleUntilById: Record<string, number> = {}
+    const lastMtapiOpenFetchAt: Record<string, number> = {}
     const cursors = { mtapi: 0, ctrader: 0, binance: 0, bybit: 0, kucoin: 0, dxtrade: 0, tradelocker: 0, matchtrader: 0, fxsocket: 0 }
     const inflight = { mtapi: false, ctrader: false, binance: false, bybit: false, kucoin: false, dxtrade: false, tradelocker: false, matchtrader: false, fxsocket: false }
 
@@ -2371,10 +2372,15 @@ export function DashboardPage() {
             const snap = parseFxsocketAccountStreamData(summary as Record<string, unknown>)
             const summaryFlat = isAccountSummaryFlat(snap.balance, snap.equity)
 
-            // MTAPI AccountSummary has no open_trades — fetch OpenedOrders for market count.
-            // Pending limit/stop rows are excluded from the Open Trades headline (pairs with PnL).
+            // Prefer AccountSummary alone each tick so OpenedOrders does not fight
+            // OrderSend on the shared MTAPI session. Fetch open trades only when
+            // floating PnL is non-flat, or on a rare reconcile (~4 min).
+            const OPEN_TRADES_RECONCILE_MS = 240_000
+            const lastOpenFetch = lastMtapiOpenFetchAt[account.id] ?? 0
+            const shouldFetchOpens = provider === 'mtapi'
+              && (!summaryFlat || Date.now() - lastOpenFetch >= OPEN_TRADES_RECONCILE_MS)
             let marketOpenRows: MtTrade[] | null = null
-            if (provider === 'mtapi') {
+            if (shouldFetchOpens) {
               try {
                 const { trades } = await fxsocketBroker.trades({
                   brokerId: account.id,
@@ -2383,6 +2389,7 @@ export function DashboardPage() {
                   provider: 'mtapi',
                 })
                 if (cancelled) return
+                lastMtapiOpenFetchAt[account.id] = Date.now()
                 const openRows = (trades ?? []).filter(trade => trade.status === 'open')
                 marketOpenRows = openRows.filter(trade => !isMtTradePendingEntry(trade))
                 const prior = mtTradesRef.current ?? []
@@ -2391,7 +2398,6 @@ export function DashboardPage() {
                 )
                 mtTradesRef.current = [...kept, ...openRows]
               } catch {
-                // On throttle/failure: if summary is flat, clear sticky opens (do not keep 104).
                 marketOpenRows = null
               }
             }
@@ -2469,10 +2475,9 @@ export function DashboardPage() {
       }, startDelayMs))
     }
 
-    // MTAPI AccountSummary + open trades share the trade session. Stay ≥30s to
-    // avoid starving OrderSend; poll every linked account each tick; first tick
-    // soon so a flat book clears sticky Open Trades.
-    schedule('mtapi', 35_000, 2_500)
+    // MTAPI AccountSummary shares the trade session with OrderSend. Stay ~45s;
+    // OpenedOrders only when floating or rare reconcile (see shouldFetchOpens).
+    schedule('mtapi', 45_000, 3_000)
     // cTrader Open PnL is marked from spots on each snapshot, so it can tick
     // without sharing the MTAPI session limit.
     schedule('ctrader', 4_000, 800)
