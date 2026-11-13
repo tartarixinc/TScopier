@@ -37,17 +37,21 @@ import {
   type FxsocketPositionBook,
 } from '../../lib/fxsocketLivePositionBook'
 import {
-  countOpenTradesByBroker,
+  countOpenMarketPositionsByBroker,
   isFxsocketMarketPositionRow,
   isMtTradePendingEntry,
   parseFxsocketAccountStreamData,
   resolveFxsocketFloatingOpenPnl,
-  resolveOpenTradesHeadlineCount,
   sumOpenPnlByBroker,
   unwrapFxsocketPositionsPayload,
   type FxsocketAccountStreamSnapshot,
 } from '../../lib/fxsocketStreamParse'
-import { acceptFreshOpenPnl, normalizeLiveOpenMetrics } from '../../lib/dashboardLiveOpenMetrics'
+import {
+  acceptFreshOpenPnl,
+  isAccountSummaryFlat,
+  normalizeLiveOpenMetrics,
+  resolveFlatBookOpenMetrics,
+} from '../../lib/dashboardLiveOpenMetrics'
 import { liveOpenPnlFromMtTrades, preferLiveOpenPnl } from '../../lib/liveOpenPnl'
 import { formatLocalCalendarDay } from '../../lib/dayStartBalance'
 import { isMtTimestampInRange } from '../../lib/mtApiDateTime'
@@ -346,12 +350,14 @@ function recomputeLiveBrokerDashboardStats(
   return {
     portfolioValue,
     totalEquity,
-    // When flat, always clear. When live marks exist, use them; else keep prev only if still open.
+    // Flat book clears. Unknown mark with opens keeps previous headline PnL.
     openPnl: normalized.openTrades <= 0
       ? 0
-      : hasOpenPnl
+      : normalized.openPnl != null
         ? normalized.openPnl
-        : prev.openPnl,
+        : hasOpenPnl
+          ? openPnl
+          : prev.openPnl,
     openTrades: normalized.openTrades,
     openPositions: normalized.openTrades,
   }
@@ -2184,15 +2190,20 @@ export function DashboardPage() {
     const prevSnap = linkedBalancesRef.current[brokerId] ?? {}
     const merged: BrokerBalanceSnapshot = { ...prevSnap, ...patch }
     const normalized = normalizeLiveOpenMetrics({
-      openTrades: merged.open_trades,
-      openPnl: merged.open_pnl,
+      openTrades: 'open_trades' in patch ? patch.open_trades : merged.open_trades,
+      openPnl: 'open_pnl' in patch ? patch.open_pnl : merged.open_pnl,
     })
+    const nextOpenPnl = normalized.openPnl != null
+      ? normalized.openPnl
+      : normalized.openTrades <= 0
+        ? 0
+        : (prevSnap.open_pnl ?? merged.open_pnl)
     const nextSnap: BrokerBalanceSnapshot = {
       ...merged,
       open_trades: normalized.openTrades,
-      open_pnl: normalized.openPnl,
+      ...(nextOpenPnl != null ? { open_pnl: nextOpenPnl } : {}),
     }
-    if (nextSnap.balance != null && Number.isFinite(nextSnap.balance)) {
+    if (nextSnap.balance != null && Number.isFinite(nextSnap.balance) && nextSnap.open_pnl != null) {
       const equity = equityWithFloatingPnl(nextSnap.balance, nextSnap.open_pnl, nextSnap.equity)
       if (equity != null) nextSnap.equity = equity
     }
@@ -2203,7 +2214,7 @@ export function DashboardPage() {
     liveBrokerStateRef.current[brokerId] = {
       ...liveBrokerStateRef.current[brokerId],
       open_trades: normalized.openTrades,
-      open_pnl: normalized.openPnl,
+      ...(nextOpenPnl != null ? { open_pnl: nextOpenPnl } : {}),
     }
     flushLiveBrokerMetrics()
   }
@@ -2263,12 +2274,11 @@ export function DashboardPage() {
         bookSnap.openPnl ??
         snapshot.openPnl ??
         (snapshot.openTrades > 0 ? sumOpenPnlByBroker(mtTradesRef.current ?? [])[brokerId] : undefined)
-      // Position books are market-only; top up with pending opens so OPEN TRADES
-      // matches Account Trades (status === 'open', including limit/stop).
+      // Dashboard Open Trades pairs with Open PnL → market positions only.
       const marketOpen = bookSnap.openTrades || snapshot.openTrades
       applyBrokerLiveSnapshot(brokerId, {
-        open_trades: resolveOpenTradesHeadlineCount(marketOpen, mtTradesRef.current, brokerId),
-        ...(openPnl != null ? { open_pnl: openPnl } : {}),
+        open_trades: marketOpen,
+        ...(openPnl != null ? { open_pnl: openPnl } : marketOpen <= 0 ? { open_pnl: 0 } : {}),
       })
     },
     onTrade: (brokerId, data) => {
@@ -2279,8 +2289,8 @@ export function DashboardPage() {
       positionBooksRef.current[brokerId] = book
       const snap = snapshotFromPositionBook(book)
       applyBrokerLiveSnapshot(brokerId, {
-        open_trades: resolveOpenTradesHeadlineCount(snap.openTrades, mtTradesRef.current, brokerId),
-        open_pnl: snap.openPnl,
+        open_trades: snap.openTrades,
+        ...(snap.openPnl != null ? { open_pnl: snap.openPnl } : snap.openTrades <= 0 ? { open_pnl: 0 } : {}),
       })
     },
   }, linkedAccounts.some(isFxsocketLinkedBroker))
@@ -2359,10 +2369,11 @@ export function DashboardPage() {
             if (cancelled) return
             if (!summary) continue
             const snap = parseFxsocketAccountStreamData(summary as Record<string, unknown>)
+            const summaryFlat = isAccountSummaryFlat(snap.balance, snap.equity)
 
-            // MTAPI AccountSummary has no open_trades field — fetch live opens so
-            // the dashboard matches the terminal (and clears when the book is flat).
-            let liveOpenRows: MtTrade[] | null = null
+            // MTAPI AccountSummary has no open_trades — fetch OpenedOrders for market count.
+            // Pending limit/stop rows are excluded from the Open Trades headline (pairs with PnL).
+            let marketOpenRows: MtTrade[] | null = null
             if (provider === 'mtapi') {
               try {
                 const { trades } = await fxsocketBroker.trades({
@@ -2372,53 +2383,60 @@ export function DashboardPage() {
                   provider: 'mtapi',
                 })
                 if (cancelled) return
-                liveOpenRows = (trades ?? []).filter(trade => trade.status === 'open')
-                // Keep the in-memory open book in sync so pending top-ups stay honest.
+                const openRows = (trades ?? []).filter(trade => trade.status === 'open')
+                marketOpenRows = openRows.filter(trade => !isMtTradePendingEntry(trade))
                 const prior = mtTradesRef.current ?? []
                 const kept = prior.filter(
                   t => t.broker_id !== account.id || t.status !== 'open',
                 )
-                mtTradesRef.current = [...kept, ...liveOpenRows]
+                mtTradesRef.current = [...kept, ...openRows]
               } catch {
-                liveOpenRows = null
+                // On throttle/failure: if summary is flat, clear sticky opens (do not keep 104).
+                marketOpenRows = null
               }
             }
 
             const summaryOpenTrades = typeof summary.open_trades === 'number' && Number.isFinite(summary.open_trades)
               ? summary.open_trades
               : undefined
-            const liveOpenCount = liveOpenRows != null ? liveOpenRows.length : undefined
-            const marketOpen = liveOpenCount
-              ?? summaryOpenTrades
-              ?? linkedBalancesRef.current[account.id]?.open_trades
-              ?? 0
-            // Never prefer a stale trade-list count over a fresh live open fetch /
-            // summary. Pending top-up only when the broker still shows market opens.
-            const openTrades = liveOpenCount != null
-              ? liveOpenCount
-              : marketOpen > 0
-                ? resolveOpenTradesHeadlineCount(marketOpen, mtTradesRef.current, account.id)
-                : 0
-            const fromSummary = resolveFxsocketFloatingOpenPnl(snap, openTrades) ?? null
-            const fromPositions = liveOpenRows != null
-              ? liveOpenPnlFromMtTrades(liveOpenRows)
+            const marketOpenCount = marketOpenRows != null
+              ? marketOpenRows.length
+              : summaryFlat
+                ? 0
+                : (summaryOpenTrades
+                  ?? linkedBalancesRef.current[account.id]?.open_trades
+                  ?? 0)
+
+            if (summaryFlat && marketOpenCount <= 0) {
+              mtTradesRef.current = (mtTradesRef.current ?? []).filter(
+                t => t.broker_id !== account.id || t.status !== 'open',
+              )
+            }
+
+            const fromSummary = resolveFxsocketFloatingOpenPnl(snap, marketOpenCount) ?? null
+            const fromPositions = marketOpenRows != null
+              ? liveOpenPnlFromMtTrades(marketOpenRows)
               : null
             let openPnl = preferLiveOpenPnl({
               fromSummary,
               fromPositions,
-              openCount: openTrades,
-            }) ?? undefined
-            if (rawProvider === 'ctrader' && (openPnl == null || openPnl === 0) && openTrades > 0) {
+              openCount: marketOpenCount,
+            })
+            if (rawProvider === 'ctrader' && (openPnl == null || openPnl === 0) && marketOpenCount > 0) {
               const fromBook = snapshotFromPositionBook(positionBooksRef.current[account.id] ?? new Map()).openPnl
               if (fromBook) openPnl = fromBook
             }
-            const normalized = normalizeLiveOpenMetrics({ openTrades, openPnl })
+            const normalized = resolveFlatBookOpenMetrics({
+              summaryFlat,
+              marketOpenCount,
+              openPnl,
+            })
             applyBrokerLiveSnapshot(account.id, {
               ...(snap.balance != null ? { balance: snap.balance } : {}),
               ...(snap.equity != null ? { equity: snap.equity } : {}),
               ...(snap.currency ? { currency: snap.currency } : {}),
               open_trades: normalized.openTrades,
-              open_pnl: normalized.openPnl,
+              ...(normalized.openPnl != null ? { open_pnl: normalized.openPnl } : {}),
             })
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err)
@@ -2451,10 +2469,10 @@ export function DashboardPage() {
       }, startDelayMs))
     }
 
-    // MTAPI AccountSummary + open trades share the trade session. Sub-15s polls
-    // trip "too many requests"; ~20s keeps Open PnL / counts near-live without
-    // starving OrderSend. First tick sooner so a flat book clears quickly.
-    schedule('mtapi', 20_000, 2_000)
+    // MTAPI AccountSummary + open trades share the trade session. Stay ≥30s to
+    // avoid starving OrderSend; poll every linked account each tick; first tick
+    // soon so a flat book clears sticky Open Trades.
+    schedule('mtapi', 35_000, 2_500)
     // cTrader Open PnL is marked from spots on each snapshot, so it can tick
     // without sharing the MTAPI session limit.
     schedule('ctrader', 4_000, 800)
@@ -2595,8 +2613,8 @@ export function DashboardPage() {
     }
     if (resolvedTrades.length === 0) return
 
-    // Headline OPEN TRADES = all status=open (incl. pending), same as Account Trades.
-    const openByBroker = countOpenTradesByBroker(resolvedTrades)
+    // Headline OPEN TRADES = market positions only (pairs with Open PnL).
+    const openByBroker = countOpenMarketPositionsByBroker(resolvedTrades)
     const openPnlByBroker = sumOpenPnlByBroker(resolvedTrades)
     const nextBalances = { ...linkedBalancesRef.current }
     let openCountsChanged = false
@@ -2616,22 +2634,27 @@ export function DashboardPage() {
           : null
       const openPnl = bookSnap?.openPnl ?? openPnlByBroker[account.id]
       const prev = nextBalances[account.id]
-      const normalized = normalizeLiveOpenMetrics({
-        openTrades,
+      const summaryFlat = isAccountSummaryFlat(prev?.balance, prev?.equity)
+      const normalized = resolveFlatBookOpenMetrics({
+        summaryFlat,
+        marketOpenCount: openTrades,
         openPnl: openPnl ?? (openTrades === 0 ? 0 : prev?.open_pnl),
       })
-      if (prev?.open_trades === normalized.openTrades && prev?.open_pnl === normalized.openPnl) continue
-      const nextEquity = equityWithFloatingPnl(prev?.balance, normalized.openPnl, prev?.equity)
+      const nextOpenPnl = normalized.openPnl != null
+        ? normalized.openPnl
+        : (prev?.open_pnl ?? 0)
+      if (prev?.open_trades === normalized.openTrades && prev?.open_pnl === nextOpenPnl) continue
+      const nextEquity = equityWithFloatingPnl(prev?.balance, nextOpenPnl, prev?.equity)
       nextBalances[account.id] = {
         ...(prev ?? {}),
         open_trades: normalized.openTrades,
-        open_pnl: normalized.openPnl,
+        open_pnl: nextOpenPnl,
         ...(nextEquity != null ? { equity: nextEquity } : {}),
       }
       liveBrokerStateRef.current[account.id] = {
         ...liveBrokerStateRef.current[account.id],
         open_trades: normalized.openTrades,
-        open_pnl: normalized.openPnl,
+        open_pnl: nextOpenPnl,
       }
       openCountsChanged = true
     }

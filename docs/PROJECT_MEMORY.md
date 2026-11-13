@@ -2,6 +2,16 @@
 
 ## Changelog
 
+### 2026-11-13 — Dashboard Open Trades = market only (fix 104 / $0 PnL)
+
+- **Context:** Martins (`martins.osodi@gmail.com`) on production showed **Open Trades 104** with **Open PnL $0** while New Con `477486720` was flat (`last_equity = last_balance`) and DB had **0 open** / **100 pending**.
+- **Plain English:** The dashboard was counting waiting limit/stop orders as “open trades” next to floating P/L, so it looked like 104 opens with no profit. Open Trades now means filled market positions only (same idea as Open PnL).
+- **Root cause (technical):** Pending top-up + `OpenedOrders` all `status=open`; `normalizeLiveOpenMetrics` forced `open_pnl: 0` when mark was unknown; sticky counts survived flat AccountSummary.
+- **Fix (files):** [`dashboardLiveOpenMetrics.ts`](src/lib/dashboardLiveOpenMetrics.ts) — `resolveFlatBookOpenMetrics` / unknown PnL stays null; [`DashboardPage.tsx`](src/pages/dashboard/DashboardPage.tsx) — market-only headline, flat summary clears sticky opens, MTAPI poll ~35s via `mtapi-broker`.
+- **Tests/verification:** `dashboardLiveOpenMetrics.test.ts`; after deploy, flat New Con → Open Trades 0 / PnL $0.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** 100 DB `pending` on New Con may still need reconcile; they must not drive the Open Trades card.
+
 ### 2026-11-13 — Dashboard Open PnL / open trades realtime (clear when flat)
 
 - **Context:** Dashboard showed stale Open PnL (+$406) and wrong Open Trades (4) while MT5 had many XAUUSDm legs (~$268 floating); after closing everything, Open PnL still stuck.
