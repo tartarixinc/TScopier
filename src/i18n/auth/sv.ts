@@ -102,12 +102,23 @@ export const authSv: AuthTranslations = {
     backToLogin: 'Tillbaka till inloggning',
   },
   welcome: {
+    eyebrow: 'Du är inne',
     title: 'Välkommen till UniCopier',
-    subtitle: 'Ditt konto är klart. Anslut Telegram och börja kopiera signaler till din mäklare.',
-    steps: [
-      'Anslut Telegram och välj signalkanaler',
-      'Länka ditt MT4/MT5-mäklarkonto',
-      'Kopiera affärer automatiskt med dina riskinställningar',
+    subtitle:
+      'Kopiera trading-signaler till dina mäklare med dina riskregler — från Telegram, TradingView och mer.',
+    features: [
+      {
+        title: 'Signalkällor',
+        description: 'Telegram-kanaler, TradingView-alerts, Discord och WhatsApp — kopplade till kontona du väljer.',
+      },
+      {
+        title: 'Mäklarkonton',
+        description: 'Anslut MT4, MT5 och cTrader och kopiera entries, SL/TP och hantering till live eller demo.',
+      },
+      {
+        title: 'Risk under kontroll',
+        description: 'Lotstorlek, overrides, filter och spegelkopiering så varje affär följer dina regler.',
+      },
     ],
     startUsing: 'Börja använda UniCopier',
     exploreDashboard: 'Utforska instrumentpanelen först',

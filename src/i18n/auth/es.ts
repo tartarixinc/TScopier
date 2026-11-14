@@ -104,12 +104,23 @@ export const authEs: AuthTranslations = {
     confirmLinkExpired: 'Este enlace de confirmación expiró o ya fue usado. Inicia sesión o solicita un nuevo correo.',
   },
   welcome: {
+    eyebrow: 'Ya estás dentro',
     title: 'Bienvenido a UniCopier',
-    subtitle: 'Tu cuenta está lista. Conecta Telegram y empieza a copiar señales a tu bróker.',
-    steps: [
-      'Conecta Telegram y elige canales de señales',
-      'Vincula tu cuenta MT4/MT5',
-      'Copia operaciones automáticamente con tu configuración de riesgo',
+    subtitle:
+      'Copia señales de trading a tus brókers con las reglas de riesgo que configures — desde Telegram, TradingView y más.',
+    features: [
+      {
+        title: 'Fuentes de señales',
+        description: 'Canales de Telegram, alertas de TradingView, Discord y WhatsApp — vinculados a las cuentas que elijas.',
+      },
+      {
+        title: 'Cuentas de bróker',
+        description: 'Conecta MT4, MT5 y cTrader, y copia entradas, SL/TP y gestión a real o demo.',
+      },
+      {
+        title: 'Riesgo bajo tu control',
+        description: 'Tamaño de lote, overrides, filtros y copia espejo para que cada operación siga tus reglas.',
+      },
     ],
     startUsing: 'Empezar a usar UniCopier',
     exploreDashboard: 'Explorar el panel primero',

@@ -2,6 +2,15 @@
 
 ## Changelog
 
+### 2026-11-14 — Welcome modal redesign
+
+- **Context:** Post-signup welcome overlay was a plain checklist with a green check icon.
+- **Plain English:** Welcome now shows the UniCopier mark, a short intro, and three feature cards (signal sources, brokers, risk) before Start / Explore.
+- **Fix (files):** [`WelcomeModal.tsx`](src/components/onboarding/WelcomeModal.tsx); auth `welcome` copy in all locales + [`types.ts`](src/i18n/auth/types.ts) (`eyebrow` + `features`).
+- **Tests/verification:** Lint clean on modal + auth types.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** None.
+
 ### 2026-11-13 — Copier Signal details + BUY/SELL i18n
 
 - **Context:** Signal details modal chrome stayed English; Copier Log Type column showed raw `buy`/`sell`.

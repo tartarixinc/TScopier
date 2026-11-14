@@ -102,12 +102,23 @@ export const authNl: AuthTranslations = {
     backToLogin: 'Terug naar inloggen',
   },
   welcome: {
+    eyebrow: 'Je bent binnen',
     title: 'Welkom bij UniCopier',
-    subtitle: 'Je account is klaar. Koppel Telegram en begin signalen naar je broker te kopiëren.',
-    steps: [
-      'Koppel Telegram en kies signaalkanalen',
-      'Koppel je MT4/MT5-brokeraccount',
-      'Kopieer trades automatisch met je risicointstellingen',
+    subtitle:
+      'Kopieer trading-signalen naar je brokers met jouw risicoregels — via Telegram, TradingView en meer.',
+    features: [
+      {
+        title: 'Signaalbronnen',
+        description: 'Telegram-kanalen, TradingView-alerts, Discord en WhatsApp — gekoppeld aan de accounts die jij kiest.',
+      },
+      {
+        title: 'Brokeraccounts',
+        description: 'Koppel MT4, MT5 en cTrader en kopieer entries, SL/TP en beheer naar live of demo.',
+      },
+      {
+        title: 'Risico onder controle',
+        description: 'Lotgrootte, overrides, filters en mirror copy zodat elke trade jouw regels volgt.',
+      },
     ],
     startUsing: 'Begin met UniCopier',
     exploreDashboard: 'Verken eerst het dashboard',

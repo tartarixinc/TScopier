@@ -103,9 +103,10 @@ export interface AuthTranslations {
     confirmLinkExpired?: string
   }
   welcome: {
+    eyebrow: string
     title: string
     subtitle: string
-    steps: string[]
+    features: Array<{ title: string; description: string }>
     startUsing: string
     exploreDashboard: string
     errorFallback: string

@@ -102,12 +102,23 @@ export const authAr: AuthTranslations = {
     backToLogin: 'العودة إلى تسجيل الدخول',
   },
   welcome: {
+    eyebrow: 'أنت داخل المنصة',
     title: 'مرحبًا بك في UniCopier',
-    subtitle: 'حسابك جاهز. اربط Telegram وابدأ بنسخ الإشارات إلى وسيطك.',
-    steps: [
-      'اربط Telegram واختر قنوات الإشارات',
-      'اربط حساب وسيط MT4/MT5',
-      'انسخ الصفقات تلقائيًا وفق إعدادات المخاطر',
+    subtitle:
+      'انسخ إشارات التداول إلى وسطائك بقواعد المخاطر التي تحددها — من Telegram وTradingView والمزيد.',
+    features: [
+      {
+        title: 'مصادر الإشارات',
+        description: 'قنوات Telegram وتنبيهات TradingView وDiscord وWhatsApp — مرتبطة بالحسابات التي تختارها.',
+      },
+      {
+        title: 'حسابات الوسطاء',
+        description: 'اربط MT4 وMT5 وcTrader وانسخ الدخول ووقف الخسارة وجني الأرباح والإدارة إلى الحقيقي أو التجريبي.',
+      },
+      {
+        title: 'المخاطر تحت سيطرتك',
+        description: 'حجم اللوت والتجاوزات والفلاتر والنسخ المرآتي بحيث تتبع كل صفقة قواعدك.',
+      },
     ],
     startUsing: 'ابدأ استخدام UniCopier',
     exploreDashboard: 'استكشف لوحة التحكم أولًا',
