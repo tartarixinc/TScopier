@@ -1,9 +1,12 @@
 import clsx from 'clsx'
 import { ArrowRight } from 'lucide-react'
+import { useAuth } from '../../context/AuthContext'
 import { useMarketingAuthState } from '../../hooks/useMarketingAuthState'
+import { useMarketingHeaderAvatar } from '../../hooks/useMarketingHeaderAvatar'
 import { useT } from '../../context/LocaleContext'
 import { appUrl, marketingUrl, withQuery } from '../../lib/site'
 import { trackMarketingEvent } from '../../lib/analytics'
+import { UserAvatar } from '../layout/UserAvatar'
 
 type MarketingAuthCtaVariant = 'hero' | 'heroInline' | 'header' | 'headerMobile'
 
@@ -23,7 +26,9 @@ const heroInlineCtaClass =
   'group inline-flex items-center justify-center gap-2 rounded-full border border-green-400 bg-green-400 px-6 py-3 text-sm font-semibold text-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_10px_28px_-10px_rgba(74,222,128,0.7)] transition-all duration-300 hover:-translate-y-0.5 hover:border-green-400 hover:bg-green-400 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_0_24px_rgba(74,222,128,0.5)] sm:px-7 sm:py-3.5 sm:text-base'
 
 export function MarketingAuthCta({ variant, onNavigate }: MarketingAuthCtaProps) {
+  const { user } = useAuth()
   const { isSignedIn, loading } = useMarketingAuthState()
+  const headerAvatar = useMarketingHeaderAvatar()
   const nav = useT().landing.nav
   const hero = useT().landing.hero
   const referralRef = (() => {
@@ -44,20 +49,21 @@ export function MarketingAuthCta({ variant, onNavigate }: MarketingAuthCtaProps)
 
   if (loading) {
     if (variant === 'header') {
-      return <span className="hidden h-9 w-28 lg:inline-block" aria-hidden />
+      return <span className="hidden h-9 w-36 lg:inline-block" aria-hidden />
     }
     return null
   }
 
   if (isSignedIn) {
+    const dashboardHref = appUrl('/dashboard')
     const dashboardLink = (
       <a
-        href={appUrl('/dashboard')}
+        href={dashboardHref}
         onClick={() => onCtaClick('dashboard')}
         className={clsx(
           variant === 'hero' && heroCtaClass,
           variant === 'heroInline' && heroInlineCtaClass,
-          variant === 'header' && clsx(primaryBtnClass, 'hidden lg:inline-flex'),
+          variant === 'header' && primaryBtnClass,
           variant === 'headerMobile' &&
             'rounded-lg px-3 py-2.5 text-sm font-medium text-green-400 transition-colors hover:bg-teal-50 dark:text-green-400 dark:hover:bg-teal-950/40',
         )}
@@ -73,11 +79,51 @@ export function MarketingAuthCta({ variant, onNavigate }: MarketingAuthCtaProps)
       </a>
     )
 
+    const avatarLink = (
+      <a
+        href={dashboardHref}
+        onClick={() => onCtaClick('dashboard')}
+        className="inline-flex shrink-0 rounded-full ring-1 ring-black/5 transition-opacity hover:opacity-90 focus:outline-hidden focus:ring-2 focus:ring-green-400 focus:ring-offset-2 dark:ring-white/10 dark:focus:ring-offset-neutral-950"
+        aria-label={nav.dashboard}
+        title={nav.dashboard}
+      >
+        <UserAvatar
+          user={user}
+          profile={{ avatar_url: headerAvatar.url }}
+          email={
+            user?.email
+            ?? (headerAvatar.initials ? `${headerAvatar.initials}@avatar.local` : null)
+          }
+          size="sm"
+          className="h-9 w-9"
+        />
+      </a>
+    )
+
     if (variant === 'hero') {
       return (
         <div className="flex w-full flex-col items-center">{dashboardLink}</div>
       )
     }
+
+    if (variant === 'header') {
+      return (
+        <div className="hidden items-center gap-1.5 lg:flex">
+          {dashboardLink}
+          {avatarLink}
+        </div>
+      )
+    }
+
+    if (variant === 'headerMobile') {
+      return (
+        <div className="mt-1 flex items-center gap-2">
+          <div className="min-w-0 flex-1">{dashboardLink}</div>
+          {avatarLink}
+        </div>
+      )
+    }
+
     return dashboardLink
   }
 

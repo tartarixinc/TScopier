@@ -2,6 +2,15 @@
 
 ## Changelog
 
+### 2026-11-14 — Marketing header shows avatar when signed in
+
+- **Context:** Signed-in visitors only saw a Dashboard button; avatar image often missing because marketing has no app session/profile.
+- **Plain English:** After Dashboard, the header shows the user’s photo (or initials). The app writes a shared avatar cookie; marketing also loads `user_profiles` when a session exists.
+- **Fix (files):** [`authPresenceCookie.ts`](src/lib/authPresenceCookie.ts) `tsc_auth_avatar`; [`useMarketingHeaderAvatar.ts`](src/hooks/useMarketingHeaderAvatar.ts); [`MarketingAuthCta.tsx`](src/components/marketing/MarketingAuthCta.tsx); sync from [`AuthContext.tsx`](src/context/AuthContext.tsx) + [`UserProfileContext.tsx`](src/context/UserProfileContext.tsx).
+- **Tests/verification:** Open app (loads profile) then marketing host — avatar cookie should render photo; same-origin marketing with session fetches profile photo.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** Visit the app once after deploy so the avatar cookie is written for cookie-only marketing visits.
+
 ### 2026-11-14 — Landing page scroll appearance
 
 - **Context:** Marketing landing sections appeared statically with no entrance motion.
