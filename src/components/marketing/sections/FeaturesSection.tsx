@@ -1,13 +1,14 @@
 import { FeatureShowcasePanel } from '../features/FeatureShowcasePanel'
 import { FeatureVisual } from '../features/FeatureVisual'
 import { useT } from '../../../context/LocaleContext'
+import { ScrollReveal } from '../ScrollReveal'
 
 export function FeaturesSection() {
   const l = useT().landing.features
 
   return (
     <section id="features" className="mx-auto max-w-6xl scroll-mt-28 px-5 py-16 sm:px-8 sm:py-24">
-      <div className="mx-auto max-w-2xl text-center">
+      <ScrollReveal className="mx-auto max-w-2xl text-center">
         <p className="text-xs font-semibold uppercase tracking-wider text-green-400 dark:text-green-400">
           {l.eyebrow}
         </p>
@@ -15,18 +16,19 @@ export function FeaturesSection() {
           {l.title}
         </h2>
         <p className="mt-4 text-neutral-900 dark:text-neutral-50">{l.subtitle}</p>
-      </div>
+      </ScrollReveal>
 
       <div className="mt-12 space-y-8">
         {l.showcases.map((showcase, index) => (
-          <FeatureShowcasePanel
-            key={showcase.visual}
-            eyebrow={showcase.eyebrow}
-            title={showcase.title}
-            description={showcase.description}
-            reverse={index % 2 === 1}
-            visual={<FeatureVisual id={showcase.visual} />}
-          />
+          <ScrollReveal key={showcase.visual} delay={0.04 * index} y={36}>
+            <FeatureShowcasePanel
+              eyebrow={showcase.eyebrow}
+              title={showcase.title}
+              description={showcase.description}
+              reverse={index % 2 === 1}
+              visual={<FeatureVisual id={showcase.visual} />}
+            />
+          </ScrollReveal>
         ))}
       </div>
     </section>

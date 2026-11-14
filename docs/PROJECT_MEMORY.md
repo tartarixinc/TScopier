@@ -2,6 +2,15 @@
 
 ## Changelog
 
+### 2026-11-14 — Landing page scroll appearance
+
+- **Context:** Marketing landing sections appeared statically with no entrance motion.
+- **Plain English:** As you scroll the landing page, sections and key cards fade/slide in once; respects reduced-motion.
+- **Fix (files):** [`ScrollReveal.tsx`](src/components/marketing/ScrollReveal.tsx); [`LandingPage.tsx`](src/pages/marketing/LandingPage.tsx); staggered reveals in showcase/features/steps/reviews; footer CTA/main.
+- **Tests/verification:** Visual — scroll marketing landing; OS reduced-motion skips animation.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** None.
+
 ### 2026-11-14 — App header pills + Connection Status match hero soft-shell
 
 - **Context:** Hero dashboard preview showed pill backgrounds on header controls and a bordered Connection Status chip with chevron; the live app lagged.

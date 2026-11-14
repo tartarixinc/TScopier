@@ -7,6 +7,7 @@ import { appUrl } from '../../../lib/site'
 import { TradingAccountPreview } from '../preview/TradingAccountPreview'
 import { MirrorAccountPreview } from '../preview/MirrorAccountPreview'
 import { SocialTradingPreview } from '../preview/SocialTradingPreview'
+import { ScrollReveal } from '../ScrollReveal'
 
 /** Soft grain matching the app ash rail. */
 const ASH_NOISE =
@@ -39,7 +40,7 @@ export function ProductShowcaseSection() {
   return (
     <section id="showcase" className={clsx('relative scroll-mt-24 py-16 sm:py-24', APP_CANVAS)}>
       <div className="mx-auto max-w-7xl px-3 sm:px-5">
-        <div className="px-2 sm:px-6">
+        <ScrollReveal className="px-2 sm:px-6">
           <p className="inline-flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-neutral-900 dark:text-neutral-50">
             <span className="h-2 w-2 bg-green-400" aria-hidden />
             {s.eyebrow}
@@ -47,7 +48,7 @@ export function ProductShowcaseSection() {
           <h2 className="mt-5 max-w-3xl text-3xl font-semibold tracking-tight text-neutral-950 sm:text-4xl lg:text-[2.75rem] lg:leading-[1.1] dark:text-white">
             {s.title}
           </h2>
-        </div>
+        </ScrollReveal>
 
         <div className="mt-12 grid gap-4 lg:grid-cols-3">
           {CARDS.map((card, index) => {
@@ -55,8 +56,8 @@ export function ProductShowcaseSection() {
             const copy = s.cards[index]
             const open = active === index
             return (
+              <ScrollReveal key={card.key} delay={0.06 * index}>
               <article
-                key={card.key}
                 onMouseEnter={() => setActive(index)}
                 onFocus={() => setActive(index)}
                 className={clsx(
@@ -130,6 +131,7 @@ export function ProductShowcaseSection() {
                   </a>
                 </div>
               </article>
+              </ScrollReveal>
             )
           })}
         </div>

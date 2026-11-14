@@ -7,6 +7,7 @@ import { useT } from '../../context/LocaleContext'
 import { appUrl, marketingUrl } from '../../lib/site'
 import { HELP_LINKS } from '../../lib/helpLinks'
 import { MarketingPricingHint } from './MarketingPricingHint'
+import { ScrollReveal } from './ScrollReveal'
 
 interface FooterLink {
   label: string
@@ -102,7 +103,7 @@ export function MarketingFooter() {
     <footer className="marketing-footer relative z-10">
       <div className="marketing-footer-cta">
         <div className="marketing-footer-cta-grid" aria-hidden />
-        <div className="relative mx-auto max-w-6xl px-5 py-12 sm:px-8 sm:py-14">
+        <ScrollReveal className="relative mx-auto max-w-6xl px-5 py-12 sm:px-8 sm:py-14">
           <div className="flex flex-col items-start gap-6 lg:flex-row lg:items-center lg:justify-between lg:gap-10">
             <div className="max-w-xl">
               <h2 className="text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-3xl">
@@ -135,11 +136,11 @@ export function MarketingFooter() {
               />
             </div>
           </div>
-        </div>
+        </ScrollReveal>
       </div>
 
       <div className="marketing-footer-main">
-        <div className="mx-auto max-w-6xl px-5 py-12 sm:px-8 sm:py-14">
+        <ScrollReveal className="mx-auto max-w-6xl px-5 py-12 sm:px-8 sm:py-14">
           <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.4fr_repeat(3,minmax(0,1fr))] lg:gap-8">
             <div className="sm:col-span-2 lg:col-span-1">
               <Link to="/" className="inline-flex" aria-label="UniCopier home">
@@ -154,7 +155,7 @@ export function MarketingFooter() {
             <FooterNavColumn title={f.columns.resources} links={resourceLinks} />
             <FooterNavColumn title={f.columns.account} links={accountLinks} />
           </div>
-        </div>
+        </ScrollReveal>
       </div>
 
       <div className="marketing-footer-bottom">
