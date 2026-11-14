@@ -2,6 +2,15 @@
 
 ## Changelog
 
+### 2026-11-14 — Marketing hero dashboard matches soft-shell app UI
+
+- **Context:** Landing hero still showed an older flat dashboard mock (side-by-side channel worker + short logs).
+- **Plain English:** The hero preview now looks like today’s dashboard: gray canvas, floating sidebar, white main shell, KPI cards, Copier Logs (with Reason/Destination/Message), and Linked Accounts.
+- **Fix (files):** [`HeroDashboardPreview.tsx`](src/components/marketing/HeroDashboardPreview.tsx); landing types + all locale `hero.dashboard` data (`linkedAccounts`, richer `copierLogRows`).
+- **Tests/verification:** `tsc` check for hero/landing errors.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** None.
+
 ### 2026-11-14 — Welcome modal redesign
 
 - **Context:** Post-signup welcome overlay was a plain checklist with a green check icon.

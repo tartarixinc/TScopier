@@ -309,23 +309,46 @@ export type LandingHeroCopierLogStatus = 'executed' | 'parsed' | 'skipped' | 'fa
 
 export interface LandingHeroCopierLogRow {
   status: LandingHeroCopierLogStatus
+  /** Short reason shown in the Copier Logs Reason column. */
+  reason: string
   channel: string
+  destination: string
   symbol: string
+  message: string
   type: string
   side: 'buy' | 'sell'
   time: string
 }
 
+/** @deprecated Kept optional for older locale bundles; hero preview no longer renders this panel. */
 export interface LandingHeroChannelWorkerLog {
   message: string
   time: string
 }
 
+export type LandingHeroLinkedAccountStatus = 'connected' | 'connecting' | 'disconnected'
+
+export interface LandingHeroLinkedAccount {
+  name: string
+  broker: string
+  /** Localized account-type label (Demo / Live / …). */
+  accountType: string
+  balance: string
+  pnl: string
+  pnlTone: LandingHeroStatTone
+  openPnl: string
+  winRate: string
+  dd: string
+  status: LandingHeroLinkedAccountStatus
+}
+
 export interface LandingHeroDashboardCopy {
   headlineStats: LandingHeroHeadlineStat[]
   overviewStats: LandingHeroOverviewStat[]
-  channelWorkerLogs: LandingHeroChannelWorkerLog[]
+  /** @deprecated Optional legacy field — ignored by the soft-shell hero preview. */
+  channelWorkerLogs?: LandingHeroChannelWorkerLog[]
   copierLogRows: LandingHeroCopierLogRow[]
+  linkedAccounts: LandingHeroLinkedAccount[]
 }
 
 export interface LandingTranslations {
