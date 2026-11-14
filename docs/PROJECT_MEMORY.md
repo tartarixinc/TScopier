@@ -2,6 +2,16 @@
 
 ## Changelog
 
+### 2026-11-14 — Dispatch push timeline noise + short 429/502 retries
+
+- **Context:** Copier Execution Timeline showed many `dispatch push attempt (failed)` rows next to successes; users thought signals were failing often.
+- **Plain English:** Most of those rows were misleading. Every push logged a fake “success” before trying, and real retries on a busy/cold worker used tiny backoffs (tens of ms), so rate-limit/502 attempts stacked in the same second. Production still handed off ~682/686 signals in 7 days; only a handful fully failed (429, Railway 502, timeout) and the DB sweep still picks those up.
+- **Root cause (technical):** `tradeSignalPush` logged `phase=start` with `status=success`; retry sleep was `PUSH_RETRY_BASE_MS * attempt` (~50–100ms) for 429/5xx.
+- **Fix (files):** [`tradeSignalPush.ts`](worker/src/tradeSignalPush.ts) drop start marker; 400–2500ms backoff on 429/5xx/timeout; [`copierLogDetail.ts`](src/lib/copierLogDetail.ts) hide historical start rows + plain-English dispatch summaries.
+- **Tests/verification:** `copierLogDetail.test.ts` dispatch helpers; redeploy worker for logging/backoff; frontend for timeline copy.
+- **Deploy state:** Frontend + worker deploy needed.
+- **Follow-ups:** If 502s cluster, check Railway trade-worker health / cold starts on `tscopier-worker-production`.
+
 ### 2026-11-14 — Edit SL/TP Resend Parameters when unchanged
 
 - **Context:** Update Live Trades stayed greyed out when SL/TP matched the current override, so users could not re-push stops that never landed on the broker.
