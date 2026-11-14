@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { MarketingLayout } from '../../components/marketing/MarketingLayout'
+import { ScrollReveal } from '../../components/marketing/ScrollReveal'
 import { HeroSection } from '../../components/marketing/sections/HeroSection'
 // import { StatsSection } from '../../components/marketing/sections/StatsSection'
 import { SupportedPlatformsSection } from '../../components/marketing/sections/SupportedPlatformsSection'
@@ -36,19 +37,28 @@ export function LandingPage() {
   }, [location.hash])
 
   return (
-    <MarketingLayout darkHero>
+    <MarketingLayout>
+      {/* Hero stays static so the first viewport doesn’t fade in after paint. */}
       <HeroSection />
-      <SupportedPlatformsSection />
-      {/* <CompletePictureSection /> */}
-      {/* <IntegrationsSection /> */}
-      {/* <StatsSection /> */}
+      <ScrollReveal>
+        <SupportedPlatformsSection />
+      </ScrollReveal>
+      {/* Showcase / features / steps / reviews handle their own staggered reveals. */}
       <ProductShowcaseSection />
-      <WhyChooseSection />
-      <SellSignalsSection />
+      <ScrollReveal>
+        <WhyChooseSection />
+      </ScrollReveal>
+      <ScrollReveal>
+        <SellSignalsSection />
+      </ScrollReveal>
       <FeaturesSection />
-      <ComparisonSection />
+      <ScrollReveal>
+        <ComparisonSection />
+      </ScrollReveal>
       <StepsSection />
-      <FaqSection />
+      <ScrollReveal>
+        <FaqSection />
+      </ScrollReveal>
       <ReviewsSection />
     </MarketingLayout>
   )

@@ -14,6 +14,7 @@ import { landingRu } from './landing/ru'
 import { legalRu } from './legalBundle/ru'
 import { logsRu } from './logs/ru'
 import { mergeLocaleBundle } from './merge'
+import { signalActionsRu } from './signalHistory/actionLabels'
 import { pricingRu } from './pricing/ru'
 import { settingsRu } from './settings/ru'
 import { socialTradingRu } from './socialTrading/ru'
@@ -25,6 +26,10 @@ export const ru: Translations = mergeLocaleBundle(en, {
   ...chromeRu,
   ...dashboardRu,
   ...logsRu,
+  signalHistoryPage: {
+    ...en.signalHistoryPage,
+    ...signalActionsRu,
+  },
   ...settingsRu,
   ...accountConfigRu,
   ...backtestRu,

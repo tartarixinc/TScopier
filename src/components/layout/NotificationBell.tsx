@@ -3,6 +3,7 @@ import { Bell, BellOff } from 'lucide-react'
 import { useNotifications } from '../../context/NotificationsContext'
 import { useHumanReview } from '../../context/HumanReviewContext'
 import { useT } from '../../context/LocaleContext'
+import { APP_PILL } from '../../lib/appSurface'
 import { NotificationDropdown } from './NotificationDropdown'
 
 interface NotificationBellProps {
@@ -28,12 +29,11 @@ export function NotificationBell({ open, onOpen, onClose }: NotificationBellProp
         aria-haspopup="menu"
         aria-expanded={open}
         className={clsx(
-          'relative rounded-lg p-1.5 transition-colors sm:p-2',
+          'relative inline-flex h-9 w-9 items-center justify-center transition-colors sm:h-10 sm:w-10',
+          APP_PILL,
           open
-            ? 'text-green-400 bg-teal-50 dark:text-green-400 dark:bg-teal-950/50'
-            : soundEnabled
-              ? 'text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800'
-              : 'text-neutral-900 hover:bg-neutral-100 dark:text-neutral-50 dark:hover:bg-neutral-800',
+            ? 'text-green-500 bg-teal-50 dark:text-green-400 dark:bg-teal-950/50'
+            : 'text-neutral-700 hover:bg-neutral-50 dark:text-neutral-200 dark:hover:bg-neutral-800',
         )}
       >
         {soundEnabled ? (

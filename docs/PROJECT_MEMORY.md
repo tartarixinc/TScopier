@@ -2,6 +2,98 @@
 
 ## Changelog
 
+### 2026-11-14 — Features section scroll hijack
+
+- **Context:** Sticky scroll-track “hijack” never pinned because `marketing-hero-bg` used `overflow-hidden`; user wanted the page to stop and advance cards.
+- **Plain English:** Reaching Features stops page scroll; wheel/touch flips through feature cards, then the page continues.
+- **Root cause (technical):** Parent `overflow-hidden` broke sticky; also needed real `wheel` `preventDefault` hijack.
+- **Fix (files):** [`index.css`](src/index.css) drop overflow on `marketing-hero-bg`; [`FeaturesSection.tsx`](src/components/marketing/sections/FeaturesSection.tsx) wheel/touch/keyboard lock + card steps.
+- **Tests/verification:** Desktop landing `#features` — page freezes, cards advance, release at ends.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** None.
+
+### 2026-11-14 — Marketing header shows avatar when signed in
+
+- **Context:** Signed-in visitors only saw a Dashboard button; avatar image often missing because marketing has no app session/profile.
+- **Plain English:** After Dashboard, the header shows the user’s photo (or initials). The app writes a shared avatar cookie; marketing also loads `user_profiles` when a session exists.
+- **Fix (files):** [`authPresenceCookie.ts`](src/lib/authPresenceCookie.ts) `tsc_auth_avatar`; [`useMarketingHeaderAvatar.ts`](src/hooks/useMarketingHeaderAvatar.ts); [`MarketingAuthCta.tsx`](src/components/marketing/MarketingAuthCta.tsx); sync from [`AuthContext.tsx`](src/context/AuthContext.tsx) + [`UserProfileContext.tsx`](src/context/UserProfileContext.tsx).
+- **Tests/verification:** Open app (loads profile) then marketing host — avatar cookie should render photo; same-origin marketing with session fetches profile photo.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** Visit the app once after deploy so the avatar cookie is written for cookie-only marketing visits.
+
+### 2026-11-14 — Landing page scroll appearance
+
+- **Context:** Marketing landing sections appeared statically with no entrance motion.
+- **Plain English:** As you scroll the landing page, sections and key cards fade/slide in once; respects reduced-motion.
+- **Fix (files):** [`ScrollReveal.tsx`](src/components/marketing/ScrollReveal.tsx); [`LandingPage.tsx`](src/pages/marketing/LandingPage.tsx); staggered reveals in showcase/features/steps/reviews; footer CTA/main.
+- **Tests/verification:** Visual — scroll marketing landing; OS reduced-motion skips animation.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** None.
+
+### 2026-11-14 — App header pills + Connection Status match hero soft-shell
+
+- **Context:** Hero dashboard preview showed pill backgrounds on header controls and a bordered Connection Status chip with chevron; the live app lagged.
+- **Plain English:** Header buttons (copier, bell, language, theme) and Connection Status now use the same soft white pill/card chrome as the marketing hero mock.
+- **Fix (files):** [`CopierStatusCard.tsx`](src/components/dashboard/CopierStatusCard.tsx) (dot + `:` + chevron + `APP_CARD`); [`CopierPauseToggle.tsx`](src/components/layout/CopierPauseToggle.tsx), [`NotificationBell.tsx`](src/components/layout/NotificationBell.tsx), [`LanguageSwitcher.tsx`](src/components/auth/LanguageSwitcher.tsx), [`ThemeToggle.tsx`](src/components/ui/ThemeToggle.tsx) (`APP_PILL`).
+- **Tests/verification:** Visual — app header + dashboard greeting row.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** None.
+
+### 2026-11-14 — Showcase cards use soft-shell app previews
+
+- **Context:** Product showcase (“Built to reduce complexity…”) still showed old dark-framed dashboards with the pre-soft-shell app chrome.
+- **Plain English:** Those three cards now use the same ash rail / white shell look as the live app and hero preview.
+- **Fix (files):** [`AppPreviewWindow.tsx`](src/components/marketing/preview/AppPreviewWindow.tsx) soft-shell shell; [`ProductShowcaseSection.tsx`](src/components/marketing/sections/ProductShowcaseSection.tsx) ash card frames.
+- **Tests/verification:** Visual — landing `#showcase`.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** None.
+
+### 2026-11-14 — Marketing hero ash background + centered copy
+
+- **Context:** Landing hero used a green WebGL swirl and left-aligned two-column copy.
+- **Plain English:** Hero background is now the same soft ash as the app sidebar, with a light grain; headline, subcopy, and CTAs are centered above the dashboard preview.
+- **Fix (files):** [`HeroSection.tsx`](src/components/marketing/sections/HeroSection.tsx); [`LandingPage.tsx`](src/pages/marketing/LandingPage.tsx) drops `darkHero` so the nav matches the light ash hero.
+- **Tests/verification:** Visual — marketing landing hero.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** None.
+
+### 2026-11-14 — Marketing hero dashboard matches soft-shell app UI
+
+- **Context:** Landing hero still showed an older flat dashboard mock (side-by-side channel worker + short logs).
+- **Plain English:** The hero preview now looks like today’s dashboard: gray canvas, floating sidebar, white main shell, KPI cards, Copier Logs (with Reason/Destination/Message), and Linked Accounts.
+- **Fix (files):** [`HeroDashboardPreview.tsx`](src/components/marketing/HeroDashboardPreview.tsx); landing types + all locale `hero.dashboard` data (`linkedAccounts`, richer `copierLogRows`).
+- **Tests/verification:** `tsc` check for hero/landing errors.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** None.
+
+### 2026-11-14 — Welcome modal redesign
+
+- **Context:** Post-signup welcome overlay was a plain checklist with a green check icon.
+- **Plain English:** Welcome now shows the UniCopier mark, a short intro, and three feature cards (signal sources, brokers, risk) before Start / Explore.
+- **Fix (files):** [`WelcomeModal.tsx`](src/components/onboarding/WelcomeModal.tsx); auth `welcome` copy in all locales + [`types.ts`](src/i18n/auth/types.ts) (`eyebrow` + `features`).
+- **Tests/verification:** Lint clean on modal + auth types.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** None.
+
+### 2026-11-13 — Copier Signal details + BUY/SELL i18n
+
+- **Context:** Signal details modal chrome stayed English; Copier Log Type column showed raw `buy`/`sell`.
+- **Plain English:** Modal labels (title, reason, timeline, …) are translated per locale. Buy/Sell/Close etc. use the same Signal History action strings as toasts.
+- **Fix (files):** [`copierLogs/detailModal.ts`](src/i18n/locales/copierLogs/detailModal.ts) + wired into en/es/fr and `logs/*`; [`CopierLogsPage.tsx`](src/pages/dashboard/CopierLogsPage.tsx), [`DashboardPage.tsx`](src/pages/dashboard/DashboardPage.tsx), [`MirrorLogDetailModal.tsx`](src/components/dashboard/MirrorLogDetailModal.tsx), [`copierLogDisplay.ts`](src/lib/copierLogDisplay.ts) action helpers.
+- **Tests/verification:** `merge.test.ts` detailModal Polish; existing display tests.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** Timeline/`tradeFailureDisplay` English strings still need locale maps.
+
+### 2026-11-13 — Copier Log reasons not translated
+
+- **Context:** Copier Logs Reason column stayed English in non-English locales.
+- **Plain English:** Skip/fail reasons now pick up the same translated Channel Worker strings, and partial locale bundles no longer wipe the rest of the Copier Logs dictionary.
+- **Root cause (technical):** `mergeLocaleBundle` shallow-replaced `copierLogs`, so `logs/*` kept only ~4 `skipReasons`. Lookup then fell through to English `COPIER_SKIP_REASON_LABELS`. Human-review free text also failed key normalization (`;`).
+- **Fix (files):** [`merge.ts`](src/i18n/locales/merge.ts) deep-merge + CW fold; [`copierSkipReasons.ts`](src/i18n/locales/copierSkipReasons.ts); en/es/fr `skipReasons` via `buildCopierLogsSkipReasons`; [`copierSkipReasonLabels.ts`](src/lib/copierSkipReasonLabels.ts) free-text aliases.
+- **Tests/verification:** `copierLogDetail.test.ts`, `merge.test.ts`, `copierLogLifecycle.test.ts` pass.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** Translate remaining copy-risk-only codes beyond Channel Worker maps if they appear in production logs.
+
 ### 2026-11-13 — TradingView ingest host → tl.unicopier.com
 
 - **Context:** Dashboard was showing the raw Railway listener URL for TradingView webhooks.

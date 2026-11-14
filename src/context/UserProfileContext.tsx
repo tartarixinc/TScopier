@@ -8,9 +8,11 @@ import {
   type ReactNode,
 } from 'react'
 import { useAuth } from './AuthContext'
+import { setAuthPresenceAvatarCookie } from '../lib/authPresenceCookie'
 import { BASE_CURRENCY_CODES } from '../lib/baseCurrencies'
 import { normalizeCurrencyCode } from '../lib/currency'
 import { supabase } from '../lib/supabase'
+import { resolveUserAvatarUrl, userInitials } from '../lib/userAvatar'
 import { whenRealtimeReady } from '../lib/whenRealtimeReady'
 import {
   EMPTY_USER_PROFILE,
@@ -21,8 +23,17 @@ import {
   type UserProfile,
 } from '../lib/userProfile'
 import { isOAuthUser } from '../lib/emailVerification'
+import type { User } from '@supabase/supabase-js'
 
 type ProfileFields = Omit<UserProfile, 'user_id' | 'created_at' | 'updated_at'>
+
+function syncMarketingAvatarCookie(user: User | null | undefined, fields: ProfileFields) {
+  if (!user) return
+  setAuthPresenceAvatarCookie({
+    url: resolveUserAvatarUrl(user, fields),
+    initials: userInitials(fields, user.email),
+  })
+}
 
 interface UserProfileContextValue {
   loading: boolean
@@ -138,6 +149,12 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void refreshProfile()
   }, [refreshProfile])
+
+  // Keep marketing-site header avatar in sync across app ↔ marketing hosts.
+  useEffect(() => {
+    if (!user || profileLoadedForUserId !== user.id) return
+    syncMarketingAvatarCookie(user, profile)
+  }, [user, profile, profileLoadedForUserId])
 
   const patchProfile = useCallback((patch: Partial<ProfileFields>) => {
     setProfile(prev => sanitizeProfile({ ...prev, ...patch }))

@@ -1,3 +1,4 @@
+import { detailModalNl } from '../copierLogs/detailModal'
 import type { LogsBundleTranslations } from './types'
 
 export const logsNl: LogsBundleTranslations = {
@@ -62,5 +63,6 @@ export const logsNl: LogsBundleTranslations = {
       broker_bridge_unavailable:
         'Brokerbrug niet beschikbaar — schakel Algo Trading in op MT5 en controleer Trade EA ready',
     },
+    detailModal: detailModalNl,
   },
 }

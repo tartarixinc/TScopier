@@ -1,3 +1,4 @@
+import { detailModalAr } from '../copierLogs/detailModal'
 import type { LogsBundleTranslations } from './types'
 
 export const logsAr: LogsBundleTranslations = {
@@ -62,5 +63,6 @@ export const logsAr: LogsBundleTranslations = {
       broker_bridge_unavailable:
         'جسر الوسيط غير متاح — فعّل Algo Trading في MT5 وتحقق من جاهزية Trade EA',
     },
+    detailModal: detailModalAr,
   },
 }

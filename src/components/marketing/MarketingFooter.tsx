@@ -6,13 +6,17 @@ import { LanguageSwitcher } from '../auth/LanguageSwitcher'
 import { useT } from '../../context/LocaleContext'
 import { appUrl, marketingUrl } from '../../lib/site'
 import { HELP_LINKS } from '../../lib/helpLinks'
+import { SocialBrandIcon } from '../social/SocialProfileLinks'
+import type { SocialProfilePlatform } from '../../lib/socialProfileLinks'
 import { MarketingPricingHint } from './MarketingPricingHint'
+import { ScrollReveal } from './ScrollReveal'
 
-const FOOTER_PLATFORMS = [
-  { src: '/Telegram.svg', alt: 'Telegram' },
-  { src: '/MT5.png', alt: 'MetaTrader 5' },
-  { src: '/MT4.png', alt: 'MetaTrader 4' },
-] as const
+const FOOTER_SOCIALS: readonly { platform: SocialProfilePlatform; href: string; label: string }[] = [
+  { platform: 'facebook', href: 'https://facebook.com/unicopier', label: 'Facebook' },
+  { platform: 'instagram', href: 'https://instagram.com/unicopier', label: 'Instagram' },
+  { platform: 'tiktok', href: 'https://tiktok.com/@unicopier', label: 'TikTok' },
+  { platform: 'youtube', href: 'https://youtube.com/@uni-copier', label: 'YouTube' },
+]
 
 interface FooterLink {
   label: string
@@ -108,7 +112,7 @@ export function MarketingFooter() {
     <footer className="marketing-footer relative z-10">
       <div className="marketing-footer-cta">
         <div className="marketing-footer-cta-grid" aria-hidden />
-        <div className="relative mx-auto max-w-6xl px-5 py-12 sm:px-8 sm:py-14">
+        <ScrollReveal className="relative mx-auto max-w-6xl px-5 py-12 sm:px-8 sm:py-14">
           <div className="flex flex-col items-start gap-6 lg:flex-row lg:items-center lg:justify-between lg:gap-10">
             <div className="max-w-xl">
               <h2 className="text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-3xl">
@@ -141,11 +145,11 @@ export function MarketingFooter() {
               />
             </div>
           </div>
-        </div>
+        </ScrollReveal>
       </div>
 
       <div className="marketing-footer-main">
-        <div className="mx-auto max-w-6xl px-5 py-12 sm:px-8 sm:py-14">
+        <ScrollReveal className="mx-auto max-w-6xl px-5 py-12 sm:px-8 sm:py-14">
           <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.4fr_repeat(3,minmax(0,1fr))] lg:gap-8">
             <div className="sm:col-span-2 lg:col-span-1">
               <Link to="/" className="inline-flex" aria-label="UniCopier home">
@@ -154,33 +158,28 @@ export function MarketingFooter() {
               <p className="mt-4 max-w-xs text-sm leading-relaxed text-neutral-900 dark:text-neutral-50">
                 {f.tagline}
               </p>
-              <p className="mt-6 text-xs font-semibold uppercase tracking-wider text-neutral-900 dark:text-neutral-50">
-                {f.platforms}
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {FOOTER_PLATFORMS.map((platform) => (
-                  <span
-                    key={platform.src}
-                    className="marketing-footer-platform flex h-10 w-10 items-center justify-center rounded-lg border border-neutral-200/90 bg-white shadow-xs dark:border-neutral-700 dark:bg-neutral-900"
-                    title={platform.alt}
+              <nav className="mt-5 flex flex-wrap items-center gap-2" aria-label="UniCopier social">
+                {FOOTER_SOCIALS.map(social => (
+                  <a
+                    key={social.platform}
+                    href={social.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={social.label}
+                    title={social.label}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200/90 bg-white text-neutral-900 shadow-xs transition-colors hover:border-green-400 hover:bg-neutral-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50 dark:hover:bg-neutral-800"
                   >
-                    <img
-                      src={platform.src}
-                      alt={platform.alt}
-                      className="h-5 w-5 object-contain"
-                      width={20}
-                      height={20}
-                    />
-                  </span>
+                    <SocialBrandIcon platform={social.platform} />
+                  </a>
                 ))}
-              </div>
+              </nav>
             </div>
 
             <FooterNavColumn title={f.columns.product} links={productLinks} />
             <FooterNavColumn title={f.columns.resources} links={resourceLinks} />
             <FooterNavColumn title={f.columns.account} links={accountLinks} />
           </div>
-        </div>
+        </ScrollReveal>
       </div>
 
       <div className="marketing-footer-bottom">

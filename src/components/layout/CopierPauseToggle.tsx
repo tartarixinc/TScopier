@@ -9,6 +9,7 @@ import { useCopierStartBlocked } from '../../hooks/useCopierStartBlocked'
 import { useOverlayDismiss } from '../../hooks/useOverlayDismiss'
 import { Button } from '../ui/Button'
 import { lossIconWrapClass, lossTextClass } from '../../lib/pnlDisplay'
+import { APP_PILL } from '../../lib/appSurface'
 import { CopierActiveIndicator } from './CopierActiveIndicator'
 import { CopierStoppedIndicator } from './CopierStoppedIndicator'
 
@@ -170,12 +171,13 @@ export function CopierPauseToggle({ className }: CopierPauseToggleProps) {
         }
         title={showStopped ? stoppedHint : cp.stopCopier}
         className={clsx(
-          'group flex h-9 w-9 items-center justify-center rounded-lg px-1.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 lg:min-h-9 lg:w-auto lg:gap-2 lg:px-2.5 lg:text-sm',
+          'group flex h-9 w-9 items-center justify-center px-1.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 lg:min-h-9 lg:w-auto lg:gap-2 lg:px-2.5 lg:text-sm',
+          APP_PILL,
           lockedStopped
             ? clsx('cursor-not-allowed', lossIconWrapClass, lossTextClass)
             : showStopped
-              ? 'text-green-500 bg-teal-50 hover:bg-teal-100 dark:text-teal-300 dark:bg-teal-950/40 dark:hover:bg-teal-950/60'
-              : 'text-neutral-900 hover:text-neutral-900 hover:bg-neutral-100 dark:text-neutral-50 dark:hover:text-neutral-50 dark:hover:bg-neutral-800',
+              ? 'text-green-500 hover:bg-teal-50 dark:text-teal-300 dark:hover:bg-teal-950/40'
+              : 'text-neutral-900 hover:bg-neutral-50 dark:text-neutral-50 dark:hover:bg-neutral-800',
           className,
         )}
       >

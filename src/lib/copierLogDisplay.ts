@@ -130,10 +130,12 @@ export function tradeSignalActionLabel(
     | 'actionPartialBreakeven'
   >,
 ): string {
-  switch (action) {
+  switch (String(action ?? '').trim().toLowerCase()) {
     case 'buy':
+    case 'long':
       return labels.actionBuy
     case 'sell':
+    case 'short':
       return labels.actionSell
     case 'close':
       return labels.actionClose
@@ -150,6 +152,14 @@ export function tradeSignalActionLabel(
     default:
       return verbFromAction(action)
   }
+}
+
+/** Color class for buy/sell action chips (normalize case from DB/UI). */
+export function tradeSignalActionToneClass(action: string | null | undefined): string {
+  const key = String(action ?? '').trim().toLowerCase()
+  if (key === 'buy' || key === 'long') return 'text-green-400'
+  if (key === 'sell' || key === 'short') return 'text-error-600'
+  return 'text-neutral-900 dark:text-neutral-50'
 }
 
 /** Six-letter tokens parsers sometimes misread from management text (e.g. CHANGE). */

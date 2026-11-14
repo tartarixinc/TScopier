@@ -1,8 +1,10 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { X } from 'lucide-react'
 import clsx from 'clsx'
 import { useT } from '../../context/LocaleContext'
 import { Badge } from '../ui/Badge'
+import { tradeSignalActionLabel, tradeSignalActionToneClass } from '../../lib/copierLogDisplay'
+import { signalHistoryToastLabels } from '../../lib/copierLogToast'
 import type { MirrorCopyLogRow } from '../../lib/mirrorCopyLogs'
 import type { SocialCopyLogRow } from '../../lib/socialCopyLogs'
 
@@ -54,6 +56,10 @@ export function MirrorLogDetailModal({
   const panelRef = useRef<HTMLDivElement>(null)
   const isSocial = variant === 'social'
   const isManual = variant === 'manual'
+  const actionLabels = useMemo(
+    () => signalHistoryToastLabels(t.signalHistoryPage),
+    [t.signalHistoryPage],
+  )
 
   useEffect(() => {
     if (!row) return
@@ -171,14 +177,10 @@ export function MirrorLogDetailModal({
               <Badge variant={status.variant} size="sm" className={status.className}>{status.label}</Badge>
               {row.action ? (
                 <span className={clsx(
-                  'text-xs font-semibold uppercase',
-                  row.action === 'buy'
-                    ? 'text-green-400'
-                    : row.action === 'sell'
-                      ? 'text-error-600'
-                      : 'text-neutral-900 dark:text-neutral-50',
+                  'text-xs font-semibold',
+                  tradeSignalActionToneClass(row.action),
                 )}>
-                  {row.action}
+                  {tradeSignalActionLabel(row.action, actionLabels)}
                 </span>
               ) : null}
             </div>

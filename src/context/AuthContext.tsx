@@ -1,6 +1,11 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import type { User, Session } from '@supabase/supabase-js'
-import { clearAuthPresenceCookie, setAuthPresenceCookie } from '../lib/authPresenceCookie'
+import {
+  clearAuthPresenceCookie,
+  setAuthPresenceAvatarCookie,
+  setAuthPresenceCookie,
+} from '../lib/authPresenceCookie'
+import { resolveUserAvatarUrl, userInitials } from '../lib/userAvatar'
 import { supabase } from '../lib/supabase'
 import { invalidateRealtimeReadyCache } from '../lib/whenRealtimeReady'
 import { clearDashboardSessionCache } from '../lib/dashboardSessionCache'
@@ -37,7 +42,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (prev?.id != null && nextUser?.id === prev.id) return prev
         return nextUser
       })
-      if (next?.user) setAuthPresenceCookie()
+      if (next?.user) {
+        setAuthPresenceCookie()
+        setAuthPresenceAvatarCookie({
+          url: resolveUserAvatarUrl(next.user),
+          initials: userInitials({}, next.user.email),
+        })
+      }
     }
 
     supabase.auth.getSession().then(({ data: { session } }) => {

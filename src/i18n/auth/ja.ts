@@ -102,12 +102,23 @@ export const authJa: AuthTranslations = {
     backToLogin: 'ログインに戻る',
   },
   welcome: {
+    eyebrow: '準備完了',
     title: 'UniCopierへようこそ',
-    subtitle: 'アカウントの準備ができました。Telegramを接続して、シグナルのコピーを始めましょう。',
-    steps: [
-      'Telegramを接続し、シグナルチャンネルを選ぶ',
-      'MT4/MT5ブローカー口座を連携する',
-      'リスク設定に従って自動でトレードをコピーする',
+    subtitle:
+      'Telegram・TradingViewなどからのシグナルを、あなたが設定したリスクルールでブローカーへコピーします。',
+    features: [
+      {
+        title: 'シグナルソース',
+        description: 'Telegramチャンネル、TradingViewアラート、Discord、WhatsAppを、選んだ口座にリンク。',
+      },
+      {
+        title: 'ブローカー口座',
+        description: 'MT4・MT5・cTraderを接続し、エントリー、SL/TP、管理をライブまたはデモへコピー。',
+      },
+      {
+        title: 'リスクは自分で制御',
+        description: 'ロット、オーバーライド、フィルター、ミラーコピーで、取引はあなたのルールに従います。',
+      },
     ],
     startUsing: 'UniCopierを使い始める',
     exploreDashboard: '先にダッシュボードを見る',

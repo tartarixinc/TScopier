@@ -1,14 +1,25 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import clsx from 'clsx'
-import { Bell, PanelLeftClose, Search } from 'lucide-react'
+import { Bell, ChevronDown, PanelLeftClose, Search, Sparkles } from 'lucide-react'
 import { CopierActiveIndicator } from '../../layout/CopierActiveIndicator'
 import { TscopierLogo } from '../../ui/TscopierLogo'
 import { DirectionalIcon } from '../../ui/DirectionalIcon'
 import { useT } from '../../../context/LocaleContext'
 import { getAppRouteIcon } from '../../../lib/appNavIcons'
+import {
+  APP_CANVAS,
+  APP_CARD,
+  APP_MAIN_SHELL,
+  APP_PILL,
+  APP_RAIL,
+  APP_RAIL_ACTIVE,
+  APP_RAIL_HOVER,
+  APP_SECTION_LABEL,
+} from '../../../lib/appSurface'
 
 const CANVAS_WIDTH = 1100
 const CANVAS_HEIGHT = 760
+const PREVIEW_NAME = 'Alex'
 
 type AppPreviewWindowProps = {
   /** Route highlighted in the sidebar, e.g. `/mirror-trading`. */
@@ -19,8 +30,8 @@ type AppPreviewWindowProps = {
 }
 
 /**
- * A faithful, non-interactive miniature of the real app shell (browser chrome,
- * sidebar, header) rendered at a fixed canvas size and scaled to fit its host.
+ * Soft-shell miniature of the real app (canvas + ash rail + white main shell),
+ * rendered at a fixed canvas size and scaled to fit its host.
  */
 export function AppPreviewWindow({ activeRoute, children, className }: AppPreviewWindowProps) {
   const t = useT()
@@ -69,12 +80,13 @@ export function AppPreviewWindow({ activeRoute, children, className }: AppPrevie
   return (
     <div
       className={clsx(
-        'overflow-hidden rounded-xl border border-neutral-200/80 bg-white shadow-[0_30px_80px_-20px_rgba(0,0,0,0.65)] dark:border-white/10 dark:bg-neutral-950',
+        'overflow-hidden rounded-2xl shadow-[0_24px_60px_-24px_rgba(15,23,42,0.35)] ring-1 ring-black/5 dark:ring-white/10',
+        APP_CANVAS,
         className,
       )}
       aria-hidden
     >
-      <div className="flex h-7 items-center gap-1.5 border-b border-neutral-200/80 bg-neutral-100 px-3 dark:border-white/10 dark:bg-neutral-900">
+      <div className="flex h-7 items-center gap-1.5 border-b border-black/5 bg-[#ECEEF2]/90 px-3 dark:border-white/8 dark:bg-neutral-900">
         <span className="h-2 w-2 rounded-full bg-[#ff5f57]" />
         <span className="h-2 w-2 rounded-full bg-[#febc2e]" />
         <span className="h-2 w-2 rounded-full bg-[#28c840]" />
@@ -89,61 +101,107 @@ export function AppPreviewWindow({ activeRoute, children, className }: AppPrevie
             transformOrigin: 'top left',
           }}
         >
-          <div className="flex h-full w-full overflow-hidden bg-white dark:bg-neutral-950">
-            <aside className="flex w-56 shrink-0 flex-col border-e border-neutral-100 bg-[#F7F8FA] dark:border-neutral-800 dark:bg-neutral-950">
-              <div className="flex h-16 shrink-0 items-center border-b border-neutral-100 px-4 dark:border-neutral-800">
-                <TscopierLogo className="h-12 w-auto" />
-              </div>
-              <nav className="min-h-0 flex-1 space-y-5 overflow-hidden px-3 py-4">
-                {sections.map(section => (
-                  <div key={section.label}>
-                    <p className="mb-1.5 px-3 text-[10px] font-semibold tracking-widest text-neutral-900 dark:text-neutral-50">
-                      {section.label}
-                    </p>
-                    <div className="space-y-0.5">
-                      {section.items.map(item => {
-                        const Icon = getAppRouteIcon(item.to)
-                        const active = item.to === activeRoute
-                        return (
-                          <div
-                            key={item.to}
-                            className={clsx(
-                              'flex min-h-[20px] items-center gap-2 rounded-xl px-3 py-2.5 text-sm',
-                              active
-                                ? 'bg-green-400 font-semibold text-neutral-950'
-                                : 'font-medium text-neutral-900 dark:text-neutral-50',
-                            )}
-                          >
-                            <Icon className={clsx('h-4 w-4 shrink-0', active && 'text-neutral-950')} />
-                            <span className="min-w-0 truncate">{item.label}</span>
-                          </div>
-                        )
-                      })}
+          <div className={clsx('flex h-full w-full flex-col overflow-hidden', APP_CANVAS)}>
+            <div className="flex min-h-0 flex-1 gap-2.5 overflow-hidden p-3">
+              <aside className={clsx('flex w-56 shrink-0 flex-col overflow-hidden', APP_RAIL)}>
+                <div className="flex h-14 shrink-0 items-center px-4">
+                  <TscopierLogo brand="unicopier" className="h-8 w-auto" />
+                </div>
+                <nav className="min-h-0 flex-1 space-y-4 overflow-hidden px-2.5 pb-3">
+                  {sections.map(section => (
+                    <div key={section.label}>
+                      <p className={clsx('mb-1.5 px-3', APP_SECTION_LABEL)}>{section.label}</p>
+                      <div className="space-y-0.5">
+                        {section.items.map(item => {
+                          const Icon = getAppRouteIcon(item.to)
+                          const active = item.to === activeRoute
+                          return (
+                            <div
+                              key={item.to}
+                              className={clsx(
+                                'flex min-h-8 items-center gap-2.5 rounded-full px-3 py-1.5 text-sm',
+                                active
+                                  ? clsx(APP_RAIL_ACTIVE, 'font-semibold')
+                                  : clsx('font-medium text-neutral-600 dark:text-neutral-300', APP_RAIL_HOVER),
+                              )}
+                            >
+                              <Icon className="h-4 w-4 shrink-0" />
+                              <span className="min-w-0 truncate">{item.label}</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </nav>
+              </aside>
+
+              <div className={clsx('flex min-w-0 flex-1 flex-col overflow-hidden', APP_MAIN_SHELL)}>
+                <header className="z-20 flex h-14 shrink-0 items-center gap-2 px-4">
+                  <span
+                    className={clsx(
+                      'inline-flex h-9 w-9 items-center justify-center text-neutral-600 dark:text-neutral-300',
+                      APP_PILL,
+                    )}
+                  >
+                    <DirectionalIcon icon={PanelLeftClose} className="h-4.5 w-4.5" />
+                  </span>
+                  <div
+                    className={clsx(
+                      'flex h-9 min-w-0 max-w-xs flex-1 items-center gap-2 px-3 text-sm text-neutral-500 dark:text-neutral-400',
+                      APP_PILL,
+                    )}
+                  >
+                    <Search className="h-4 w-4 shrink-0" />
+                    <span className="min-w-0 truncate">{t.globalSearch.placeholder}</span>
+                  </div>
+                  <div className="ms-auto flex shrink-0 items-center gap-1.5">
+                    <span
+                      className={clsx(
+                        'flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium text-neutral-900 dark:text-neutral-50',
+                        APP_PILL,
+                      )}
+                    >
+                      <CopierActiveIndicator />
+                      <span className="whitespace-nowrap">{t.nav.copierPause.statusRunning}</span>
+                    </span>
+                    <span
+                      className={clsx(
+                        'inline-flex h-9 w-9 items-center justify-center text-green-500 dark:text-green-400',
+                        APP_PILL,
+                      )}
+                    >
+                      <Sparkles className="h-4.5 w-4.5" />
+                    </span>
+                    <span
+                      className={clsx(
+                        'inline-flex h-9 w-9 items-center justify-center text-neutral-700 dark:text-neutral-200',
+                        APP_PILL,
+                      )}
+                    >
+                      <Bell className="h-4.5 w-4.5" />
+                    </span>
+                    <div className={clsx('flex min-h-9 items-center gap-2 ps-1 pe-2', APP_PILL)}>
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-neutral-200 text-xs font-semibold text-neutral-950 dark:bg-neutral-700 dark:text-neutral-50">
+                        {PREVIEW_NAME.slice(0, 1)}
+                      </span>
+                      <span className="hidden text-start sm:block">
+                        <span className="block text-sm font-medium leading-tight text-neutral-900 dark:text-neutral-100">
+                          {PREVIEW_NAME}
+                        </span>
+                        <span className="block text-xs leading-tight text-neutral-500 dark:text-neutral-400">
+                          {t.pricing.advanced.name}
+                        </span>
+                      </span>
+                      <ChevronDown className="hidden h-3.5 w-3.5 text-neutral-500 dark:text-neutral-400 sm:block" />
                     </div>
                   </div>
-                ))}
-              </nav>
-            </aside>
+                </header>
 
-            <div className="flex min-w-0 flex-1 flex-col">
-              <header className="flex h-16 shrink-0 items-center gap-3 border-b border-neutral-100 bg-white px-5 dark:border-neutral-800 dark:bg-neutral-950">
-                <DirectionalIcon icon={PanelLeftClose} className="h-5 w-5 shrink-0 text-neutral-900 dark:text-neutral-50" />
-                <div className="flex h-9 min-w-0 max-w-xs flex-1 items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800/80 dark:text-neutral-50">
-                  <Search className="h-4 w-4 shrink-0" />
-                  <span className="min-w-0 truncate">{t.globalSearch.placeholder}</span>
-                </div>
-                <div className="ms-auto flex shrink-0 items-center gap-3">
-                  <span className="flex items-center gap-1.5 text-sm font-medium text-neutral-900 dark:text-neutral-50">
-                    <CopierActiveIndicator />
-                    <span className="whitespace-nowrap">{t.nav.copierPause.statusRunning}</span>
-                  </span>
-                  <Bell className="h-5 w-5 text-neutral-900 dark:text-neutral-50" />
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-200 text-xs font-semibold text-neutral-950">
-                    A
-                  </span>
-                </div>
-              </header>
-              <main className="min-h-0 flex-1 overflow-hidden bg-[#F7F8FA] p-6 dark:bg-neutral-950">{children}</main>
+                <main className="min-h-0 flex-1 overflow-hidden">
+                  <div className="flex h-full flex-col overflow-hidden px-5 pb-5 pt-1">{children}</div>
+                </main>
+              </div>
             </div>
           </div>
         </div>
@@ -155,17 +213,18 @@ export function AppPreviewWindow({ activeRoute, children, className }: AppPrevie
 /** Shared page-title row used by the page mockups. */
 export function PreviewPageHeader({ title, action }: { title: string; action?: string }) {
   return (
-    <div className="mb-5 flex items-center justify-between">
+    <div className="mb-4 flex items-center justify-between gap-3">
       <h3 className="text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">{title}</h3>
       {action ? (
-        <span className="rounded-lg bg-green-400 px-3.5 py-2 text-sm font-medium text-neutral-950">{action}</span>
+        <span className="rounded-full bg-green-400 px-3.5 py-2 text-sm font-medium text-neutral-950 shadow-xs">
+          {action}
+        </span>
       ) : null}
     </div>
   )
 }
 
-export const PREVIEW_CARD =
-  'overflow-hidden rounded-2xl border border-neutral-200/65 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-neutral-800/55 dark:bg-neutral-950'
+export const PREVIEW_CARD = `${APP_CARD} overflow-hidden`
 
 export function PreviewToggle({ on = true }: { on?: boolean }) {
   return (

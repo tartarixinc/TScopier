@@ -1,3 +1,4 @@
+import { detailModalJa } from '../copierLogs/detailModal'
 import type { LogsBundleTranslations } from './types'
 
 export const logsJa: LogsBundleTranslations = {
@@ -62,5 +63,6 @@ export const logsJa: LogsBundleTranslations = {
       broker_bridge_unavailable:
         'ブローカーブリッジが利用できません — MT5でアルゴ取引を有効にし、Trade EA readyを確認してください',
     },
+    detailModal: detailModalJa,
   },
 }

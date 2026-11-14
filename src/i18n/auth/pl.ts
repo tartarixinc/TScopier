@@ -102,12 +102,23 @@ export const authPl: AuthTranslations = {
     backToLogin: 'Powrót do logowania',
   },
   welcome: {
+    eyebrow: 'Jesteś na pokładzie',
     title: 'Witamy w UniCopier',
-    subtitle: 'Twoje konto jest gotowe. Połącz Telegram i zacznij kopiować sygnały na swojego brokera.',
-    steps: [
-      'Połącz Telegram i wybierz kanały sygnałów',
-      'Połącz konto brokerskie MT4/MT5',
-      'Kopiuj transakcje automatycznie zgodnie z ustawieniami ryzyka',
+    subtitle:
+      'Kopiuj sygnały tradingowe na swoich brokerów według reguł ryzyka — z Telegrama, TradingView i nie tylko.',
+    features: [
+      {
+        title: 'Źródła sygnałów',
+        description: 'Kanały Telegram, alerty TradingView, Discord i WhatsApp — powiązane z wybranymi kontami.',
+      },
+      {
+        title: 'Konta brokerskie',
+        description: 'Połącz MT4, MT5 i cTrader, a potem kopiuj wejścia, SL/TP i zarządzanie na real lub demo.',
+      },
+      {
+        title: 'Ryzyko pod kontrolą',
+        description: 'Wielkość lota, nadpisania, filtry i kopiowanie lustrzane — każda transakcja według Twoich zasad.',
+      },
     ],
     startUsing: 'Zacznij korzystać z UniCopier',
     exploreDashboard: 'Najpierw przejrzyj panel',

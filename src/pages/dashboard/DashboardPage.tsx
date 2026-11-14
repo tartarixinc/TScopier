@@ -68,6 +68,8 @@ import { filterMtTradesSinceConnect } from '../../lib/tradesSinceConnect'
 import {
   buildCopierLogSymbolLabels,
   buildSignalSymbolLookup,
+  tradeSignalActionLabel,
+  tradeSignalActionToneClass,
 } from '../../lib/copierLogDisplay'
 import {
   buildClosedCopierLogDraft,
@@ -81,6 +83,7 @@ import {
   copierLogDestinationSummary,
   copierLogDestinations,
   copierLogDestinationsFromAccountLabel,
+  signalHistoryToastLabels,
   type CopierLogDestination,
 } from '../../lib/copierLogToast'
 import { CopierDestinationLogos } from '../../components/dashboard/CopierDestinationLogos'
@@ -3627,7 +3630,8 @@ function LogCard({
   const viewDetailsLabel = t.copierLogs.detailModal?.viewDetails ?? 'View details'
   const status = copierLogStatusConfig(t)[row.status]
     ?? { variant: 'neutral' as const, label: row.status }
-  const typeLabel = action ? action.replace(/_/g, ' ') : null
+  const actionLabels = signalHistoryToastLabels(t.signalHistoryPage)
+  const typeLabel = action ? tradeSignalActionLabel(action, actionLabels) : null
   const timeLabel = row.at ? formatCopierLogTime(row.at) : '—'
 
   return (
@@ -3667,8 +3671,8 @@ function LogCard({
 
       {typeLabel ? (
         <p className={clsx(
-          'mt-3 text-sm font-medium uppercase',
-          action === 'buy' ? 'text-green-400' : action === 'sell' ? 'text-error-600' : 'text-neutral-900 dark:text-neutral-50',
+          'mt-3 text-sm font-medium',
+          tradeSignalActionToneClass(action),
         )}>
           {typeLabel}
         </p>
@@ -3709,7 +3713,8 @@ function LogRow({
   const viewDetailsLabel = t.copierLogs.detailModal?.viewDetails ?? 'View details'
   const status = copierLogStatusConfig(t)[row.status]
     ?? { variant: 'neutral' as const, label: row.status }
-  const typeLabel = action ? action.replace(/_/g, ' ') : '—'
+  const actionLabels = signalHistoryToastLabels(t.signalHistoryPage)
+  const typeLabel = action ? tradeSignalActionLabel(action, actionLabels) : '—'
 
   return (
     <div
@@ -3752,12 +3757,8 @@ function LogRow({
       </span>
       <span
         className={clsx(
-          'min-w-0 text-sm font-medium uppercase truncate',
-          action === 'buy'
-            ? 'text-green-400'
-            : action === 'sell'
-              ? 'text-error-600'
-              : 'text-neutral-900 dark:text-neutral-50',
+          'min-w-0 text-sm font-medium truncate',
+          tradeSignalActionToneClass(action),
         )}
         title={typeLabel}
       >
