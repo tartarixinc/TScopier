@@ -380,6 +380,29 @@ test('channelWorkerLogMessage: close worse entries success', () => {
   assert.match(message ?? '', /instant.*XAUUSD/i)
 })
 
+test('channelWorkerLogMessage: hides basket_leg_modify no_stops_to_apply (live fill noise)', () => {
+  const message = channelWorkerLogMessage(
+    {
+      action: 'basket_leg_modify',
+      status: 'skipped',
+      request_payload: {
+        skip_reason: 'no_stops_to_apply',
+        broker_symbol: 'BTCUSD',
+      },
+      response_payload: null,
+      error_message: 'no_stops_to_apply',
+      signals: {
+        channel_id: 'ch-1',
+        parsed_data: { action: 'sell', symbol: 'BTCUSD' },
+        status: 'executed',
+      },
+    },
+    channelWorkerEn,
+    { 'ch-1': 'general' },
+  )
+  assert.equal(message, null)
+})
+
 test('channelWorkerLogMessage: hides internal range rebalance leg modify failures', () => {
   const message = channelWorkerLogMessage(
     {

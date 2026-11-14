@@ -2,6 +2,16 @@
 
 ## Changelog
 
+### 2026-11-14 — Copier Process “Order Skipped” on live fills
+
+- **Context:** Copier Process showed many “Order placement / Skipped” rows with “Completed: sell BTCUSD…” while the sell was live on the broker.
+- **Plain English:** After a successful open, the worker logs per-leg stop housekeeping as skipped when there is nothing to change. The UI treated those as skipped orders and even reused the buy/sell label, so a live fill looked skipped.
+- **Root cause (technical):** `basket_leg_modify` + `no_stops_to_apply`; `resolveTradeActivityKind` preferred signal `sell` over `basket_leg_modify` → kindOrder; message fallthrough used “Completed: sell”.
+- **Fix (files):** [`tradeActivities.ts`](src/lib/tradeActivities.ts) kind order; [`channelWorkerLogMessage.ts`](src/lib/channelWorkerLogMessage.ts) hide `basket_leg_modify`, silence `no_stops_to_apply`, never “Completed” on skipped status.
+- **Tests/verification:** `tradeActivities.test.ts`, `channelWorkerLogMessage.test.ts` for BTCUSD sell + no_stops skip.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** None.
+
 ### 2026-11-14 — Dispatch push timeline noise + short 429/502 retries
 
 - **Context:** Copier Execution Timeline showed many `dispatch push attempt (failed)` rows next to successes; users thought signals were failing often.

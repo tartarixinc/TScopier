@@ -164,6 +164,15 @@ export function resolveTradeActivityKind(
   ) {
     return mgmt.kindModify
   }
+  // Layering / per-leg basket rows must win over signal buy/sell — otherwise a
+  // post-fill basket_leg_modify skip is labeled "Order placement / Skipped"
+  // while the market order already filled.
+  if (
+    logAction.startsWith('virtual_pending')
+    || logAction === 'basket_leg_modify'
+  ) {
+    return mgmt.kindLayering
+  }
   if (
     logAction === 'order_send'
     || logAction === 'signal_entry_pending_filled'
@@ -171,12 +180,6 @@ export function resolveTradeActivityKind(
     || signalAction === 'sell'
   ) {
     return mgmt.kindOrder
-  }
-  if (
-    logAction.startsWith('virtual_pending')
-    || logAction === 'basket_leg_modify'
-  ) {
-    return mgmt.kindLayering
   }
   if (PIPELINE_ACTIONS.has(logAction)) {
     return mgmt.kindPipeline
