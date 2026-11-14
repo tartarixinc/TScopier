@@ -1589,6 +1589,7 @@ broker: {
     statusClosed: 'Closed',
     editSignal: 'Edit SL/TP',
     updateLiveTrades: 'Update Live Trades',
+    resendParameters: 'Resend Parameters',
     saving: 'Sending Order',
     originalSignal: 'Channel signal',
     overrideSignal: 'Current override',

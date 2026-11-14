@@ -1506,6 +1506,7 @@ export const fr: Translations = {
     statusClosed: 'Closed',
     editSignal: 'Edit SL/TP',
     updateLiveTrades: 'Update Live Trades',
+    resendParameters: 'Resend Parameters',
     saving: 'Envoi de l\'ordre',
     originalSignal: 'Channel signal',
     overrideSignal: 'Current override',

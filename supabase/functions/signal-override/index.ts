@@ -96,6 +96,7 @@ type BrokerOutcome = { broker_id: string; applied: number; skipped: number; fail
 async function callWorkerApply(args: {
   userId: string
   signalId: string
+  forceApply?: boolean
 }): Promise<{
   applied_legs: number
   failed_legs?: number
@@ -118,6 +119,7 @@ async function callWorkerApply(args: {
     body: JSON.stringify({
       user_id: args.userId,
       signal_id: args.signalId,
+      ...(args.forceApply ? { force_apply: true } : {}),
     }),
   })
   const data = await res.json().catch(() => ({})) as {
@@ -160,6 +162,7 @@ Deno.serve(async (req: Request) => {
       signal_id?: string
       sl?: number | null
       tp_levels?: number[]
+      force_apply?: boolean
     }
     try {
       body = await req.json() as typeof body
@@ -172,6 +175,7 @@ Deno.serve(async (req: Request) => {
 
     const sl = body.sl === null || body.sl === undefined ? null : positiveLevel(body.sl)
     const tpLevels = normalizeTpLevels(body.tp_levels ?? [])
+    const forceApply = body.force_apply === true
     if (sl !== null && !(sl > 0)) return bad(400, "Invalid SL level")
     if (tpLevels.some(n => !(n > 0))) return bad(400, "Invalid TP levels")
     if (sl === null && tpLevels.length === 0) {
@@ -226,7 +230,7 @@ Deno.serve(async (req: Request) => {
       .eq("status", "open")
 
     let open = (signalOpenCount ?? 0) > 0
-    const workerResult = await callWorkerApply({ userId, signalId })
+    const workerResult = await callWorkerApply({ userId, signalId, forceApply })
     const appliedLegs = workerResult.applied_legs
     const failedLegs = workerResult.failed_legs ?? 0
     const applyErrors = workerResult.errors

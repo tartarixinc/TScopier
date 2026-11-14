@@ -284,6 +284,8 @@ export function EditSignalOverrideModal({
         signal_id: signalId,
         sl: parsed.sl,
         tp_levels: parsed.tp_levels,
+        // Same values as current override → force broker re-apply (resend).
+        force_apply: !hasChanges,
       })
       if ((saveResult.failed_legs ?? 0) > 0 && saveResult.applied_legs === 0) {
         const errs = saveResult.errors ?? []
@@ -650,14 +652,16 @@ export function EditSignalOverrideModal({
             ) : null}
 
             <div className="space-y-2">
-              <Button className="w-full" disabled={busy || !hasChanges} onClick={() => { void handleSave() }}>
+              <Button className="w-full" disabled={busy} onClick={() => { void handleSave() }}>
                 {busy ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin mr-2" />
                     {sh.saving}
                   </>
-                ) : (
+                ) : hasChanges ? (
                   sh.updateLiveTrades
+                ) : (
+                  sh.resendParameters
                 )}
               </Button>
               <button

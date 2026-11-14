@@ -4,6 +4,7 @@ import {
   isAccountSummaryFlat,
   normalizeLiveOpenMetrics,
   resolveFlatBookOpenMetrics,
+  resolveOpenCountWhenOpensFetchSkipped,
 } from './dashboardLiveOpenMetrics'
 
 describe('normalizeLiveOpenMetrics', () => {
@@ -81,5 +82,39 @@ describe('acceptFreshOpenPnl', () => {
 
   it('keeps previous when next is non-finite', () => {
     expect(acceptFreshOpenPnl(12, Number.NaN)).toBe(12)
+  })
+})
+
+describe('resolveOpenCountWhenOpensFetchSkipped', () => {
+  it('does not invent 0 from a flat summary when a sticky open count exists', () => {
+    expect(resolveOpenCountWhenOpensFetchSkipped({
+      summaryFlat: true,
+      summaryOpenTrades: undefined,
+      previousOpenTrades: 20,
+    })).toBe(20)
+  })
+
+  it('prefers summary open_trades when floating is non-flat', () => {
+    expect(resolveOpenCountWhenOpensFetchSkipped({
+      summaryFlat: false,
+      summaryOpenTrades: 7,
+      previousOpenTrades: 20,
+    })).toBe(7)
+  })
+
+  it('falls back to previous when non-flat summary has no open_trades hint', () => {
+    expect(resolveOpenCountWhenOpensFetchSkipped({
+      summaryFlat: false,
+      summaryOpenTrades: undefined,
+      previousOpenTrades: 4,
+    })).toBe(4)
+  })
+
+  it('returns 0 only when there is no prior and no summary hint', () => {
+    expect(resolveOpenCountWhenOpensFetchSkipped({
+      summaryFlat: true,
+      summaryOpenTrades: undefined,
+      previousOpenTrades: undefined,
+    })).toBe(0)
   })
 })

@@ -497,6 +497,7 @@ export interface SignalHistoryPageTranslations {
   statusClosed: string
   editSignal: string
   updateLiveTrades: string
+  resendParameters: string
   saving: string
   originalSignal: string
   overrideSignal: string

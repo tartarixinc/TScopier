@@ -768,9 +768,11 @@ export function startTradeHttpServer(
         const body = (await readJson(req)) as {
           user_id?: string
           signal_id?: string
+          force_apply?: boolean
         }
         const userId = body.user_id?.trim()
         const signalId = body.signal_id?.trim()
+        const forceApply = body.force_apply === true
         if (!userId || !signalId) {
           return sendJson(res, 400, { error: 'user_id and signal_id required' })
         }
@@ -778,7 +780,11 @@ export function startTradeHttpServer(
           return sendJson(res, 200, { applied_legs: 0, skipped_legs: 0, failed_legs: 0, reason: 'wrong_shard' })
         }
         try {
-          const result = await applySignalOverride(tradeExecutor.supabase, { userId, signalId })
+          const result = await applySignalOverride(tradeExecutor.supabase, {
+            userId,
+            signalId,
+            forceApply,
+          })
           return sendJson(res, 200, result)
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : 'apply failed'

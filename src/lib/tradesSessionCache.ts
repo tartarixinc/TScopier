@@ -1,5 +1,6 @@
 import { clearSessionCacheKey, readSessionCache } from './sessionDataCache'
 import type { MtTrade } from './fxsocketBroker'
+import { isMtTradePendingEntry } from './fxsocketStreamParse'
 
 /** Serve Trades page from cache; background refetch when older than this. */
 export const TRADES_CACHE_TTL_MS = 90 * 1000
@@ -27,11 +28,13 @@ export function tradesListFingerprint(trades: MtTrade[]): string {
   return `${trades.length}:${open}:${maxTs}`
 }
 
-/** Open-leg count from cached Trades page data; null if no fresh cache. */
+/** Market-open count from cached Trades page data; null if no fresh cache. */
 export function openTradeCountInCache(userId: string): number | null {
   const cached = readSessionCache<TradesCachePayload>(tradesCacheKey(userId), TRADES_CACHE_TTL_MS)
   if (!cached) return null
-  return cached.data.trades.filter(t => t.status === 'open').length
+  return cached.data.trades.filter(
+    t => t.status === 'open' && !isMtTradePendingEntry(t),
+  ).length
 }
 
 export function clearTradesSessionCache(userId?: string | null): void {

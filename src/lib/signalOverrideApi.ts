@@ -4,6 +4,8 @@ export type SignalOverrideSaveRequest = {
   signal_id: string
   sl: number | null
   tp_levels: number[]
+  /** Re-send OrderModify even when DB already matches (manual resend). */
+  force_apply?: boolean
 }
 
 export type SignalOverrideBrokerOutcome = {

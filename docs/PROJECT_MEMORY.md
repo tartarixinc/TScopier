@@ -2,6 +2,35 @@
 
 ## Changelog
 
+### 2026-11-14 — Edit SL/TP Resend Parameters when unchanged
+
+- **Context:** Update Live Trades stayed greyed out when SL/TP matched the current override, so users could not re-push stops that never landed on the broker.
+- **Plain English:** With the same values, the button says “Resend Parameters” and stays clickable; it becomes “Update Live Trades” only after you edit. Resend forces the broker modify even if the database already looks correct.
+- **Fix (files):** [`EditSignalOverrideModal.tsx`](src/components/dashboard/EditSignalOverrideModal.tsx); i18n `resendParameters`; [`signalOverrideApi.ts`](src/lib/signalOverrideApi.ts) `force_apply`; edge [`signal-override`](supabase/functions/signal-override/index.ts); worker [`applySignalOverride.ts`](worker/src/applySignalOverride.ts) + [`httpServer.ts`](worker/src/httpServer.ts).
+- **Tests/verification:** `applySignalOverride.test.ts` forceApply dry-run; open Edit SL/TP with unchanged levels → Resend Parameters enabled; change a level → Update Live Trades.
+- **Deploy state:** Frontend + edge `signal-override` + worker (Migration branch for edge when deploying).
+- **Follow-ups:** Deploy edge + worker for force_apply to take effect in staging/prod.
+
+### 2026-11-14 — Dashboard Open Trades / Open PnL near-realtime
+
+- **Context:** Sidebar showed “N Open” while Dashboard Open Trades / Open PnL stayed at 0; opens did not appear instantly.
+- **Plain English:** The cards now seed and refresh from the same broker open-positions feed as the sidebar, keep prior counts when a poll skips the opens fetch, and re-check within about half a second when trades change in the database.
+- **Root cause (technical):** MTAPI REST poll treated a flat AccountSummary as `open_trades = 0` without fetching OpenedOrders; WS `onAccount` never updated open count; `useDashboardRealtime` quiet path used `syncLive: false`; sidebar counted all `status=open` (incl. pending) vs cards’ market-only rule.
+- **Fix (files):** [`brokerOpenBook.ts`](src/lib/brokerOpenBook.ts) shared market-open book; [`DashboardPage.tsx`](src/pages/dashboard/DashboardPage.tsx) seed + 40s reconcile + preserve-on-skip + WS/realtime nudge; [`useDashboardRealtime.ts`](src/hooks/useDashboardRealtime.ts) `onTradesChange`; [`useHasOpenTrades.ts`](src/hooks/useHasOpenTrades.ts) + [`tradesSessionCache.ts`](src/lib/tradesSessionCache.ts) market-only badge; [`dashboardLiveOpenMetrics.ts`](src/lib/dashboardLiveOpenMetrics.ts) `resolveOpenCountWhenOpensFetchSkipped`.
+- **Tests/verification:** `brokerOpenBook.test.ts`, `dashboardLiveOpenMetrics.test.ts` skip-fetch cases; with live MT opens, Open Trades / Open PnL and sidebar badge should match within ~1s of open/close.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** None.
+
+### 2026-11-14 — Copier Engine Active channels exclude non-Telegram sources
+
+- **Context:** TradingView / Discord / WhatsApp rows in `telegram_channels` appeared under Active channels with “Invalid Telegram ID”.
+- **Plain English:** Those sources share one table but aren’t Telegram chats. A couple of refresh paths forgot to filter them, so they showed up and failed the Telegram ID check.
+- **Root cause (technical):** `handleTelegramSessionInvalid` and `fetchTgChannels` reconcile called `setChannels` with all `source_kind`s; ChannelRow always ran `hasValidTelegramChannelIdentity`.
+- **Fix (files):** [`telegramChannelIdentity.ts`](src/lib/telegramChannelIdentity.ts) `isTelegramSourceChannel`; [`CopierEnginePage.tsx`](src/pages/dashboard/CopierEnginePage.tsx) filter on load/session-invalid/fetch/realtime; skip invalid-ID banner for non-Telegram.
+- **Tests/verification:** `telegramChannelIdentity.test.ts` source-kind cases; refresh Copier Engine with TV/Discord/WhatsApp configured — Active channels should be Telegram-only.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** None.
+
 ### 2026-11-14 — Features section scroll hijack
 
 - **Context:** Sticky scroll-track “hijack” never pinned because `marketing-hero-bg` used `overflow-hidden`; user wanted the page to stop and advance cards.

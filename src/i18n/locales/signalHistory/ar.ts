@@ -35,6 +35,7 @@ export const signalHistoryAr: SignalHistoryPageTranslations = {
   statusClosed: 'مغلق',
   editSignal: 'تعديل وقف الخسارة / جني الأرباح',
   updateLiveTrades: 'تحديث الصفقات المفتوحة',
+  resendParameters: 'إعادة إرسال المعلمات',
   saving: 'جارٍ إرسال الأمر',
   originalSignal: 'إشارة القناة',
   overrideSignal: 'التعديل الحالي',
