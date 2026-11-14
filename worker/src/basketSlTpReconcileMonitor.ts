@@ -35,8 +35,8 @@ import {
   notifyManualBrokerOverrideReverted,
 } from './manualBrokerOverrideNotification'
 import { writeExecutionLog } from './observability/executionLog'
-const ACTIVE_MS = monitorActiveIntervalMs('BASKET_RECONCILE_TICK_MS', 5_000)
-const IDLE_MS = monitorIdleIntervalMs('BASKET_RECONCILE_IDLE_MS', 15_000)
+const ACTIVE_MS = monitorActiveIntervalMs('BASKET_RECONCILE_TICK_MS', 2_000)
+const IDLE_MS = monitorIdleIntervalMs('BASKET_RECONCILE_IDLE_MS', 8_000)
 const JOB_BATCH_LIMIT = Math.min(
   80,
   Math.max(5, Number(process.env.BASKET_RECONCILE_SWEEP_BATCH ?? 50)),

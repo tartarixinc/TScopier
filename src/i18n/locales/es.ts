@@ -1515,6 +1515,7 @@ export const es: Translations = {
     accountsHolding: 'Cuentas del bróker con esta señal',
     closeOneAccount: 'Cerrar esta cuenta',
     applySuccess: 'Override saved. Applied to {count} open leg(s).',
+    applyQueued: 'Override saved. Applying SL/TP to open trades in the background.',
     applyBrokerSummary: 'Updated {updated} of {total} broker(s).',
     applyPartialBrokers: 'Override saved. Updated {updated} of {total} broker(s) — the rest are being reconciled.',
     applyFailed: 'Could not save override',

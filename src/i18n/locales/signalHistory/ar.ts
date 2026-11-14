@@ -44,6 +44,7 @@ export const signalHistoryAr: SignalHistoryPageTranslations = {
   accountsHolding: 'حسابات الوسيط التي تحمل هذه الإشارة',
   closeOneAccount: 'إغلاق هذا الحساب',
   applySuccess: 'تم حفظ التعديل. طُبِّق على {count} صفقة/صفقات مفتوحة.',
+  applyQueued: 'تم حفظ التعديل. جارٍ تطبيق وقف الخسارة/جني الأرباح على الصفقات المفتوحة في الخلفية.',
   applyBrokerSummary: 'تم التحديث على {updated} من {total} وسيط/وسطاء.',
   applyPartialBrokers: 'تم حفظ التعديل. تم التحديث على {updated} من {total} وسيط/وسطاء — والباقي قيد المزامنة.',
   applyFailed: 'تعذّر حفظ التعديل',

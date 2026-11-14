@@ -2,6 +2,36 @@
 
 ## Changelog
 
+### 2026-11-14 — False “Closed on broker” for live BuyLimit (Copier log)
+
+- **Context:** Copier Process showed BTCUSD Closed / “Closed on broker” while the Fusion Markets BuyLimit was still live (Martins Migration, ticket `49652208`, trade `1f08c89e…`, ~14:46 UTC).
+- **Plain English:** A resting limit order was marked closed in our database even though it was still on the broker. The log then said “Closed on broker.” We restored that order to pending and stopped the background sweep from doing this again.
+- **Root cause (technical):** `tradeBrokerDriftMonitor` treats tickets missing from `/OpenedOrders` as ghosts after two passes. Many bridges’ OpenedOrders are positions-only, so a `status=pending` BuyLimit never appears → `missingOnce` → `close_reason=position_gone` with null fill. Row had `lot_size=0` from broker echo `lots=0` on LIMIT accept.
+- **Fix (files):** [`tradeBrokerDrift.ts`](worker/src/tradeBrokerDrift.ts) never plans/closes pending ghosts (open-only CAS); tests in [`tradeBrokerDrift.test.ts`](worker/src/tradeBrokerDrift.test.ts); [`orderLegExecution.ts`](worker/src/tradeExecutor/orderLegExecution.ts) keep requested volume when broker lots≤0. Migration SQL reopened trade `1f08c89e…` → `pending`, lot 3, cleared close fields.
+- **Tests/verification:** `npx tsx --test src/tradeBrokerDrift.test.ts`; trade row reopened on Migration.
+- **Deploy state:** Code local; Migration DB repaired. Worker redeploy needed for drift fix.
+- **Follow-ups:** Redeploy trade worker; optional ClosedOrders corroboration if we later want drift to retire abandoned pendings.
+
+### 2026-11-14 — Resend Parameters / Edit SL/TP runs in background + closable modal
+
+- **Context:** Manage Trades Edit SL/TP stayed on “Sending Order” while the edge function awaited worker OrderModify across every open leg; Escape/X were disabled. Reconciler felt slow (5s/15s ticks).
+- **Plain English:** Saving or resending SL/TP now returns as soon as the override is stored. Broker updates run on the worker in the background; the modal can always be closed. The page shows a banner that apply is running. Basket reconcile ticks faster when there is work.
+- **Root cause (technical):** `signal-override` awaited `callWorkerApply` → `applySignalOverride` (blocking HTTP); modal `actionBusy` disabled dismiss.
+- **Fix (files):** [`supabase/functions/signal-override/index.ts`](supabase/functions/signal-override/index.ts) `EdgeRuntime.waitUntil` kick + immediate `{ queued: true }`; [`worker/src/httpServer.ts`](worker/src/httpServer.ts) background apply + accept response; [`EditSignalOverrideModal.tsx`](src/components/dashboard/EditSignalOverrideModal.tsx) close on save, never lock dismiss; [`SignalHistoryPage.tsx`](src/pages/dashboard/SignalHistoryPage.tsx) + i18n `applyQueued`; [`basketSlTpReconcileMonitor.ts`](worker/src/basketSlTpReconcileMonitor.ts) active 2s / idle 8s defaults.
+- **Tests/verification:** Deploy edge to Migration; worker redeploy needed for async apply + faster reconcile; UI: Resend closes modal immediately with background banner.
+- **Deploy state:** Edge `signal-override` v39 on Migration `supmsgcubipmmowrzoub`. Worker + frontend still need deploy for background accept + faster reconcile ticks + closable UI.
+- **Follow-ups:** Redeploy trade worker (and frontend) wherever Manage Trades is tested.
+
+### 2026-11-14 — Martins prod: open BTC sells have no SL/TP (reconciler idle, not broken)
+
+- **Context:** User asked why SL/TP missing on `martins.osodi@gmail.com` (prod) and what happened to the reconciler.
+- **Plain English:** The open BTC sells never had stop or take-profit levels in the channel message, and this account’s predefined SL/TP pips are turned off. The worker opened the legs with SL=0/TP=0 on purpose. The reconciler did not invent levels — it had no targets and no jobs to run.
+- **Root cause (technical):** Signal `0ee0e1e5…` raw “Lets all Sell BTC now”; `parsed_data.sl=null`, `tp=[]`; OrderSend payloads `stoploss:0`/`takeprofit:0`; `manual_settings.use_predefined_sl_pips=false` / `use_predefined_tp_pips=false`; `basket_reconcile_jobs` and `basket_sl_tp_targets` counts = 0 for this user; post-fill `basket_leg_modify` skipped `no_stops_to_apply`. Same pattern on closed signal `b2d57ea5…`. Older signals with SL/TP in the text did get stops. Account “New Con” `974cd34d…`.
+- **Fix (files):** Diagnosis only this turn — no code change.
+- **Tests/verification:** Prod SQL on user `a23f24d9…`: 15/15 open legs missing SL+TP; 0 reconcile jobs/targets.
+- **Deploy state:** N/A (investigation).
+- **Follow-ups:** Enable predefined SL/TP pips on the account (30 / 20-40-60 already configured but toggles off), or use Edit SL/TP / Resend; optional product rule to refuse market entries with no stops when predefined pips are off.
+
 ### 2026-11-14 — Copier Process “Order Skipped” on live fills
 
 - **Context:** Copier Process showed many “Order placement / Skipped” rows with “Completed: sell BTCUSD…” while the sell was live on the broker.

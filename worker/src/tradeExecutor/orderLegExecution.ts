@@ -718,6 +718,9 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
         }),
     })
     const tradeTicket = normalizeBrokerTradeTicket(broker.provider, result.ticket)
+    // Broker echoes sometimes return lots=0 on LIMIT/STOP accept; keep the
+    // requested volume so the row is not stored as a zero-lot phantom.
+    const filledLots = Number(result.lots) > 0 ? Number(result.lots) : sendArgs.volume
     const tradeRowPayload = {
       user_id: signal.user_id,
       signal_id: signal.id,
@@ -729,7 +732,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
       entry_price: entryPx,
       sl: openSl,
       tp: openTp,
-      lot_size: result.lots ?? sendArgs.volume,
+      lot_size: filledLots,
       status: sendArgs.operation.includes('Limit') || sendArgs.operation.includes('Stop') ? 'pending' : 'open',
       opened_at: new Date().toISOString(),
       cwe_close_price: leg.cweClosePrice ?? null,
@@ -759,7 +762,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
             metaapi_order_id: tradeTicket,
             symbol: sendArgs.symbol,
             direction: isBuy ? 'buy' : 'sell',
-            lot_size: result.lots ?? sendArgs.volume,
+            lot_size: filledLots,
             entry_price: entryPx,
           },
           openedOrders: await positionSnapshot(),

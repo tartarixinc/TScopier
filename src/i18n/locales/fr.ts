@@ -1515,6 +1515,7 @@ export const fr: Translations = {
     accountsHolding: 'Comptes courtier portant ce signal',
     closeOneAccount: 'Clôturer ce compte',
     applySuccess: 'Override saved. Applied to {count} open leg(s).',
+    applyQueued: 'Override saved. Applying SL/TP to open trades in the background.',
     applyBrokerSummary: 'Updated {updated} of {total} broker(s).',
     applyPartialBrokers: 'Override saved. Updated {updated} of {total} broker(s) — the rest are being reconciled.',
     applyFailed: 'Could not save override',

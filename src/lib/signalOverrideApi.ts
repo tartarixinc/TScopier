@@ -17,6 +17,8 @@ export type SignalOverrideBrokerOutcome = {
 
 export type SignalOverrideSaveResponse = {
   ok: true
+  /** Broker OrderModify is running on the worker; response returned immediately. */
+  queued?: boolean
   applied_legs: number
   failed_legs?: number
   open: boolean

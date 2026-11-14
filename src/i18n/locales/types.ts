@@ -506,6 +506,7 @@ export interface SignalHistoryPageTranslations {
   accountsHolding: string
   closeOneAccount: string
   applySuccess: string
+  applyQueued: string
   applyBrokerSummary: string
   applyPartialBrokers: string
   applyFailed: string

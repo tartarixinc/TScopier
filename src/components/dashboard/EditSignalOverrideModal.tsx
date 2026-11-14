@@ -166,6 +166,7 @@ type EditSignalOverrideModalProps = EditSignalOverrideSnapshot & {
   onSaved: (result: {
     appliedLegs: number
     open: boolean
+    queued?: boolean
     brokersUpdated?: number
     brokersTotal?: number
   }) => void
@@ -249,7 +250,9 @@ export function EditSignalOverrideModal({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !actionBusy) onClose()
+      // Always allow Escape — save/resend runs in the background after the
+      // override is persisted, so the user must never be trapped in the modal.
+      if (e.key === 'Escape') onClose()
     }
     document.addEventListener('keydown', onKey)
     const prevOverflow = document.body.style.overflow
@@ -258,7 +261,7 @@ export function EditSignalOverrideModal({
       document.removeEventListener('keydown', onKey)
       document.body.style.overflow = prevOverflow
     }
-  }, [onClose, actionBusy])
+  }, [onClose])
 
   // Result summary auto-closes the modal after a short countdown.
   useEffect(() => {
@@ -287,36 +290,21 @@ export function EditSignalOverrideModal({
         // Same values as current override → force broker re-apply (resend).
         force_apply: !hasChanges,
       })
-      if ((saveResult.failed_legs ?? 0) > 0 && saveResult.applied_legs === 0) {
+      if ((saveResult.failed_legs ?? 0) > 0 && saveResult.applied_legs === 0 && !saveResult.queued) {
         const errs = saveResult.errors ?? []
         setFormError(errs.some(isMarketClosedMessage) ? sh.applyMarketClosed : (errs[0] ?? sh.applyFailed))
         return
       }
-      const total = saveResult.brokers_total ?? 0
-      const updated = saveResult.brokers_updated ?? 0
-      let text: string
-      if (total > 1 && updated < total) {
-        text = interpolate(sh.applyPartialBrokers, { updated: String(updated), total: String(total) })
-      } else if (total > 1) {
-        text = `${interpolate(sh.applySuccess, { count: String(saveResult.applied_legs) })} `
-          + interpolate(sh.applyBrokerSummary, { updated: String(updated), total: String(total) })
-      } else {
-        text = interpolate(sh.applySuccess, { count: String(saveResult.applied_legs) })
-      }
+      // Broker apply is queued on the worker — close immediately and let the
+      // page banner confirm background work instead of trapping the user here.
       onSaved({
         appliedLegs: saveResult.applied_legs,
         open: saveResult.open,
+        queued: saveResult.queued !== false,
         brokersUpdated: saveResult.brokers_updated,
         brokersTotal: saveResult.brokers_total,
       })
-      setResult({
-        kind: 'updated',
-        text,
-        sub: `SL ${draft.sl.trim() || '—'} · TP ${normalizeTpLevels(draft.tpLevels).join(', ') || '—'}`,
-        partial: total > 1 && updated < total,
-      })
-      setCountdown(RESULT_AUTO_CLOSE_SECONDS)
-      setMode('result')
+      onClose()
     } catch (e) {
       setFormError(e instanceof Error ? e.message : sh.applyFailed)
     } finally {
@@ -437,7 +425,6 @@ export function EditSignalOverrideModal({
         className="absolute inset-0 bg-neutral-950/55"
         aria-label={sh.closeModal}
         onClick={onClose}
-        disabled={actionBusy}
       />
       <div className="relative w-full sm:max-w-lg max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 shadow-2xl">
         <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-5 py-4 border-b border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900">
@@ -446,10 +433,9 @@ export function EditSignalOverrideModal({
           </h2>
           <button
             type="button"
-            className="p-2 rounded-lg text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40"
+            className="p-2 rounded-lg text-neutral-900 dark:text-neutral-50 hover:text-neutral-900 dark:hover:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
             aria-label={sh.closeModal}
             onClick={onClose}
-            disabled={actionBusy}
           >
             <X className="w-5 h-5" />
           </button>
