@@ -271,7 +271,8 @@
 }
 
 @utility marketing-hero-bg {
-  @apply min-h-screen overflow-hidden;
+  /* No overflow clipping here — it breaks position:sticky scroll stages. */
+  @apply min-h-screen;
 }
 
 @utility marketing-page-bg {

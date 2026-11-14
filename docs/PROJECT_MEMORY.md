@@ -2,6 +2,16 @@
 
 ## Changelog
 
+### 2026-11-14 — Features section scroll hijack
+
+- **Context:** Sticky scroll-track “hijack” never pinned because `marketing-hero-bg` used `overflow-hidden`; user wanted the page to stop and advance cards.
+- **Plain English:** Reaching Features stops page scroll; wheel/touch flips through feature cards, then the page continues.
+- **Root cause (technical):** Parent `overflow-hidden` broke sticky; also needed real `wheel` `preventDefault` hijack.
+- **Fix (files):** [`index.css`](src/index.css) drop overflow on `marketing-hero-bg`; [`FeaturesSection.tsx`](src/components/marketing/sections/FeaturesSection.tsx) wheel/touch/keyboard lock + card steps.
+- **Tests/verification:** Desktop landing `#features` — page freezes, cards advance, release at ends.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** None.
+
 ### 2026-11-14 — Marketing header shows avatar when signed in
 
 - **Context:** Signed-in visitors only saw a Dashboard button; avatar image often missing because marketing has no app session/profile.
