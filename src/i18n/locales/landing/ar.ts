@@ -42,7 +42,7 @@ export const landingAr: LandingTranslations = {
     },
   },
   hero: {
-    headline: 'منصة النسخ رقم 1 لكل متداول فوركس وعملات رقمية',
+    headline: 'ناسخ شامل لكل متداول فوركس وعملات رقمية',
     headlinePhrases: [],
     subheadline:
       'أتمت تداولاتك من Telegram أو WhatsApp أو Discord أو TradingView أو حساب رئيسي إلى أكثر من 8 منصات وساطة في أقل من 50 مللي ثانية. بدون VPS.',
@@ -916,7 +916,7 @@ export const landingAr: LandingTranslations = {
       primary: 'ابدأ تجربتك المجانية لمدة 5 أيام',
       secondary: 'تسجيل الدخول',
     },
-    tagline: 'ناسخ إشارات Telegram فائق السرعة لحسابات MetaTrader.',
+    tagline: 'ناسخ شامل لكل متداول فوركس وعملات رقمية',
     columns: {
       product: 'المنتج',
       resources: 'الموارد',

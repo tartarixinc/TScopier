@@ -8,12 +8,6 @@ import { appUrl, marketingUrl } from '../../lib/site'
 import { HELP_LINKS } from '../../lib/helpLinks'
 import { MarketingPricingHint } from './MarketingPricingHint'
 
-const FOOTER_PLATFORMS = [
-  { src: '/Telegram.svg', alt: 'Telegram' },
-  { src: '/MT5.png', alt: 'MetaTrader 5' },
-  { src: '/MT4.png', alt: 'MetaTrader 4' },
-] as const
-
 interface FooterLink {
   label: string
   href: string
@@ -154,26 +148,6 @@ export function MarketingFooter() {
               <p className="mt-4 max-w-xs text-sm leading-relaxed text-neutral-900 dark:text-neutral-50">
                 {f.tagline}
               </p>
-              <p className="mt-6 text-xs font-semibold uppercase tracking-wider text-neutral-900 dark:text-neutral-50">
-                {f.platforms}
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {FOOTER_PLATFORMS.map((platform) => (
-                  <span
-                    key={platform.src}
-                    className="marketing-footer-platform flex h-10 w-10 items-center justify-center rounded-lg border border-neutral-200/90 bg-white shadow-xs dark:border-neutral-700 dark:bg-neutral-900"
-                    title={platform.alt}
-                  >
-                    <img
-                      src={platform.src}
-                      alt={platform.alt}
-                      className="h-5 w-5 object-contain"
-                      width={20}
-                      height={20}
-                    />
-                  </span>
-                ))}
-              </div>
             </div>
 
             <FooterNavColumn title={f.columns.product} links={productLinks} />

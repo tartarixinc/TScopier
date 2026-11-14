@@ -42,7 +42,7 @@ export const landingFr: LandingTranslations = {
     },
   },
   hero: {
-    headline: 'La plateforme de copie n°1 pour tout trader Forex et crypto',
+    headline: 'Copieur tout-en-un pour tout trader Forex et crypto',
     headlinePhrases: [],
     subheadline:
       'Automatisez vos trades depuis Telegram, WhatsApp, Discord, TradingView ou un compte maître vers plus de 8 plateformes de courtage en moins de 50 ms. Aucun VPS requis.',
@@ -918,7 +918,7 @@ export const landingFr: LandingTranslations = {
       primary: 'Commencez votre essai gratuit de 5 jours',
       secondary: 'Se connecter',
     },
-    tagline: 'Copieur de signaux Telegram ultra-rapide pour comptes MetaTrader.',
+    tagline: 'Copieur tout-en-un pour tout trader Forex et crypto',
     columns: {
       product: 'Produit',
       resources: 'Ressources',

@@ -42,7 +42,7 @@ export const landingRu: LandingTranslations = {
     },
   },
   hero: {
-    headline: 'Платформа копирования №1 для каждого трейдера Forex и крипто',
+    headline: 'Универсальный копировщик для каждого трейдера Forex и крипто',
     headlinePhrases: [],
     subheadline:
       'Автоматизируйте сделки из Telegram, WhatsApp, Discord, TradingView или мастер-счёта на 8+ брокерских платформ менее чем за 50 мс. VPS не требуется.',
@@ -916,7 +916,7 @@ export const landingRu: LandingTranslations = {
       primary: 'Начните 5-дневный бесплатный пробный период',
       secondary: 'Войти',
     },
-    tagline: 'Сверхбыстрый копировщик сигналов Telegram для счетов MetaTrader.',
+    tagline: 'Универсальный копировщик для каждого трейдера Forex и крипто',
     columns: {
       product: 'Продукт',
       resources: 'Ресурсы',

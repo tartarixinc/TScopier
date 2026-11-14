@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { Activity, RefreshCw, X } from 'lucide-react'
+import { ChevronDown, RefreshCw, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
@@ -27,7 +27,7 @@ import { getCachedTgSession, setCachedTgSession } from '../../lib/telegramSessio
 import { subscribeTradingViewWebhooksChanged } from '../../lib/tradingViewWebhook'
 import { subscribeWhatsAppSourcesChanged } from '../../lib/whatsappSource'
 import type { BrokerAccount } from '../../types/database'
-import { APP_SECTION_LABEL, APP_WORKSPACE } from '../../lib/appSurface'
+import { APP_CARD, APP_SECTION_LABEL, APP_WORKSPACE } from '../../lib/appSurface'
 import { SignalSourceLogo } from './SignalSourceLogo'
 
 const SOURCE_ORDER: SignalSourceKind[] = ['telegram', 'discord', 'whatsapp', 'tradingview']
@@ -401,28 +401,22 @@ export function CopierStatusCard({
         type="button"
         onClick={() => setOpen(true)}
         className={clsx(
-          'inline-flex max-w-full items-center gap-2 rounded-full px-2.5 py-1.5 text-left text-sm transition-colors',
+          APP_CARD,
+          'inline-flex max-w-full items-center gap-2 px-3.5 py-2 text-left text-sm transition-colors',
           'hover:bg-neutral-50 dark:hover:bg-white/5',
           className,
         )}
         aria-haspopup="dialog"
         aria-expanded={open}
       >
-        <span
-          className={clsx(
-            'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg',
-            toneWash(summaryTone),
-          )}
-        >
-          <Activity className={clsx('h-3.5 w-3.5', toneText(summaryTone))} aria-hidden />
-        </span>
+        <span className={clsx('h-2 w-2 shrink-0 rounded-full', toneDot(summaryTone))} aria-hidden />
         <span className="min-w-0 truncate">
           <span className="font-semibold text-neutral-900 dark:text-neutral-50">
-            {cs.title}
+            {cs.title}:{' '}
           </span>
-          <span className="mx-1.5 text-neutral-300 dark:text-neutral-700" aria-hidden>·</span>
           <StatusValue tone={summaryTone}>{summary}</StatusValue>
         </span>
+        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-neutral-500 dark:text-neutral-400" aria-hidden />
       </button>
 
       {open ? (

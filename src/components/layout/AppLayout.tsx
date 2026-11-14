@@ -523,7 +523,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
             </button>
             <AppSearchMobileTrigger />
             <LanguageSwitcher className="hidden lg:block" />
-            <ThemeToggle className="hidden lg:block" />
+            <ThemeToggle className="hidden lg:inline-flex" />
             <NotificationBell
               open={notificationsOpen}
               onOpen={() => {

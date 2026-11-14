@@ -3,6 +3,7 @@ import { Check, ChevronDown, Search } from 'lucide-react'
 import clsx from 'clsx'
 import { useLocale } from '../../context/LocaleContext'
 import { LocaleFlag } from '../ui/LocaleFlag'
+import { APP_PILL } from '../../lib/appSurface'
 import { filterLocales, LOCALES, type Locale } from '../../i18n/types'
 
 interface LanguageSwitcherProps {
@@ -99,12 +100,12 @@ export function LanguageSwitcher({ className, compact = false, onDark = false }:
         type="button"
         onClick={() => setOpen(v => !v)}
         className={clsx(
-          'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors',
+          'inline-flex min-h-9 items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium transition-colors',
           onDark
-            ? clsx('text-white hover:bg-white/10 hover:text-white', open && 'bg-white/10')
+            ? clsx('rounded-full text-white hover:bg-white/10 hover:text-white', open && 'bg-white/10')
             : clsx(
-                'text-neutral-900 hover:bg-neutral-100 hover:text-neutral-900',
-                'dark:text-neutral-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-50',
+                APP_PILL,
+                'text-neutral-900 hover:bg-neutral-50 dark:text-neutral-50 dark:hover:bg-neutral-800',
                 open && 'bg-neutral-100 dark:bg-neutral-800',
               ),
         )}

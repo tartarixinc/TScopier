@@ -42,7 +42,7 @@ export const landingSv: LandingTranslations = {
     },
   },
   hero: {
-    headline: 'Kopieringsplattform nr 1 för alla forex- och kryptotraders',
+    headline: 'Allt-i-ett-kopierare för alla forex- och kryptotraders',
     headlinePhrases: [],
     subheadline:
       'Automatisera dina affärer från Telegram, WhatsApp, Discord, TradingView eller ett masterkonto till 8+ mäklarplattformar på under 50 ms. Ingen VPS krävs.',
@@ -916,7 +916,7 @@ export const landingSv: LandingTranslations = {
       primary: 'Starta din 5-dagars gratis provperiod',
       secondary: 'Logga in',
     },
-    tagline: 'Ultrasnabb Telegram signalkopiator för MetaTrader-konton.',
+    tagline: 'Allt-i-ett-kopierare för alla forex- och kryptotraders',
     columns: {
       product: 'Produkt',
       resources: 'Resurser',

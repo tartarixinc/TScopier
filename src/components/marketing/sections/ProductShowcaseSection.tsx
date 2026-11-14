@@ -2,15 +2,15 @@ import { useState, type ReactNode } from 'react'
 import clsx from 'clsx'
 import { ArrowRight, Copy, Link2, Users, type LucideIcon } from 'lucide-react'
 import { useT } from '../../../context/LocaleContext'
+import { APP_CANVAS, APP_CARD } from '../../../lib/appSurface'
 import { appUrl } from '../../../lib/site'
 import { TradingAccountPreview } from '../preview/TradingAccountPreview'
 import { MirrorAccountPreview } from '../preview/MirrorAccountPreview'
 import { SocialTradingPreview } from '../preview/SocialTradingPreview'
 
-const CARD_BG = '#10151c'
-
-const NOISE_BG =
-  "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.9 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>\")"
+/** Soft grain matching the app ash rail. */
+const ASH_NOISE =
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.55 0 0 0 0 0.56 0 0 0 0 0.58 0 0 0 0.45 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")"
 
 type CardEntry = {
   key: 'tradingAccount' | 'mirrorAccount' | 'socialTrading'
@@ -37,13 +37,10 @@ export function ProductShowcaseSection() {
   }
 
   return (
-    <section
-      id="showcase"
-      className="relative scroll-mt-24 bg-[#F4F5F8] py-16 sm:py-24 dark:bg-transparent"
-    >
+    <section id="showcase" className={clsx('relative scroll-mt-24 py-16 sm:py-24', APP_CANVAS)}>
       <div className="mx-auto max-w-7xl px-3 sm:px-5">
         <div className="px-2 sm:px-6">
-          <p className="inline-flex items-center gap-2  text-xs font-medium uppercase tracking-[0.18em] text-neutral-900 dark:text-neutral-50">
+          <p className="inline-flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-neutral-900 dark:text-neutral-50">
             <span className="h-2 w-2 bg-green-400" aria-hidden />
             {s.eyebrow}
           </p>
@@ -62,51 +59,71 @@ export function ProductShowcaseSection() {
                 key={card.key}
                 onMouseEnter={() => setActive(index)}
                 onFocus={() => setActive(index)}
-                className="group relative isolate flex h-144 flex-col justify-end overflow-hidden rounded-4xl ring-1 ring-black/5 dark:ring-white/10"
-                style={{ backgroundColor: CARD_BG }}
+                className={clsx(
+                  'group relative isolate flex h-144 flex-col justify-end overflow-hidden rounded-[1.75rem]',
+                  APP_CARD,
+                  'bg-[#ECEEF2] shadow-[0_1px_2px_rgba(15,23,42,0.05),0_16px_40px_-20px_rgba(15,23,42,0.2)] dark:bg-neutral-900',
+                )}
               >
                 <div
-                  className="absolute -top-24 left-1/2 h-72 w-[130%] -translate-x-1/2 rounded-full opacity-40 blur-3xl"
-                  style={{ background: 'radial-gradient(closest-side, rgba(74,222,128,0.35), transparent)' }}
+                  className="pointer-events-none absolute inset-0 opacity-[0.06] mix-blend-multiply dark:opacity-[0.1] dark:mix-blend-soft-light"
+                  style={{ backgroundImage: ASH_NOISE, backgroundSize: '160px 160px' }}
                   aria-hidden
                 />
                 <div
-                  className="pointer-events-none absolute inset-0 z-1 opacity-[0.07] mix-blend-screen"
-                  style={{ backgroundImage: NOISE_BG, backgroundSize: '140px 140px' }}
-                  aria-hidden
-                />
-
-                <div className="absolute left-[38%] top-[10%] w-[150%]">{card.preview}</div>
-
-                <div
-                  className="pointer-events-none absolute inset-x-0 bottom-0 z-2 h-[55%]"
+                  className="pointer-events-none absolute -top-20 left-1/2 h-64 w-[120%] -translate-x-1/2 rounded-full opacity-50 blur-3xl"
                   style={{
-                    background: `linear-gradient(to top, ${CARD_BG} 0%, ${CARD_BG} 30%, rgba(16,21,28,0.85) 58%, rgba(16,21,28,0) 100%)`,
+                    background: 'radial-gradient(closest-side, rgba(255,255,255,0.9), transparent)',
+                  }}
+                  aria-hidden
+                />
+
+                <div className="absolute left-[32%] top-[8%] w-[155%]">{card.preview}</div>
+
+                <div
+                  className="pointer-events-none absolute inset-x-0 bottom-0 z-2 h-[58%]"
+                  style={{
+                    background:
+                      'linear-gradient(to top, #ECEEF2 0%, #ECEEF2 28%, rgba(236,238,242,0.92) 52%, rgba(236,238,242,0) 100%)',
+                  }}
+                  aria-hidden
+                />
+                <div
+                  className="pointer-events-none absolute inset-x-0 bottom-0 z-2 hidden h-[58%] dark:block"
+                  style={{
+                    background:
+                      'linear-gradient(to top, rgb(23,23,23) 0%, rgb(23,23,23) 28%, rgba(23,23,23,0.92) 52%, rgba(23,23,23,0) 100%)',
                   }}
                   aria-hidden
                 />
 
                 <div className="relative z-3 p-7">
-                  <p className="inline-flex items-center gap-2  text-xs font-medium uppercase tracking-[0.16em] text-green-400">
-                    <Icon className="h-4 w-4" aria-hidden />
+                  <p className="inline-flex items-center gap-2 text-xs font-medium uppercase tracking-[0.16em] text-neutral-600 dark:text-neutral-300">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-green-400 text-neutral-950">
+                      <Icon className="h-3.5 w-3.5" aria-hidden />
+                    </span>
                     {labels[card.key]}
                   </p>
-                  <h3 className="mt-3 text-xl font-semibold leading-snug tracking-tight text-white">
+                  <h3 className="mt-3 text-xl font-semibold leading-snug tracking-tight text-neutral-950 dark:text-white">
                     {copy.headline}
                   </h3>
                   <div
                     className={clsx(
                       'grid transition-[grid-template-rows,opacity] duration-300 ease-out',
-                      open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[1fr] opacity-100 lg:grid-rows-[0fr] lg:opacity-0',
+                      open
+                        ? 'grid-rows-[1fr] opacity-100'
+                        : 'grid-rows-[1fr] opacity-100 lg:grid-rows-[0fr] lg:opacity-0',
                     )}
                   >
                     <div className="overflow-hidden">
-                      <p className="pt-2 text-sm leading-6 text-neutral-300">{copy.description}</p>
+                      <p className="pt-2 text-sm leading-6 text-neutral-600 dark:text-neutral-300">
+                        {copy.description}
+                      </p>
                     </div>
                   </div>
                   <a
                     href={card.href}
-                    className="mt-5 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-2.5 text-sm font-medium text-white backdrop-blur-md transition-colors hover:bg-white/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400"
+                    className="mt-5 inline-flex items-center gap-2 rounded-full bg-neutral-950 px-5 py-2.5 text-sm font-medium text-white shadow-xs transition-colors hover:bg-neutral-800 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100"
                   >
                     {s.cta}
                     <ArrowRight className="h-4 w-4 rtl:rotate-180" aria-hidden />

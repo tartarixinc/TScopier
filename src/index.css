@@ -288,11 +288,11 @@
 }
 
 @utility marketing-footer-cta {
-  @apply relative overflow-hidden border-b border-neutral-200/70 bg-linear-to-b from-teal-50/50 via-white/95 to-white/95 dark:border-neutral-800/45 dark:from-teal-950/25 dark:via-neutral-900/95 dark:to-neutral-900/95;
+  @apply relative overflow-hidden border-b border-neutral-200/70 bg-[#ECEEF2] dark:border-neutral-800/45 dark:bg-neutral-900;
 }
 
 @utility marketing-footer-cta-grid {
-  @apply marketing-grid-pattern pointer-events-none absolute inset-0 opacity-60;
+  @apply pointer-events-none absolute inset-0;
 }
 
 @utility marketing-footer-main {

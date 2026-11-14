@@ -18,7 +18,7 @@ const primaryBtnClass =
 const heroCtaClass =
   'group inline-flex w-fit self-center items-center justify-center gap-2 rounded-full border border-green-400 bg-green-400 px-8 py-3.5 text-base font-semibold text-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_12px_32px_-10px_rgba(74,222,128,0.7)] transition-all duration-300 hover:-translate-y-0.5 hover:border-green-400 hover:bg-green-400 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_0_28px_rgba(74,222,128,0.55),0_0_56px_rgba(74,222,128,0.22)] sm:px-10 sm:py-4 sm:text-lg'
 
-/** Left-aligned pill used in the two-column hero (sits next to a secondary button). */
+/** Primary pill used in the hero CTA row (sits next to a secondary button). */
 const heroInlineCtaClass =
   'group inline-flex items-center justify-center gap-2 rounded-full border border-green-400 bg-green-400 px-6 py-3 text-sm font-semibold text-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_10px_28px_-10px_rgba(74,222,128,0.7)] transition-all duration-300 hover:-translate-y-0.5 hover:border-green-400 hover:bg-green-400 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_0_24px_rgba(74,222,128,0.5)] sm:px-7 sm:py-3.5 sm:text-base'
 

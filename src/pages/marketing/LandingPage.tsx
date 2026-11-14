@@ -36,7 +36,7 @@ export function LandingPage() {
   }, [location.hash])
 
   return (
-    <MarketingLayout darkHero>
+    <MarketingLayout>
       <HeroSection />
       <SupportedPlatformsSection />
       {/* <CompletePictureSection /> */}

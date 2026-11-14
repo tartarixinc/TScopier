@@ -2,6 +2,33 @@
 
 ## Changelog
 
+### 2026-11-14 — App header pills + Connection Status match hero soft-shell
+
+- **Context:** Hero dashboard preview showed pill backgrounds on header controls and a bordered Connection Status chip with chevron; the live app lagged.
+- **Plain English:** Header buttons (copier, bell, language, theme) and Connection Status now use the same soft white pill/card chrome as the marketing hero mock.
+- **Fix (files):** [`CopierStatusCard.tsx`](src/components/dashboard/CopierStatusCard.tsx) (dot + `:` + chevron + `APP_CARD`); [`CopierPauseToggle.tsx`](src/components/layout/CopierPauseToggle.tsx), [`NotificationBell.tsx`](src/components/layout/NotificationBell.tsx), [`LanguageSwitcher.tsx`](src/components/auth/LanguageSwitcher.tsx), [`ThemeToggle.tsx`](src/components/ui/ThemeToggle.tsx) (`APP_PILL`).
+- **Tests/verification:** Visual — app header + dashboard greeting row.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** None.
+
+### 2026-11-14 — Showcase cards use soft-shell app previews
+
+- **Context:** Product showcase (“Built to reduce complexity…”) still showed old dark-framed dashboards with the pre-soft-shell app chrome.
+- **Plain English:** Those three cards now use the same ash rail / white shell look as the live app and hero preview.
+- **Fix (files):** [`AppPreviewWindow.tsx`](src/components/marketing/preview/AppPreviewWindow.tsx) soft-shell shell; [`ProductShowcaseSection.tsx`](src/components/marketing/sections/ProductShowcaseSection.tsx) ash card frames.
+- **Tests/verification:** Visual — landing `#showcase`.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** None.
+
+### 2026-11-14 — Marketing hero ash background + centered copy
+
+- **Context:** Landing hero used a green WebGL swirl and left-aligned two-column copy.
+- **Plain English:** Hero background is now the same soft ash as the app sidebar, with a light grain; headline, subcopy, and CTAs are centered above the dashboard preview.
+- **Fix (files):** [`HeroSection.tsx`](src/components/marketing/sections/HeroSection.tsx); [`LandingPage.tsx`](src/pages/marketing/LandingPage.tsx) drops `darkHero` so the nav matches the light ash hero.
+- **Tests/verification:** Visual — marketing landing hero.
+- **Deploy state:** Frontend only until Netlify deploy.
+- **Follow-ups:** None.
+
 ### 2026-11-14 — Marketing hero dashboard matches soft-shell app UI
 
 - **Context:** Landing hero still showed an older flat dashboard mock (side-by-side channel worker + short logs).

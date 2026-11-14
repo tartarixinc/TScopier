@@ -42,7 +42,7 @@ export const landingNl: LandingTranslations = {
     },
   },
   hero: {
-    headline: 'Het #1 kopieerplatform voor elke forex- en cryptotrader',
+    headline: 'All-in-one kopieertool voor elke forex- en cryptotrader',
     headlinePhrases: [],
     subheadline:
       'Automatiseer je trades vanuit Telegram, WhatsApp, Discord, TradingView of een masteraccount naar 8+ brokerplatformen in minder dan 50 ms. Geen VPS nodig.',
@@ -915,7 +915,7 @@ export const landingNl: LandingTranslations = {
       primary: 'Start je gratis proefperiode van 5 dagen',
       secondary: 'Inloggen',
     },
-    tagline: 'Supersnelle Telegram-signaalcopier voor MetaTrader-accounts.',
+    tagline: 'All-in-one kopieertool voor elke forex- en cryptotrader',
     columns: {
       product: 'Product',
       resources: 'Resources',

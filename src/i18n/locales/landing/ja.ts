@@ -42,7 +42,7 @@ export const landingJa: LandingTranslations = {
     },
   },
   hero: {
-    headline: 'すべてのFX・暗号資産トレーダーのためのNo.1コピープラットフォーム',
+    headline: 'すべてのFX・暗号資産トレーダーのためのオールインワンコピア',
     headlinePhrases: [],
     subheadline:
       'Telegram、WhatsApp、Discord、TradingView、またはマスター口座から8以上のブローカーへ、50ms未満で取引を自動化。VPSは不要です。',
@@ -908,7 +908,7 @@ export const landingJa: LandingTranslations = {
       primary: '5日間の無料トライアルを始める',
       secondary: 'ログイン',
     },
-    tagline: 'MetaTrader口座向けの超高速Telegramシグナルcopier。',
+    tagline: 'すべてのFX・暗号資産トレーダーのためのオールインワンコピア',
     columns: {
       product: '製品',
       resources: 'リソース',
