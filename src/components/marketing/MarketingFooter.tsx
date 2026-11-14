@@ -6,8 +6,17 @@ import { LanguageSwitcher } from '../auth/LanguageSwitcher'
 import { useT } from '../../context/LocaleContext'
 import { appUrl, marketingUrl } from '../../lib/site'
 import { HELP_LINKS } from '../../lib/helpLinks'
+import { SocialBrandIcon } from '../social/SocialProfileLinks'
+import type { SocialProfilePlatform } from '../../lib/socialProfileLinks'
 import { MarketingPricingHint } from './MarketingPricingHint'
 import { ScrollReveal } from './ScrollReveal'
+
+const FOOTER_SOCIALS: readonly { platform: SocialProfilePlatform; href: string; label: string }[] = [
+  { platform: 'facebook', href: 'https://facebook.com/unicopier', label: 'Facebook' },
+  { platform: 'instagram', href: 'https://instagram.com/unicopier', label: 'Instagram' },
+  { platform: 'tiktok', href: 'https://tiktok.com/@unicopier', label: 'TikTok' },
+  { platform: 'youtube', href: 'https://youtube.com/@uni-copier', label: 'YouTube' },
+]
 
 interface FooterLink {
   label: string
@@ -149,6 +158,21 @@ export function MarketingFooter() {
               <p className="mt-4 max-w-xs text-sm leading-relaxed text-neutral-900 dark:text-neutral-50">
                 {f.tagline}
               </p>
+              <nav className="mt-5 flex flex-wrap items-center gap-2" aria-label="UniCopier social">
+                {FOOTER_SOCIALS.map(social => (
+                  <a
+                    key={social.platform}
+                    href={social.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={social.label}
+                    title={social.label}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200/90 bg-white text-neutral-900 shadow-xs transition-colors hover:border-green-400 hover:bg-neutral-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50 dark:hover:bg-neutral-800"
+                  >
+                    <SocialBrandIcon platform={social.platform} />
+                  </a>
+                ))}
+              </nav>
             </div>
 
             <FooterNavColumn title={f.columns.product} links={productLinks} />
