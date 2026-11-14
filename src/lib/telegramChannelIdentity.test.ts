@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   hasValidTelegramChannelIdentity,
   isNumericTelegramChatId,
+  isTelegramSourceChannel,
   isValidTelegramUsername,
   normalizeTelegramChatId,
   validateManualChannelInput,
@@ -23,6 +24,15 @@ test('isValidTelegramUsername rejects display names and spaces', () => {
   assert.equal(isValidTelegramUsername('signal_tester'), true)
   assert.equal(isValidTelegramUsername('Test Signal Channel'), false)
   assert.equal(isValidTelegramUsername('abc'), false)
+})
+
+test('isTelegramSourceChannel excludes discord/whatsapp/tradingview rows', () => {
+  assert.equal(isTelegramSourceChannel({}), true)
+  assert.equal(isTelegramSourceChannel({ source_kind: null }), true)
+  assert.equal(isTelegramSourceChannel({ source_kind: 'telegram' }), true)
+  assert.equal(isTelegramSourceChannel({ source_kind: 'tradingview' }), false)
+  assert.equal(isTelegramSourceChannel({ source_kind: 'discord' }), false)
+  assert.equal(isTelegramSourceChannel({ source_kind: 'whatsapp' }), false)
 })
 
 test('hasValidTelegramChannelIdentity rejects display-name-only rows', () => {

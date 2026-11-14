@@ -51,7 +51,9 @@ import {
   isAccountSummaryFlat,
   normalizeLiveOpenMetrics,
   resolveFlatBookOpenMetrics,
+  resolveOpenCountWhenOpensFetchSkipped,
 } from '../../lib/dashboardLiveOpenMetrics'
+import { fetchBrokerMarketOpenBook } from '../../lib/brokerOpenBook'
 import { liveOpenPnlFromMtTrades, preferLiveOpenPnl } from '../../lib/liveOpenPnl'
 import { formatLocalCalendarDay } from '../../lib/dayStartBalance'
 import { isMtTimestampInRange } from '../../lib/mtApiDateTime'
@@ -422,9 +424,9 @@ function sumConnectedOpenTrades(
 }
 
 /**
- * Open-trade headline count: linked accounts use live broker feeds (market +
- * pending opens, same definition as Account Trades). Never stale UniCopier DB
- * leg rows when a linked broker feed is present.
+ * Open-trade headline count: linked accounts use live broker feeds (market
+ * opens, paired with Open PnL). Never stale UniCopier DB leg rows when a
+ * linked broker feed is present.
  */
 function resolveDashboardOpenTradesCount(
   accounts: BrokerAccount[],
@@ -1118,6 +1120,10 @@ export function DashboardPage() {
   const [togglingBrokerId, setTogglingBrokerId] = useState<string | null>(null)
   const [brokerReconnectError, setBrokerReconnectError] = useState('')
   const loadDashboardLiveRef = useRef<() => void>(() => {})
+  /** Re-read broker market opens → Open Trades / Open PnL (seed + realtime nudge). */
+  const refreshOpenBookRef = useRef<() => void>(() => {})
+  const openBookInflightRef = useRef<Promise<void> | null>(null)
+  const openBookNudgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const MT_TRADES_REFRESH_MS = 30_000
   const lastMtTradesRefreshRef = useRef<number>(0)
   /** Ignore stale responses when a newer *fresh* loadDashboard run started. */
@@ -2308,6 +2314,10 @@ export function DashboardPage() {
       if (!dashboardReadyRef.current) return
       void loadDashboard({ fresh: false, syncLive: true })
     }
+
+    refreshOpenBookRef.current = () => {
+      void refreshOpenBookFromBroker()
+    }
   })
 
   const bl = t.accountConfig.brokerList
@@ -2386,6 +2396,66 @@ export function DashboardPage() {
     flushLiveBrokerMetrics()
   }
 
+  const refreshOpenBookFromBroker = async () => {
+    const accounts = linkedAccountsRef.current.filter(hasLinkedBrokerForUi)
+    if (accounts.length === 0) return
+    if (openBookInflightRef.current) {
+      await openBookInflightRef.current
+      return
+    }
+    const run = (async () => {
+      try {
+        const book = await fetchBrokerMarketOpenBook({
+          accounts,
+          historyProfile: 'dashboard',
+        })
+        for (const account of accounts) {
+          const entry = book.byBroker[account.id]
+          const marketCount = entry?.marketOpenCount ?? 0
+          const openPnl = entry?.openPnl
+          applyBrokerLiveSnapshot(account.id, {
+            open_trades: marketCount,
+            ...(openPnl != null
+              ? { open_pnl: openPnl }
+              : marketCount <= 0
+                ? { open_pnl: 0 }
+                : {}),
+          })
+          if (entry) {
+            const prior = mtTradesRef.current ?? []
+            const kept = prior.filter(
+              t => t.broker_id !== account.id || t.status !== 'open',
+            )
+            mtTradesRef.current = [...kept, ...entry.allOpenRows]
+            if (!positionBooksRef.current[account.id] || positionBooksRef.current[account.id]!.size === 0) {
+              positionBooksRef.current[account.id] = rebuildPositionBookFromMtTrades(
+                entry.marketOpenRows,
+                account.id,
+              )
+            }
+          }
+        }
+      } catch (err) {
+        console.warn(
+          '[dashboard] open book refresh failed',
+          err instanceof Error ? err.message : err,
+        )
+      } finally {
+        openBookInflightRef.current = null
+      }
+    })()
+    openBookInflightRef.current = run
+    await run
+  }
+
+  const scheduleOpenBookRefresh = () => {
+    if (openBookNudgeTimerRef.current) clearTimeout(openBookNudgeTimerRef.current)
+    openBookNudgeTimerRef.current = setTimeout(() => {
+      openBookNudgeTimerRef.current = null
+      void refreshOpenBookFromBroker()
+    }, 450)
+  }
+
   const markWsTick = (brokerId: string) => {
     lastWsTickRef.current[brokerId] = Date.now()
   }
@@ -2404,6 +2474,7 @@ export function DashboardPage() {
           connection_status: 'connected',
         })
       }
+      // Preserve sticky open_trades — account topic never carries the open book.
       const openTrades = linkedBalancesRef.current[brokerId]?.open_trades ?? 0
       const openPnlToApply = resolveFxsocketFloatingOpenPnl(snap, openTrades)
       const snapForBalances = openPnlToApply != null
@@ -2422,6 +2493,20 @@ export function DashboardPage() {
         }
       }
       flushLiveBrokerMetrics()
+      // Non-flat floating PnL with a sticky 0 open count → re-read OpenedOrders.
+      const floating =
+        openPnlToApply
+        ?? (snap.balance != null && snap.equity != null
+          ? Math.round((snap.equity - snap.balance) * 100) / 100
+          : null)
+      if (
+        floating != null
+        && Number.isFinite(floating)
+        && Math.abs(floating) >= 0.01
+        && openTrades <= 0
+      ) {
+        scheduleOpenBookRefresh()
+      }
     },
     onPositions: (brokerId, snapshot, rawData) => {
       markWsTick(brokerId)
@@ -2540,9 +2625,10 @@ export function DashboardPage() {
             const summaryFlat = isAccountSummaryFlat(snap.balance, snap.equity)
 
             // Prefer AccountSummary alone each tick so OpenedOrders does not fight
-            // OrderSend on the shared MTAPI session. Fetch open trades only when
-            // floating PnL is non-flat, or on a rare reconcile (~4 min).
-            const OPEN_TRADES_RECONCILE_MS = 240_000
+            // OrderSend on the shared MTAPI session. Fetch open trades when
+            // floating PnL is non-flat, or on a short reconcile (~40s) so
+            // flat-but-open books still catch up quickly.
+            const OPEN_TRADES_RECONCILE_MS = 40_000
             const lastOpenFetch = lastMtapiOpenFetchAt[account.id] ?? 0
             const shouldFetchOpens = provider === 'mtapi'
               && (!summaryFlat || Date.now() - lastOpenFetch >= OPEN_TRADES_RECONCILE_MS)
@@ -2572,15 +2658,17 @@ export function DashboardPage() {
             const summaryOpenTrades = typeof summary.open_trades === 'number' && Number.isFinite(summary.open_trades)
               ? summary.open_trades
               : undefined
+            // Never invent 0 when the opens fetch was skipped — keep sticky count.
             const marketOpenCount = marketOpenRows != null
               ? marketOpenRows.length
-              : summaryFlat
-                ? 0
-                : (summaryOpenTrades
-                  ?? linkedBalancesRef.current[account.id]?.open_trades
-                  ?? 0)
+              : resolveOpenCountWhenOpensFetchSkipped({
+                summaryFlat,
+                summaryOpenTrades,
+                previousOpenTrades: linkedBalancesRef.current[account.id]?.open_trades,
+              })
 
-            if (summaryFlat && marketOpenCount <= 0) {
+            // Only clear open legs when we actually fetched an empty book.
+            if (summaryFlat && marketOpenCount <= 0 && marketOpenRows != null) {
               mtTradesRef.current = (mtTradesRef.current ?? []).filter(
                 t => t.broker_id !== account.id || t.status !== 'open',
               )
@@ -2643,7 +2731,7 @@ export function DashboardPage() {
     }
 
     // MTAPI AccountSummary shares the trade session with OrderSend. Stay ~45s;
-    // OpenedOrders only when floating or rare reconcile (see shouldFetchOpens).
+    // OpenedOrders when floating or ~40s reconcile (see shouldFetchOpens).
     schedule('mtapi', 45_000, 3_000)
     // cTrader Open PnL is marked from spots on each snapshot, so it can tick
     // without sharing the MTAPI session limit.
@@ -2680,9 +2768,29 @@ export function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the poll interval is keyed on account identity only; field-level account changes arrive through the realtime handlers and must not restart the interval
   }, [linkedAccountIdsKey])
 
-  useDashboardRealtime(user?.id, () => refreshQuietRef.current(), broker => {
-    replaceBroker(broker)
-  })
+  useDashboardRealtime(
+    user?.id,
+    () => refreshQuietRef.current(),
+    broker => {
+      replaceBroker(broker)
+    },
+    () => refreshOpenBookRef.current(),
+  )
+
+  // Seed / refresh market opens whenever the linked account set changes, and
+  // once after warm-cache boot so cached open_trades: 0 is not sticky.
+  useEffect(() => {
+    if (!linkedAccountIdsKey) return
+    const accounts = linkedAccountsRef.current.filter(hasLinkedBrokerForUi)
+    if (accounts.length === 0) return
+    void refreshOpenBookRef.current()
+  }, [linkedAccountIdsKey])
+
+  useEffect(() => {
+    return () => {
+      if (openBookNudgeTimerRef.current) clearTimeout(openBookNudgeTimerRef.current)
+    }
+  }, [])
 
   useEffect(() => {
     if (!user || brokersLoading) return
@@ -2699,6 +2807,10 @@ export function DashboardPage() {
           scheduleDismissLoader: scheduleDismissDashboardMetricsLoader,
         },
       )
+      // Cached open_trades may be stale zeros — always re-seed the open book.
+      if (cached?.linkedAccounts?.some(hasLinkedBrokerForUi)) {
+        void Promise.resolve().then(() => refreshOpenBookRef.current())
+      }
       // A warm session already has this snapshot on screen. Reloading here is
       // what flashes the dashboard every time the page mounts again.
       if (!tabSessionWarmRef.current && cached?.linkedAccounts?.some(hasLinkedBrokerForUi)) {

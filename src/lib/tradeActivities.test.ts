@@ -3,19 +3,86 @@ import { test } from 'node:test'
 import { channelWorkerEn } from '../i18n/channelWorker/en'
 import { en } from '../i18n/locales/en'
 import {
+  buildDisplayableTradeActivities,
   buildSkippedSignalActivities,
   mergeSkippedSignalActivities,
+  resolveTradeActivityKind,
   shouldRefreshActivitiesOnRealtimePayload,
   tradeActivityLogsFingerprint,
   type DisplayableTradeActivity,
   type SkippedSignalRow,
+  type TradeActivityLogRow,
 } from './tradeActivities'
 
 test('shouldRefreshActivitiesOnRealtimePayload: ignores hidden internal ticks', () => {
   assert.equal(shouldRefreshActivitiesOnRealtimePayload({ action: 'basket_reconcile_tick' }), false)
+  assert.equal(shouldRefreshActivitiesOnRealtimePayload({ action: 'basket_leg_modify' }), false)
   assert.equal(shouldRefreshActivitiesOnRealtimePayload({ action: 'queue_consume_ack' }), false)
   assert.equal(shouldRefreshActivitiesOnRealtimePayload({ action: 'merge_routed_modify_only' }), false)
   assert.equal(shouldRefreshActivitiesOnRealtimePayload({ action: 'news_pre_close' }), false)
+})
+
+test('resolveTradeActivityKind: basket_leg_modify is layering even on sell signals', () => {
+  const row: TradeActivityLogRow = {
+    id: '1',
+    created_at: '2026-11-14T14:25:00Z',
+    action: 'basket_leg_modify',
+    status: 'skipped',
+    request_payload: { skip_reason: 'no_stops_to_apply' },
+    response_payload: null,
+    error_message: null,
+    signals: {
+      parsed_data: { action: 'sell', symbol: 'BTCUSD' },
+      status: 'executed',
+    },
+  }
+  assert.equal(resolveTradeActivityKind(row, en.management), en.management.kindLayering)
+})
+
+test('buildDisplayableTradeActivities: hides basket_leg_modify no_stops skips for live fills', () => {
+  const rows: TradeActivityLogRow[] = [
+    {
+      id: 'skip-leg',
+      created_at: '2026-11-14T14:25:45Z',
+      action: 'basket_leg_modify',
+      status: 'skipped',
+      request_payload: { skip_reason: 'no_stops_to_apply' },
+      response_payload: null,
+      error_message: 'no_stops_to_apply',
+      signal_id: 'sig-1',
+      signals: {
+        channel_id: 'ch-1',
+        parsed_data: { action: 'sell', symbol: 'BTCUSD' },
+        status: 'executed',
+      },
+    },
+    {
+      id: 'fill',
+      created_at: '2026-11-14T14:25:44Z',
+      action: 'order_send',
+      status: 'success',
+      request_payload: { operation: 'Sell', trade_symbol: 'BTCUSD', volume: 0.1, price: 95000 },
+      response_payload: null,
+      error_message: null,
+      signal_id: 'sig-1',
+      signals: {
+        channel_id: 'ch-1',
+        parsed_data: { action: 'sell', symbol: 'BTCUSD' },
+        status: 'executed',
+      },
+    },
+  ]
+  const out = buildDisplayableTradeActivities(
+    rows,
+    channelWorkerEn,
+    en.management,
+    { 'ch-1': 'general' },
+  )
+  assert.equal(out.length, 1)
+  assert.equal(out[0]?.row.id, 'fill')
+  assert.equal(out[0]?.status, 'successful')
+  assert.equal(out[0]?.kind, en.management.kindOrder)
+  assert.doesNotMatch(out[0]?.message ?? '', /Skipped/i)
 })
 
 test('shouldRefreshActivitiesOnRealtimePayload: refreshes visible copier activity', () => {

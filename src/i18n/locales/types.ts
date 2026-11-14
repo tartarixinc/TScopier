@@ -497,6 +497,7 @@ export interface SignalHistoryPageTranslations {
   statusClosed: string
   editSignal: string
   updateLiveTrades: string
+  resendParameters: string
   saving: string
   originalSignal: string
   overrideSignal: string
@@ -505,6 +506,7 @@ export interface SignalHistoryPageTranslations {
   accountsHolding: string
   closeOneAccount: string
   applySuccess: string
+  applyQueued: string
   applyBrokerSummary: string
   applyPartialBrokers: string
   applyFailed: string

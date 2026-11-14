@@ -365,9 +365,10 @@ export function SignalHistoryPage() {
 
   const handleSaved = useCallback(async (
     signalId: string,
-    { appliedLegs, brokersUpdated, brokersTotal }: {
+    { appliedLegs, brokersUpdated, brokersTotal, queued }: {
       appliedLegs: number
       open: boolean
+      queued?: boolean
       brokersUpdated?: number
       brokersTotal?: number
     },
@@ -375,20 +376,21 @@ export function SignalHistoryPage() {
     const total = brokersTotal ?? 0
     const updated = brokersUpdated ?? 0
     let text: string
-    if (total > 1 && updated < total) {
+    let tone: 'success' | 'warning' = 'success'
+    if (queued) {
+      text = sh.applyQueued
+    } else if (total > 1 && updated < total) {
       text = interpolate(sh.applyPartialBrokers, { updated: String(updated), total: String(total) })
+      tone = 'warning'
     } else if (total > 1) {
       text = `${interpolate(sh.applySuccess, { count: String(appliedLegs) })} `
         + interpolate(sh.applyBrokerSummary, { updated: String(updated), total: String(total) })
     } else {
       text = interpolate(sh.applySuccess, { count: String(appliedLegs) })
     }
-    setBanner({
-      tone: total > 1 && updated < total ? 'warning' : 'success',
-      text,
-    })
+    setBanner({ tone, text })
     await refreshAfterOverrideSave(signalId)
-  }, [refreshAfterOverrideSave, sh.applySuccess, sh.applyBrokerSummary, sh.applyPartialBrokers])
+  }, [refreshAfterOverrideSave, sh.applySuccess, sh.applyQueued, sh.applyBrokerSummary, sh.applyPartialBrokers])
 
   const signalDisplayRows = useMemo(() => {
     if (!symbolLookupReady) return []
@@ -441,7 +443,13 @@ export function SignalHistoryPage() {
     }
   }, [entrySignals])
 
-  const handleSavedFromModal = useCallback(async (result: { appliedLegs: number; open: boolean }) => {
+  const handleSavedFromModal = useCallback(async (result: {
+    appliedLegs: number
+    open: boolean
+    queued?: boolean
+    brokersUpdated?: number
+    brokersTotal?: number
+  }) => {
     if (!editSession) return
     await handleSaved(editSession.signalId, result)
   }, [editSession, handleSaved])

@@ -184,7 +184,21 @@ describe('planBrokerDrift', () => {
       fullyProbedUsers: new Set(['user-1']),
     })
     assert.deepEqual(plan.promote, [])
-    assert.deepEqual(plan.missingOnce.map(r => r.id), ['t1'])
+    // Pending absence is never a ghost — even when the ticket is elsewhere.
+    assert.deepEqual(plan.missingOnce, [])
+  })
+
+  it('never ghost-closes a pending LIMIT/STOP when OpenedOrders omits resting orders', () => {
+    // Positions-only bridges leave BuyLimit tickets out of /OpenedOrders. Two
+    // passes would otherwise close a live resting order as position_gone.
+    const plan = planBrokerDrift({
+      rows: [row({ id: 't1', status: 'pending', metaapi_order_id: '49652208' })],
+      live: [hit({ ticket: 999, filled: true })], // other live position on account
+      fullyProbedUsers: new Set(['user-1']),
+    })
+    assert.deepEqual(plan.missingOnce, [])
+    assert.deepEqual(plan.promote, [])
+    assert.deepEqual(plan.reopen, [])
   })
 })
 
@@ -370,7 +384,7 @@ describe('applyBrokerDriftRepairs', () => {
     assert.deepEqual(logs, [])
   })
 
-  it('closes confirmed ghosts only for open/pending rows', async () => {
+  it('closes confirmed ghosts only for open rows', async () => {
     const records: Recorded[] = []
     const ghosts = [row({ id: 'g1', broker_account_id: null, signal_id: null })]
     const result = await applyBrokerDriftRepairs(
@@ -383,7 +397,7 @@ describe('applyBrokerDriftRepairs', () => {
     assert.ok((records[0]!.payload.closed_at as string).length > 0)
     assert.deepEqual(records[0]!.filters, [
       { col: 'id', args: ['g1'] },
-      { col: 'status', args: ['open', 'pending'] },
+      { col: 'status', args: ['open'] },
       { col: 'select', args: ['id'] },
     ])
   })

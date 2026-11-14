@@ -15,10 +15,12 @@ import { purgeRangePendingLegsForBaskets } from './rangePendingLegDelete'
  *  - a position that is still live while our row says `closed` → reopen it
  *  - a live ticket whose row has no broker account link         → attach it
  *  - a live ticket with no row at all                           → report it
- *  - an open/pending row whose ticket is on none of the user's accounts —
+ *  - an **open** row whose ticket is on none of the user's accounts —
  *    including rows no per-account loop can reach (link is null) → close it,
  *    but only after it is missing on two passes at least `MIN_GHOST_GAP_MS`
- *    apart
+ *    apart. Pending LIMIT/STOP rows are never ghost-closed here: many bridges'
+ *    `/OpenedOrders` is positions-only, so a resting BuyLimit is invisible and
+ *    would look "gone" while still live (Fusion BTCUSD 49652208, 2026-11-14).
  *
  * Safety rules, learned from the false-close of 2026-10-04 (five live
  * positions marked closed while a freshly restarted terminal was still
@@ -208,7 +210,10 @@ export function planBrokerDrift(args: {
 
       // Not live on the row's account. Conclusions only from a complete probe.
       if (!args.fullyProbedUsers.has(userId)) continue
-      if (row.status !== 'open' && row.status !== 'pending') continue
+      // Pending LIMIT/STOP: absence from /OpenedOrders is inconclusive — the
+      // snapshot is often positions-only. Fill/cancel ownership stays with
+      // signalEntryPendingMonitor and the entry-fill paths; never ghost-close.
+      if (row.status !== 'open') continue
       plan.missingOnce.push(row)
     }
   }
@@ -416,7 +421,9 @@ export async function applyBrokerDriftRepairs(
         .from('trades')
         .update(patch)
         .in('id', ghostIds)
-        .in('status', ['open', 'pending'])
+        // Pending rows are never planned as ghosts (see planBrokerDrift); CAS
+        // open-only so a concurrent pending→open race cannot be condemned here.
+        .eq('status', 'open')
         .select('id'),
     )
     if (error) {

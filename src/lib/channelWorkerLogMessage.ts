@@ -45,6 +45,10 @@ function normalizeSkipReasonKey(value: unknown): string {
 /** Expected setup gaps — hidden from the Channel Worker feed to reduce noise. */
 const SILENCED_CHANNEL_WORKER_SKIP_REASONS = new Set([
   'no_broker_channel_match',
+  // Post-fill basket stop apply found nothing to change (SL/TP already on the
+  // broker or cleared). Not a skipped order — hide so Copier Process does not
+  // show "Order placement / Skipped" for a live fill.
+  'no_stops_to_apply',
 ])
 
 export function isSilencedChannelWorkerSkipReason(value: unknown): boolean {
@@ -534,6 +538,7 @@ const CHANNEL_WORKER_HIDDEN_LOG_ACTIONS = new Set([
   'queue_consume_retry',
   'queue_dead_letter',
   'basket_reconcile_tick',
+  'basket_leg_modify',
   'virtual_pending_tp_lock',
   'signal_entry_pending_sync',
   'news_pre_close',
@@ -769,7 +774,9 @@ function buildChannelWorkerLogMessage(row: ChannelWorkerLogRow, cw: ChannelWorke
     return interpolate(cw.orderSent, { on })
   }
 
-  if (logAction === 'basket_leg_modify' && isInternalRebalancePayload(payload)) {
+  // Per-leg basket stop applies are internal (merge_modify_summary / order_send
+  // are the user-facing rows). Never surface them as "Completed: sell …".
+  if (logAction === 'basket_leg_modify') {
     return ''
   }
   if (logAction === 'range_basket_tp_rebalance') {
@@ -1097,6 +1104,23 @@ function buildChannelWorkerLogMessage(row: ChannelWorkerLogRow, cw: ChannelWorke
     || CHANNEL_WORKER_HIDDEN_LOG_ACTIONS.has(logAction)
   ) {
     return ''
+  }
+
+  // Skipped logs must never use the "Completed: buy/sell" fallback — that
+  // contradicted the Skipped badge when post-fill housekeeping rows leaked through.
+  if (status === 'skipped') {
+    const reason = translateSkipReason(
+      String(payload.skip_reason ?? row.error_message ?? cw.notPlaced),
+      cw,
+      String(payload.symbol ?? payload.trade_symbol ?? instr ?? '').trim() || null,
+    )
+    if (signalAction === 'buy' || signalAction === 'sell') {
+      return interpolate(cw.orderDidNotPlaceSkipped, {
+        on: onInstrument(instr, cw),
+        reason,
+      })
+    }
+    return interpolate(cw.dispatchSkipped, { reason })
   }
 
   // Unknown success rows must not read as a filled entry — real opens use order_send / pending paths.

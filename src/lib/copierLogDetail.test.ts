@@ -4,6 +4,9 @@ import {
   formatCopierSkipReasonDetail,
   formatCopierSkipReasonShort,
   getTradeFailureDisplayFromLog,
+  isDispatchPushStartMarker,
+  summarizeDispatchPushAttempt,
+  summarizeExecutionLogRow,
 } from './copierLogDetail'
 import { resolveCopierSkipReasonKey } from './copierSkipReasonLabels'
 import { en } from '../i18n/locales/en'
@@ -69,4 +72,53 @@ test('getTradeFailureDisplayFromLog keeps legacy broker messages readable', () =
     request_payload: null,
   })
   assert.equal(display?.reasonCode, 'BROKER_SYMBOL_NOT_FOUND')
+})
+
+test('isDispatchPushStartMarker detects synthetic pre-attempt success rows', () => {
+  assert.equal(isDispatchPushStartMarker({
+    action: 'dispatch_push_attempt',
+    request_payload: { phase: 'start' },
+  }), true)
+  assert.equal(isDispatchPushStartMarker({
+    action: 'dispatch_push_attempt',
+    request_payload: { phase: 'attempt', attempt: 1 },
+  }), false)
+})
+
+test('summarizeDispatchPushAttempt explains rate limit and 502 failures', () => {
+  assert.match(
+    summarizeDispatchPushAttempt({
+      action: 'dispatch_push_attempt',
+      status: 'failed',
+      error_message: null,
+      request_payload: { phase: 'attempt', attempt: 1, status_code: 429, detail: 'rate limited' },
+      created_at: '2026-11-14T00:00:00Z',
+    }),
+    /rate-limited/i,
+  )
+  assert.match(
+    summarizeDispatchPushAttempt({
+      action: 'dispatch_push_attempt',
+      status: 'failed',
+      error_message: null,
+      request_payload: {
+        phase: 'attempt',
+        attempt: 2,
+        status_code: 502,
+        detail: '{"message":"Application failed to respond"}',
+      },
+      created_at: '2026-11-14T00:00:00Z',
+    }),
+    /unreachable/i,
+  )
+  assert.match(
+    summarizeExecutionLogRow({
+      action: 'dispatch_push_attempt',
+      status: 'success',
+      error_message: null,
+      request_payload: { phase: 'attempt', attempt: 1, ok: true },
+      created_at: '2026-11-14T00:00:00Z',
+    }, en.copierLogs),
+    /succeeded/i,
+  )
 })

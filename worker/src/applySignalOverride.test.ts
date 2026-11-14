@@ -155,6 +155,66 @@ describe('applySignalOverride dry-run', () => {
     assert.equal(result.applied_legs, 0)
   })
 
+  test('forceApply still targets legs when DB already matches override', async () => {
+    const signalId = 'sig-1'
+    const userId = 'user-1'
+    const supabase = {
+      from(table: string) {
+        if (table === 'signals') {
+          return chainQuery({
+            id: signalId,
+            user_id: userId,
+            channel_id: 'ch-1',
+            parsed_data: { action: 'buy', symbol: 'BTCUSD', sl: 66800, tp: [67900] },
+            user_override: { sl: 66800, tp: [67900] },
+          })
+        }
+        if (table === 'trades') {
+          return chainQuery([
+            {
+              id: 't1',
+              signal_id: signalId,
+              broker_account_id: 'b1',
+              metaapi_order_id: '1001',
+              symbol: 'BTCUSD',
+              direction: 'buy',
+              sl: 66800,
+              tp: 67900,
+              opened_at: '2026-06-17T10:00:00.000Z',
+              entry_price: 67000,
+            },
+          ])
+        }
+        if (table === 'broker_accounts') {
+          return chainQuery([{
+            id: 'b1',
+            label: 'Demo',
+            platform: 'MT5',
+            fxsocket_account_id: '00000000-0000-4000-8000-000000000001',
+            metaapi_account_id: null,
+            manual_settings: null,
+          }])
+        }
+        throw new Error(`unexpected table ${table}`)
+      },
+    }
+
+    const skipped = await applySignalOverride(supabase as never, {
+      userId,
+      signalId,
+      dryRun: true,
+    })
+    assert.equal(skipped.applied_legs, 0)
+
+    const forced = await applySignalOverride(supabase as never, {
+      userId,
+      signalId,
+      dryRun: true,
+      forceApply: true,
+    })
+    assert.equal(forced.applied_legs, 1)
+  })
+
   test('clearOverrideAutoBeStamps nulls auto_be_applied_at on open legs', async () => {
     const updates: Array<{ patch: unknown; ids: unknown }> = []
     const supabase = {

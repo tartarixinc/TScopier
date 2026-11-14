@@ -400,16 +400,9 @@ async function pushParsedSignalToTradeWorkerInner(
     revision_prior_action: row.revision_prior_action ?? null,
   }
 
-  void logPushAttemptToDb(row, 'success', {
-    run_id: 'latency-v4',
-    phase: 'start',
-    action,
-    base_url: baseUrl,
-    timeout_ms: timeoutMs,
-    max_attempts: PUSH_MAX_ATTEMPTS,
-    await_execution: opts?.awaitExecution === true,
-    dispatch_source: dispatchSource,
-  })
+  // Do not log a synthetic "start / success" row — it made the Execution
+  // Timeline look like mixed success+failure on every signal (including healthy
+  // ones) because the pre-attempt marker was stored as status=success.
 
   for (let attempt = 1; attempt <= PUSH_MAX_ATTEMPTS; attempt++) {
     const attemptStartedAt = Date.now()
@@ -434,6 +427,9 @@ async function pushParsedSignalToTradeWorkerInner(
       retryable: result.retryable,
       elapsed_ms: Date.now() - attemptStartedAt,
       detail: result.detail.slice(0, 120),
+      base_url: baseUrl,
+      max_attempts: PUSH_MAX_ATTEMPTS,
+      dispatch_source: dispatchSource,
     })
     if (result.ok) {
       clearBreaker(baseUrl)
@@ -456,7 +452,12 @@ async function pushParsedSignalToTradeWorkerInner(
       return false
     }
 
-    const backoffMs = PUSH_RETRY_BASE_MS * attempt
+    // 429 / 5xx need a real pause — 50ms retries just spam Railway while the
+    // trade worker is cold or rate-limited (seen as "rate limited" / 502).
+    const heavy = result.status === 429 || result.status >= 500 || result.status === 0
+    const backoffMs = heavy
+      ? Math.min(2_500, Math.max(400, 400 * attempt))
+      : PUSH_RETRY_BASE_MS * attempt
     await sleep(backoffMs)
   }
   return false

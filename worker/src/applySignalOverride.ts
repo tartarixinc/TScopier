@@ -98,9 +98,10 @@ function num(v: unknown): number | null {
 
 export async function applySignalOverride(
   supabase: SupabaseClient,
-  args: { userId: string; signalId: string; dryRun?: boolean },
+  args: { userId: string; signalId: string; dryRun?: boolean; forceApply?: boolean },
 ): Promise<ApplySignalOverrideResult> {
   const dryRun = args.dryRun === true
+  const forceApply = args.forceApply === true
   const errors: string[] = []
   let appliedLegs = 0
   let skippedLegs = 0
@@ -332,8 +333,11 @@ export async function applySignalOverride(
         continue
       }
 
+      // Manual "Resend Parameters" must hit the broker even when DB already matches
+      // (DB can look correct while the terminal never received the modify).
       if (
-        targetSlForLeg != null
+        !forceApply
+        && targetSlForLeg != null
         && targetTp != null
         && stopsAlreadyMatchDb(
           { sl: tr.sl, tp: tr.tp },
@@ -385,7 +389,10 @@ export async function applySignalOverride(
           modifyArgs.takeprofit ?? 0,
         )
         if (safe.benign) {
-          skipped++
+          // Force resend: broker already has the stops — count as applied so the
+          // UI reports success instead of "0 legs".
+          if (forceApply) applied++
+          else skipped++
           continue
         }
         if (!safe.ok) {

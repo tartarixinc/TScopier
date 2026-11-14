@@ -27,6 +27,16 @@ export function normalizeTelegramUsername(raw: string | null | undefined): strin
   return (raw ?? '').trim().replace(/^@/, '').toLowerCase()
 }
 
+/**
+ * Rows in `telegram_channels` also hold Discord / WhatsApp / TradingView targets.
+ * Active Telegram lists must exclude those source kinds.
+ */
+export function isTelegramSourceChannel(channel: {
+  source_kind?: string | null
+}): boolean {
+  return !channel.source_kind || channel.source_kind === 'telegram'
+}
+
 /** True when the row has enough identity for the worker listener to map live messages. */
 export function hasValidTelegramChannelIdentity(channel: {
   channel_id?: string | null

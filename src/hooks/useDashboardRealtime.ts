@@ -33,26 +33,39 @@ function isBrokerLightweightUpdate(
 /**
  * Subscribe to Supabase Realtime for tables that drive dashboard stats.
  * Debounces bursts into a single quiet refresh.
+ * `onTradesChange` is a separate nudge so Open Trades / Open PnL can re-read
+ * the broker open book even when the quiet path uses `syncLive: false`.
  */
 export function useDashboardRealtime(
   userId: string | undefined,
   onDataChange: () => void,
   onBrokerPatch?: (broker: BrokerAccount) => void,
+  onTradesChange?: () => void,
 ): void {
   const onChangeRef = useRef(onDataChange)
   onChangeRef.current = onDataChange
   const onBrokerPatchRef = useRef(onBrokerPatch)
   onBrokerPatchRef.current = onBrokerPatch
+  const onTradesChangeRef = useRef(onTradesChange)
+  onTradesChangeRef.current = onTradesChange
 
   useEffect(() => {
     if (!userId) return
 
     let debounceTimer: ReturnType<typeof setTimeout> | null = null
+    let tradesDebounceTimer: ReturnType<typeof setTimeout> | null = null
     const schedule = () => {
       if (debounceTimer) clearTimeout(debounceTimer)
       debounceTimer = setTimeout(() => {
         debounceTimer = null
         onChangeRef.current()
+      }, DEBOUNCE_MS)
+    }
+    const scheduleTrades = () => {
+      if (tradesDebounceTimer) clearTimeout(tradesDebounceTimer)
+      tradesDebounceTimer = setTimeout(() => {
+        tradesDebounceTimer = null
+        onTradesChangeRef.current?.()
       }, DEBOUNCE_MS)
     }
 
@@ -67,7 +80,10 @@ export function useDashboardRealtime(
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'trades', filter },
-          schedule,
+          () => {
+            schedule()
+            scheduleTrades()
+          },
         )
         .on(
           'postgres_changes',
@@ -107,6 +123,7 @@ export function useDashboardRealtime(
     return () => {
       cancelled = true
       if (debounceTimer) clearTimeout(debounceTimer)
+      if (tradesDebounceTimer) clearTimeout(tradesDebounceTimer)
       if (channel) void supabase.removeChannel(channel)
     }
   }, [userId])

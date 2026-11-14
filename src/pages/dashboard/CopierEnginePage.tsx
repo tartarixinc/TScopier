@@ -24,6 +24,7 @@ import { upsertTelegramChannel, planLimitErrorMessage } from '../../lib/telegram
 import {
   hasValidTelegramChannelIdentity,
   isNumericTelegramChatId,
+  isTelegramSourceChannel,
 } from '../../lib/telegramChannelIdentity'
 import {
   reconcileChannelIdentitiesFromTelegram,
@@ -249,7 +250,7 @@ export function CopierEnginePage() {
           },
           payload => {
             const row = payload.new as TelegramChannel
-            if (!row?.id) return
+            if (!row?.id || !isTelegramSourceChannel(row)) return
             setChannels(prev => prev.map(c => (c.id === row.id ? { ...c, ...row } : c)))
           },
         )
@@ -310,12 +311,12 @@ export function CopierEnginePage() {
       supabase.from('tradingview_webhooks').select('id', { count: 'exact', head: true }).eq('user_id', user!.id),
     ])
     const allChannelRows = (channelsRes.data ?? []) as TelegramChannel[]
-    const channelRows = allChannelRows.filter(row => !row.source_kind || row.source_kind === 'telegram')
+    const channelRows = allChannelRows.filter(isTelegramSourceChannel)
     const tgList = user?.id ? getCachedTgChannels(user.id) : null
     const reconciledChannels = tgList?.length
       ? await reconcileChannelIdentitiesFromTelegram(supabase, user!.id, channelRows, tgList)
       : channelRows
-    setChannels(reconciledChannels)
+    setChannels(reconciledChannels.filter(isTelegramSourceChannel))
     const brokerRows = await refreshBrokers({ silent: true })
     const reconciled = await pruneStaleBrokerChannelIds(supabase, user!.id, allChannelRows, brokerRows)
     setBrokers(reconciled)
@@ -412,7 +413,7 @@ export function CopierEnginePage() {
       .select('*')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
-    setChannels((channelRows ?? []) as TelegramChannel[])
+    setChannels(((channelRows ?? []) as TelegramChannel[]).filter(isTelegramSourceChannel))
     setTgStage('method')
   }, [user, ce.telegramSessionExpired])
 
@@ -523,13 +524,14 @@ export function CopierEnginePage() {
               .select('*')
               .eq('user_id', user.id)
               .order('created_at', { ascending: false })
+            const telegramOnly = ((channelRows ?? []) as TelegramChannel[]).filter(isTelegramSourceChannel)
             const reconciled = await reconcileChannelIdentitiesFromTelegram(
               supabase,
               user.id,
-              (channelRows ?? []) as TelegramChannel[],
+              telegramOnly,
               list,
             )
-            setChannels(reconciled)
+            setChannels(reconciled.filter(isTelegramSourceChannel))
           }
           if (!opts?.background) setError('')
           return
@@ -1561,7 +1563,8 @@ function ChannelRow({
     [brokers, channel.id],
   )
   const hasAnyBrokers = brokers.some(b => isBrokerCopyEnabledForUi(b))
-  const identityValid = hasValidTelegramChannelIdentity(channel)
+  const identityValid =
+    !isTelegramSourceChannel(channel) || hasValidTelegramChannelIdentity(channel)
 
   useEffect(() => {
     if (!connectMenuOpen) return

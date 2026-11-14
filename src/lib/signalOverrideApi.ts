@@ -4,6 +4,8 @@ export type SignalOverrideSaveRequest = {
   signal_id: string
   sl: number | null
   tp_levels: number[]
+  /** Re-send OrderModify even when DB already matches (manual resend). */
+  force_apply?: boolean
 }
 
 export type SignalOverrideBrokerOutcome = {
@@ -15,6 +17,8 @@ export type SignalOverrideBrokerOutcome = {
 
 export type SignalOverrideSaveResponse = {
   ok: true
+  /** Broker OrderModify is running on the worker; response returned immediately. */
+  queued?: boolean
   applied_legs: number
   failed_legs?: number
   open: boolean

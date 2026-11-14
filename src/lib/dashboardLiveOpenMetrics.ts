@@ -57,3 +57,28 @@ export function resolveFlatBookOpenMetrics(input: {
 export function acceptFreshOpenPnl(prev: number, next: number): number {
   return Number.isFinite(next) ? next : prev
 }
+
+/**
+ * When the MTAPI opens fetch was skipped, never invent 0 from a flat summary alone.
+ * Prefer a sticky previous open count until a real OpenedOrders fetch lands.
+ */
+export function resolveOpenCountWhenOpensFetchSkipped(input: {
+  summaryFlat: boolean
+  summaryOpenTrades: number | undefined
+  previousOpenTrades: number | undefined
+}): number {
+  const previous =
+    typeof input.previousOpenTrades === 'number' && Number.isFinite(input.previousOpenTrades)
+      ? Math.max(0, Math.floor(input.previousOpenTrades))
+      : undefined
+  const fromSummary =
+    typeof input.summaryOpenTrades === 'number' && Number.isFinite(input.summaryOpenTrades)
+      ? Math.max(0, Math.floor(input.summaryOpenTrades))
+      : undefined
+
+  // Non-flat summary may carry a usable open_trades hint from the bridge.
+  if (!input.summaryFlat && fromSummary != null) return fromSummary
+  if (previous != null) return previous
+  if (fromSummary != null) return fromSummary
+  return 0
+}

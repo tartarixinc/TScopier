@@ -768,22 +768,34 @@ export function startTradeHttpServer(
         const body = (await readJson(req)) as {
           user_id?: string
           signal_id?: string
+          force_apply?: boolean
         }
         const userId = body.user_id?.trim()
         const signalId = body.signal_id?.trim()
+        const forceApply = body.force_apply === true
         if (!userId || !signalId) {
           return sendJson(res, 400, { error: 'user_id and signal_id required' })
         }
         if (!userBelongsToShard(userId)) {
           return sendJson(res, 200, { applied_legs: 0, skipped_legs: 0, failed_legs: 0, reason: 'wrong_shard' })
         }
-        try {
-          const result = await applySignalOverride(tradeExecutor.supabase, { userId, signalId })
-          return sendJson(res, 200, result)
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : 'apply failed'
-          return sendJson(res, 500, { error: msg })
-        }
+        // Apply runs in the background so Manage Trades / Resend Parameters can
+        // return immediately instead of blocking on OrderModify across every leg.
+        void applySignalOverride(tradeExecutor.supabase, {
+          userId,
+          signalId,
+          forceApply,
+        }).catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err)
+          console.error(`[http] apply-signal-override background failed signal=${signalId}: ${msg}`)
+        })
+        return sendJson(res, 200, {
+          accepted: true,
+          queued: true,
+          applied_legs: 0,
+          skipped_legs: 0,
+          failed_legs: 0,
+        })
       }
 
       if (url === '/internal/force-close-trades' && req.method === 'POST') {
