@@ -1,5 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@1";
-import { isReconcileDriftRow, reconnectRequiredUserIds, persistenceStep } from "./alertEvalRules.ts";
+import { isReconcileDriftRow, reconnectRequiredUserIds, persistenceStep, nextEscalation, shouldSuppressRecovery } from "./alertEvalRules.ts";
 
 Deno.test("isReconcileDriftRow: drift/reconciliation diagnostics are excluded", () => {
   const reconcile = [
@@ -125,4 +125,67 @@ Deno.test("persistenceStep: clear with nothing open drops stale timers", () => {
   const step = persistenceStep({ persistMs: 120_000, fired: false, hasOpen: false, trueSince: 5_000, falseSince: null, nowMs: 99_000 });
   assertEquals(step.action, "none");
   assertEquals(step.patch, { cond_true_since: null, cond_false_since: null });
+});
+
+Deno.test("nextEscalation: no tiers, before hold, exact hold", () => {
+  const t0 = Date.parse("2026-11-13T00:00:00Z");
+  assertEquals(nextEscalation(undefined, "warning", "2026-11-13T00:00:00Z", t0 + 7 * 60_000), null);
+  assertEquals(nextEscalation([], "warning", "2026-11-13T00:00:00Z", t0 + 7 * 60_000), null);
+  assertEquals(
+    nextEscalation([{ after_minutes: 8, severity: "critical" }], "warning", "2026-11-13T00:00:00Z", t0 + 7 * 60_000 + 59_000),
+    null,
+  );
+  assertEquals(
+    nextEscalation([{ after_minutes: 8, severity: "critical" }], "warning", "2026-11-13T00:00:00Z", t0 + 8 * 60_000),
+    { after_minutes: 8, severity: "critical" },
+  );
+});
+
+Deno.test("nextEscalation: severity only moves up; highest reachable tier wins", () => {
+  const t0 = Date.parse("2026-11-13T00:00:00Z");
+  // already at/above the tier — never de-escalate or repeat
+  assertEquals(nextEscalation([{ after_minutes: 8, severity: "critical" }], "critical", "2026-11-13T00:00:00Z", t0 + 60 * 60_000), null);
+  assertEquals(nextEscalation([{ after_minutes: 8, severity: "warning" }], "warning", "2026-11-13T00:00:00Z", t0 + 60 * 60_000), null);
+  assertEquals(nextEscalation([{ after_minutes: 8, severity: "info" }], "warning", "2026-11-13T00:00:00Z", t0 + 60 * 60_000), null);
+  // two elapsed tiers → the highest severity, not the first in the list
+  assertEquals(
+    nextEscalation(
+      [{ after_minutes: 30, severity: "critical" }, { after_minutes: 10, severity: "warning" }],
+      "info",
+      "2026-11-13T00:00:00Z",
+      t0 + 31 * 60_000,
+    ),
+    { after_minutes: 30, severity: "critical" },
+  );
+  // warning→critical jump directly when the middle tier was skipped (evaluator downtime)
+  assertEquals(
+    nextEscalation(
+      [{ after_minutes: 10, severity: "warning" }, { after_minutes: 30, severity: "critical" }],
+      "warning",
+      "2026-11-13T00:00:00Z",
+      t0 + 45 * 60_000,
+    ),
+    { after_minutes: 30, severity: "critical" },
+  );
+});
+
+Deno.test("nextEscalation: malformed input is ignored", () => {
+  const t0 = Date.parse("2026-11-13T00:00:00Z");
+  assertEquals(nextEscalation("nope", "warning", "2026-11-13T00:00:00Z", t0), null);
+  assertEquals(nextEscalation([{ after_minutes: 8, severity: "blocker" }], "warning", "2026-11-13T00:00:00Z", t0 + 60 * 60_000), null);
+  assertEquals(nextEscalation([{ after_minutes: -5, severity: "critical" }], "warning", "2026-11-13T00:00:00Z", t0 + 60 * 60_000), null);
+  assertEquals(nextEscalation([{ after_minutes: "8", severity: "critical" }], "warning", "2026-11-13T00:00:00Z", t0 + 9 * 60_000), { after_minutes: 8, severity: "critical" });
+  assertEquals(nextEscalation([{ after_minutes: 8, severity: "critical" }], "warning", "not-a-date", t0 + 60 * 60_000), null);
+  // future created_at (clock skew) must not escalate
+  assertEquals(nextEscalation([{ after_minutes: 8, severity: "critical" }], "warning", "2026-11-13T00:10:00Z", t0), null);
+});
+
+Deno.test("shouldSuppressRecovery: only resolved events whose page never went out", () => {
+  assertEquals(shouldSuppressRecovery("resolved", null, true), true);
+  assertEquals(shouldSuppressRecovery("resolved", "", true), true);
+  assertEquals(shouldSuppressRecovery("resolved", "2026-11-13T00:01:00Z", true), false);
+  assertEquals(shouldSuppressRecovery("firing", null, true), false);
+  assertEquals(shouldSuppressRecovery("escalated", null, true), false);
+  // column missing → legacy behaviour, send anyway
+  assertEquals(shouldSuppressRecovery("resolved", null, false), false);
 });

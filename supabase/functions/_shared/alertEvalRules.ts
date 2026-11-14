@@ -129,3 +129,62 @@ export function persistenceStep(input: PersistenceInput): PersistenceStep {
   }
   return { action: "none", patch: {} };
 }
+
+// --- Severity escalation + email gating (2026-11-13 audit).
+
+/** Severity ordering used by the recipient filter and escalation tiers. */
+export const SEVERITY_RANK: Record<string, number> = { info: 0, warning: 1, critical: 2 };
+
+export interface EscalationTier {
+  after_minutes: number;
+  severity: string;
+}
+
+/**
+ * Highest escalation tier whose hold time has elapsed AND whose severity is
+ * above the event's current one — null when nothing applies. Severity only
+ * ever moves up, so each tier applies at most once per event.
+ */
+export function nextEscalation(
+  tiers: unknown,
+  currentSeverity: string,
+  openCreatedAtIso: string,
+  nowMs: number,
+): EscalationTier | null {
+  if (!Array.isArray(tiers) || tiers.length === 0) return null;
+  const openMs = Date.parse(openCreatedAtIso);
+  if (!Number.isFinite(openMs)) return null;
+  const elapsedMs = nowMs - openMs;
+  if (!Number.isFinite(elapsedMs) || elapsedMs < 0) return null;
+  let bestRank = SEVERITY_RANK[currentSeverity] ?? 1;
+  let best: EscalationTier | null = null;
+  for (const raw of tiers) {
+    if (raw === null || typeof raw !== "object") continue;
+    const t = raw as { after_minutes?: unknown; severity?: unknown };
+    const minutes = Number(t.after_minutes);
+    const severity = String(t.severity ?? "");
+    const rank = SEVERITY_RANK[severity];
+    if (!Number.isFinite(minutes) || minutes < 0 || rank === undefined) continue;
+    if (rank <= bestRank) continue;
+    if (elapsedMs < minutes * 60_000) continue;
+    best = { after_minutes: minutes, severity };
+    bestRank = rank;
+  }
+  return best;
+}
+
+/**
+ * Option B (2026-11-13 audit): never send a "recovered" email for a page that
+ * never went out — mark the row handled instead (sub-minute blips that
+ * resolved before their first send, and warning-level events no recipient is
+ * eligible for). A missing stamping column (migration not applied) keeps the
+ * legacy send-always behaviour.
+ */
+export function shouldSuppressRecovery(
+  kind: "firing" | "resolved" | "escalated",
+  firingEmailSentAt: string | null | undefined,
+  columnsAvailable: boolean,
+): boolean {
+  if (kind !== "resolved" || !columnsAvailable) return false;
+  return firingEmailSentAt == null || firingEmailSentAt === "";
+}

@@ -58,7 +58,7 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { isReconcileDriftRow, reconnectRequiredUserIds, persistenceStep } from "../_shared/alertEvalRules.ts";
+import { isReconcileDriftRow, reconnectRequiredUserIds, persistenceStep, nextEscalation, shouldSuppressRecovery, SEVERITY_RANK } from "../_shared/alertEvalRules.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -109,8 +109,6 @@ const EMAIL_CLAIM_LEASE_MS = 180_000;
 const EMAIL_MISSING_KEY_RETRY_MS = 30 * 60_000;
 const MESSAGE_MAX = 500;
 
-const SEVERITY_RANK: Record<string, number> = { info: 0, warning: 1, critical: 2 };
-
 interface RuleRow {
   code: string;
   name: string;
@@ -135,6 +133,8 @@ interface EventRow {
   email_attempts: number;
   email_next_attempt_at: string | null;
   created_at: string;
+  message?: string | null;
+  value?: number | null;
 }
 
 type EvalOutcome =
@@ -808,15 +808,23 @@ interface RecipientRow {
 
 function alertEmailHtml(opts: {
   rule: RuleRow;
-  event: EventRow & { message?: string; value?: number | null; resolved_at?: string | null };
-  kind: "firing" | "resolved";
+  event: EventRow & { message?: string | null; value?: number | null; resolved_at?: string | null };
+  kind: "firing" | "resolved" | "escalated";
 }): string {
   const { rule, event, kind } = opts;
-  const isFiring = kind === "firing";
-  const accent = isFiring ? (rule.severity === "critical" ? "#dc2626" : "#d97706") : "#059669";
-  const label = isFiring ? (rule.severity === "critical" ? "CRITICAL ALERT" : "ALERT") : "RESOLVED";
+  const severity = event.severity || rule.severity;
+  const isResolved = kind === "resolved";
+  const accent = isResolved ? "#059669" : (SEVERITY_RANK[severity] >= SEVERITY_RANK.critical ? "#dc2626" : "#d97706");
+  const label = isResolved
+    ? "RESOLVED"
+    : kind === "escalated"
+      ? `ESCALATED TO ${severity.toUpperCase()}`
+      : (severity === "critical" ? "CRITICAL ALERT" : "ALERT");
   const valueLine = event.value != null ? `<p style="margin:0 0 8px 0;font-size:14px;color:#404040;">Measured value: <strong>${esc(event.value)}</strong></p>` : "";
-  const resolvedNote = !isFiring
+  const escalationNote = kind === "escalated"
+    ? `<p style="margin:0 0 8px 0;font-size:14px;color:#404040;">This alert stayed open and was raised to <strong>${esc(severity)}</strong> (open since ${esc(event.created_at)}).</p>`
+    : "";
+  const resolvedNote = isResolved
     ? `<p style="margin:0 0 12px 0;font-size:14px;color:#404040;">The condition cleared at ${esc(event.resolved_at ?? "")}.</p>`
     : "";
   const actionText = NEXT_ACTION[rule.code];
@@ -834,11 +842,12 @@ function alertEmailHtml(opts: {
       <h1 style="margin:12px 0 4px 0;font-size:20px;color:#18181b;">${esc(rule.name)}</h1>
       <p style="margin:0 0 16px 0;font-size:14px;line-height:1.5;color:#404040;">${esc(event.message ?? "")}</p>
       ${valueLine}
+      ${escalationNote}
       ${actionLine}
       <p style="margin:0 0 16px 0;font-size:13px;line-height:1.5;color:#71717a;">${esc(rule.description)}</p>
       ${resolvedNote}
       <p style="margin:0 0 20px 0;"><a href="${esc(ADMIN_ALERTS_URL)}" style="font-size:14px;font-weight:600;color:${accent};text-decoration:none;">Open the Alerts console &rarr;</a></p>
-      <p style="margin:0;font-size:12px;line-height:1.5;color:#a3a3a3;">Rule <code style="background:#f4f4f5;padding:1px 5px;border-radius:4px;">${esc(rule.code)}</code> · severity ${esc(rule.severity)} · raised ${esc(event.created_at)}</p>
+      <p style="margin:0;font-size:12px;line-height:1.5;color:#a3a3a3;">Rule <code style="background:#f4f4f5;padding:1px 5px;border-radius:4px;">${esc(rule.code)}</code> · severity ${esc(event.severity || rule.severity)} · raised ${esc(event.created_at)}</p>
     </div>
   </div>
 </body>
@@ -847,9 +856,9 @@ function alertEmailHtml(opts: {
 
 async function sendAlertEmail(
   rule: RuleRow,
-  event: EventRow & { message?: string; value?: number | null; resolved_at?: string | null },
+  event: EventRow & { message?: string | null; value?: number | null; resolved_at?: string | null },
   recipients: RecipientRow[],
-  kind: "firing" | "resolved",
+  kind: "firing" | "resolved" | "escalated",
 ): Promise<{ ok: boolean; error?: string; sent: number }> {
   const eligible = recipients.filter(
     r => (SEVERITY_RANK[r.min_severity] ?? 1) <= (SEVERITY_RANK[event.severity] ?? 1),
@@ -860,7 +869,9 @@ async function sendAlertEmail(
   const html = alertEmailHtml({ rule, event, kind });
   const subject = kind === "firing"
     ? `TScopier [${ALERT_ENV}] alert: ${rule.name}`
-    : `TScopier [${ALERT_ENV}] recovered: ${rule.name}`;
+    : kind === "escalated"
+      ? `TScopier [${ALERT_ENV}] ESCALATED to ${event.severity}: ${rule.name}`
+      : `TScopier [${ALERT_ENV}] recovered: ${rule.name}`;
 
   let sent = 0;
   let lastError = "";
@@ -946,6 +957,10 @@ Deno.serve(async (req) => {
     fired: [] as string[],
     resolved: [] as string[],
     cooldown_suppressed: [] as string[],
+    /** Alerts whose severity was raised by a threshold.escalations tier (rule→severity). */
+    escalated: [] as string[],
+    /** Resolved rows whose recovery email was suppressed because no page ever went out. */
+    recovery_suppressed: 0,
     /** Rules waiting out their threshold.persistence_minutes hold (fire/resolve). */
     persistence_pending: [] as string[],
     emails_attempted: 0,
@@ -987,7 +1002,7 @@ Deno.serve(async (req) => {
 
     const openRes = await sb
       .from("alert_events")
-      .select("id, rule_code, state, severity, email_sent_at, email_attempts, created_at")
+      .select("id, rule_code, state, severity, email_sent_at, email_attempts, created_at, message, value")
       .in("rule_code", codes)
       .in("state", ["firing", "acknowledged"]);
     if (openRes.error) throw new Error(`alert_events open: ${openRes.error.message}`);
@@ -1009,6 +1024,20 @@ Deno.serve(async (req) => {
         const t = Date.parse(row.resolved_at);
         if (Number.isFinite(t)) lastResolvedAt.set(row.rule_code, t);
       }
+    }
+
+    // Recipients are needed by two passes: severity escalation (while an event
+    // is open) and the email delivery pass below. Fetched once, up front.
+    const recipientsRes = await sb
+      .from("alert_recipients")
+      .select("email, min_severity")
+      .eq("enabled", true);
+    const recipients: RecipientRow[] = recipientsRes.error
+      ? []
+      : ((recipientsRes.data ?? []) as RecipientRow[]);
+    if (recipientsRes.error) {
+      console.warn(`[alert-evaluator] alert_recipients unreadable err=${recipientsRes.error.message}`);
+      summary.warnings.push(`alert_recipients unreadable: ${recipientsRes.error.message}`);
     }
 
     for (const rule of rules) {
@@ -1034,6 +1063,49 @@ Deno.serve(async (req) => {
           if (error) console.warn(`[alert-evaluator] disable persistence-clear failed rule=${rule.code} err=${error.message}`);
         }
         continue;
+      }
+
+      // Severity escalation (2026-11-13 audit): time-based tiers configured in
+      // threshold.escalations. Driven purely by how long the event has been
+      // open, so it still applies when the underlying condition cannot be
+      // re-checked this tick. CAS on severity prevents a concurrent tick from
+      // double-sending the escalation email.
+      if (open) {
+        const tier = nextEscalation(rule.threshold.escalations, open.severity, open.created_at, startedAt);
+        if (tier) {
+          const updRes = await sb
+            .from("alert_events")
+            .update({ severity: tier.severity })
+            .eq("id", open.id)
+            .eq("severity", open.severity)
+            .is("resolved_at", null)
+            .select("id");
+          if (updRes.error) {
+            console.warn(`[alert-evaluator] escalation update failed rule=${rule.code} err=${updRes.error.message}`);
+          } else if ((updRes.data ?? []).length > 0) {
+            open.severity = tier.severity;
+            summary.escalated.push(`${rule.code} → ${tier.severity}`);
+            if (RESEND_API_KEY === "") {
+              summary.email_errors.push(`${rule.code}: escalation email skipped — RESEND_API_KEY not configured`);
+            } else {
+              const escResult = await sendAlertEmail(rule, open, recipients, "escalated");
+              if (escResult.ok) {
+                // Stamp the page marker so Option B still lets the later
+                // recovery email through for a successfully paged escalation.
+                if (escResult.sent > 0 && persistenceColumnsAvailable) {
+                  const stampRes = await sb
+                    .from("alert_events")
+                    .update({ firing_email_sent_at: new Date().toISOString() })
+                    .eq("id", open.id)
+                    .is("firing_email_sent_at", null);
+                  if (stampRes.error) console.warn(`[alert-evaluator] escalation stamp failed rule=${rule.code} err=${stampRes.error.message}`);
+                }
+              } else {
+                summary.email_errors.push(`${rule.code}: escalation email ${escResult.error ?? "failed"}`);
+              }
+            }
+          }
+        }
       }
 
       summary.evaluated += 1;
@@ -1153,19 +1225,15 @@ Deno.serve(async (req) => {
     // field (1m, 2m, 4m ... capped at 30m). Eligibility is filtered in SQL so
     // permanently dead rows (resolved events past their cap or lookback)
     // cannot fill the batch window and starve newer firing emails.
-    const recipientsRes = await sb
-      .from("alert_recipients")
-      .select("email, min_severity")
-      .eq("enabled", true);
-    const recipients: RecipientRow[] = recipientsRes.error ? [] : ((recipientsRes.data ?? []) as RecipientRow[]);
-    if (recipientsRes.error) {
-      console.warn(`[alert-evaluator] alert_recipients unreadable err=${recipientsRes.error.message}`);
-    }
-
     const lookbackIso = new Date(startedAt - EMAIL_RETRY_LOOKBACK_MS).toISOString();
+    // firing_email_sent_at ships with migration 20261102160000 (same guard as
+    // the rules select above): only select it when the column exists.
+    const unsentFields = persistenceColumnsAvailable
+      ? "id, rule_code, state, severity, email_attempts, email_next_attempt_at, created_at, resolved_at, message, value, firing_email_sent_at"
+      : "id, rule_code, state, severity, email_attempts, email_next_attempt_at, created_at, resolved_at, message, value";
     const unsentRes = await sb
       .from("alert_events")
-      .select("id, rule_code, state, severity, email_attempts, email_next_attempt_at, created_at, resolved_at, message, value")
+      .select(unsentFields)
       .is("email_sent_at", null)
       .or(
         `state.neq.resolved,and(state.eq.resolved,email_attempts.lt.${EMAIL_MAX_ATTEMPTS},resolved_at.gte.${lookbackIso})`,
@@ -1202,6 +1270,22 @@ Deno.serve(async (req) => {
       emailAttemptsThisRun += 1;
       summary.emails_attempted += 1;
 
+      const kind: "firing" | "resolved" = ev.state === "resolved" ? "resolved" : "firing";
+
+      // Option B (2026-11-13 audit): never announce a recovery for a page that
+      // never went out — mark the row handled instead. This run already owns
+      // the claim, so a concurrent tick cannot race the mark.
+      if (shouldSuppressRecovery(kind, ev.firing_email_sent_at, persistenceColumnsAvailable)) {
+        const { error } = await sb.from("alert_events").update({
+          email_sent_at: nowIso,
+          email_last_error: null,
+          email_next_attempt_at: nowIso,
+        }).eq("id", ev.id).is("email_sent_at", null);
+        if (error) summary.email_errors.push(`${ev.rule_code}: recovery-suppress mark failed ${error.message}`);
+        else summary.recovery_suppressed += 1;
+        continue;
+      }
+
       if (RESEND_API_KEY === "") {
         summary.email_errors.push(`${ev.rule_code}: RESEND_API_KEY not configured`);
         await sb.from("alert_events").update({
@@ -1211,7 +1295,6 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const kind: "firing" | "resolved" = ev.state === "resolved" ? "resolved" : "firing";
       const result = await sendAlertEmail(rule, ev, recipients, kind);
       if (result.ok) {
         const sentAt = new Date(Date.now()).toISOString();
